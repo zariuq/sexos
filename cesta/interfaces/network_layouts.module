@@ -1,0 +1,19 @@
+Module NetworkLayouts {
+  Theory Layouts() {
+    Empty Equations {
+      (NetworkResult) == (Layout "cesta-layout/1"
+        (Word 32)
+        (Fields (Field kind "value") (Field transport "value")
+                (Field framing "value") (Field status "value")
+                (Field length "value") (Field padding "value"))
+        (Case
+          (Place kind (Bits 0 2) (Range 0 2))
+          (Place transport (Bits 2 3) (Range 0 5))
+          (Place framing (Bits 5 3) (Range 0 4))
+          (Place status (Bits 8 10) (Range 0 599))
+          (Place length (Bits 18 9) (Range 0 256))
+          (Place padding (Bits 27 5) (Range 0 0)))
+        (Location "immutable"));
+    }
+  }
+}

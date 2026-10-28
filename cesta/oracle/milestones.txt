@@ -1,0 +1,15 @@
+[sexdisplay.ready]
+[sexdrive.ready]
+[silkshell.ready]
+[sexinput.ready]
+[sexusb.ready]
+[silkbar.ready]
+[linen.ready]
+[sexstore.ready]
+[quil.ready]
+[sexbell.ready]
+[sexfiles.ready]
+[spindle.ready]
+sexdisplay.clock.recv
+sexdisplay.clock.redraw
+sexdisplay.render.live.ok

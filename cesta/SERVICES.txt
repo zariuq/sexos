@@ -1,0 +1,124 @@
+Correlated requests and bounded network service
+===============================================
+
+The reference ports retain the original Rust behaviour. The optional targets
+sexnet-network and kaleidoscope-network implement a separate, bounded HTTP
+service and consumer. sexos-kernel-network additionally grants the browser its
+display capability from the NetworkGrants table. The default sexos-kernel keeps
+the reference genesis; the original Rust kernel grants no browser display
+capability. A successful HTTP receipt alone therefore cannot establish that the
+reference browser drew anything.
+
+    make regenerate CESTA_SOURCE="$CESTA_SOURCE"
+    cesta build -j 1 sexnet-network kaleidoscope-network sexos-kernel-network
+    make export plain
+    make check-services
+    make qualify-services CESTA_SOURCE="$CESTA_SOURCE" LEAN_ROOT="$METTAPEDIA_LEAN"
+
+Protocol definitions
+--------------------
+
+interfaces/rpc_protocols.module declares bounded admission, reply polling and
+notification submission. rpc_wait imports those protocols, enables their
+ownership/fact checks and supplies a freestanding failure hook. The budget is
+snapshotted once per phase. A query gives that budget separately to admission
+and reply waiting; it is not a whole-query instruction or wall-clock limit.
+A notification retries only queue-full refusal before enqueue;
+a successful enqueue is never retried. Exhaustion is an explicit result.
+
+interfaces/network_rx_protocol.module borrows a completed receive descriptor
+and the caller's output byte buffer. Copying finishes before returning the
+descriptor to hardware; invalid frames are discarded explicitly. Pending
+receives carry no stale length. The caller supplies an initialized device and
+a private writable output frame. Native mapping and pointer validity remain
+separate obligations. The provider immediately overwrites a returned DMA page,
+so a premature descriptor return is detected rather than hidden by timing.
+
+interfaces/network_tx_protocol.module declares the transmit-buffer obligation.
+A successful submit commits it to the device; completion transfers it back,
+while timeout transfers it into the failed driver's quarantine. No timed-out
+buffer is reused. Pure validators check the identity and symbolic ownership at
+the generated boundaries. Their truth and the hardware ordering are native
+obligations, exercised with controlled descriptor providers.
+
+Correlated ABI
+--------------
+
+The opt-in syscall extension registers a peer, admits a call, claims its queued
+message, completes it, consumes its reply or cancels it. Identity is the pair
+(caller domain, monotonically issued request number). Each caller has a bounded
+window. Full windows, full rings and exhausted identities refuse before commit.
+Only the designated peer, after hearing the request, can complete it; completion
+is once-only and retains its value until the caller consumes or cancels it.
+Out-of-order replies do not overwrite each other. Cancelled queued messages are
+skipped, and identities never wrap or revive. Cancellation does not undo effects
+already performed by the server. A later application retry is a new call;
+operation-level idempotency is separate from once-only reply consumption.
+
+The old call/reply API remains separate. On the original Rust ABI, sexos_request
+supports serialized compatibility queries, retains unrelated inbox messages and
+poisons that query channel after timeout or deferred-message exhaustion. It
+requires no other legacy query outstanding. This cannot add sender authentication
+or multiplexed correlation to an ABI that does not carry them.
+
+Network scope
+-------------
+
+The service performs one startup GET to 10.0.2.2:18081 over the e1000 provider,
+then serves its immutable result through IPC. It resolves the gateway with ARP,
+checks IPv4/TCP lengths, checksums, addresses, ports and sequence numbers, and
+feeds in-order payload into an incremental HTTP parser. Duplicate or future
+segments are acknowledged without publishing duplicate bytes. The driver uses
+separate receive buffers and does not overwrite an outstanding transmit buffer.
+
+The supported framing profile follows RFC 9112 sections 6.3, 7.1 and 8:
+https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3
+
+HTTP completion follows Content-Length, chunk framing or connection close, as
+applicable; an empty complete body is distinct from pending and failed results.
+Supported responses include interim status, non-200 status, chunked and bounded
+close-delimited bodies. Unsupported content/transfer encodings, inconsistent
+framing, capacity exhaustion and premature close fail explicitly. Raw body bytes
+are preserved. The browser separately projects its first 64 bytes to printable
+ASCII for display, prints the actual status and checks every display submission.
+The packed NetworkResult declaration and its generated accessors are kernel-
+admitted independently of the exporter.
+
+This is a bounded local HTTP demonstration, not a general TCP stack, Internet
+browser or TLS implementation. It has finite ARP/SYN/receive budgets, no general
+retransmission/congestion-control machinery, no refresh protocol, and a 256-byte
+body limit. A refused compositor capability is a visible presentation failure,
+never a success marker. Accepted display submission is not a pixel-level proof.
+
+Evidence and limits
+-------------------
+
+Host gates compare actual exported units under GCC and Clang at O0, O2 and with
+address/undefined-behaviour sanitizers. They cover HTTP byte boundaries, packet
+validation, descriptor wraparound, buffer quarantine, request identity and
+compatibility failures. Mutation controls demonstrate sensitivity to changed
+framing, completion, authority, identity and cleanup behaviour.
+
+kernel_rpc_model replays actual kernel operations against Lean CorrelatedReplies
+at capacities one and eight, observing every live identity, peer, phase, value
+and queued message after each operation. Lean proves boundedness, unique fresh
+identities, authority confinement, authenticated completion, once-only consumption,
+retention and absence of stale-identity revival. The queued-transport replay
+adapter and the C/model link are tested, not a whole-kernel refinement proof.
+
+The protocol admission gate checks actual source/target and checked-instrumentation
+plans against independent Lean lowering definitions. Native hook truth, printed
+C fidelity, compiler behaviour, CPU entry, DMA and the hardware memory model
+remain outside those theorems. General checked ownership and borrows remain
+unfinished. A timeout promises bounded protocol steps, not rollback or a
+wall-clock deadline.
+
+    python3 tests/network_boot.py --image IMAGE --out NEW_EVIDENCE --case delayed
+
+The boot gate starts an independent local HTTP peer and checks exact service and
+browser bytes, actual status or failure, accepted compositor inputs, common
+milestones and faults. Cases include equal-length different bodies, delayed
+payload, empty, non-200, chunked, binary and maximum-length bodies, truncation,
+unsupported encoding, over-capacity and a refused connection. --display-denied
+is the explicit negative control for kernels without the extra display grant;
+it requires presentation failure and does not count as a successful render.

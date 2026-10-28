@@ -1,0 +1,72 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "sexos_rpc.h")
+    (include "sexos_server.h")
+    (define RPC_DEFERRED_CAPACITY "8u")
+    (var (static SexosMessage) ([] deferred RPC_DEFERRED_CAPACITY))
+    (var (static size_t) deferred_count)
+    (var (static bool) legacy_poisoned)
+    (var (static bool) kernel_probed)
+    (var (static bool) correlated_kernel)
+
+    (fn void sexos_rpc_defer ((SexosMessage message))
+      (if (>= deferred_count RPC_DEFERRED_CAPACITY) (call sexos_fail))
+      (= ([] deferred deferred_count) message)
+      (++ deferred_count))
+
+    (fn bool sexos_rpc_take_deferred ((SexosMessage (* message)))
+      (if (== deferred_count 0) (return false))
+      (= (* message) ([] deferred 0))
+      (-- deferred_count)
+      (for (var size_t i 0) (< i deferred_count) (++ i)
+        (= ([] deferred i) ([] deferred (+ i 1))))
+      (return true))
+
+    (fn SexosRequestResult sexos_request
+      ((uint64_t slot) (uint64_t opcode) (uint64_t arg0) (uint64_t arg1) (uint64_t arg2) (uint64_t budget))
+      (if (== budget 0) (return (compound SexosRequestResult (= (. status) SEXOS_REQUEST_TIMEOUT))))
+      (if (! kernel_probed)
+        (block
+          (= correlated_kernel (== (call sexos_rpc_register) 1))
+          (= kernel_probed true)))
+      (var SexosReply admitted (compound SexosReply (= (. status) SEXOS_RPC_UNSUPPORTED)))
+      (if (! correlated_kernel)
+        (block
+          (if legacy_poisoned
+            (return (compound SexosRequestResult (= (. status) SEXOS_REQUEST_FAILED) (= (. detail) SEXOS_RPC_INVALID))))
+          (= admitted (call sexos_pdx_call slot opcode arg0 arg1 arg2))
+          (if (!= (. admitted status) 0)
+            (return (compound SexosRequestResult (= (. status) SEXOS_REQUEST_FAILED) (= (. detail) (. admitted status)))))
+          (for (var uint64_t remaining budget) (> remaining 0) (-- remaining)
+            (block
+              (if (>= deferred_count RPC_DEFERRED_CAPACITY)
+                (block
+                  (= legacy_poisoned true)
+                  (return (compound SexosRequestResult (= (. status) SEXOS_REQUEST_FAILED) (= (. detail) SEXOS_RPC_BUSY)))))
+              (var SexosMessage message (call sexos_listen_once 0))
+              (if (== (. message type_id) 1)
+                (return (compound SexosRequestResult (= (. status) SEXOS_REQUEST_COMPLETE) (= (. value) (. message arg0)))))
+              (if (!= (. message type_id) 0) (call sexos_rpc_defer message))
+              (call sexos_yield)))
+          (= legacy_poisoned true)
+          (return (compound SexosRequestResult (= (. status) SEXOS_REQUEST_TIMEOUT)))))
+      (var SexosRequestResult admission (call sexos_rpc_admit_wait slot opcode arg0 arg1 arg2 budget))
+      (if (!= (. admission status) SEXOS_REQUEST_COMPLETE) (return admission))
+      (return (call sexos_rpc_await (. admission value) budget)))
+
+    (fn SexosRequest sexos_receive_request ((bool correlated))
+      (while true
+        (block
+          (var SexosRequest request (compound SexosRequest (= (. id) 0)))
+          (if correlated
+            (= request (call sexos_rpc_listen_once 0))
+            (block
+              (if (! (call sexos_rpc_take_deferred (& (. request message))))
+                (= (. request message) (call sexos_listen_once 0)))))
+          (if (!= (. (. request message) type_id) 0) (return request))
+          (call sexos_yield))))
+
+    (fn uint64_t sexos_answer_request (((const SexosRequest) (* request)) (uint64_t value))
+      (if (!= (-> request id) 0)
+        (return (call sexos_rpc_reply (. (-> request message) caller_pd) (-> request id) value)))
+      (return (call sexos_reply (. (-> request message) caller_pd) value)))))

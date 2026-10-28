@@ -1,0 +1,264 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "network_service.h")
+    (fn (static uint32_t) reg_read
+      ((NetworkDevice (* d)) (unsigned offset))
+      (return
+        (call sexos_volatile_read32 (cast ((const uint32_t) *) (cast uintptr_t (+ (-> d bar) offset))))))
+    (fn (static void) reg_write
+      ((NetworkDevice (* d)) (unsigned offset) (uint32_t value))
+      (call sexos_volatile_write32 (cast (uint32_t *) (cast uintptr_t (+ (-> d bar) offset))) value))
+    (fn (static bool) page
+      ((uint64_t (* physical)) (uint64_t (* virtual_address)))
+      (= (* physical) (call sexos_allocate_memory 4096))
+      (if (|| (== (* physical) 0) (== (* physical) UINT64_MAX))
+        (return false))
+      (= (* virtual_address) (call sexos_map_memory (* physical) 4096))
+      (if (|| (== (* virtual_address) 0) (== (* virtual_address) UINT64_MAX))
+        (return false))
+      (call memset (cast (void *) (cast uintptr_t (* virtual_address))) 0 4096)
+      (return true))
+    (fn bool network_device_open
+      ((NetworkDevice (* d)))
+      (call memset d 0 (sizeof (* d)))
+      (= (-> d failure) NET_DEVICE_ERROR)
+      (= (-> d bar) (call sexos_map_pci_bar SEXOS_SLOT_nic 0 65536))
+      (if (|| (== (-> d bar) 0) (== (-> d bar) UINT64_MAX))
+        (return false))
+      (decl uint32_t (= low (call reg_read d 0x5400)) (= high (call reg_read d 0x5404)))
+      (call reg_write d 0x00D8 UINT32_MAX)
+      (call reg_write d 0x0100 0)
+      (call reg_write d 0x0400 0)
+      (call reg_write d 0x0000 (| (call reg_read d 0x0000) (<< 1u 26)))
+      (var unsigned reset)
+      (for (= reset 0)
+        (< reset 65536)
+        (++ reset)
+        (block
+          (if (! (& (call reg_read d 0x0000) (<< 1u 26)))
+            break)
+          (call sexos_yield)))
+      (if (== reset 65536)
+        (return false))
+      (for (var unsigned i 0)
+        (< i 4)
+        (++ i)
+        (= ([] (-> d mac) i) (cast uint8_t (>> low (* 8 i)))))
+      (= ([] (-> d mac) 4) (cast uint8_t high))
+      (= ([] (-> d mac) 5) (cast uint8_t (>> high 8)))
+      (call reg_write d 0x5400 low)
+      (call reg_write d 0x5404 (| high (<< 1u 31)))
+      (call reg_write d 0x00D8 UINT32_MAX)
+      (call reg_write d 0x0000 (| (call reg_read d 0x0000) (<< 1u 6)))
+      (decl uint64_t rx_phys tx_phys)
+      (= (-> d failure) NET_RESOURCE_ERROR)
+      (if (||
+  (|| (! (call page (& rx_phys) (& (-> d rx_desc)))) (! (call page (& tx_phys) (& (-> d tx_desc)))))
+  (! (call page (& (-> d tx_phys)) (& (-> d tx_page)))))
+        (return false))
+      (for (var unsigned i 0)
+        (< i 8)
+        (++ i)
+        (block
+          (var uint64_t physical)
+          (if (! (call page (& physical) (& ([] (-> d rx_page) i))))
+            (return false))
+          (call
+            sexos_volatile_write64
+            (cast (uint64_t *) (cast uintptr_t (+ (-> d rx_desc) (* i 16))))
+            physical)))
+      (call reg_write d 0x2800 (cast uint32_t rx_phys))
+      (call reg_write d 0x2804 (cast uint32_t (>> rx_phys 32)))
+      (call reg_write d 0x2808 128)
+      (call reg_write d 0x2810 0)
+      (call reg_write d 0x2818 7)
+      (call reg_write d 0x2828 0x02080404)
+      (call reg_write d 0x3800 (cast uint32_t tx_phys))
+      (call reg_write d 0x3804 (cast uint32_t (>> tx_phys 32)))
+      (call reg_write d 0x3808 128)
+      (call reg_write d 0x3810 0)
+      (call reg_write d 0x3818 0)
+      (call reg_write d 0x3828 0x02080404)
+      (call reg_write d 0x0410 0x0060200A)
+      (call sexos_sfence)
+      (call reg_write d 0x0400 (| (| (<< 1u 1) (<< 0x10u 4)) (<< 0x40u 12)))
+      (call reg_write d 0x0100 (| (| (| (| (<< 1u 1) (<< 1u 3)) (<< 1u 4)) (<< 1u 15)) (<< 1u 26)))
+      (= (-> d failure) NET_OK)
+      (call sexos_line "[network.device.ready] rx=8 tx=8 exclusive_tx_buffer=1")
+      (return true))
+    (fn bool network_device_submit
+      ((NetworkDevice (* d)) (cesta_read_bytes frame))
+      (if (|| (|| (|| (-> d failed) (-> d tx_busy)) (> (. frame len) 1514)) (< (. frame len) 14))
+        (return false))
+      (var size_t count (?: (< (. frame len) 60) 60 (. frame len)))
+      (for (var size_t i 0)
+        (< i count)
+        (++ i)
+        (call
+          sexos_volatile_write8
+          (cast (uint8_t *) (cast uintptr_t (+ (-> d tx_page) i)))
+          (?: (< i (. frame len)) ([] (. frame data) i) 0)))
+      (var uint64_t descriptor (+ (-> d tx_desc) (* (-> d tx_next) 16)))
+      (call sexos_volatile_write64 (cast (uint64_t *) (cast uintptr_t descriptor)) (-> d tx_phys))
+      (call
+        sexos_volatile_write16
+        (cast (uint16_t *) (cast uintptr_t (+ descriptor 8)))
+        (cast uint16_t count))
+      (call sexos_volatile_write8 (cast (uint8_t *) (cast uintptr_t (+ descriptor 10))) 0)
+      (call sexos_volatile_write8 (cast (uint8_t *) (cast uintptr_t (+ descriptor 11))) 0x0B)
+      (call sexos_volatile_write8 (cast (uint8_t *) (cast uintptr_t (+ descriptor 12))) 0)
+      (call sexos_volatile_write8 (cast (uint8_t *) (cast uintptr_t (+ descriptor 13))) 0)
+      (call sexos_volatile_write16 (cast (uint16_t *) (cast uintptr_t (+ descriptor 14))) 0)
+      (= (-> d tx_busy) true)
+      (call sexos_sfence)
+      (call reg_write d 0x3818 (% (+ (-> d tx_next) 1) 8))
+      (return true))
+    (fn NetworkStep network_device_poll_tx
+      ((NetworkDevice (* d)))
+      (if (|| (-> d failed) (! (-> d tx_busy)))
+        (return NET_FAILED))
+      (var uint64_t descriptor (+ (-> d tx_desc) (* (-> d tx_next) 16)))
+      (var uint8_t status
+        (call sexos_volatile_read8 (cast ((const uint8_t) *) (cast uintptr_t (+ descriptor 12)))))
+      (if (! (& status 1))
+        (return NET_PENDING))
+      (call sexos_compiler_fence_seq_cst)
+      (= (-> d tx_busy) false)
+      (= (-> d tx_next) (% (+ (-> d tx_next) 1) 8))
+      (if (& status 14)
+        (block
+          (= (-> d failed) true)
+          (= (-> d failure) NET_DEVICE_ERROR)
+          (return NET_FAILED)))
+      (return NET_READY))
+    (typedef (struct
+  RxContext
+  (NetworkDevice (* device))
+  (NetworkFrame (* frame) (* sealed_frame))
+  (uint64_t descriptor)
+  (unsigned index)
+  (size_t count)
+  (bool available valid descriptor_owned bytes_owned copied settled)) RxContext)
+    (fn (static bool) rx_binding
+      ((RxContext (* c)))
+      (return
+        (&&
+          (&&
+            (&& (&& (&& (-> c device) (-> c frame)) (== (-> c frame) (-> c sealed_frame))) (< (-> c index) 8))
+            (== (-> c index) (-> (-> c device) rx_next)))
+          (== (-> c descriptor) (+ (-> (-> c device) rx_desc) (* (-> c index) 16))))))
+    (fn (static bool) rx_available
+      ((RxContext (* c)))
+      (return (-> c available)))
+    (fn (static bool) rx_frame_fact
+      ((RxContext (* c)))
+      (return (-> c valid)))
+    (fn (static bool) rx_copied
+      ((RxContext (* c)))
+      (return (&& (-> c copied) (== (-> (-> c frame) length) (-> c count)))))
+    (fn (static bool) rx_settled
+      ((RxContext (* c)))
+      (return (-> c settled)))
+    (fn (static bool) rx_descriptor_owned
+      ((RxContext (* c)))
+      (return (-> c descriptor_owned)))
+    (fn (static bool) rx_bytes_owned
+      ((RxContext (* c)))
+      (return (-> c bytes_owned)))
+    (fn (static bool) rx_poll
+      ((RxContext (* c)))
+      (var uint8_t status
+        (call sexos_volatile_read8 (cast ((const uint8_t) *) (cast uintptr_t (+ (-> c descriptor) 12)))))
+      (= (-> c available) (!= (& status 1) 0))
+      (if (! (-> c available))
+        (return false))
+      (call sexos_compiler_fence_seq_cst)
+      (=
+        (-> c count)
+        (call sexos_volatile_read16 (cast ((const uint16_t) *) (cast uintptr_t (+ (-> c descriptor) 8)))))
+      (var uint8_t errors
+        (call sexos_volatile_read8 (cast ((const uint8_t) *) (cast uintptr_t (+ (-> c descriptor) 13)))))
+      (=
+        (-> c valid)
+        (&&
+          (&& (&& (! errors) (& status 2)) (>= (-> c count) 14))
+          (<= (-> c count) (sizeof (-> (-> c frame) data)))))
+      (return true))
+    (fn (static bool) rx_valid
+      ((RxContext (* c)))
+      (return (-> c valid)))
+    (fn (static bool) rx_descriptor_acquire
+      ((RxContext (* c)))
+      (if (|| (|| (-> c descriptor_owned) (! (-> c available))) (! (call rx_binding c)))
+        (return false))
+      (= (-> c descriptor_owned) true)
+      (return true))
+    (fn (static bool) rx_bytes_acquire
+      ((RxContext (* c)))
+      (if (|| (|| (-> c bytes_owned) (! (-> c valid))) (! (call rx_binding c)))
+        (return false))
+      (= (-> c bytes_owned) true)
+      (return true))
+    (fn (static bool) rx_copy
+      ((RxContext (* c)))
+      (if (|| (|| (! (-> c descriptor_owned)) (! (-> c bytes_owned))) (! (-> c valid)))
+        (return false))
+      (for (var size_t i 0)
+        (< i (-> c count))
+        (++ i)
+        (=
+          ([] (-> (-> c frame) data) i)
+          (call
+            sexos_volatile_read8
+            (cast ((const uint8_t) *) (cast uintptr_t (+ ([] (-> (-> c device) rx_page) (-> c index)) i))))))
+      (= (-> (-> c frame) length) (-> c count))
+      (= (-> c copied) true)
+      (= (-> c settled) true)
+      (return true))
+    (fn (static bool) rx_discard
+      ((RxContext (* c)))
+      (= (-> (-> c frame) length) 0)
+      (= (-> c settled) true)
+      (return true))
+    (fn (static void) rx_recycle
+      ((RxContext (* c)))
+      (call sexos_volatile_write16 (cast (uint16_t *) (cast uintptr_t (+ (-> c descriptor) 8))) 0)
+      (call sexos_volatile_write8 (cast (uint8_t *) (cast uintptr_t (+ (-> c descriptor) 12))) 0)
+      (call sexos_sfence)
+      (call reg_write (-> c device) 0x2818 (-> c index))
+      (= (-> (-> c device) rx_next) (% (+ (-> c index) 1) 8))
+      (= (-> c descriptor_owned) false))
+    (fn (static void) rx_descriptor_release
+      ((RxContext (* c)))
+      (call rx_recycle c))
+    (fn (static void) rx_descriptor_transfer
+      ((RxContext (* c)))
+      (call rx_recycle c))
+    (fn (static void) rx_bytes_release
+      ((RxContext (* c)))
+      (= (-> (-> c frame) length) 0)
+      (= (-> c bytes_owned) false))
+    (fn (static void) rx_bytes_transfer
+      ((RxContext (* c)))
+      (= (-> c bytes_owned) false))
+    (native "#define network_rx_run_CHECKED 1\n#define network_rx_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()\n")
+    (use-protocols "../interfaces/network_rx_protocol.module" Protocols)
+    (fn NetworkStep network_device_receive
+      ((NetworkDevice (* d)) (NetworkFrame (* frame)))
+      (= (-> frame length) 0)
+      (if (-> d failed)
+        (return NET_FAILED))
+      (var RxContext context
+        (init
+          (= (. device) d)
+          (= (. frame) frame)
+          (= (. sealed_frame) frame)
+          (= (. index) (-> d rx_next))
+          (= (. descriptor) (+ (-> d rx_desc) (* (-> d rx_next) 16)))))
+      (var unsigned outcome (cast unsigned (call network_rx_run (& context))))
+      (return
+        (?:
+          (== outcome network_rx_run_answered)
+          NET_READY
+          (?: (== outcome network_rx_run_suspended) NET_PENDING NET_FAILED))))
+  ))

@@ -1,0 +1,5 @@
+(cesta-export/1 (header SEXOS_KERNEL_GENESIS_H) (profile c11)
+  (table-rows "kernel.data" Domains (macro SEXOS_KERNEL_DOMAIN_ROWS) (columns id name module log_name))
+  (table-rows "kernel.data" RingGrants (macro SEXOS_KERNEL_RING_GRANT_ROWS) (columns holder slot slot_label target optional))
+  (table-rows "kernel.data" NetworkGrants (macro SEXOS_KERNEL_NETWORK_GRANT_ROWS) (columns holder slot slot_label target optional))
+  (table-rows "kernel.data" InputGrants (macro SEXOS_KERNEL_INPUT_GRANT_ROWS) (columns holder slot slot_label)))

@@ -1,0 +1,144 @@
+(cesta project/1
+  (compiler gcc)
+  (out "build")
+  (profile userland
+    (flags "-std=c11" "-O2" "-g0" "-ffreestanding" "-fno-builtin"
+           "-fPIE" "-fno-stack-protector" "-mno-red-zone" "-mgeneral-regs-only"
+           "-Wall" "-Wextra" "-Wpedantic" "-Wformat=2" "-Werror")
+    (link "-nostdlib" "-static-pie" "-Wl,-e,_start" "-Wl,--build-id=none"))
+  (profile kernel
+    (flags "-std=c11" "-O2" "-g0" "-ffreestanding" "-fno-builtin"
+           "-fno-pic" "-fno-pie" "-mcmodel=kernel" "-fno-stack-protector" "-fno-asynchronous-unwind-tables"
+           "-mno-red-zone" "-mgeneral-regs-only"
+           "-Wall" "-Wextra" "-Wpedantic" "-Wformat=2" "-Werror")
+    (link "-nostdlib" "-static" "-Wl,-T,runtime/kernel/kernel.ld" "-Wl,--build-id=none"
+          "-Wl,-z,max-page-size=0x1000"))
+  (target kaleidoscope
+    (profile userland)
+    (sources "src/kaleidoscope.cesta" "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target silkbar
+    (profile userland)
+    (sources "src/silkbar.cesta" "src/silkbar_model.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=silkbar_main"))
+  (target sexinput
+    (profile userland)
+    (sources "src/sexinput.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=sexinput_main"))
+  (target sexstore
+    (profile userland)
+    (sources "src/sexstore.cesta" "src/sexstore_durable.cesta" "src/sexstore_pages.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=sexstore_main"))
+  (target sexdisplay
+    (profile userland)
+    (sources "src/sexdisplay.cesta" "src/silkbar_model.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=sexdisplay_main"))
+  (target sexbell
+    (profile userland)
+    (sources "src/sexbell.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=sexbell_main"))
+  (target linen
+    (profile userland)
+    (sources "src/linen.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=linen_main"))
+  (target quil
+    (profile userland)
+    (sources "src/quil.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=quil_main" "sexfiles_quil_persistence_proof"))
+  (target spindle
+    (profile userland)
+    (sources "src/spindle.cesta" "src/sex_graphics.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=spindle_main"))
+  (target purple-scanout
+    (profile userland)
+    (sources "src/purple_scanout.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=purple_scanout_main"))
+  (target sexfiles
+    (profile userland)
+    (sources "src/sexfiles.cesta" "src/sexfiles_diskfs.cesta" "src/sexfiles_proof.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=sexfiles_main"))
+  (target sexdrive
+    (profile userland)
+    (sources "src/sexdrive.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/mmio_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=sexdrive_main"))
+  (target sexusb
+    (profile userland)
+    (sources "src/sexusb.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/mmio_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=sexusb_main"))
+  (target sexnet
+    (profile userland)
+    (sources "src/sexnet.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/mmio_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=sexnet_main"))
+  (target kaleidoscope-network
+    (profile userland)
+    (sources "src/network_browser.cesta" "src/network_observation.cesta" "src/rpc_runtime.cesta" "src/rpc_wait.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/rpc_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=network_browser_main"))
+  (target sexnet-network
+    (profile userland)
+    (sources "src/network_service.cesta" "src/network_observation.cesta" "src/network_device.cesta" "src/network_send.cesta" "src/network_tcp.cesta"
+             "src/network_http.cesta" "src/rpc_runtime.cesta" "src/rpc_wait.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/rpc_traps_x86_64.c" "runtime/mmio_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=network_service_main"))
+  (target sexos-kernel
+    (profile kernel)
+    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta"
+             "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
+    (include "runtime/kernel" "generated/include"))
+  (target sexos-kernel-network
+    (profile kernel)
+    (define "SEXOS_NETWORK_PROFILE=1")
+    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta"
+             "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
+    (include "runtime/kernel" "generated/include")))

@@ -1,0 +1,2819 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "silk_shell.h")
+    (comment "Application manifests, canvas operations and shell object models.")
+    (var (const uint8_t) ([] SPINDLE_SYNTH_SEQ 6) (init 0x1E 0x30 0x2E 0x0E 0x20 0x1C))
+    (var (const AppSurfaceSpec) ([] APP_SURFACES 8)
+      (init
+        (init
+          (= (. surface_id) SURFACE_ID_LINEN)
+          (= (. frame_id) LINEN_FRAME_ID)
+          (= (. name) "linen")
+          (= (. boot_x) LINEN_BOOT_X)
+          (= (. boot_y) LINEN_BOOT_Y)
+          (= (. boot_w) LINEN_BOOT_W)
+          (= (. boot_h) LINEN_BOOT_H)
+          (= (. closeable) true)
+          (= (. focusable) true))
+        (init
+          (= (. surface_id) SURFACE_ID_QUIL)
+          (= (. frame_id) QUIL_FRAME_ID)
+          (= (. name) "quil")
+          (= (. boot_x) QUIL_BOOT_X)
+          (= (. boot_y) QUIL_BOOT_Y)
+          (= (. boot_w) QUIL_BOOT_W)
+          (= (. boot_h) QUIL_BOOT_H)
+          (= (. closeable) true)
+          (= (. focusable) true))
+        (init
+          (= (. surface_id) SURFACE_ID_MESH)
+          (= (. frame_id) MESH_FRAME_ID)
+          (= (. name) "mesh")
+          (= (. boot_x) MESH_BOOT_X)
+          (= (. boot_y) MESH_BOOT_Y)
+          (= (. boot_w) MESH_BOOT_W)
+          (= (. boot_h) MESH_BOOT_H)
+          (= (. closeable) true)
+          (= (. focusable) true))
+        (init
+          (= (. surface_id) SURFACE_ID_COLLAR)
+          (= (. frame_id) COLLAR_FRAME_ID)
+          (= (. name) "collar")
+          (= (. boot_x) COLLAR_BOOT_X)
+          (= (. boot_y) COLLAR_BOOT_Y)
+          (= (. boot_w) COLLAR_BOOT_W)
+          (= (. boot_h) COLLAR_BOOT_H)
+          (= (. closeable) true)
+          (= (. focusable) true))
+        (init
+          (= (. surface_id) SURFACE_ID_BELL_PLACEHOLDER)
+          (= (. frame_id) BELL_FRAME_ID)
+          (= (. name) "bell")
+          (= (. boot_x) BELL_BOOT_X)
+          (= (. boot_y) BELL_BOOT_Y)
+          (= (. boot_w) BELL_BOOT_W)
+          (= (. boot_h) BELL_BOOT_H)
+          (= (. closeable) true)
+          (= (. focusable) true))
+        (init
+          (= (. surface_id) SURFACE_ID_COMMAND_PALETTE)
+          (= (. frame_id) COMMAND_PALETTE_FRAME_ID)
+          (= (. name) "command_palette")
+          (= (. boot_x) COMMAND_PALETTE_BOOT_X)
+          (= (. boot_y) COMMAND_PALETTE_BOOT_Y)
+          (= (. boot_w) COMMAND_PALETTE_BOOT_W)
+          (= (. boot_h) COMMAND_PALETTE_BOOT_H)
+          (= (. closeable) false)
+          (= (. focusable) true))
+        (init
+          (= (. surface_id) SURFACE_ID_SPINDLE)
+          (= (. frame_id) SPINDLE_FRAME_ID)
+          (= (. name) "spindle")
+          (= (. boot_x) SPINDLE_BOOT_X)
+          (= (. boot_y) SPINDLE_BOOT_Y)
+          (= (. boot_w) SPINDLE_BOOT_W)
+          (= (. boot_h) SPINDLE_BOOT_H)
+          (= (. closeable) true)
+          (= (. focusable) true))
+        (init
+          (= (. surface_id) SURFACE_ID_BROWSER)
+          (= (. frame_id) BROWSER_FRAME_ID)
+          (= (. name) "browser")
+          (= (. boot_x) BROWSER_BOOT_X)
+          (= (. boot_y) BROWSER_BOOT_Y)
+          (= (. boot_w) BROWSER_BOOT_W)
+          (= (. boot_h) BROWSER_BOOT_H)
+          (= (. closeable) true)
+          (= (. focusable) true))))
+    (var (const LinenObject) ([] LINEN_SEED_OBJECTS 6)
+      (init
+        (init
+          (= (. present) true)
+          (= (. object_id) 1)
+          (= (. kind) LINEN_OBJ_KIND_PROJECT)
+          (= (. state) LINEN_OBJ_STATE_LOADED)
+          (= (. parent_id) 0)
+          (= (. project_id) 1)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) 0)
+          (= (. flags) 0)
+          (= (. display_name) "SexOS Kernel")
+          (= (. name) (init 0))
+          (= (. name_len) 0)
+          (= (. disk_path) 0))
+        (init
+          (= (. present) true)
+          (= (. object_id) 2)
+          (= (. kind) LINEN_OBJ_KIND_DOCUMENT)
+          (= (. state) LINEN_OBJ_STATE_SAVED)
+          (= (. parent_id) 1)
+          (= (. project_id) 1)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) 0)
+          (= (. flags) 0)
+          (= (. display_name) "Compositor Lifecycle Spec")
+          (= (. name) (init 0))
+          (= (. name_len) 0)
+          (= (. disk_path) 0))
+        (init
+          (= (. present) true)
+          (= (. object_id) 3)
+          (= (. kind) LINEN_OBJ_KIND_CODE_FILE)
+          (= (. state) LINEN_OBJ_STATE_LOADED)
+          (= (. parent_id) 1)
+          (= (. project_id) 1)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) SURFACE_ID_LINEN)
+          (= (. flags) 0)
+          (= (. display_name) "Silk Shell main.rs")
+          (= (. name) (init 0))
+          (= (. name_len) 0)
+          (= (. disk_path) 0))
+        (init
+          (= (. present) true)
+          (= (. object_id) 4)
+          (= (. kind) LINEN_OBJ_KIND_MEDIA_ASSET)
+          (= (. state) LINEN_OBJ_STATE_SAVED)
+          (= (. parent_id) 0)
+          (= (. project_id) 0)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) 0)
+          (= (. flags) 0)
+          (= (. display_name) "Desktop Screenshot")
+          (= (. name) (init 0))
+          (= (. name_len) 0)
+          (= (. disk_path) 0))
+        (init
+          (= (. present) true)
+          (= (. object_id) 5)
+          (= (. kind) LINEN_OBJ_KIND_BUILD_ARTIFACT)
+          (= (. state) LINEN_OBJ_STATE_SAVED)
+          (= (. parent_id) 1)
+          (= (. project_id) 1)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) 0)
+          (= (. flags) 0)
+          (= (. display_name) "Current ISO Build")
+          (= (. name) (init 0))
+          (= (. name_len) 0)
+          (= (. disk_path) 0))
+        (init
+          (= (. present) true)
+          (= (. object_id) 6)
+          (= (. kind) LINEN_OBJ_KIND_FOLDER)
+          (= (. state) LINEN_OBJ_STATE_LOADED)
+          (= (. parent_id) 0)
+          (= (. project_id) 0)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) 0)
+          (= (. flags) 0)
+          (= (. display_name) "Drafts")
+          (= (. name) (init 0))
+          (= (. name_len) 0)
+          (= (. disk_path) 0))))
+    (var (const uint32_t) ([] LINEN_UI_ROW_COLORS 5)
+      (init 0x003060A0 0x006040A0 0x00306060 0x00805030 0x00204060))
+    (var (const QuilBuffer) ([] QUIL_SEED_BUFFERS 6)
+      (init
+        (init
+          (= (. present) true)
+          (= (. buffer_id) 1)
+          (= (. kind) QUIL_BUF_KIND_CODE)
+          (= (. state) QUIL_BUF_STATE_OPEN)
+          (= (. linen_object_ref) 0)
+          (= (. project_id) 1)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) SURFACE_ID_QUIL)
+          (= (. flags) 0)
+          (= (. display_name) "main.rs"))
+        (init
+          (= (. present) true)
+          (= (. buffer_id) 2)
+          (= (. kind) QUIL_BUF_KIND_TEXT)
+          (= (. state) QUIL_BUF_STATE_OPEN)
+          (= (. linen_object_ref) 2)
+          (= (. project_id) 1)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) SURFACE_ID_QUIL)
+          (= (. flags) 0)
+          (= (. display_name) "Compositor Lifecycle Spec"))
+        (init
+          (= (. present) true)
+          (= (. buffer_id) 3)
+          (= (. kind) QUIL_BUF_KIND_DESIGN_NOTE)
+          (= (. state) QUIL_BUF_STATE_OPEN)
+          (= (. linen_object_ref) 0)
+          (= (. project_id) 1)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) 0)
+          (= (. flags) 0)
+          (= (. display_name) "Frame Tiling Design"))
+        (init
+          (= (. present) true)
+          (= (. buffer_id) 4)
+          (= (. kind) QUIL_BUF_KIND_BUILD_OUTPUT)
+          (= (. state) QUIL_BUF_STATE_READ_ONLY)
+          (= (. linen_object_ref) 5)
+          (= (. project_id) 1)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) 0)
+          (= (. flags) 0)
+          (= (. display_name) "Current ISO Build"))
+        (init
+          (= (. present) true)
+          (= (. buffer_id) 5)
+          (= (. kind) QUIL_BUF_KIND_REVIEW_NOTE)
+          (= (. state) QUIL_BUF_STATE_OPEN)
+          (= (. linen_object_ref) 0)
+          (= (. project_id) 1)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) 0)
+          (= (. flags) 0)
+          (= (. display_name) "Review: A7 Opcode Audit"))
+        (init
+          (= (. present) true)
+          (= (. buffer_id) 6)
+          (= (. kind) QUIL_BUF_KIND_AGENT_TASK)
+          (= (. state) QUIL_BUF_STATE_ALLOCATED)
+          (= (. linen_object_ref) 0)
+          (= (. project_id) 0)
+          (= (. grant_ref) 0)
+          (= (. linked_surface_id) 0)
+          (= (. flags) 0)
+          (= (. display_name) "Refactor tiling loop"))))
+    (var (const uint32_t) ([] ([] TOKEN_PRESETS PRESET_COUNT) 8)
+      (init
+        (init 0x007AAFA4 0x00B8F2E8 0x0088C2B7 0x007AAFA4 0x006080B0 0x00FF4444 0x00FFCC44 0x0044FF44)
+        (init 0x00503080 0x00A060FF 0x00604090 0x00503080 0x00302050 0x00FF4080 0x00FFAA00 0x0040FF80)
+        (init 0x00282828 0x00808080 0x00404040 0x00505050 0x00303030 0x00CC4444 0x00CCAA44 0x0044CC44)
+        (init 0x00000000 0x00FFFFFF 0x00111111 0x00FFFF00 0x00555555 0x00FF4444 0x00FFDD00 0x0000FF44)))
+    (var (const char) (* (const) ([] PRESET_NAMES PRESET_COUNT))
+      (init "Default" "Warm" "Cool" "HighContrast"))
+    (var (const SceneAppearanceState) DEFAULT_SCENE_APPEARANCE
+      (init
+        (= (. preset_idx) 0)
+        (= (. use_custom_colors) 0)
+        (= (. chrome_flags) 0)
+        (= (. accessibility_flags) 0)
+        (= (. custom_colors) (init 0))))
+    (var (const uint32_t) ([] ([] CUSTOM_TINT_BUNDLES TINT_COUNT) 8)
+      (init
+        (init 0x00000000 0x00000000 0x00000000 0x00000000 0x00000000 0x00000000 0x00000000 0x00000000)
+        (init 0x00000000 0x00D4822A 0x00B86420 0x00000000 0x00000000 0x00000000 0x00000000 0x00000000)
+        (init 0x00000000 0x0080C8FF 0x004488CC 0x00000000 0x00000000 0x00000000 0x00000000 0x00000000)
+        (init 0x00CC5566 0x00FF8090 0x00000000 0x00000000 0x00000000 0x00000000 0x00000000 0x00000000)
+        (init 0x00000000 0x00DDBB00 0x00000000 0x00DDBB00 0x00000000 0x00000000 0x00000000 0x00000000)))
+    (var (const DesktopPolicy) P
+      (init
+        (= (. width) 1280)
+        (= (. height) 720)
+        (= (. bar_height) 50)
+        (= (. move_step) 10)
+        (= (. resize_step) 20)
+        (= (. min_width) 120)
+        (= (. min_height) 80)
+        (= (. boot_rect_100) (init 100 100 800 500))
+        (= (. boot_rect_101) (init 180 160 500 300))
+        (= (. boot_rect_102) (init 50 60 350 150))
+        (= (. boot_rect_103) (init 900 560 300 120))))
+    (var (const ChromeTemplate) SILK_CHROME_TEMPLATE_DEFAULT
+      (init
+        (= (. rim_px) 4)
+        (= (. top_bar_height_px) 28)
+        (= (. light_size_px) 4)
+        (= (. light_gap_px) 2)
+        (= (. top_bar_light_size_px) 10)
+        (= (. top_bar_light_gap_px) 5)
+        (= (. top_bar_light_exclusion_px) 50)
+        (= (. tab_light_exclusion_px) 20)
+        (= (. tab_min_width_px) 12)
+        (= (. tab_strip_px) 4)
+        (= (. settings_panel_x) 870)
+        (= (. settings_panel_y) 60)
+        (= (. settings_panel_w) 340)
+        (= (. settings_panel_h) 280)
+        (= (. control_preset_up) (init 0 0 0 0))
+        (= (. control_preset_down) (init 0 0 0 0))
+        (= (. control_reset) (init 0 0 0 0))
+        (= (. control_close) (init 0 0 0 0))
+        (= (. control_topbar_toggle) (init 0 0 0 0))))
+    (var (const uint32_t) ([] ATLAS_ACCENT_COLORS 5)
+      (init 0x00000000 0x00805020 0x00205080 0x00804050 0x00807000))
+    (var (const CommandDef) ([] COMMAND_LIST 10)
+      (init
+        (init (= (. command) CMD_FOCUS_SPINDLE) (= (. name) "Open Spindle"))
+        (init (= (. command) CMD_FOCUS_QUIL) (= (. name) "Open Quil"))
+        (init (= (. command) CMD_FOCUS_LINEN) (= (. name) "Open Linen"))
+        (init (= (. command) CMD_FOCUS_ATLAS) (= (. name) "Open Atlas"))
+        (init (= (. command) CMD_FOCUS_BELL) (= (. name) "Open Bell"))
+        (init (= (. command) CMD_FOCUS_COLLAR) (= (. name) "Open Collar"))
+        (init (= (. command) CMD_FOCUS_MESH) (= (. name) "Open Mesh"))
+        (init (= (. command) CMD_RESTORE_MINIMIZED) (= (. name) "Restore Minimized"))
+        (init (= (. command) CMD_ZOOM_TOGGLE) (= (. name) "Zoom Toggle"))
+        (init (= (. command) CMD_MINIMIZE_FOCUSED) (= (. name) "Minimize Focused"))))
+    (fn bool app_capability_bits_validate
+      ((uint8_t bits) (AppCapabilityBits (* out)))
+      (if (!= (& bits (cast uint8_t (~ APP_CAP_KNOWN))) 0)
+        (return false))
+      (if (!= out NULL)
+        (= (-> out bits) bits))
+      (return true))
+    (fn uint8_t app_capability_bits_bits
+      ((AppCapabilityBits self))
+      (return (. self bits)))
+    (fn bool app_capability_bits_has_bell
+      ((AppCapabilityBits self))
+      (return (!= (& (. self bits) APP_CAP_BELL) 0)))
+    (fn bool app_capability_bits_has_sexfiles
+      ((AppCapabilityBits self))
+      (return (!= (& (. self bits) APP_CAP_SEXFILES) 0)))
+    (fn (const char) *
+      app_capability_bits_describe
+      ((AppCapabilityBits self))
+      (switch
+        (. self bits)
+        (block
+          (case APP_CAP_NONE (return "none"))
+          (case APP_CAP_BELL (return "bell"))
+          (case APP_CAP_SEXFILES (return "sexfiles"))
+          (case APP_CAP_KNOWN (return "bell+sexfiles"))
+          (default (return "unknown")))))
+    (fn void app_manifest_pack
+      (((const AppManifest) (* self)) (uint64_t (* arg0)) (uint64_t (* arg1)) (uint64_t (* arg2)))
+      (if (!= arg0 NULL)
+        (= (* arg0) (-> self surface_id)))
+      (if (!= arg1 NULL)
+        (= (* arg1) (-> self title_id)))
+      (if (!= arg2 NULL)
+        (= (* arg2) (| (<< (cast uint64_t (-> self app_id)) 8) (. (-> self capabilities) bits)))))
+    (fn bool app_manifest_unpack
+      ((uint64_t surface_id) (uint64_t title_id) (uint64_t arg2) (AppManifest (* out)))
+      (if (!= (& arg2 (call UINT64_C 0xFFFFFFFFFF000000)) 0)
+        (return false))
+      (var AppCapabilityBits capabilities)
+      (if (! (call app_capability_bits_validate (cast uint8_t arg2) (& capabilities)))
+        (return false))
+      (if (!= out NULL)
+        (block
+          (=
+            (* out)
+            (compound,
+              AppManifest
+              (= (. surface_id) surface_id)
+              (= (. title_id) title_id)
+              (= (. app_id) (cast uint16_t (>> arg2 8)))
+              (= (. capabilities) capabilities)))))
+      (return true))
+    (fn bool app_manifest_has_identity
+      (((const AppManifest) (* self)))
+      (return (!= (-> self app_id) 0)))
+    (fn Canvas canvas_new
+      ((uint32_t (* fb_ptr)) (uint32_t w) (uint32_t h))
+      (return
+        (compound
+          Canvas
+          (= (. fb) fb_ptr)
+          (= (. fb_len) (cast size_t (* w h)))
+          (= (. width) w)
+          (= (. height) h))))
+    (fn void canvas_fill_rect
+      ((Canvas (* self)) (uint32_t x) (uint32_t y) (uint32_t w) (uint32_t h) (uint32_t color))
+      (var uint32_t y_end (+ y h))
+      (var uint32_t x_end (+ x w))
+      (if (> y_end (-> self height))
+        (= y_end (-> self height)))
+      (if (> x_end (-> self width))
+        (= x_end (-> self width)))
+      (for (var uint32_t py y)
+        (< py y_end)
+        (++ py)
+        (block
+          (for (var uint32_t px x)
+            (< px x_end)
+            (++ px)
+            (block
+              (var size_t index (cast size_t (+ (* py (-> self width)) px)))
+              (if (< index (-> self fb_len))
+                (= ([] (-> self fb) index) color)))))))
+    (fn void canvas_draw_panel
+      ((Canvas (* self)) ((const ShellState) (* state)))
+      (call canvas_fill_rect self 0 0 (-> self width) PANEL_HEIGHT (call UINT32_C 0xFF0A0A14))
+      (if (-> state is_launcher_open)
+        (call canvas_fill_rect self 0 PANEL_HEIGHT LAUNCHER_WIDTH 400 (call UINT32_C 0xFF1E1E2E))))
+    (fn uint32_t pdx_compositor_client_create_window
+      ((int32_t x) (int32_t y) (uint32_t w) (uint32_t h))
+      (cast void h)
+      (return
+        (cast
+          uint32_t
+          (. (call sexos_pdx_call SLOT_DISPLAY OP_WINDOW_CREATE (cast uint64_t x) (cast uint64_t y) w) value))))
+    (fn void pdx_compositor_client_set_bg
+      ((uint32_t color))
+      (cast void (call sexos_pdx_call SLOT_DISPLAY OP_SET_BG color 0 0)))
+    (fn void pdx_compositor_client_render_bar
+      ((uint32_t window_id))
+      (cast void (call sexos_pdx_call SLOT_DISPLAY OP_RENDER_BAR window_id 0 0)))
+    (fn void linen_object_table_init
+      (void)
+      (for (var size_t i 0)
+        (< i (/ (sizeof LINEN_SEED_OBJECTS) (sizeof ([] LINEN_SEED_OBJECTS 0))))
+        (++ i)
+        (block
+          (if (< i LINEN_MAX_OBJECTS)
+            (block
+              (var LinenObject object ([] LINEN_SEED_OBJECTS i))
+              (= (. object present) true)
+              (= ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i) object)
+              (call
+                sexos_line
+                "[linen.object.seed] id=%llu kind=%u name=%s"
+                (cast (unsigned long long) (. object object_id))
+                (cast unsigned (. object kind))
+                (. object display_name))))))
+      (call
+        sexos_line
+        "[linen.object_table.init] count=%zu"
+        (/ (sizeof LINEN_SEED_OBJECTS) (sizeof ([] LINEN_SEED_OBJECTS 0)))))
+    (fn size_t linen_object_count
+      (void)
+      (var size_t count 0)
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (if (. ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i) present)
+          (++ count)))
+      (return count))
+    (fn bool linen_object_by_id
+      ((uint64_t id) (LinenObject (* out)))
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (block
+          (var (const LinenObject) (* object) (& ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i)))
+          (if (&& (-> object present) (== (-> object object_id) id))
+            (block
+              (if (!= out NULL)
+                (= (* out) (* object)))
+              (return true)))))
+      (return false))
+    (fn (const char) *
+      linen_object_kind_name
+      ((uint8_t kind))
+      (switch
+        kind
+        (block
+          (case LINEN_OBJ_KIND_PROJECT (return "Project"))
+          (case LINEN_OBJ_KIND_DOCUMENT (return "Document"))
+          (case LINEN_OBJ_KIND_CODE_FILE (return "CodeFile"))
+          (case LINEN_OBJ_KIND_MEDIA_ASSET (return "MediaAsset"))
+          (case LINEN_OBJ_KIND_BUILD_ARTIFACT (return "BuildArtifact"))
+          (case LINEN_OBJ_KIND_FOLDER (return "Folder"))
+          (case LINEN_OBJ_KIND_REFERENCE (return "Reference"))
+          (case LINEN_OBJ_KIND_IMPORT_PLACEHOLDER (return "ImportPlaceholder"))
+          (case LINEN_OBJ_KIND_BELL_EVENT_REFERENCE (return "BellEventRef"))
+          (case LINEN_OBJ_KIND_QUIL_WORKSPACE_REFERENCE (return "QuilWorkspaceRef"))
+          (case LINEN_OBJ_KIND_MESH_DIAGNOSTIC_REFERENCE (return "MeshDiagRef"))
+          (default (return "unknown")))))
+    (fn (const char) *
+      linen_object_state_name
+      ((uint8_t state))
+      (switch
+        state
+        (block
+          (case LINEN_OBJ_STATE_ALLOCATED (return "Allocated"))
+          (case LINEN_OBJ_STATE_LOADED (return "Loaded"))
+          (case LINEN_OBJ_STATE_MODIFIED (return "Modified"))
+          (case LINEN_OBJ_STATE_SAVED (return "Saved"))
+          (case LINEN_OBJ_STATE_ARCHIVED (return "Archived"))
+          (default (return "unknown")))))
+    (fn void linen_select_first_valid_object
+      (void)
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (block
+          (var (const LinenObject) (* object) (& ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i)))
+          (if (-> object present)
+            (block
+              (= (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID) (-> object object_id))
+              (call
+                sexos_line
+                "[linen.object_select.current] id=%llu"
+                (cast (unsigned long long) (-> object object_id)))
+              (return)))))
+      (= (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID) 0))
+    (fn uint64_t linen_selected_object_id
+      (void)
+      (if (== (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID) 0)
+        (block
+          (call linen_select_first_valid_object)
+          (if (== (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID) 0)
+            (block
+              (call sexos_line "[linen.object_select.reject] reason=no_objects")
+              (return 0)))
+          (call
+            sexos_line
+            "[linen.object_select.repair] id=%llu"
+            (cast (unsigned long long) (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID)))))
+      (call
+        sexos_line
+        "[linen.object_select.current] id=%llu"
+        (cast (unsigned long long) (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID)))
+      (return (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID)))
+    (fn void linen_select_next_object
+      (void)
+      (var uint64_t current (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID))
+      (var bool found_current false)
+      (var uint64_t first_valid 0)
+      (var uint64_t next_valid 0)
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (block
+          (var (const LinenObject) (* object) (& ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i)))
+          (if (! (-> object present))
+            continue)
+          (if (== first_valid 0)
+            (= first_valid (-> object object_id)))
+          (if (&& found_current (== next_valid 0))
+            (block
+              (= next_valid (-> object object_id))
+              break))
+          (if (== (-> object object_id) current)
+            (= found_current true))))
+      (if (!= next_valid 0)
+        (block
+          (= (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID) next_valid)
+          (call
+            sexos_line
+            "[linen.object_select.next] prev=%llu next=%llu"
+            (cast (unsigned long long) current)
+            (cast (unsigned long long) next_valid)))
+        (if (&& (!= first_valid 0) (!= current first_valid))
+          (block
+            (= (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID) first_valid)
+            (call
+              sexos_line
+              "[linen.object_select.next] prev=%llu next=%llu wrap"
+              (cast (unsigned long long) current)
+              (cast (unsigned long long) first_valid)))
+          (block
+            (call
+              sexos_line
+              "[linen.object_select.reject] reason=single_object id=%llu"
+              (cast (unsigned long long) current))))))
+    (fn void linen_select_prev_object
+      (void)
+      (var uint64_t current (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID))
+      (var uint64_t prev_valid 0)
+      (var uint64_t last_valid 0)
+      (var uint64_t first_valid 0)
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (block
+          (var (const LinenObject) (* object) (& ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i)))
+          (if (! (-> object present))
+            continue)
+          (if (== first_valid 0)
+            (= first_valid (-> object object_id)))
+          (if (== (-> object object_id) current)
+            break)
+          (= prev_valid (-> object object_id))
+          (= last_valid (-> object object_id))))
+      (if (&& (!= prev_valid 0) (!= prev_valid current))
+        (block
+          (= (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID) prev_valid)
+          (call
+            sexos_line
+            "[linen.object_select.prev] prev=%llu current=%llu"
+            (cast (unsigned long long) prev_valid)
+            (cast (unsigned long long) current)))
+        (if (&& (!= last_valid 0) (!= last_valid current))
+          (block
+            (= (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID) last_valid)
+            (call
+              sexos_line
+              "[linen.object_select.prev] prev=%llu current=%llu wrap"
+              (cast (unsigned long long) last_valid)
+              (cast (unsigned long long) current)))
+          (block
+            (call
+              sexos_line
+              "[linen.object_select.reject] reason=single_object id=%llu"
+              (cast (unsigned long long) current))))))
+    (fn size_t linen_selected_index
+      (void)
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (block
+          (var (const LinenObject) (* object) (& ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i)))
+          (if (&&
+  (-> object present)
+  (== (-> object object_id) (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID)))
+            (return i))))
+      (return 0))
+    (fn void linen_object_detail_open
+      (void)
+      (if (!= (. (. SILK_SHELL_STATE chrome) FOCUSED_SURFACE_ID) SURFACE_ID_LINEN)
+        (block
+          (call sexos_line "[linen.detail.reject] reason=not_focused")
+          (call sexos_line "[linen.detail.open] idx=0 object_id=0 ok=0 reason=not_focused")
+          (return)))
+      (var uint64_t id (call linen_selected_object_id))
+      (if (== id 0)
+        (block
+          (call sexos_line "[linen.detail.reject] reason=no_object")
+          (call sexos_line "[linen.detail.open] idx=0 object_id=0 ok=0 reason=no_object")
+          (return)))
+      (var LinenObject object)
+      (if (! (call linen_object_by_id id (& object)))
+        (block
+          (call
+            sexos_line
+            "[linen.detail.reject] reason=object_not_found id=%llu"
+            (cast (unsigned long long) id))
+          (call
+            sexos_line
+            "[linen.detail.open] idx=0 object_id=%llu ok=0 reason=object_not_found"
+            (cast (unsigned long long) id))
+          (return)))
+      (= (. (. SILK_SHELL_STATE models) LINEN_OBJECT_DETAIL_OPEN) true)
+      (call
+        sexos_line
+        "[linen.detail.open] idx=%zu object_id=%llu ok=1 reason=ok"
+        (call linen_selected_index)
+        (cast (unsigned long long) id))
+      (call
+        sexos_line
+        "[linen.detail.metadata] object_id=%llu kind=%s state=%s parent_id=%llu grant_ref=%llu"
+        (cast (unsigned long long) id)
+        (call linen_object_kind_name (. object kind))
+        (call linen_object_state_name (. object state))
+        (cast (unsigned long long) (. object parent_id))
+        (cast (unsigned long long) (. object grant_ref))))
+    (fn void linen_object_detail_close
+      (void)
+      (if (. (. SILK_SHELL_STATE models) LINEN_OBJECT_DETAIL_OPEN)
+        (block
+          (= (. (. SILK_SHELL_STATE models) LINEN_OBJECT_DETAIL_OPEN) false)
+          (call sexos_line "[linen.detail.close] ok=1 reason=ok"))
+        (block
+          (call sexos_line "[linen.detail.close] ok=0 reason=not_open"))))
+    (fn uint32_t linen_kind_color
+      ((uint8_t kind))
+      (switch
+        kind
+        (block
+          (case LINEN_OBJ_KIND_PROJECT (return (call UINT32_C 0x004080C0)))
+          (case LINEN_OBJ_KIND_DOCUMENT (return (call UINT32_C 0x0040C080)))
+          (case LINEN_OBJ_KIND_CODE_FILE (return (call UINT32_C 0x00C0A040)))
+          (case LINEN_OBJ_KIND_MEDIA_ASSET (return (call UINT32_C 0x00C04080)))
+          (case LINEN_OBJ_KIND_BUILD_ARTIFACT (return (call UINT32_C 0x00806040)))
+          (case LINEN_OBJ_KIND_FOLDER (return (call UINT32_C 0x00808080)))
+          (case LINEN_OBJ_KIND_REFERENCE (return (call UINT32_C 0x006060C0)))
+          (case LINEN_OBJ_KIND_IMPORT_PLACEHOLDER (return (call UINT32_C 0x00C06040)))
+          (case LINEN_OBJ_KIND_BELL_EVENT_REFERENCE (return (call UINT32_C 0x00C04040)))
+          (case LINEN_OBJ_KIND_QUIL_WORKSPACE_REFERENCE (return (call UINT32_C 0x0040C0C0)))
+          (case LINEN_OBJ_KIND_MESH_DIAGNOSTIC_REFERENCE (return (call UINT32_C 0x00A060C0)))
+          (default (return 0)))))
+    (fn uint32_t linen_selected_object_accent
+      (void)
+      (var uint64_t id (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID))
+      (if (!= id 0)
+        (block
+          (for (var size_t i 0)
+            (< i LINEN_MAX_OBJECTS)
+            (++ i)
+            (block
+              (var (const LinenObject) (* object) (& ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i)))
+              (if (&& (-> object present) (== (-> object object_id) id))
+                (return (call linen_kind_color (-> object kind))))))))
+      (return LINEN_LIST_HEADER_COLOR))
+    (fn uint8_t sanitize_ascii
+      ((uint8_t byte))
+      (return (?: (&& (>= byte 0x20) (<= byte 0x7e)) byte (cast uint8_t '?'))))
+    (fn void quil_buffer_table_init
+      (void)
+      (for (var size_t i 0)
+        (< i (/ (sizeof QUIL_SEED_BUFFERS) (sizeof ([] QUIL_SEED_BUFFERS 0))))
+        (++ i)
+        (block
+          (if (< i QUIL_MAX_BUFFERS)
+            (block
+              (var QuilBuffer buffer ([] QUIL_SEED_BUFFERS i))
+              (= (. buffer present) true)
+              (= ([] (. (. SILK_SHELL_STATE models) QUIL_BUFFERS) i) buffer)
+              (call
+                sexos_line
+                "[quil.buffer.seed] id=%llu kind=%u name=%s"
+                (cast (unsigned long long) (. buffer buffer_id))
+                (cast unsigned (. buffer kind))
+                (. buffer display_name))))))
+      (call
+        sexos_line
+        "[quil.buffer_table.init] count=%zu"
+        (/ (sizeof QUIL_SEED_BUFFERS) (sizeof ([] QUIL_SEED_BUFFERS 0)))))
+    (fn size_t quil_buffer_count
+      (void)
+      (var size_t count 0)
+      (for (var size_t i 0)
+        (< i QUIL_MAX_BUFFERS)
+        (++ i)
+        (if (. ([] (. (. SILK_SHELL_STATE models) QUIL_BUFFERS) i) present)
+          (++ count)))
+      (return count))
+    (fn bool quil_buffer_by_id
+      ((uint64_t id) (QuilBuffer (* out)))
+      (for (var size_t i 0)
+        (< i QUIL_MAX_BUFFERS)
+        (++ i)
+        (block
+          (var (const QuilBuffer) (* buffer) (& ([] (. (. SILK_SHELL_STATE models) QUIL_BUFFERS) i)))
+          (if (&& (-> buffer present) (== (-> buffer buffer_id) id))
+            (block
+              (if (!= out NULL)
+                (= (* out) (* buffer)))
+              (return true)))))
+      (return false))
+    (fn (const char) *
+      quil_buffer_kind_name
+      ((uint8_t kind))
+      (switch
+        kind
+        (block
+          (case QUIL_BUF_KIND_TEXT (return "Text"))
+          (case QUIL_BUF_KIND_CODE (return "Code"))
+          (case QUIL_BUF_KIND_DESIGN_NOTE (return "DesignNote"))
+          (case QUIL_BUF_KIND_REVIEW_NOTE (return "ReviewNote"))
+          (case QUIL_BUF_KIND_DIAGNOSTIC (return "Diagnostic"))
+          (case QUIL_BUF_KIND_BUILD_OUTPUT (return "BuildOutput"))
+          (case QUIL_BUF_KIND_AGENT_TASK (return "AgentTask"))
+          (case QUIL_BUF_KIND_LINEN_OBJECT_VIEW (return "LinenObjectView"))
+          (default (return "unknown")))))
+    (fn (const char) *
+      quil_buffer_state_name
+      ((uint8_t state))
+      (switch
+        state
+        (block
+          (case QUIL_BUF_STATE_ALLOCATED (return "Allocated"))
+          (case QUIL_BUF_STATE_OPEN (return "Open"))
+          (case QUIL_BUF_STATE_DIRTY (return "Dirty"))
+          (case QUIL_BUF_STATE_READ_ONLY (return "ReadOnly"))
+          (case QUIL_BUF_STATE_CLOSED (return "Closed"))
+          (case QUIL_BUF_STATE_MISSING (return "Missing"))
+          (default (return "unknown")))))
+    (fn uint32_t quil_buffer_kind_color
+      ((uint8_t kind))
+      (switch
+        kind
+        (block
+          (case QUIL_BUF_KIND_TEXT (return (call UINT32_C 0x00808080)))
+          (case QUIL_BUF_KIND_CODE (return (call UINT32_C 0x0040A060)))
+          (case QUIL_BUF_KIND_DESIGN_NOTE (return (call UINT32_C 0x004060C0)))
+          (case QUIL_BUF_KIND_REVIEW_NOTE (return (call UINT32_C 0x00C06040)))
+          (case QUIL_BUF_KIND_DIAGNOSTIC (return (call UINT32_C 0x00C04080)))
+          (case QUIL_BUF_KIND_BUILD_OUTPUT (return (call UINT32_C 0x00806040)))
+          (case QUIL_BUF_KIND_AGENT_TASK (return (call UINT32_C 0x006080C0)))
+          (case QUIL_BUF_KIND_LINEN_OBJECT_VIEW (return (call UINT32_C 0x00A060C0)))
+          (default (return 0)))))
+    (fn void linen_quil_seed_coherence_init
+      (void)
+      (var size_t linked 0)
+      (for (var size_t i 0)
+        (< i QUIL_MAX_BUFFERS)
+        (++ i)
+        (block
+          (var (const QuilBuffer) (* buffer) (& ([] (. (. SILK_SHELL_STATE models) QUIL_BUFFERS) i)))
+          (if (||
+  (|| (! (-> buffer present)) (== (-> buffer linen_object_ref) 0))
+  (== (-> buffer linked_surface_id) 0))
+            continue)
+          (for (var size_t j 0)
+            (< j LINEN_MAX_OBJECTS)
+            (++ j)
+            (block
+              (var LinenObject (* object) (& ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) j)))
+              (if (|| (! (-> object present)) (!= (-> object object_id) (-> buffer linen_object_ref)))
+                continue)
+              (if (!= (-> object linked_surface_id) (-> buffer linked_surface_id))
+                (block
+                  (= (-> object linked_surface_id) (-> buffer linked_surface_id))
+                  (call
+                    sexos_line
+                    "[linen.quil.seed_link] object_id=%llu buffer_id=%llu surface_id=%llu"
+                    (cast (unsigned long long) (-> object object_id))
+                    (cast (unsigned long long) (-> buffer buffer_id))
+                    (cast (unsigned long long) (-> buffer linked_surface_id)))
+                  (++ linked)))
+              break))))
+      (call sexos_line "[linen.quil.seed_coherence.done] linked=%zu" linked))
+    (fn (const AppSurfaceSpec) *
+      app_surface_spec
+      ((uint64_t surface_id))
+      (for (var size_t i 0)
+        (< i (/ (sizeof APP_SURFACES) (sizeof ([] APP_SURFACES 0))))
+        (++ i)
+        (if (== (. ([] APP_SURFACES i) surface_id) surface_id)
+          (return (& ([] APP_SURFACES i)))))
+      (return NULL))
+    (fn (const AppSurfaceSpec) *
+      app_surface_spec_by_frame
+      ((uint32_t frame_id))
+      (for (var size_t i 0)
+        (< i (/ (sizeof APP_SURFACES) (sizeof ([] APP_SURFACES 0))))
+        (++ i)
+        (if (== (. ([] APP_SURFACES i) frame_id) frame_id)
+          (return (& ([] APP_SURFACES i)))))
+      (return NULL))
+    (fn (const char) *
+      get_preset_name
+      ((uint8_t index))
+      (var size_t selected index)
+      (if (>= selected PRESET_COUNT)
+        (= selected (- PRESET_COUNT 1)))
+      (return ([] PRESET_NAMES selected)))
+    (fn uint64_t pack_u32_pair
+      ((uint32_t low) (uint32_t high))
+      (return (| (cast uint64_t low) (<< (cast uint64_t high) 32))))
+    (fn void resolve_scene_render_tokens
+      ((uint32_t (* out_tokens)))
+      (var (const SceneAppearanceState) (* state)
+        (& (. (. SILK_SHELL_STATE models) SCENE_APPEARANCE_STATE)))
+      (var size_t selected (% (cast size_t (-> state preset_idx)) PRESET_COUNT))
+      (for (var size_t i 0)
+        (< i 8)
+        (++ i)
+        (block
+          (var uint32_t color ([] ([] TOKEN_PRESETS selected) i))
+          (if (&& (!= (-> state use_custom_colors) 0) (!= ([] (-> state custom_colors) i) 0))
+            (= color ([] (-> state custom_colors) i)))
+          (= ([] out_tokens i) color))))
+    (fn uint64_t pack_scene_settings_blob
+      ((uint8_t preset) (uint8_t chrome) (uint8_t access))
+      (var uint8_t checksum
+        (& (^ (^ (^ (^ SCENE_BLOB_MAGIC SCENE_BLOB_VERSION) preset) chrome) access) 0x7f))
+      (return
+        (|
+          (|
+            (|
+              (|
+                (| (cast uint64_t SCENE_BLOB_MAGIC) (<< (cast uint64_t SCENE_BLOB_VERSION) 8))
+                (<< (cast uint64_t preset) 16))
+              (<< (cast uint64_t chrome) 24))
+            (<< (cast uint64_t access) 32))
+          (<< (cast uint64_t checksum) 56))))
+    (fn bool unpack_scene_settings_blob
+      ((uint64_t blob) (uint8_t (* out_preset)) (uint8_t (* out_chrome)) (uint8_t (* out_access)))
+      (var uint8_t ([] bytes 8))
+      (for (var size_t i 0)
+        (< i 8)
+        (++ i)
+        (= ([] bytes i) (cast uint8_t (>> blob (* i 8)))))
+      (if (|| (!= ([] bytes 0) SCENE_BLOB_MAGIC) (!= ([] bytes 1) SCENE_BLOB_VERSION))
+        (return false))
+      (var uint8_t checksum
+        (&
+          (^
+            (^ (^ (^ (^ (^ ([] bytes 0) ([] bytes 1)) ([] bytes 2)) ([] bytes 3)) ([] bytes 4)) ([] bytes 5))
+            ([] bytes 6))
+          0x7f))
+      (if (!= ([] bytes 7) checksum)
+        (return false))
+      (if (!= out_preset NULL)
+        (= (* out_preset) ([] bytes 2)))
+      (if (!= out_chrome NULL)
+        (= (* out_chrome) ([] bytes 3)))
+      (if (!= out_access NULL)
+        (= (* out_access) ([] bytes 4)))
+      (return true))
+    (fn bool store_reply_is_status
+      ((uint64_t reply))
+      (return (!= (& reply STORE_REPLY_STATUS_BIT) 0)))
+    (fn uint64_t store_reply_status
+      ((uint64_t reply))
+      (return (& reply (~ STORE_REPLY_STATUS_BIT))))
+    (fn bool store_reply_is_value
+      ((uint64_t reply))
+      (return (== (& reply STORE_REPLY_STATUS_BIT) 0)))
+    (fn void record_collar_audit
+      ((uint8_t operation)
+        (uint64_t object_id)
+        (uint64_t subject_id)
+        (uint8_t decision)
+        (uint64_t grant_ref)
+        (uint64_t reason))
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (var size_t index (% (cast size_t (-> state COLLAR_AUDIT_WRITE_INDEX)) COLLAR_AUDIT_CAP))
+      (var uint64_t event_id (-> state COLLAR_AUDIT_WRITE_INDEX))
+      (=
+        ([] (-> state COLLAR_AUDIT_EVENTS) index)
+        (compound,
+          CollarAuditEvent
+          (= (. present) true)
+          (= (. event_id) event_id)
+          (= (. operation) operation)
+          (= (. object_id) object_id)
+          (= (. subject_id) subject_id)
+          (= (. decision) decision)
+          (= (. grant_ref) grant_ref)
+          (= (. reason) reason)))
+      (++ (-> state COLLAR_AUDIT_WRITE_INDEX))
+      (if (>= (cast size_t event_id) COLLAR_AUDIT_CAP)
+        (call sexos_line "[collar.audit.overwrite] idx=%zu" index))
+      (call
+        sexos_line
+        "[collar.audit.write] event_id=%llu op=%u object=%llu subject=%llu decision=%u grant=%llu reason=%llu"
+        (cast (unsigned long long) event_id)
+        (cast unsigned operation)
+        (cast (unsigned long long) object_id)
+        (cast (unsigned long long) subject_id)
+        (cast unsigned decision)
+        (cast (unsigned long long) grant_ref)
+        (cast (unsigned long long) reason))
+      (if COLLAR_ENFORCE_PROOF_ENABLED
+        (call
+          sexos_line
+          "[collar.audit] event_id=%llu op=%u object=%llu subject=%llu decision=%u grant=%llu reason=%llu"
+          (cast (unsigned long long) event_id)
+          (cast unsigned operation)
+          (cast (unsigned long long) object_id)
+          (cast (unsigned long long) subject_id)
+          (cast unsigned decision)
+          (cast (unsigned long long) grant_ref)
+          (cast (unsigned long long) reason))))
+    (fn uint8_t collar_check_operation
+      ((uint8_t operation) (uint64_t object_id) (uint64_t buffer_id))
+      (var uint64_t caller (. (. SILK_SHELL_STATE chrome) FOCUSED_SURFACE_ID))
+      (call
+        sexos_line
+        "[collar.policy.check] op=%u object_id=%llu buffer_id=%llu caller_sid=%llu"
+        (cast unsigned operation)
+        (cast (unsigned long long) object_id)
+        (cast (unsigned long long) buffer_id)
+        (cast (unsigned long long) caller))
+      (var bool object_required
+        (||
+          (||
+            (|| (== operation COLLAR_OP_OPEN_OBJECT) (== operation COLLAR_OP_LINK_OBJECT_TO_BUFFER))
+            (== operation COLLAR_OP_RENAME_OBJECT))
+          (== operation COLLAR_OP_ARCHIVE_OBJECT)))
+      (if (&& (&& object_required (!= object_id 0)) (! (call linen_object_by_id object_id NULL)))
+        (block
+          (call
+            sexos_line
+            "[collar.gate.reject] reason=missing_object op=%u object_id=%llu"
+            (cast unsigned operation)
+            (cast (unsigned long long) object_id))
+          (call record_collar_audit operation object_id caller COLLAR_DECISION_DENY_MISSING_OBJECT 0 1)
+          (return COLLAR_DECISION_DENY_MISSING_OBJECT)))
+      (if (&&
+  (&& (== operation COLLAR_OP_LINK_OBJECT_TO_BUFFER) (!= buffer_id 0))
+  (! (call quil_buffer_by_id buffer_id NULL)))
+        (block
+          (call
+            sexos_line
+            "[collar.gate.reject] reason=missing_buffer op=%u buffer_id=%llu"
+            (cast unsigned operation)
+            (cast (unsigned long long) buffer_id))
+          (call record_collar_audit operation buffer_id caller COLLAR_DECISION_DENY_MISSING_BUFFER 0 2)
+          (return COLLAR_DECISION_DENY_MISSING_BUFFER)))
+      (var bool system_capability
+        (|| (== operation COLLAR_OP_ACCESS_BELL) (== operation COLLAR_OP_ACCESS_SEXFILES)))
+      (if (||
+  (|| (== operation COLLAR_OP_OPEN_OBJECT) (== operation COLLAR_OP_LINK_OBJECT_TO_BUFFER))
+  system_capability)
+        (block
+          (if system_capability
+            (block
+              (if (||
+  (||
+    (||
+      (|| (|| (== caller SURFACE_ID_SPINDLE) (== caller SURFACE_ID_LINEN)) (== caller SURFACE_ID_QUIL))
+      (== caller SURFACE_ID_MESH))
+    (== caller SURFACE_ID_COLLAR))
+  (== caller SURFACE_ID_BELL_PLACEHOLDER))
+                (block
+                  (call
+                    sexos_line
+                    "[collar.policy.allow] op=%u object=%llu caller=%llu grant=0 reason=core_app"
+                    (cast unsigned operation)
+                    (cast (unsigned long long) object_id)
+                    (cast (unsigned long long) caller))
+                  (call record_collar_audit operation object_id caller COLLAR_DECISION_ALLOW 0 8)
+                  (return COLLAR_DECISION_ALLOW)))
+              (if (< caller 300)
+                (block
+                  (call
+                    sexos_line
+                    "[collar.gate.reject] reason=unknown_app op=%u caller=%llu"
+                    (cast unsigned operation)
+                    (cast (unsigned long long) caller))
+                  (call record_collar_audit operation object_id caller COLLAR_DECISION_DENY 0 7)
+                  (if COLLAR_ENFORCE_PROOF_ENABLED
+                    (call
+                      sexos_line
+                      "[collar.enforce.deny] op=%u caller=%llu target=%llu reason=unknown_app"
+                      (cast unsigned operation)
+                      (cast (unsigned long long) caller)
+                      (cast (unsigned long long) object_id)))
+                  (return COLLAR_DECISION_DENY)))))
+          (for (var size_t i 0)
+            (< i COLLAR_GRANT_CAP)
+            (++ i)
+            (block
+              (var (const CollarGrant) (* grant) (& ([] (. (. SILK_SHELL_STATE models) COLLAR_GRANTS) i)))
+              (if (||
+  (||
+    (||
+      (|| (! (-> grant present)) (!= (-> grant state) COLLAR_GRANT_ACTIVE))
+      (!= (-> grant subject_id) caller))
+    (!= (-> grant object_id) object_id))
+  (== (& (-> grant operation_mask) (<< (call UINT64_C 1) operation)) 0))
+                continue)
+              (call
+                sexos_line
+                "[collar.grant.match] grant_id=%llu subject=%llu object=%llu op=%u"
+                (cast (unsigned long long) (-> grant grant_id))
+                (cast (unsigned long long) (-> grant subject_id))
+                (cast (unsigned long long) (-> grant object_id))
+                (cast unsigned operation))
+              (call
+                sexos_line
+                "[collar.policy.allow] op=%u object=%llu caller=%llu grant=%llu"
+                (cast unsigned operation)
+                (cast (unsigned long long) object_id)
+                (cast (unsigned long long) caller)
+                (cast (unsigned long long) (-> grant grant_id)))
+              (call record_collar_audit operation object_id caller COLLAR_DECISION_ALLOW (-> grant grant_id) 0)
+              (if (&& system_capability COLLAR_ENFORCE_PROOF_ENABLED)
+                (call
+                  sexos_line
+                  "[collar.enforce.allow] op=%u caller=%llu target=%llu grant=%llu"
+                  (cast unsigned operation)
+                  (cast (unsigned long long) caller)
+                  (cast (unsigned long long) object_id)
+                  (cast (unsigned long long) (-> grant grant_id))))
+              (return COLLAR_DECISION_ALLOW)))
+          (call
+            sexos_line
+            "[collar.grant.reject] reason=no_grant op=%u object=%llu caller=%llu"
+            (cast unsigned operation)
+            (cast (unsigned long long) object_id)
+            (cast (unsigned long long) caller))
+          (call
+            sexos_line
+            "[collar.policy.deny] op=%u object=%llu caller=%llu reason=no_grant"
+            (cast unsigned operation)
+            (cast (unsigned long long) object_id)
+            (cast (unsigned long long) caller))
+          (call record_collar_audit operation object_id caller COLLAR_DECISION_DENY 0 3)
+          (if (&& system_capability COLLAR_ENFORCE_PROOF_ENABLED)
+            (call
+              sexos_line
+              "[collar.enforce.deny] op=%u caller=%llu target=%llu reason=missing_cap"
+              (cast unsigned operation)
+              (cast (unsigned long long) caller)
+              (cast (unsigned long long) object_id)))
+          (return COLLAR_DECISION_DENY)))
+      (if (||
+  (|| (== operation COLLAR_OP_SAVE_BUFFER) (== operation COLLAR_OP_BUILD_TARGET))
+  (== operation COLLAR_OP_RUN_TARGET))
+        (block
+          (call sexos_line "[collar.gate.reject] reason=stop_first op=%u" (cast unsigned operation))
+          (call record_collar_audit operation object_id caller COLLAR_DECISION_BLOCKED_STOP_FIRST 0 4)
+          (return COLLAR_DECISION_BLOCKED_STOP_FIRST)))
+      (if (|| (== operation COLLAR_OP_RENAME_OBJECT) (== operation COLLAR_OP_ARCHIVE_OBJECT))
+        (block
+          (call sexos_line "[collar.gate.needs_grant] op=%u" (cast unsigned operation))
+          (call record_collar_audit operation object_id caller COLLAR_DECISION_NEEDS_GRANT_LATER 0 5)
+          (return COLLAR_DECISION_NEEDS_GRANT_LATER)))
+      (call sexos_line "[collar.gate.reject] reason=always_deny op=%u" (cast unsigned operation))
+      (call record_collar_audit operation object_id caller COLLAR_DECISION_DENY 0 6)
+      (if COLLAR_ENFORCE_PROOF_ENABLED
+        (call
+          sexos_line
+          "[collar.enforce.deny] op=%u caller=%llu target=%llu reason=dangerous_cap"
+          (cast unsigned operation)
+          (cast (unsigned long long) caller)
+          (cast (unsigned long long) object_id)))
+      (return COLLAR_DECISION_DENY))
+    (fn void collar_init_grants
+      (void)
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (var uint64_t count 0)
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (block
+          (var (const LinenObject) (* object) (& ([] (-> state LINEN_OBJECTS) i)))
+          (if (! (-> object present))
+            continue)
+          (var uint64_t ([] subjects 2) (init SURFACE_ID_LINEN SURFACE_ID_MESH))
+          (for (var size_t j 0)
+            (< j 2)
+            (++ j)
+            (block
+              (var uint64_t generation (post++ (-> state COLLAR_GRANT_GENERATION)))
+              (var size_t index (% (- (cast size_t generation) 1) COLLAR_GRANT_CAP))
+              (=
+                ([] (-> state COLLAR_GRANTS) index)
+                (compound,
+                  CollarGrant
+                  (= (. present) true)
+                  (= (. grant_id) generation)
+                  (= (. subject_id) ([] subjects j))
+                  (= (. object_id) (-> object object_id))
+                  (= (. operation_mask) (<< (call UINT64_C 1) COLLAR_OP_LINK_OBJECT_TO_BUFFER))
+                  (= (. generation) generation)
+                  (= (. state) COLLAR_GRANT_ACTIVE)))
+              (call
+                sexos_line
+                "[collar.grant.auto] grant_id=%llu subject=%llu object=%llu op=LinkObjectToBuffer"
+                (cast (unsigned long long) generation)
+                (cast (unsigned long long) ([] subjects j))
+                (cast (unsigned long long) (-> object object_id)))
+              (++ count)))))
+      (call
+        sexos_line
+        "[collar.grant.init] count=%llu generation=%llu"
+        (cast (unsigned long long) count)
+        (cast (unsigned long long) (-> state COLLAR_GRANT_GENERATION))))
+    (fn uint8_t collar_grant_count
+      (void)
+      (var uint8_t count 0)
+      (for (var size_t i 0)
+        (< i COLLAR_GRANT_CAP)
+        (++ i)
+        (block
+          (var (const CollarGrant) (* grant) (& ([] (. (. SILK_SHELL_STATE models) COLLAR_GRANTS) i)))
+          (if (&& (&& (-> grant present) (== (-> grant state) COLLAR_GRANT_ACTIVE)) (!= count UINT8_MAX))
+            (++ count))))
+      (return count))
+    (fn bool collar_grant_at_visible_index
+      ((uint8_t index) (CollarGrant (* out)))
+      (var uint8_t cursor 0)
+      (for (var size_t i 0)
+        (< i COLLAR_GRANT_CAP)
+        (++ i)
+        (block
+          (var (const CollarGrant) (* grant) (& ([] (. (. SILK_SHELL_STATE models) COLLAR_GRANTS) i)))
+          (if (|| (! (-> grant present)) (!= (-> grant state) COLLAR_GRANT_ACTIVE))
+            continue)
+          (if (== cursor index)
+            (block
+              (if (!= out NULL)
+                (= (* out) (* grant)))
+              (return true)))
+          (if (!= cursor UINT8_MAX)
+            (++ cursor))))
+      (return false))
+    (fn void collar_auto_grant_from_manifest
+      (((const AppManifest) (* manifest)))
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (var uint64_t count 0)
+      (var uint8_t ([] bits 2) (init APP_CAP_BELL APP_CAP_SEXFILES))
+      (var uint8_t ([] operations 2) (init COLLAR_OP_ACCESS_BELL COLLAR_OP_ACCESS_SEXFILES))
+      (for (var size_t i 0)
+        (< i 2)
+        (++ i)
+        (block
+          (if (== (& (. (-> manifest capabilities) bits) ([] bits i)) 0)
+            continue)
+          (var uint64_t generation (post++ (-> state COLLAR_GRANT_GENERATION)))
+          (var size_t index (% (- (cast size_t generation) 1) COLLAR_GRANT_CAP))
+          (=
+            ([] (-> state COLLAR_GRANTS) index)
+            (compound,
+              CollarGrant
+              (= (. present) true)
+              (= (. grant_id) generation)
+              (= (. subject_id) (-> manifest surface_id))
+              (= (. object_id) (-> manifest surface_id))
+              (= (. operation_mask) (<< (call UINT64_C 1) ([] operations i)))
+              (= (. generation) generation)
+              (= (. state) COLLAR_GRANT_ACTIVE)))
+          (++ count)
+          (call
+            sexos_line
+            "[collar.grant.manifest] grant_id=%llu sid=%llu cap=%s op=%s"
+            (cast (unsigned long long) generation)
+            (cast (unsigned long long) (-> manifest surface_id))
+            (?: (== i 0) "BELL" "SEXFILES")
+            (?: (== i 0) "AccessBell" "AccessSexFiles"))))
+      (call
+        sexos_line
+        "[collar.grant.manifest.done] sid=%llu grants_created=%llu"
+        (cast (unsigned long long) (-> manifest surface_id))
+        (cast (unsigned long long) count)))
+    (fn CollarReview collar_review_manifest
+      (((const AppManifest) (* manifest)))
+      (var uint8_t requested (. (-> manifest capabilities) bits))
+      (var uint8_t granted (& requested APP_CAP_KNOWN))
+      (var uint8_t denied (& requested (cast uint8_t (~ APP_CAP_KNOWN))))
+      (var bool allowed (== granted requested))
+      (call
+        sexos_line
+        "[collar.review] sid=%llu app_id=%u requested=0x%x granted=0x%x denied=0x%x allowed=%s"
+        (cast (unsigned long long) (-> manifest surface_id))
+        (cast unsigned (-> manifest app_id))
+        (cast unsigned requested)
+        (cast unsigned granted)
+        (cast unsigned denied)
+        (?: allowed "true" "false"))
+      (return
+        (compound
+          CollarReview
+          (= (. allowed) allowed)
+          (= (. granted_caps) granted)
+          (= (. denied_caps) denied))))
+    (fn void collar_select_next_grant
+      (void)
+      (var uint8_t count (call collar_grant_count))
+      (var uint8_t old (. (. SILK_SHELL_STATE models) COLLAR_SELECTED_GRANT_IDX))
+      (if (== count 0)
+        (block
+          (call sexos_line "[collar.grant.nav] old=%u new=%u count=0" (cast unsigned old) (cast unsigned old))
+          (return)))
+      (var uint8_t next (cast uint8_t (+ old 1)))
+      (if (>= next count)
+        (= next 0))
+      (= (. (. SILK_SHELL_STATE models) COLLAR_SELECTED_GRANT_IDX) next)
+      (call
+        sexos_line
+        "[collar.grant.nav] old=%u new=%u count=%u"
+        (cast unsigned old)
+        (cast unsigned next)
+        (cast unsigned count))
+      (call collar_render_grants_text))
+    (fn void collar_select_prev_grant
+      (void)
+      (var uint8_t count (call collar_grant_count))
+      (var uint8_t old (. (. SILK_SHELL_STATE models) COLLAR_SELECTED_GRANT_IDX))
+      (if (== count 0)
+        (block
+          (call sexos_line "[collar.grant.nav] old=%u new=%u count=0" (cast unsigned old) (cast unsigned old))
+          (return)))
+      (var uint8_t previous (?: (== old 0) (cast uint8_t (- count 1)) (cast uint8_t (- old 1))))
+      (= (. (. SILK_SHELL_STATE models) COLLAR_SELECTED_GRANT_IDX) previous)
+      (call
+        sexos_line
+        "[collar.grant.nav] old=%u new=%u count=%u"
+        (cast unsigned old)
+        (cast unsigned previous)
+        (cast unsigned count))
+      (call collar_render_grants_text))
+    (fn void collar_render_grants_text
+      (void)
+      (var uint8_t ([] buffer 120))
+      (call memset buffer (char "' '") (sizeof buffer))
+      (var uint8_t total (call collar_grant_count))
+      (call memcpy buffer "COLLAR GRANTS" 13)
+      (= ([] buffer 14) (cast uint8_t (+ '0' (% (/ total 10) 10))))
+      (= ([] buffer 15) (cast uint8_t (+ '0' (% total 10))))
+      (var size_t row 0)
+      (var uint8_t visible 0)
+      (for (var size_t i 0)
+        (&& (< i COLLAR_GRANT_CAP) (< row 5))
+        (++ i)
+        (block
+          (var (const CollarGrant) (* grant) (& ([] (. (. SILK_SHELL_STATE models) COLLAR_GRANTS) i)))
+          (if (|| (! (-> grant present)) (!= (-> grant state) COLLAR_GRANT_ACTIVE))
+            continue)
+          (var size_t base (* (+ row 1) 20))
+          (=
+            ([] buffer base)
+            (?: (== visible (. (. SILK_SHELL_STATE models) COLLAR_SELECTED_GRANT_IDX)) '>' (char "' '")))
+          (= ([] buffer (+ base 1)) 'G')
+          (= ([] buffer (+ base 2)) (cast uint8_t (+ '0' (% (/ (-> grant grant_id) 10) 10))))
+          (= ([] buffer (+ base 3)) (cast uint8_t (+ '0' (% (-> grant grant_id) 10))))
+          (= ([] buffer (+ base 5)) 'S')
+          (= ([] buffer (+ base 6)) (cast uint8_t (+ '0' (% (/ (-> grant subject_id) 100) 10))))
+          (= ([] buffer (+ base 7)) (cast uint8_t (+ '0' (% (/ (-> grant subject_id) 10) 10))))
+          (= ([] buffer (+ base 8)) (cast uint8_t (+ '0' (% (-> grant subject_id) 10))))
+          (= ([] buffer (+ base 10)) 'O')
+          (= ([] buffer (+ base 11)) (cast uint8_t (+ '0' (% (/ (-> grant object_id) 10) 10))))
+          (= ([] buffer (+ base 12)) (cast uint8_t (+ '0' (% (-> grant object_id) 10))))
+          (= ([] buffer (+ base 14)) 'A')
+          (++ row)
+          (++ visible)))
+      (cast void (call sexos_pdx_call SLOT_DISPLAY OP_TEXT_CLEAR SURFACE_ID_COLLAR 0 0))
+      (var bool accepted
+        (call shell_draw_text SURFACE_ID_COLLAR buffer (sizeof buffer) (call UINT64_C 0x00E8FFFF) NULL))
+      (var uint32_t (* budget)
+        (& (. (. SILK_SHELL_STATE models) collar_render_grants_text__COLLAR_GRANTS_TEXT_BUDGET)))
+      (if (!= (* budget) 0)
+        (block
+          (-- (* budget))
+          (call
+            sexos_line
+            "[collar.grants.render.ok] grants=%u ok=%u"
+            (cast unsigned total)
+            (cast unsigned accepted)))))
+    (fn bool collar_emit_selected_grant_detail
+      (void)
+      (var uint8_t index (. (. SILK_SHELL_STATE models) COLLAR_SELECTED_GRANT_IDX))
+      (var CollarGrant grant)
+      (if (call collar_grant_at_visible_index index (& grant))
+        (block
+          (call
+            sexos_line
+            "[collar.grant.detail] idx=%u grant_id=%llu ok=1 reason=ok"
+            (cast unsigned index)
+            (cast (unsigned long long) (. grant grant_id)))
+          (return true)))
+      (call
+        sexos_line
+        "[collar.grant.detail] idx=%u grant_id=0 ok=0 reason=no_active_grant"
+        (cast unsigned index))
+      (return false))
+    (fn size_t mesh_fact_count
+      (void)
+      (var size_t count (cast size_t (. (. SILK_SHELL_STATE models) MESH_FACT_WRITE_INDEX)))
+      (return (?: (< count MESH_FACT_RING_CAP) count MESH_FACT_RING_CAP)))
+    (fn void mesh_for_each_fact
+      ((MeshFactCallback callback) (void (* context)))
+      (var size_t count (call mesh_fact_count))
+      (if (== count 0)
+        (return))
+      (var size_t start
+        (% (- (cast size_t (. (. SILK_SHELL_STATE models) MESH_FACT_WRITE_INDEX)) 1) MESH_FACT_RING_CAP))
+      (for (var size_t i 0)
+        (< i count)
+        (++ i)
+        (block
+          (var size_t index (% (- (+ start MESH_FACT_RING_CAP) i) MESH_FACT_RING_CAP))
+          (var (const MeshFact) (* fact) (& ([] (. (. SILK_SHELL_STATE models) MESH_FACTS) index)))
+          (if (-> fact present)
+            (call callback fact context)))))
+    (fn uint32_t mesh_fact_row_color
+      (((const MeshFact) (* fact)))
+      (var LinenObject object)
+      (if (call linen_object_by_id (-> fact subject_id) (& object))
+        (return (call linen_kind_color (. object kind))))
+      (return (call UINT32_C 0x00383010)))
+    (fn bool mesh_is_visible_in_active_scene
+      (void)
+      (for (var size_t i 0)
+        (< i MAX_FRAMES)
+        (++ i)
+        (block
+          (var (const ShellFrame) (* frame) (& ([] (. (. SILK_SHELL_STATE chrome) FRAMES) i)))
+          (if (&&
+  (&&
+    (&& (-> frame present) (== (-> frame frame_id) MESH_FRAME_ID))
+    (== (-> frame scene_id) (. (. SILK_SHELL_STATE chrome) ACTIVE_SCENE_IDX)))
+  (== (& (-> frame flags) FRAME_FLAG_MINIMIZED) 0))
+            (block
+              (var uint64_t surface)
+              (if (&& (call active_surface_for_frame MESH_FRAME_ID (& surface)) (call surface_is_alive surface))
+                (return true))))))
+      (return false))
+    (fn uint8_t mesh_visible_fact_count
+      (void)
+      (var uint8_t count (cast uint8_t (call mesh_fact_count)))
+      (return (?: (< count MESH_LIST_ROW_RECTS) count MESH_LIST_ROW_RECTS)))
+    (fn uint32_t mesh_selected_row_highlight
+      ((uint32_t color))
+      (var uint32_t red (+ (& (>> color 16) 0xff) 0x40))
+      (var uint32_t green (+ (& (>> color 8) 0xff) 0x40))
+      (var uint32_t blue (+ (& color 0xff) 0x40))
+      (if (> red 0xff)
+        (= red 0xff))
+      (if (> green 0xff)
+        (= green 0xff))
+      (if (> blue 0xff)
+        (= blue 0xff))
+      (return (| (| (<< red 16) (<< green 8)) blue)))
+    (fn void mesh_select_next_row
+      (void)
+      (var uint8_t count (call mesh_visible_fact_count))
+      (if (<= count 1)
+        (block
+          (call sexos_line "[mesh.selection.reject] reason=single_or_empty count=%u" (cast unsigned count))
+          (return)))
+      (var uint8_t current (. (. SILK_SHELL_STATE surfaces) MESH_SELECTED_ROW))
+      (var uint8_t next (cast uint8_t (+ current 1)))
+      (if (>= next count)
+        (= next 0))
+      (= (. (. SILK_SHELL_STATE surfaces) MESH_SELECTED_ROW) next)
+      (call
+        sexos_line
+        "[mesh.selection.next] prev=%u next=%u"
+        (cast unsigned current)
+        (cast unsigned next))
+      (call mesh_render_fact_list))
+    (fn void mesh_select_prev_row
+      (void)
+      (var uint8_t count (call mesh_visible_fact_count))
+      (if (<= count 1)
+        (block
+          (call sexos_line "[mesh.selection.reject] reason=single_or_empty count=%u" (cast unsigned count))
+          (return)))
+      (var uint8_t current (. (. SILK_SHELL_STATE surfaces) MESH_SELECTED_ROW))
+      (var uint8_t previous (?: (== current 0) (cast uint8_t (- count 1)) (cast uint8_t (- current 1))))
+      (= (. (. SILK_SHELL_STATE surfaces) MESH_SELECTED_ROW) previous)
+      (call
+        sexos_line
+        "[mesh.selection.prev] prev=%u next=%u"
+        (cast unsigned current)
+        (cast unsigned previous))
+      (call mesh_render_fact_list))
+    (fn bool mesh_selected_fact_snapshot
+      ((MeshFact (* out)))
+      (var size_t count (call mesh_fact_count))
+      (if (== count 0)
+        (return false))
+      (var size_t start
+        (% (- (cast size_t (. (. SILK_SHELL_STATE models) MESH_FACT_WRITE_INDEX)) 1) MESH_FACT_RING_CAP))
+      (for (var size_t i 0)
+        (< i count)
+        (++ i)
+        (block
+          (var size_t index (% (- (+ start MESH_FACT_RING_CAP) i) MESH_FACT_RING_CAP))
+          (var (const MeshFact) (* fact) (& ([] (. (. SILK_SHELL_STATE models) MESH_FACTS) index)))
+          (if (&& (-> fact present) (== (cast uint8_t i) (. (. SILK_SHELL_STATE surfaces) MESH_SELECTED_ROW)))
+            (block
+              (if (!= out NULL)
+                (= (* out) (* fact)))
+              (return true)))))
+      (return false))
+    (fn bool mesh_emit_selected_fact_detail_proof
+      (void)
+      (if (!= (. (. SILK_SHELL_STATE chrome) FOCUSED_SURFACE_ID) SURFACE_ID_MESH)
+        (block
+          (call sexos_line "[mesh.detail.reject] reason=not_focused")
+          (return false)))
+      (var MeshFact fact)
+      (if (! (call mesh_selected_fact_snapshot (& fact)))
+        (block
+          (call sexos_line "[mesh.detail.reject] reason=no_fact")
+          (return false)))
+      (call
+        sexos_line
+        "[mesh.detail.open] fact_id=%llu kind=ObjectLinkedToBuffer"
+        (cast (unsigned long long) (. fact fact_id)))
+      (call
+        sexos_line
+        "[mesh.detail.fact] fact_id=%llu kind=ObjectLinkedToBuffer subject_id=%llu object_id=%llu ref_id=%llu"
+        (cast (unsigned long long) (. fact fact_id))
+        (cast (unsigned long long) (. fact subject_id))
+        (cast (unsigned long long) (. fact object_id))
+        (cast (unsigned long long) (. fact ref_id)))
+      (call
+        sexos_line
+        "[mesh.detail.object_link] subject_id=%llu object_id=%llu ref_id=%llu"
+        (cast (unsigned long long) (. fact subject_id))
+        (cast (unsigned long long) (. fact object_id))
+        (cast (unsigned long long) (. fact ref_id)))
+      (call sexos_line "[mesh.detail.done] fact_id=%llu" (cast (unsigned long long) (. fact fact_id)))
+      (return true))
+    (fn void mesh_focus_linen_at_selected_fact
+      (((const MeshFact) (* fact)))
+      (call
+        sexos_line
+        "[mesh.action.focus_linen] subject_id=%llu"
+        (cast (unsigned long long) (-> fact subject_id)))
+      (call open_linen_in_active_scene)
+      (= (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID) (-> fact subject_id))
+      (call sexos_line "[linen.open.nonblocking] path=mesh_detail ok=1 reason=no_redundant_paint"))
+    (fn void bell_record_event
+      ((uint64_t object_id) (uint64_t buffer_id))
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (var size_t index (% (cast size_t (-> state BELL_RING_WRITE_INDEX)) BELL_RING_CAP))
+      (var uint64_t sequence (post++ (-> state BELL_EVENT_SEQUENCE)))
+      (var BellEvent previous ([] (-> state BELL_EVENTS) index))
+      (=
+        ([] (-> state BELL_EVENTS) index)
+        (compound,
+          BellEvent
+          (= (. present) true)
+          (= (. event_id) sequence)
+          (= (. kind) BELL_EVENT_OBJECT_LINKED_TO_BUFFER)
+          (= (. object_id) object_id)
+          (= (. buffer_id) buffer_id)
+          (= (. sequence) (-> state BELL_RING_WRITE_INDEX))))
+      (++ (-> state BELL_RING_WRITE_INDEX))
+      (if (. previous present)
+        (call
+          sexos_line
+          "[bell.ring.overwrite] idx=%zu prev_event_id=%llu"
+          index
+          (cast (unsigned long long) (. previous event_id))))
+      (call
+        sexos_line
+        "[bell.ring.write] idx=%zu event_id=%llu object_id=%llu buffer_id=%llu"
+        index
+        (cast (unsigned long long) sequence)
+        (cast (unsigned long long) object_id)
+        (cast (unsigned long long) buffer_id)))
+    (fn size_t bell_ring_count
+      (void)
+      (var size_t count (cast size_t (. (. SILK_SHELL_STATE models) BELL_RING_WRITE_INDEX)))
+      (return (?: (< count BELL_RING_CAP) count BELL_RING_CAP)))
+    (fn void bell_for_each_event
+      ((BellEventCallback callback) (void (* context)))
+      (var size_t count (call bell_ring_count))
+      (if (== count 0)
+        (return))
+      (var size_t start
+        (% (- (cast size_t (. (. SILK_SHELL_STATE models) BELL_RING_WRITE_INDEX)) 1) BELL_RING_CAP))
+      (for (var size_t i 0)
+        (< i count)
+        (++ i)
+        (block
+          (var size_t index (% (- (+ start BELL_RING_CAP) i) BELL_RING_CAP))
+          (var (const BellEvent) (* event) (& ([] (. (. SILK_SHELL_STATE models) BELL_EVENTS) index)))
+          (if (-> event present)
+            (call callback event context)))))
+    (fn void app_surface_registry_validate
+      (void)
+      (var size_t count (/ (sizeof APP_SURFACES) (sizeof ([] APP_SURFACES 0))))
+      (var bool valid true)
+      (for (var size_t i 0)
+        (< i count)
+        (++ i)
+        (block
+          (for (var size_t j (+ i 1))
+            (< j count)
+            (++ j)
+            (block
+              (if (== (. ([] APP_SURFACES i) surface_id) (. ([] APP_SURFACES j) surface_id))
+                (block
+                  (call
+                    sexos_line
+                    "[shell.app_registry.duplicate] surface_id=%llu entries=%zu,%zu"
+                    (cast (unsigned long long) (. ([] APP_SURFACES i) surface_id))
+                    i
+                    j)
+                  (= valid false)))
+              (if (== (. ([] APP_SURFACES i) frame_id) (. ([] APP_SURFACES j) frame_id))
+                (block
+                  (call
+                    sexos_line
+                    "[shell.app_registry.duplicate] frame_id=%u entries=%zu,%zu"
+                    (cast unsigned (. ([] APP_SURFACES i) frame_id))
+                    i
+                    j)
+                  (= valid false)))))))
+      (if valid
+        (call sexos_line "[shell.app_registry.valid] count=%zu" count)
+        (call
+          sexos_line
+          (strings
+            "\"[shell.app_registry.error] duplicate detected \xe2\x80\x94 check surface_id/frame_id allocation\""))))
+    (fn void push_token_preset
+      (((const uint32_t) (* tokens)))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          OP_APPEARANCE_TOKENS
+          (call
+            pack_u32_pair
+            ([] tokens APPEARANCE_TOKEN_FOCUS_SURFACE)
+            ([] tokens APPEARANCE_TOKEN_FRAME_RIM))
+          (call
+            pack_u32_pair
+            ([] tokens APPEARANCE_TOKEN_FRAME_TOP_BAR)
+            ([] tokens APPEARANCE_TOKEN_ACTIVE_TAB))
+          (call
+            pack_u32_pair
+            ([] tokens APPEARANCE_TOKEN_INACTIVE_TAB)
+            ([] tokens APPEARANCE_TOKEN_CLOSE_LIGHT))))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          OP_APPEARANCE_TOKENS
+          (call
+            pack_u32_pair
+            ([] tokens APPEARANCE_TOKEN_MINIMIZE_LIGHT)
+            ([] tokens APPEARANCE_TOKEN_ZOOM_LIGHT))
+          0
+          0)))
+    (fn void mesh_record_fact
+      ((uint8_t kind) (uint64_t subject_id) (uint64_t object_id) (uint64_t reference_id))
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (var size_t index (% (cast size_t (-> state MESH_FACT_WRITE_INDEX)) MESH_FACT_RING_CAP))
+      (var uint64_t sequence (post++ (-> state MESH_FACT_SEQUENCE)))
+      (var MeshFact previous ([] (-> state MESH_FACTS) index))
+      (=
+        ([] (-> state MESH_FACTS) index)
+        (compound,
+          MeshFact
+          (= (. present) true)
+          (= (. fact_id) sequence)
+          (= (. kind) kind)
+          (= (. subject_id) subject_id)
+          (= (. object_id) object_id)
+          (= (. ref_id) reference_id)
+          (= (. sequence) (-> state MESH_FACT_WRITE_INDEX))))
+      (++ (-> state MESH_FACT_WRITE_INDEX))
+      (if (. previous present)
+        (call
+          sexos_line
+          "[mesh.fact.overwrite] idx=%zu prev_fact_id=%llu"
+          index
+          (cast (unsigned long long) (. previous fact_id))))
+      (call
+        sexos_line
+        "[mesh.fact.write] idx=%zu fact_id=%llu kind=ObjectLinkedToBuffer subject_id=%llu object_id=%llu ref_id=%llu"
+        index
+        (cast (unsigned long long) sequence)
+        (cast (unsigned long long) subject_id)
+        (cast (unsigned long long) object_id)
+        (cast (unsigned long long) reference_id))
+      (call
+        sexos_line
+        "[mesh.fact.done] count=%zu fact_id=%llu"
+        (call mesh_fact_count)
+        (cast (unsigned long long) sequence))
+      (if (call mesh_is_visible_in_active_scene)
+        (block
+          (call sexos_line "[mesh.render.refresh] reason=visible_after_fact kind=ObjectLinkedToBuffer")
+          (call mesh_render_fact_list))))
+    (fn void mesh_emit_linen_quil_links
+      (void)
+      (call sexos_line "[mesh.object_link.start]")
+      (var size_t links 0)
+      (var size_t stale 0)
+      (for (var size_t i 0)
+        (< i QUIL_MAX_BUFFERS)
+        (++ i)
+        (block
+          (var (const QuilBuffer) (* buffer) (& ([] (. (. SILK_SHELL_STATE models) QUIL_BUFFERS) i)))
+          (if (|| (! (-> buffer present)) (== (-> buffer linen_object_ref) 0))
+            continue)
+          (var LinenObject object)
+          (if (call linen_object_by_id (-> buffer linen_object_ref) (& object))
+            (block
+              (call
+                sexos_line
+                "[mesh.object_link.row] object_id=%llu object_kind=%s buffer_id=%llu buffer_kind=%s surface_id=%llu"
+                (cast (unsigned long long) (. object object_id))
+                (call linen_object_kind_name (. object kind))
+                (cast (unsigned long long) (-> buffer buffer_id))
+                (call quil_buffer_kind_name (-> buffer kind))
+                (cast (unsigned long long) (-> buffer linked_surface_id)))
+              (call
+                mesh_record_fact
+                MESH_FACT_OBJECT_LINKED_TO_BUFFER
+                (. object object_id)
+                (-> buffer buffer_id)
+                (-> buffer linked_surface_id))
+              (++ links))
+            (block
+              (call
+                sexos_line
+                "[mesh.object_link.reject.missing_object] buffer_id=%llu linen_object_ref=%llu"
+                (cast (unsigned long long) (-> buffer buffer_id))
+                (cast (unsigned long long) (-> buffer linen_object_ref)))
+              (++ stale)))))
+      (call sexos_line "[mesh.object_link.done] links=%zu stale=%zu" links stale))
+    (typedef (struct ModelMeshRows (uint32_t width) (uint8_t rows) (uint8_t rectangles)) ModelMeshRows)
+    (fn (static void) model_mesh_render_row
+      (((const MeshFact) (* fact)) (void (* context)))
+      (var ModelMeshRows (* state) context)
+      (if (>= (-> state rows) MESH_LIST_ROW_RECTS)
+        (block
+          (call
+            sexos_line
+            "[mesh.fact_list.skip] fact_id=%llu reason=max_rows"
+            (cast (unsigned long long) (-> fact fact_id)))
+          (return)))
+      (call
+        sexos_line
+        "[mesh.fact_list.row] fact_id=%llu kind=ObjectLinkedToBuffer subject_id=%llu object_id=%llu ref_id=%llu"
+        (cast (unsigned long long) (-> fact fact_id))
+        (cast (unsigned long long) (-> fact subject_id))
+        (cast (unsigned long long) (-> fact object_id))
+        (cast (unsigned long long) (-> fact ref_id)))
+      (var uint64_t rectangle (& (+ (cast uint64_t (-> state rows)) 1) 0xf))
+      (var uint32_t y
+        (+ MESH_LIST_HEADER_H (* (cast uint32_t (-> state rows)) (+ MESH_LIST_ROW_H MESH_LIST_ROW_GAP))))
+      (var uint32_t base_color (call mesh_fact_row_color fact))
+      (var uint32_t color base_color)
+      (if (== (-> state rows) (. (. SILK_SHELL_STATE surfaces) MESH_SELECTED_ROW))
+        (block
+          (= color (call mesh_selected_row_highlight base_color))
+          (call
+            sexos_line
+            "[mesh.selection_visual.row] fact_id=%llu index=%u base=0x%08x highlight=0x%08x"
+            (cast (unsigned long long) (-> fact fact_id))
+            (cast unsigned (-> state rows))
+            (cast unsigned base_color)
+            (cast unsigned color))))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xEF
+          SURFACE_ID_MESH
+          (<< (cast uint64_t y) 32)
+          (|
+            (| (| (<< rectangle 56) (<< (cast uint64_t color) 32)) (<< (cast uint64_t MESH_LIST_ROW_H) 16))
+            (-> state width))))
+      (call
+        sexos_line
+        "[mesh.row_visual.rect] index=%llu fact_id=%llu kind=ObjectLinkedToBuffer color=0x%08x"
+        (cast (unsigned long long) rectangle)
+        (cast (unsigned long long) (-> fact fact_id))
+        (cast unsigned color))
+      (++ (-> state rectangles))
+      (++ (-> state rows)))
+    (fn void mesh_render_fact_list
+      (void)
+      (var uint32_t width (. (. SILK_SHELL_STATE input) SURFACE_202_W))
+      (var uint32_t height (. (. SILK_SHELL_STATE input) SURFACE_202_H))
+      (if (|| (== width 0) (== height 0))
+        (return))
+      (var uint8_t visible (call mesh_visible_fact_count))
+      (var uint8_t (* selected) (& (. (. SILK_SHELL_STATE surfaces) MESH_SELECTED_ROW)))
+      (if (== visible 0)
+        (block
+          (= (* selected) 0))
+        (if (>= (* selected) visible)
+          (block
+            (var uint8_t old (* selected))
+            (= (* selected) (cast uint8_t (- visible 1)))
+            (call
+              sexos_line
+              "[mesh.selection.repair] old=%u new=%u count=%u"
+              (cast unsigned old)
+              (cast unsigned (* selected))
+              (cast unsigned visible)))))
+      (call
+        sexos_line
+        "[mesh.selection.current] row=%u visible=%u"
+        (cast unsigned (* selected))
+        (cast unsigned visible))
+      (call
+        sexos_line
+        "[mesh.fact_list.render] w=%u h=%u count=%zu"
+        (cast unsigned width)
+        (cast unsigned height)
+        (call mesh_fact_count))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xEF
+          SURFACE_ID_MESH
+          0
+          (|
+            (| (<< (cast uint64_t MESH_PLACEHOLDER_COLOR) 32) (<< (cast uint64_t MESH_LIST_HEADER_H) 16))
+            width)))
+      (var ModelMeshRows rows (init (= (. width) width)))
+      (call mesh_for_each_fact model_mesh_render_row (& rows))
+      (call
+        sexos_line
+        "[mesh.fact_list.done] count=%zu rows=%u rects=%u"
+        (call mesh_fact_count)
+        (cast unsigned (. rows rows))
+        (cast unsigned (. rows rectangles))))
+    (fn void mesh_render_pd_graph
+      (void)
+      (var uint8_t ([] buffer 120))
+      (call memset buffer (char "' '") (sizeof buffer))
+      (call memcpy buffer "PD GRAPH RO" 11)
+      (var (const char) (* ([] names 5)) (init "SPINDLE" "QUIL" "LINEN" "MESH" "BELL"))
+      (var uint64_t ([] surfaces 5)
+        (init
+          SURFACE_ID_SPINDLE
+          SURFACE_ID_QUIL
+          SURFACE_ID_LINEN
+          SURFACE_ID_MESH
+          SURFACE_ID_BELL_PLACEHOLDER))
+      (for (var size_t i 0)
+        (< i 5)
+        (++ i)
+        (block
+          (var size_t base (* (+ i 1) 20))
+          (var size_t length (call strlen ([] names i)))
+          (if (> length 8)
+            (= length 8))
+          (call memcpy (+ buffer base) ([] names i) length)
+          (var uint64_t surface ([] surfaces i))
+          (= ([] buffer (+ base 8)) (cast uint8_t (+ '0' (% (/ surface 100) 10))))
+          (= ([] buffer (+ base 9)) (cast uint8_t (+ '0' (% (/ surface 10) 10))))
+          (= ([] buffer (+ base 10)) (cast uint8_t (+ '0' (% surface 10))))
+          (var uint8_t state '-')
+          (var uint32_t frame_id)
+          (if (call frame_for_surface surface (& frame_id))
+            (block
+              (for (var size_t j 0)
+                (< j MAX_FRAMES)
+                (++ j)
+                (block
+                  (var (const ShellFrame) (* frame) (& ([] (. (. SILK_SHELL_STATE chrome) FRAMES) j)))
+                  (if (&& (-> frame present) (== (-> frame frame_id) frame_id))
+                    (block
+                      (= state (?: (!= (& (-> frame flags) FRAME_FLAG_MINIMIZED) 0) 'M' 'V'))
+                      break))))))
+          (= ([] buffer (+ base 12)) state)
+          (=
+            ([] buffer (+ base 14))
+            (?: (== (. (. SILK_SHELL_STATE chrome) FOCUSED_SURFACE_ID) surface) 'F' '-'))))
+      (cast void (call sexos_pdx_call SLOT_DISPLAY OP_TEXT_CLEAR SURFACE_ID_MESH 0 0))
+      (var size_t drawn)
+      (var bool accepted
+        (call shell_draw_text SURFACE_ID_MESH buffer (sizeof buffer) (call UINT64_C 0x00E8FFFF) (& drawn)))
+      (call sexos_line "[mesh.pd_graph.render.ok] rows=6 bytes=%zu ok=%u" drawn (cast unsigned accepted)))
+    (fn void bell_emit_object_link_event
+      ((uint64_t object_id) (uint64_t buffer_id))
+      (call
+        sexos_line
+        "[bell.event.stub] kind=ObjectLinkedToBuffer object_id=%llu buffer_id=%llu"
+        (cast (unsigned long long) object_id)
+        (cast (unsigned long long) buffer_id))
+      (var LinenObject object)
+      (var QuilBuffer buffer)
+      (var bool object_valid (call linen_object_by_id object_id (& object)))
+      (var bool buffer_valid (call quil_buffer_by_id buffer_id (& buffer)))
+      (if (|| (! object_valid) (! buffer_valid))
+        (block
+          (call
+            sexos_line
+            "[bell.event.reject.missing] object_valid=%s buffer_valid=%s"
+            (?: object_valid "true" "false")
+            (?: buffer_valid "true" "false"))
+          (call sexos_line "[bell.event.done] reason=rejected")
+          (return)))
+      (if (!= (. buffer linen_object_ref) object_id)
+        (block
+          (call
+            sexos_line
+            "[bell.event.reject.missing] reason=buffer_ref_mismatch expected=%llu actual=%llu"
+            (cast (unsigned long long) object_id)
+            (cast (unsigned long long) (. buffer linen_object_ref)))
+          (call sexos_line "[bell.event.done] reason=rejected")
+          (return)))
+      (call
+        sexos_line
+        "[bell.event.object_link] object_id=%llu object_kind=%s buffer_id=%llu buffer_kind=%s"
+        (cast (unsigned long long) object_id)
+        (call linen_object_kind_name (. object kind))
+        (cast (unsigned long long) buffer_id)
+        (call quil_buffer_kind_name (. buffer kind)))
+      (call bell_record_event object_id buffer_id)
+      (call
+        sexos_line
+        "[bell.ring.done] count=%zu event_id=%llu"
+        (call bell_ring_count)
+        (cast (unsigned long long) (- (. (. SILK_SHELL_STATE models) BELL_EVENT_SEQUENCE) 1)))
+      (if (call bell_is_visible_in_active_scene)
+        (block
+          (call
+            sexos_line
+            "[bell.render.refresh] reason=visible_after_link object_id=%llu buffer_id=%llu"
+            (cast (unsigned long long) object_id)
+            (cast (unsigned long long) buffer_id))
+          (call bell_render_event_list)))
+      (call sexos_line "[bell.event.done] reason=emitted"))
+    (fn (static bool) model_take_budget
+      ((uint32_t (* budget)))
+      (if (== (* budget) 0)
+        (return false))
+      (-- (* budget))
+      (return true))
+    (fn (static void) model_send_current_tokens
+      (void)
+      (var uint32_t ([] tokens 8))
+      (call resolve_scene_render_tokens tokens)
+      (call push_token_preset tokens))
+    (fn (static void) model_store_current_settings
+      (void)
+      (var (const SceneAppearanceState) (* state)
+        (& (. (. SILK_SHELL_STATE models) SCENE_APPEARANCE_STATE)))
+      (var uint64_t blob
+        (call
+          pack_scene_settings_blob
+          (-> state preset_idx)
+          (-> state chrome_flags)
+          (-> state accessibility_flags)))
+      (cast void (call sexos_pdx_call SLOT_SEXSTORE OP_KV_PUT SCENE_SETTINGS_KEY_APPEARANCE blob 0)))
+    (fn void send_scene_render_tokens
+      (void)
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (call model_send_current_tokens)
+      (if (call model_take_budget (& (-> state send_scene_render_tokens__SHELL_TOKEN_SEND_BUDGET)))
+        (call sexos_line "[shell.appearance.tokens.send] seq=2 sent"))
+      (if (call model_take_budget (& (-> state send_scene_render_tokens__STATE_BUDGET)))
+        (block
+          (var (const SceneAppearanceState) (* appearance) (& (-> state SCENE_APPEARANCE_STATE)))
+          (call
+            sexos_line
+            "[shell.appearance.state] preset=%u custom=%u chrome=%u access=%u"
+            (cast unsigned (-> appearance preset_idx))
+            (cast unsigned (-> appearance use_custom_colors))
+            (cast unsigned (-> appearance chrome_flags))
+            (cast unsigned (-> appearance accessibility_flags))))))
+    (fn void handle_sexstore_get_reply
+      ((uint64_t value))
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (if (call store_reply_is_status value)
+        (block
+          (var uint64_t code (call store_reply_status value))
+          (if (call model_take_budget (& (-> state handle_sexstore_get_reply__STATUS_BUDGET)))
+            (block
+              (var (const char) (* name) NULL)
+              (switch
+                code
+                (block
+                  (case STORE_KV_NOT_FOUND (= name "not_found"))
+                  break
+                  (case STORE_KV_DENIED (= name "denied"))
+                  break
+                  (case STORE_KV_FULL (= name "full"))
+                  break
+                  (case STORE_KV_INVALID_KEY (= name "invalid_key"))
+                  break
+                  (case STORE_KV_INVALID_VALUE (= name "invalid_value"))
+                  break
+                  (case STORE_KV_OK (= name "ok"))
+                  break
+                  (default break)))
+              (if (!= name NULL)
+                (call sexos_line "[shell.store.reply.status] code=%s key=0x01" name)
+                (call sexos_line "[shell.store.reply.reject] code=0x%llx key=0x01" (cast (unsigned long long) code)))))
+          (if (call model_take_budget (& (-> state handle_sexstore_get_reply__DEFAULT_BUDGET)))
+            (call sexos_line "[shell.store.default] reason=status_reply"))
+          (return)))
+      (call sexos_line "[shell.store.reply.value] key=0x01")
+      (decl uint8_t preset chrome access)
+      (if (call unpack_scene_settings_blob value (& preset) (& chrome) (& access))
+        (block
+          (var uint8_t clamped (?: (< preset PRESET_COUNT) preset 0))
+          (= (. (-> state SCENE_APPEARANCE_STATE) preset_idx) clamped)
+          (= (. (-> state SCENE_APPEARANCE_STATE) chrome_flags) chrome)
+          (= (. (-> state SCENE_APPEARANCE_STATE) accessibility_flags) access)
+          (= (. (-> state SCENE_APPEARANCE_STATE) use_custom_colors) 0)
+          (call
+            memset
+            (. (-> state SCENE_APPEARANCE_STATE) custom_colors)
+            0
+            (sizeof (. (-> state SCENE_APPEARANCE_STATE) custom_colors)))
+          (= (-> state ACTIVE_TINT_IDX) 0)
+          (call model_send_current_tokens)
+          (if (call model_take_budget (& (-> state handle_sexstore_get_reply__LOAD_OK_BUDGET)))
+            (call
+              sexos_line
+              "[shell.scene.settings.load] ok=1 preset=%u chrome=%u access=%u"
+              (cast unsigned clamped)
+              (cast unsigned chrome)
+              (cast unsigned access))))
+        (if (call model_take_budget (& (-> state handle_sexstore_get_reply__LOAD_FAIL_BUDGET)))
+          (block
+            (call sexos_line "[shell.scene.settings.load] ok=0 %s" (?: (== value 0) "not-found" "corrupt"))))))
+    (fn void boot_load_scene_settings
+      (void)
+      (var SexosReply reply
+        (call sexos_pdx_call SLOT_SEXSTORE OP_KV_GET SCENE_SETTINGS_KEY_APPEARANCE 0 0))
+      (if (call
+  model_take_budget
+  (& (. (. SILK_SHELL_STATE models) boot_load_scene_settings__BOOT_LOAD_BUDGET)))
+        (block
+          (if (== (. reply status) 0)
+            (block
+              (= (. (. SILK_SHELL_STATE models) SEXSTORE_LOAD_PENDING) true)
+              (call sexos_line "[shell.scene.settings.load.request] ok=1 pending"))
+            (block
+              (call
+                sexos_line
+                "[shell.scene.settings.load.request] ok=0 status=%llu"
+                (cast (unsigned long long) (. reply status))))))))
+    (fn void cycle_scene_render_token_preset
+      (void)
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (=
+        (. (-> state SCENE_APPEARANCE_STATE) preset_idx)
+        (% (cast uint8_t (+ (. (-> state SCENE_APPEARANCE_STATE) preset_idx) 1)) PRESET_COUNT))
+      (= (. (-> state SCENE_APPEARANCE_STATE) use_custom_colors) 0)
+      (= (-> state ACTIVE_TINT_IDX) 0)
+      (call model_send_current_tokens)
+      (if (call model_take_budget (& (-> state cycle_scene_render_token_preset__CYCLE_BUDGET)))
+        (call
+          sexos_line
+          "[shell.appearance.preset] idx=%u"
+          (cast unsigned (. (-> state SCENE_APPEARANCE_STATE) preset_idx))))
+      (call model_store_current_settings)
+      (if (call model_take_budget (& (-> state cycle_scene_render_token_preset__SAVE_BUDGET)))
+        (call
+          sexos_line
+          "[shell.scene.settings.save] preset=%u"
+          (cast unsigned (. (-> state SCENE_APPEARANCE_STATE) preset_idx)))))
+    (fn void cycle_prev_scene_render_token_preset
+      (void)
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (var uint8_t old (. (-> state SCENE_APPEARANCE_STATE) preset_idx))
+      (=
+        (. (-> state SCENE_APPEARANCE_STATE) preset_idx)
+        (?: (== old 0) (- PRESET_COUNT 1) (cast uint8_t (- old 1))))
+      (= (. (-> state SCENE_APPEARANCE_STATE) use_custom_colors) 0)
+      (= (-> state ACTIVE_TINT_IDX) 0)
+      (call model_send_current_tokens)
+      (if (call model_take_budget (& (-> state cycle_prev_scene_render_token_preset__CYCLE_PREV_BUDGET)))
+        (call
+          sexos_line
+          "[shell.appearance.preset] idx=%u"
+          (cast unsigned (. (-> state SCENE_APPEARANCE_STATE) preset_idx))))
+      (call model_store_current_settings)
+      (if (call model_take_budget (& (-> state cycle_prev_scene_render_token_preset__SAVE_PREV_BUDGET)))
+        (call
+          sexos_line
+          "[shell.scene.settings.save] preset=%u"
+          (cast unsigned (. (-> state SCENE_APPEARANCE_STATE) preset_idx)))))
+    (fn void apply_custom_tint_bundle
+      ((size_t index))
+      (var SceneAppearanceState (* state) (& (. (. SILK_SHELL_STATE models) SCENE_APPEARANCE_STATE)))
+      (if (== index 0)
+        (block
+          (= (-> state use_custom_colors) 0))
+        (block
+          (call
+            memcpy
+            (-> state custom_colors)
+            ([] CUSTOM_TINT_BUNDLES index)
+            (sizeof (-> state custom_colors)))
+          (= (-> state use_custom_colors) 1))))
+    (fn void cycle_custom_tint
+      (void)
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (= (-> state ACTIVE_TINT_IDX) (% (cast uint8_t (+ (-> state ACTIVE_TINT_IDX) 1)) TINT_COUNT))
+      (call apply_custom_tint_bundle (-> state ACTIVE_TINT_IDX))
+      (call model_send_current_tokens)
+      (if (call model_take_budget (& (-> state cycle_custom_tint__TINT_BUDGET)))
+        (call
+          sexos_line
+          "[shell.appearance.custom] mode=tint tint=%u"
+          (cast unsigned (-> state ACTIVE_TINT_IDX)))))
+    (fn void handle_scene_settings_cmd
+      ((uint64_t command) (uint64_t value) (uint64_t flags))
+      (cast void flags)
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (var uint32_t (* budget) (& (-> state handle_scene_settings_cmd__CMD_BUDGET)))
+      (switch
+        command
+        (block
+          (case
+            CMD_SET_PRESET
+            (block
+              (var uint8_t index (?: (< (cast size_t value) PRESET_COUNT) (cast uint8_t value) 0))
+              (= (. (-> state SCENE_APPEARANCE_STATE) preset_idx) index)
+              (= (. (-> state SCENE_APPEARANCE_STATE) use_custom_colors) 0)
+              (call
+                memset
+                (. (-> state SCENE_APPEARANCE_STATE) custom_colors)
+                0
+                (sizeof (. (-> state SCENE_APPEARANCE_STATE) custom_colors)))
+              (= (-> state ACTIVE_TINT_IDX) 0)
+              (call model_send_current_tokens)
+              (call model_store_current_settings)
+              (if (call model_take_budget budget)
+                (call sexos_line "[shell.scene.settings.cmd] cmd=1 preset=%u ok=1" (cast unsigned index)))
+              break))
+          (case CMD_CYCLE_PRESET (call cycle_scene_render_token_preset))
+          (if (call model_take_budget budget)
+            (call sexos_line "[shell.scene.settings.cmd] cmd=2 ok=1"))
+          break
+          (case
+            CMD_SET_TINT
+            (block
+              (var uint8_t index (% (cast uint8_t value) TINT_COUNT))
+              (= (-> state ACTIVE_TINT_IDX) index)
+              (call apply_custom_tint_bundle index)
+              (call model_send_current_tokens)
+              (if (call model_take_budget budget)
+                (call sexos_line "[shell.scene.settings.cmd] cmd=3 tint=%u ok=1" (cast unsigned index)))
+              break))
+          (case CMD_CYCLE_TINT (call cycle_custom_tint))
+          (if (call model_take_budget budget)
+            (call sexos_line "[shell.scene.settings.cmd] cmd=4 ok=1"))
+          break
+          (case
+            CMD_SET_CHROME_FLAGS
+            (= (. (-> state SCENE_APPEARANCE_STATE) chrome_flags) (cast uint8_t value)))
+          (call model_send_current_tokens)
+          (call model_store_current_settings)
+          (if (call model_take_budget budget)
+            (call
+              sexos_line
+              "[shell.scene.settings.cmd] cmd=5 flags=%u ok=1"
+              (cast unsigned (cast uint8_t value))))
+          break
+          (case CMD_TOGGLE_TOP_BAR (call toggle_top_bar_for_active_frame))
+          (if (call model_take_budget budget)
+            (call sexos_line "[shell.scene.settings.cmd] cmd=6 ok=1"))
+          break
+          (case
+            CMD_SET_ACCESSIBILITY
+            (= (. (-> state SCENE_APPEARANCE_STATE) accessibility_flags) (cast uint8_t value)))
+          (call model_send_current_tokens)
+          (call model_store_current_settings)
+          (if (call model_take_budget budget)
+            (call
+              sexos_line
+              "[shell.scene.settings.cmd] cmd=7 flags=%u ok=1"
+              (cast unsigned (cast uint8_t value))))
+          break
+          (case CMD_RESET_DEFAULTS (= (-> state SCENE_APPEARANCE_STATE) DEFAULT_SCENE_APPEARANCE))
+          (= (-> state ACTIVE_TINT_IDX) 0)
+          (call model_send_current_tokens)
+          (call model_store_current_settings)
+          (if (call model_take_budget budget)
+            (call sexos_line "[shell.scene.settings.cmd] cmd=8 ok=1"))
+          break
+          (default
+            (if (call model_take_budget budget)
+              (call
+                sexos_line
+                "[shell.scene.settings.cmd] cmd=%llu ok=0 unknown"
+                (cast (unsigned long long) command))))
+          break)))
+    (fn uint8_t shell_view_mode
+      (void)
+      (return (?: (. (. SILK_SHELL_STATE chrome) ATLAS_MODE_ENABLED) SHELL_VIEW_ATLAS SHELL_VIEW_DESKTOP)))
+    (fn (static bool) model_valid_utf8
+      (((const uint8_t) (* bytes)) (size_t length))
+      (var size_t index 0)
+      (while (< index length)
+        (block
+          (var uint8_t first ([] bytes (post++ index)))
+          (if (< first 0x80)
+            continue)
+          (var size_t continuation)
+          (if (&& (>= first 0xc2) (<= first 0xdf))
+            (= continuation 1)
+            (if (&& (>= first 0xe0) (<= first 0xef))
+              (= continuation 2)
+              (if (&& (>= first 0xf0) (<= first 0xf4))
+                (= continuation 3)
+                (return false))))
+          (if (> continuation (- length index))
+            (return false))
+          (var uint8_t second ([] bytes index))
+          (if (||
+  (||
+    (|| (&& (== first 0xe0) (< second 0xa0)) (&& (== first 0xed) (>= second 0xa0)))
+    (&& (== first 0xf0) (< second 0x90)))
+  (&& (== first 0xf4) (>= second 0x90)))
+            (return false))
+          (for (var size_t i 0)
+            (< i continuation)
+            (++ i)
+            (if (!= (& ([] bytes (post++ index)) 0xc0) 0x80)
+              (return false)))))
+      (return true))
+    (fn (static uint64_t) model_little_endian_word
+      (((const uint8_t) (* bytes)))
+      (var uint64_t word 0)
+      (for (var size_t i 0)
+        (< i 8)
+        (++ i)
+        (|= word (<< (cast uint64_t ([] bytes i)) (* i 8))))
+      (return word))
+    (fn (static void) model_linen_row
+      (((const LinenObject) (* object)) (bool selected))
+      (call write_str "[linen.object_list.row] id=")
+      (call write_u64_dec (-> object object_id))
+      (call write_str " kind=")
+      (call write_str (call linen_object_kind_name (-> object kind)))
+      (call write_str " state=")
+      (call write_str (call linen_object_state_name (-> object state)))
+      (call write_str " name=")
+      (if (!= (-> object name_len) 0)
+        (block
+          (if (call model_valid_utf8 (-> object name) (-> object name_len))
+            (call write_bytes (-> object name) (-> object name_len))
+            (call write_str "[bad_utf8]")))
+        (block
+          (call write_str (-> object display_name))))
+      (call write_str " selected=")
+      (call write_bool_str selected)
+      (call write_str "\n"))
+    (fn void linen_render_object_list
+      (void)
+      (var uint32_t width (. (. SILK_SHELL_STATE input) SURFACE_200_W))
+      (var uint32_t height (. (. SILK_SHELL_STATE input) SURFACE_200_H))
+      (if (|| (== width 0) (== height 0))
+        (return))
+      (call
+        sexos_line
+        "[linen.object_list.render] w=%u h=%u"
+        (cast unsigned width)
+        (cast unsigned height))
+      (var uint64_t selected_id (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID))
+      (var uint32_t header (call linen_selected_object_accent))
+      (call
+        sexos_line
+        "[linen.selection_visual.header] object_id=%llu color=0x%08x"
+        (cast (unsigned long long) selected_id)
+        (cast unsigned header))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xEF
+          SURFACE_ID_LINEN
+          0
+          (| (| (<< (cast uint64_t header) 32) (<< (cast uint64_t LINEN_LIST_HEADER_H) 16)) width)))
+      (var size_t count (call linen_object_count))
+      (var uint32_t background_height
+        (-
+          (* (cast uint32_t LINEN_LIST_ACCENT_BARS) (+ LINEN_LIST_ROW_H LINEN_LIST_ROW_GAP))
+          LINEN_LIST_ROW_GAP))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xEF
+          SURFACE_ID_LINEN
+          (<< (cast uint64_t LINEN_LIST_HEADER_H) 32)
+          (|
+            (|
+              (| (<< (call UINT64_C 1) 56) (<< (cast uint64_t LINEN_LIST_BG_COLOR) 32))
+              (<< (cast uint64_t background_height) 16))
+            width)))
+      (call
+        sexos_line
+        "[linen.bg_rect] y=%u h=%u"
+        (cast unsigned LINEN_LIST_HEADER_H)
+        (cast unsigned background_height))
+      (var uint8_t rows 0)
+      (var bool selection_visible false)
+      (var uint32_t selected_y 0)
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (block
+          (var (const LinenObject) (* object) (& ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i)))
+          (if (! (-> object present))
+            continue)
+          (if (>= rows LINEN_LIST_MAX_ROWS)
+            (block
+              (call
+                sexos_line
+                "[linen.object_list.skip] id=%llu reason=max_rows"
+                (cast (unsigned long long) (-> object object_id)))
+              continue))
+          (if (> (-> object name_len) (sizeof (-> object name)))
+            (block
+              (call sexos_fail)
+              (return)))
+          (var bool selected (== (-> object object_id) selected_id))
+          (call model_linen_row object selected)
+          (var uint32_t y
+            (+ LINEN_LIST_HEADER_H (* (cast uint32_t rows) (+ LINEN_LIST_ROW_H LINEN_LIST_ROW_GAP))))
+          (if selected
+            (block
+              (= selection_visible true)
+              (= selected_y y)))
+          (if (< rows LINEN_LIST_ACCENT_BARS)
+            (block
+              (var uint64_t rectangle (& (+ (cast uint64_t rows) 3) 7))
+              (var uint32_t color (?: selected header (call linen_kind_color (-> object kind))))
+              (cast
+                void
+                (call
+                  sexos_pdx_call
+                  SLOT_DISPLAY
+                  0xEF
+                  SURFACE_ID_LINEN
+                  (<< (cast uint64_t y) 32)
+                  (|
+                    (| (| (<< rectangle 56) (<< (cast uint64_t color) 32)) (<< (cast uint64_t LINEN_LIST_ROW_H) 16))
+                    LINEN_ACCENT_BAR_W)))
+              (call
+                sexos_line
+                "[linen.row_visual.accent] index=%llu id=%llu kind=%s color=0x%08x selected=%s"
+                (cast (unsigned long long) rectangle)
+                (cast (unsigned long long) (-> object object_id))
+                (call linen_object_kind_name (-> object kind))
+                (cast unsigned color)
+                (?: selected "true" "false")))
+            (block
+              (call
+                sexos_line
+                "[linen.row_visual.skip] id=%llu reason=accent_budget"
+                (cast (unsigned long long) (-> object object_id)))))
+          (++ rows)))
+      (if selection_visible
+        (block
+          (cast
+            void
+            (call
+              sexos_pdx_call
+              SLOT_DISPLAY
+              0xEF
+              SURFACE_ID_LINEN
+              (<< (cast uint64_t selected_y) 32)
+              (|
+                (|
+                  (| (<< (call UINT64_C 2) 56) (<< (cast uint64_t header) 32))
+                  (<< (cast uint64_t LINEN_LIST_ROW_H) 16))
+                width)))
+          (call
+            sexos_line
+            "[linen.row_visual.selected] y=%u color=0x%08x"
+            (cast unsigned selected_y)
+            (cast unsigned header)))
+        (block
+          (call
+            sexos_line
+            "[linen.row.reject] id=%llu reason=not_found_in_visible_rows"
+            (cast (unsigned long long) selected_id))))
+      (call
+        sexos_line
+        "[linen.object_select.current] id=%llu"
+        (cast (unsigned long long) (. (. SILK_SHELL_STATE models) SELECTED_LINEN_OBJECT_ID)))
+      (call sexos_line "[linen.object_list.done] count=%zu rows=%u" count (cast unsigned rows)))
+    (fn void linen_render_static_ui
+      (void)
+      (var uint32_t width (. (. SILK_SHELL_STATE input) SURFACE_200_W))
+      (var uint32_t height (. (. SILK_SHELL_STATE input) SURFACE_200_H))
+      (if (|| (== width 0) (== height 0))
+        (return))
+      (var size_t selected (. (. SILK_SHELL_STATE models) LINEN_UI_SELECTED))
+      (if (>= selected LINEN_UI_ROW_COUNT)
+        (= selected (- LINEN_UI_ROW_COUNT 1)))
+      (var uint32_t header ([] LINEN_UI_ROW_COLORS selected))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xEF
+          SURFACE_ID_LINEN
+          0
+          (| (| (<< (cast uint64_t header) 32) (<< (cast uint64_t LINEN_LIST_HEADER_H) 16)) width)))
+      (var uint32_t background_height
+        (-
+          (* (cast uint32_t LINEN_LIST_ACCENT_BARS) (+ LINEN_LIST_ROW_H LINEN_LIST_ROW_GAP))
+          LINEN_LIST_ROW_GAP))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xEF
+          SURFACE_ID_LINEN
+          (<< (cast uint64_t LINEN_LIST_HEADER_H) 32)
+          (|
+            (|
+              (| (<< (call UINT64_C 1) 56) (<< (cast uint64_t LINEN_LIST_BG_COLOR) 32))
+              (<< (cast uint64_t background_height) 16))
+            width)))
+      (var uint32_t selected_y
+        (+ LINEN_LIST_HEADER_H (* (cast uint32_t selected) (+ LINEN_LIST_ROW_H LINEN_LIST_ROW_GAP))))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xEF
+          SURFACE_ID_LINEN
+          (<< (cast uint64_t selected_y) 32)
+          (|
+            (|
+              (| (<< (call UINT64_C 2) 56) (<< (cast uint64_t header) 32))
+              (<< (cast uint64_t LINEN_LIST_ROW_H) 16))
+            width)))
+      (var (const uint8_t) ([] ([] labels 5) 9)
+        (init "PROJECTS" "SEX MICR" "HANDOUTS" "HANDOFFS" "QUIL DFT"))
+      (for (var size_t i 0)
+        (< i LINEN_UI_ROW_COUNT)
+        (++ i)
+        (block
+          (var uint32_t y
+            (+ LINEN_LIST_HEADER_H (* (cast uint32_t i) (+ LINEN_LIST_ROW_H LINEN_LIST_ROW_GAP))))
+          (var uint64_t rectangle (& (+ (cast uint64_t i) 3) 7))
+          (var uint32_t color (?: (== i selected) header ([] LINEN_UI_ROW_COLORS i)))
+          (cast
+            void
+            (call
+              sexos_pdx_call
+              SLOT_DISPLAY
+              0xEF
+              SURFACE_ID_LINEN
+              (<< (cast uint64_t y) 32)
+              (|
+                (| (| (<< rectangle 56) (<< (cast uint64_t color) 32)) (<< (cast uint64_t LINEN_LIST_ROW_H) 16))
+                LINEN_ACCENT_BAR_W)))))
+      (cast void (call sexos_pdx_call SLOT_DISPLAY 0xFA SURFACE_ID_LINEN 0 0))
+      (var (const uint8_t) ([] title 8) (init 'L' 'I' 'N' 'E' 'N' 0 0 0))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xFB
+          SURFACE_ID_LINEN
+          (call model_little_endian_word title)
+          (| (<< (call UINT64_C 5) 8) (<< (call UINT64_C 0x00F0F8FF) 32))))
+      (for (var size_t i 0)
+        (< i LINEN_UI_ROW_COUNT)
+        (++ i)
+        (block
+          (cast
+            void
+            (call
+              sexos_pdx_call
+              SLOT_DISPLAY
+              0xFB
+              SURFACE_ID_LINEN
+              (call model_little_endian_word ([] labels i))
+              (| (| (cast uint64_t (* (+ i 1) 20)) (<< (call UINT64_C 8) 8)) (<< (call UINT64_C 0x00B8CCE0) 32))))))
+      (call sexos_line "[linen.ui.render] rows=%zu selected=%zu" LINEN_UI_ROW_COUNT selected))
+    (fn uint64_t linen_sync_reply
+      (void)
+      (for ()
+        ()
+        ()
+        (block
+          (var SexosMessage message (call sexos_listen (& (. (. SILK_SHELL_STATE core) pdx_listener)) 0))
+          (if (== (. message type_id) 1)
+            (return (. message arg0)))
+          (if (== (. message type_id) OP_HID_EVENT)
+            (block
+              (call handle_hid_event (. message arg2) (. message arg0) (. message arg1))
+              continue))
+          (if (call
+  model_take_budget
+  (& (. (. SILK_SHELL_STATE models) linen_sync_reply__LINEN_SYNC_NONREPLY_BUDGET)))
+            (call
+              sexos_line
+              "[silk-shell.linen_sync.nonreply] type=0x%llx caller=%u"
+              (cast (unsigned long long) (. message type_id))
+              (cast unsigned (. message caller_pd))))
+          (call sexos_reply (. message caller_pd) 0))))
+    (fn void linen_fetch_remote_snapshot
+      (void)
+      (var SilkShellModelsState (* state) (& (. SILK_SHELL_STATE models)))
+      (call sexos_line "[linen.remote.snapshot.begin]")
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (= (. ([] (-> state LINEN_OBJECTS) i) present) false))
+      (= (-> state SELECTED_LINEN_OBJECT_ID) 0)
+      (var size_t written 0)
+      (for (var uint64_t slot 0)
+        (&& (< slot 16) (< written LINEN_MAX_OBJECTS))
+        (++ slot)
+        (block
+          (cast void (call sexos_pdx_call SLOT_LINEN OP_LINEN_GET_PUBLIC_SNAPSHOT slot 0 0))
+          (var uint64_t packed (call linen_sync_reply))
+          (if (== packed 0)
+            continue)
+          (var uint64_t id (& packed (call UINT64_C 0xffffffff)))
+          (var uint8_t kind (cast uint8_t (>> packed 32)))
+          (var size_t name_length (cast uint8_t (>> packed 40)))
+          (if (> name_length 24)
+            (= name_length 24))
+          (var uint8_t ([] name 24) (init 0))
+          (var uint8_t fetched 0)
+          (var bool accepted true)
+          (for (var uint64_t offset 0)
+            (< offset name_length)
+            (+= offset 8)
+            (block
+              (cast void (call sexos_pdx_call SLOT_LINEN OP_LINEN_GET_PUBLIC_NAME id offset 8))
+              (var uint64_t chunk (call linen_sync_reply))
+              (if (== chunk 0)
+                break)
+              (if (!= (& chunk (<< (call UINT64_C 1) 63)) 0)
+                (block
+                  (var int64_t error (- (- (cast int64_t (~ chunk))) 1))
+                  (call
+                    sexos_line
+                    "[linen.remote.name.err] id=%llu err=%lld"
+                    (cast (unsigned long long) id)
+                    (cast (long long) error))
+                  (= accepted false)
+                  break))
+              (var size_t take (- name_length (cast size_t offset)))
+              (if (> take 8)
+                (= take 8))
+              (for (var size_t i 0)
+                (< i take)
+                (++ i)
+                (= ([] name (+ (cast size_t offset) i)) (call sanitize_ascii (cast uint8_t (>> chunk (* i 8))))))
+              (= fetched (cast uint8_t (+ offset take)))))
+          (if (&& accepted (!= fetched 0))
+            (call
+              sexos_line
+              "[linen.remote.name.ok] id=%llu len=%u"
+              (cast (unsigned long long) id)
+              (cast unsigned fetched)))
+          (var LinenObject object
+            (init,
+              (= (. present) true)
+              (= (. object_id) id)
+              (= (. kind) (?: (== kind 1) LINEN_OBJ_KIND_PROJECT LINEN_OBJ_KIND_DOCUMENT))
+              (= (. state) LINEN_OBJ_STATE_SAVED)
+              (= (. display_name) "[linen.remote]")
+              (= (. name_len) fetched)
+              (= (. disk_path) (cast uint8_t (>> packed 48)))))
+          (call memcpy (. object name) name (sizeof name))
+          (= ([] (-> state LINEN_OBJECTS) (post++ written)) object)
+          (call
+            sexos_line
+            "[linen.remote.entry] slot=%llu id=%llu kind=%u name_len=%u"
+            (cast (unsigned long long) slot)
+            (cast (unsigned long long) id)
+            (cast unsigned kind)
+            (cast unsigned fetched))))
+      (call sexos_line "[linen.remote.snapshot.ok] count=%zu" written)
+      (= (-> state LINEN_REMOTE_REAL) (> written 0))
+      (if (== written 0)
+        (block
+          (for (var size_t i 0)
+            (&&
+              (< i (/ (sizeof LINEN_SEED_OBJECTS) (sizeof ([] LINEN_SEED_OBJECTS 0))))
+              (< i LINEN_MAX_OBJECTS))
+            (++ i)
+            (= ([] (-> state LINEN_OBJECTS) i) ([] LINEN_SEED_OBJECTS i)))
+          (call
+            sexos_line
+            "[linen.remote.snapshot.fallback] reason=empty_session seeds=%zu"
+            (/ (sizeof LINEN_SEED_OBJECTS) (sizeof ([] LINEN_SEED_OBJECTS 0))))))
+      (call linen_select_first_valid_object))
+    (fn void linen_paint_surface
+      (void)
+      (if (||
+  (! (. (. SILK_SHELL_STATE models) LINEN_REMOTE_FETCHED))
+  (! (. (. SILK_SHELL_STATE models) LINEN_REMOTE_REAL)))
+        (block
+          (= (. (. SILK_SHELL_STATE models) LINEN_REMOTE_FETCHED) true)
+          (call linen_fetch_remote_snapshot)))
+      (if (== (call linen_object_count) 0)
+        (call linen_render_static_ui)
+        (call linen_render_object_list)))
+    (fn void linen_paint_surface_fast
+      (void)
+      (var bool fetched (. (. SILK_SHELL_STATE models) LINEN_REMOTE_FETCHED))
+      (var size_t count (call linen_object_count))
+      (call
+        sexos_line
+        "[linen.fast_paint] sid=200 objects=%zu ok=1 reason=%s"
+        count
+        (?: fetched "remote_ready" "seeds_only"))
+      (if (== count 0)
+        (call linen_render_static_ui)
+        (call linen_render_object_list)))
+    (fn void quil_render_buffer_list
+      (void)
+      (var uint32_t width (. (. SILK_SHELL_STATE input) SURFACE_201_W))
+      (var uint32_t height (. (. SILK_SHELL_STATE input) SURFACE_201_H))
+      (if (|| (== width 0) (== height 0))
+        (return))
+      (call sexos_line "[quil.buffer_list.render] w=%u h=%u" (cast unsigned width) (cast unsigned height))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xEF
+          SURFACE_ID_QUIL
+          0
+          (|
+            (| (<< (cast uint64_t QUIL_LIST_HEADER_COLOR) 32) (<< (cast uint64_t QUIL_LIST_HEADER_H) 16))
+            width)))
+      (var size_t count (call quil_buffer_count))
+      (var uint32_t background_height
+        (-
+          (* (cast uint32_t QUIL_LIST_ACCENT_BARS) (+ QUIL_LIST_ROW_H QUIL_LIST_ROW_GAP))
+          QUIL_LIST_ROW_GAP))
+      (cast
+        void
+        (call
+          sexos_pdx_call
+          SLOT_DISPLAY
+          0xEF
+          SURFACE_ID_QUIL
+          (<< (cast uint64_t QUIL_LIST_HEADER_H) 32)
+          (|
+            (|
+              (| (<< (call UINT64_C 1) 56) (<< (cast uint64_t QUIL_LIST_BG_COLOR) 32))
+              (<< (cast uint64_t background_height) 16))
+            width)))
+      (call
+        sexos_line
+        "[quil.bg_rect] y=%u h=%u"
+        (cast unsigned QUIL_LIST_HEADER_H)
+        (cast unsigned background_height))
+      (call sexos_line "[quil.row.reject] reason=no_selection_model")
+      (var uint8_t rows 0)
+      (for (var size_t i 0)
+        (< i QUIL_MAX_BUFFERS)
+        (++ i)
+        (block
+          (var (const QuilBuffer) (* buffer) (& ([] (. (. SILK_SHELL_STATE models) QUIL_BUFFERS) i)))
+          (if (! (-> buffer present))
+            continue)
+          (if (>= rows QUIL_LIST_MAX_ROWS)
+            (block
+              (call
+                sexos_line
+                "[quil.buffer_list.skip] id=%llu reason=max_rows"
+                (cast (unsigned long long) (-> buffer buffer_id)))
+              continue))
+          (call
+            sexos_line
+            "[quil.buffer_list.row] buffer_id=%llu kind=%s state=%s linen_ref=%llu surface_id=%llu name=%s"
+            (cast (unsigned long long) (-> buffer buffer_id))
+            (call quil_buffer_kind_name (-> buffer kind))
+            (call quil_buffer_state_name (-> buffer state))
+            (cast (unsigned long long) (-> buffer linen_object_ref))
+            (cast (unsigned long long) (-> buffer linked_surface_id))
+            (-> buffer display_name))
+          (if (< rows QUIL_LIST_ACCENT_BARS)
+            (block
+              (var uint64_t rectangle (& (+ (cast uint64_t rows) 3) 7))
+              (var uint32_t y
+                (+ QUIL_LIST_HEADER_H (* (cast uint32_t rows) (+ QUIL_LIST_ROW_H QUIL_LIST_ROW_GAP))))
+              (var uint32_t color (call quil_buffer_kind_color (-> buffer kind)))
+              (cast
+                void
+                (call
+                  sexos_pdx_call
+                  SLOT_DISPLAY
+                  0xEF
+                  SURFACE_ID_QUIL
+                  (<< (cast uint64_t y) 32)
+                  (|
+                    (| (| (<< rectangle 56) (<< (cast uint64_t color) 32)) (<< (cast uint64_t QUIL_LIST_ROW_H) 16))
+                    QUIL_ACCENT_BAR_W)))
+              (call
+                sexos_line
+                "[quil.row_visual.accent] index=%llu id=%llu kind=%s color=0x%08x"
+                (cast (unsigned long long) rectangle)
+                (cast (unsigned long long) (-> buffer buffer_id))
+                (call quil_buffer_kind_name (-> buffer kind))
+                (cast unsigned color)))
+            (block
+              (call
+                sexos_line
+                "[quil.row_visual.skip] id=%llu reason=accent_budget"
+                (cast (unsigned long long) (-> buffer buffer_id)))))
+          (++ rows)))
+      (call sexos_line "[quil.buffer_list.done] count=%zu rows=%u" count (cast unsigned rows)))
+    (fn bool open_linen_object_in_quil
+      ((uint64_t object_id))
+      (call sexos_line "[linen.quil.open.request] id=%llu" (cast (unsigned long long) object_id))
+      (var LinenObject object)
+      (if (! (call linen_object_by_id object_id (& object)))
+        (block
+          (call sexos_line "[linen.quil.open.reject.missing] id=%llu" (cast (unsigned long long) object_id))
+          (return false)))
+      (if (== (. object grant_ref) 0)
+        (call
+          sexos_line
+          "[linen.quil.open.no_grant] id=%llu kind=%u"
+          (cast (unsigned long long) object_id)
+          (cast unsigned (. object kind))))
+      (var uint8_t capability
+        (call
+          collar_check_operation
+          COLLAR_OP_ACCESS_SEXFILES
+          (. (. SILK_SHELL_STATE chrome) FOCUSED_SURFACE_ID)
+          0))
+      (if (!= capability COLLAR_DECISION_ALLOW)
+        (block
+          (call
+            sexos_line
+            "[linen.quil.open.reject.cap] op=AccessSexFiles decision=%u"
+            (cast unsigned capability))
+          (return false)))
+      (var uint8_t decision (call collar_check_operation COLLAR_OP_LINK_OBJECT_TO_BUFFER object_id 0))
+      (if (!= decision COLLAR_DECISION_ALLOW)
+        (block
+          (call sexos_line "[linen.quil.open.reject.collar] decision=%u" (cast unsigned decision))
+          (return false)))
+      (var uint8_t kind QUIL_BUF_KIND_TEXT)
+      (if (== (. object kind) LINEN_OBJ_KIND_CODE_FILE)
+        (= kind QUIL_BUF_KIND_CODE)
+        (if (== (. object kind) LINEN_OBJ_KIND_MEDIA_ASSET)
+          (= kind QUIL_BUF_KIND_LINEN_OBJECT_VIEW)
+          (if (== (. object kind) LINEN_OBJ_KIND_BUILD_ARTIFACT)
+            (= kind QUIL_BUF_KIND_BUILD_OUTPUT))))
+      (var uint64_t dynamic_id (+ QUIL_DYNAMIC_BUFFER_ID_BASE object_id))
+      (var uint64_t linked_id dynamic_id)
+      (var bool created false)
+      (var bool found false)
+      (for (var size_t i 0)
+        (< i QUIL_MAX_BUFFERS)
+        (++ i)
+        (block
+          (var QuilBuffer (* buffer) (& ([] (. (. SILK_SHELL_STATE models) QUIL_BUFFERS) i)))
+          (if (&& (-> buffer present) (== (-> buffer linen_object_ref) object_id))
+            (block
+              (= (-> buffer state) QUIL_BUF_STATE_OPEN)
+              (= (-> buffer linked_surface_id) SURFACE_ID_QUIL)
+              (= found true)
+              (= linked_id (-> buffer buffer_id))
+              (call
+                sexos_line
+                "[linen.quil.open.reuse_existing] object_id=%llu buffer_id=%llu"
+                (cast (unsigned long long) object_id)
+                (cast (unsigned long long) (-> buffer buffer_id)))
+              break))))
+      (if (! found)
+        (block
+          (for (var size_t i 0)
+            (< i QUIL_MAX_BUFFERS)
+            (++ i)
+            (block
+              (var (const QuilBuffer) (* buffer) (& ([] (. (. SILK_SHELL_STATE models) QUIL_BUFFERS) i)))
+              (if (&&
+  (&& (-> buffer present) (== (-> buffer buffer_id) dynamic_id))
+  (!= (-> buffer linen_object_ref) object_id))
+                (block
+                  (call
+                    sexos_line
+                    "[linen.quil.open.reject.buffer_id_collision] dynamic_id=%llu existing_ref=%llu"
+                    (cast (unsigned long long) dynamic_id)
+                    (cast (unsigned long long) (-> buffer linen_object_ref)))
+                  (return false)))))
+          (for (var size_t i 0)
+            (< i QUIL_MAX_BUFFERS)
+            (++ i)
+            (block
+              (var QuilBuffer (* buffer) (& ([] (. (. SILK_SHELL_STATE models) QUIL_BUFFERS) i)))
+              (if (! (-> buffer present))
+                (block
+                  (call
+                    sexos_line
+                    "[linen.quil.open.dynamic_id] object_id=%llu dynamic_buffer_id=%llu"
+                    (cast (unsigned long long) object_id)
+                    (cast (unsigned long long) dynamic_id))
+                  (=
+                    (* buffer)
+                    (compound,
+                      QuilBuffer
+                      (= (. present) true)
+                      (= (. buffer_id) dynamic_id)
+                      (= (. kind) kind)
+                      (= (. state) QUIL_BUF_STATE_OPEN)
+                      (= (. linen_object_ref) object_id)
+                      (= (. project_id) (. object project_id))
+                      (= (. grant_ref) (. object grant_ref))
+                      (= (. linked_surface_id) SURFACE_ID_QUIL)
+                      (= (. display_name) (. object display_name))))
+                  (= created true)
+                  (= found true)
+                  break))))))
+      (if (! found)
+        (block
+          (call
+            sexos_line
+            "[linen.quil.open.reject.full] object_id=%llu"
+            (cast (unsigned long long) object_id))
+          (return false)))
+      (for (var size_t i 0)
+        (< i LINEN_MAX_OBJECTS)
+        (++ i)
+        (block
+          (var LinenObject (* entry) (& ([] (. (. SILK_SHELL_STATE models) LINEN_OBJECTS) i)))
+          (if (&& (-> entry present) (== (-> entry object_id) object_id))
+            (block
+              (= (-> entry linked_surface_id) SURFACE_ID_QUIL)
+              break))))
+      (call
+        sexos_line
+        "[linen.quil.buffer.linked] object_id=%llu buffer_id=%llu kind=%u"
+        (cast (unsigned long long) object_id)
+        (cast (unsigned long long) linked_id)
+        (cast unsigned kind))
+      (if (> (. object disk_path) 0)
+        (block
+          (var uint64_t path (- (cast uint64_t (. object disk_path)) 1))
+          (cast
+            void
+            (call sexos_pdx_call SLOT_QUIL OP_QUIL_OPEN_DISK_DOC object_id (?: (== path 2) 0 path) 0))
+          (call
+            sexos_line
+            "[linen.quil.disk_doc.intent] object_id=%llu path_id=%llu ok=1"
+            (cast (unsigned long long) object_id)
+            (cast (unsigned long long) path))))
+      (if (call open_quil_in_active_scene)
+        (call sexos_line "[linen.quil.quil_opened] object_id=%llu" (cast (unsigned long long) object_id)))
+      (call
+        sexos_line
+        "[linen.quil.done] object_id=%llu buffer_created=%s"
+        (cast (unsigned long long) object_id)
+        (?: created "true" "false"))
+      (call mesh_emit_linen_quil_links)
+      (call bell_emit_object_link_event object_id linked_id)
+      (call quil_render_buffer_list)
+      (return true))
+  )
+)

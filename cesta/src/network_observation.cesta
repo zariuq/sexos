@@ -1,0 +1,25 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "network_service.h")
+    (fn void network_trace_body
+      (((const char) (* label)) (cesta_read_bytes body))
+      (var (static const char) ([] digits) "0123456789abcdef")
+      (var size_t offset 0)
+      (do
+        (block
+          (var size_t count (- (. body len) offset))
+          (if (> count 64)
+            (= count 64))
+          (var char ([] hex 129))
+          (for (var size_t i 0)
+            (< i count)
+            (++ i)
+            (block
+              (var uint8_t byte ([] (. body data) (+ offset i)))
+              (= ([] hex (* 2 i)) ([] digits (>> byte 4)))
+              (= ([] hex (+ (* 2 i) 1)) ([] digits (& byte 15)))))
+          (= ([] hex (* 2 count)) 0)
+          (call sexos_line "[%s] offset=%zu bytes=%zu hex=%s" label offset count hex)
+          (+= offset count))
+        (< offset (. body len))))
+  ))

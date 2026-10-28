@@ -1,0 +1,280 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "network_service.h")
+    (fn (static void) http_fail
+      ((HttpResponse (* r)) (HttpError error))
+      (= (-> r state) HTTP_FAILED)
+      (= (-> r error) error))
+    (fn void http_response_init
+      ((HttpResponse (* r)))
+      (call memset r 0 (sizeof (* r)))
+      (= (-> r state) HTTP_STATUS))
+    (fn (static bool) ascii_equal
+      (((const uint8_t) (* bytes)) (size_t length) ((const char) (* literal)))
+      (var size_t i 0)
+      (for ()
+        ([] literal i)
+        (++ i)
+        (block
+          (if (>= i length)
+            (return false))
+          (var uint8_t byte ([] bytes i))
+          (if (&& (>= byte 'A') (<= byte 'Z'))
+            (= byte (cast uint8_t (+ byte (- 'a' 'A')))))
+          (if (!= byte (cast uint8_t ([] literal i)))
+            (return false))))
+      (return (== i length)))
+    (fn (static bool) decimal_length
+      (((const uint8_t) (* bytes)) (size_t length) (size_t (* value)))
+      (if (== length 0)
+        (return false))
+      (var size_t result 0)
+      (for (var size_t i 0)
+        (< i length)
+        (++ i)
+        (block
+          (if (|| (< ([] bytes i) '0') (> ([] bytes i) '9'))
+            (return false))
+          (var unsigned digit (- ([] bytes i) '0'))
+          (if (> result (/ (- SIZE_MAX digit) 10))
+            (return false))
+          (= result (+ (* result 10) digit))))
+      (= (* value) result)
+      (return true))
+    (fn (static bool) token_byte
+      ((uint8_t byte))
+      (if (||
+  (|| (&& (>= byte 'a') (<= byte 'z')) (&& (>= byte 'A') (<= byte 'Z')))
+  (&& (>= byte '0') (<= byte '9')))
+        (return true))
+      (var (const char) (* extra) "!#$%&'*+-.^_`|~")
+      (for (var size_t i 0)
+        ([] extra i)
+        (++ i)
+        (if (== byte (cast uint8_t ([] extra i)))
+          (return true)))
+      (return false))
+    (fn (static void) header_line
+      ((HttpResponse (* r)) (size_t length))
+      (var size_t colon 0)
+      (while (&& (< colon length) (!= ([] (-> r line) colon) ':'))
+        (block
+          (if (! (call token_byte ([] (-> r line) colon)))
+            (block
+              (call http_fail r HTTP_ERROR_SYNTAX)
+              (return)))
+          (++ colon)))
+      (if (|| (== colon 0) (== colon length))
+        (block
+          (call http_fail r HTTP_ERROR_SYNTAX)
+          (return)))
+      (var size_t start (+ colon 1))
+      (var size_t end length)
+      (while (&& (< start end) (|| (== ([] (-> r line) start) (char "' '")) (== ([] (-> r line) start) '\t')))
+        (++ start))
+      (while (&&
+  (> end start)
+  (|| (== ([] (-> r line) (- end 1)) (char "' '")) (== ([] (-> r line) (- end 1)) '\t')))
+        (-- end))
+      (if (== (-> r state) HTTP_TRAILERS)
+        (block
+          (if (||
+  (call ascii_equal (-> r line) colon "content-length")
+  (call ascii_equal (-> r line) colon "transfer-encoding"))
+            (call http_fail r HTTP_ERROR_SYNTAX))
+          (return)))
+      (if (call ascii_equal (-> r line) colon "content-length")
+        (block
+          (var size_t value)
+          (if (||
+  (! (call decimal_length (+ (-> r line) start) (- end start) (& value)))
+  (&& (-> r length_seen) (!= (-> r declared_length) value)))
+            (block
+              (call http_fail r HTTP_ERROR_SYNTAX)
+              (return)))
+          (if (> value NET_HTTP_BODY_CAPACITY)
+            (block
+              (call http_fail r HTTP_ERROR_CAPACITY)
+              (return)))
+          (= (-> r length_seen) true)
+          (= (-> r declared_length) value))
+        (if (call ascii_equal (-> r line) colon "transfer-encoding")
+          (block
+            (if (|| (-> r transfer_seen) (! (call ascii_equal (+ (-> r line) start) (- end start) "chunked")))
+              (block
+                (call http_fail r HTTP_ERROR_UNSUPPORTED)
+                (return)))
+            (= (-> r transfer_seen) true)
+            (= (-> r chunked) true))
+          (if (&&
+  (call ascii_equal (-> r line) colon "content-encoding")
+  (! (call ascii_equal (+ (-> r line) start) (- end start) "identity")))
+            (block
+              (call http_fail r HTTP_ERROR_UNSUPPORTED))))))
+    (fn (static void) finish_headers
+      ((HttpResponse (* r)))
+      (if (< (-> r status) 200)
+        (block
+          (if (|| (== (-> r status) 101) (> (++ (-> r interim)) 8))
+            (block
+              (call http_fail r HTTP_ERROR_UNSUPPORTED)
+              (return)))
+          (= (-> r state) HTTP_STATUS)
+          (= (-> r length_seen) (= (-> r transfer_seen) (= (-> r chunked) false)))
+          (= (-> r declared_length) 0)
+          (return)))
+      (if (|| (== (-> r status) 204) (== (-> r status) 304))
+        (block
+          (= (-> r state) HTTP_COMPLETE)
+          (return)))
+      (if (&& (-> r transfer_seen) (-> r length_seen))
+        (block
+          (call http_fail r HTTP_ERROR_SYNTAX)
+          (return)))
+      (if (-> r chunked)
+        (block
+          (= (-> r state) HTTP_CHUNK_SIZE)
+          (return)))
+      (if (-> r length_seen)
+        (block
+          (= (-> r remaining) (-> r declared_length))
+          (= (-> r state) (?: (-> r remaining) HTTP_FIXED HTTP_COMPLETE)))
+        (= (-> r state) HTTP_UNTIL_CLOSE)))
+    (fn (static void) complete_line
+      ((HttpResponse (* r)) (size_t length))
+      (if (== (-> r state) HTTP_STATUS)
+        (block
+          (if (||
+  (||
+    (||
+      (||
+        (||
+          (||
+            (||
+              (||
+                (||
+                  (|| (< length 12) (call memcmp (-> r line) "HTTP/1." 7))
+                  (&& (!= ([] (-> r line) 7) '0') (!= ([] (-> r line) 7) '1')))
+                (!= ([] (-> r line) 8) (char "' '")))
+              (< ([] (-> r line) 9) '1'))
+            (> ([] (-> r line) 9) '5'))
+          (< ([] (-> r line) 10) '0'))
+        (> ([] (-> r line) 10) '9'))
+      (< ([] (-> r line) 11) '0'))
+    (> ([] (-> r line) 11) '9'))
+  (&& (> length 12) (!= ([] (-> r line) 12) (char "' '"))))
+            (block
+              (call http_fail r HTTP_ERROR_SYNTAX)
+              (return)))
+          (=
+            (-> r status)
+            (cast
+              uint16_t
+              (-
+                (+ (+ (* (- ([] (-> r line) 9) '0') 100) (* (- ([] (-> r line) 10) '0') 10)) ([] (-> r line) 11))
+                '0')))
+          (= (-> r state) HTTP_HEADERS))
+        (if (== (-> r state) HTTP_HEADERS)
+          (block
+            (if length
+              (call header_line r length)
+              (call finish_headers r)))
+          (if (== (-> r state) HTTP_TRAILERS)
+            (block
+              (if length
+                (call header_line r length)
+                (= (-> r state) HTTP_COMPLETE)))
+            (if (== (-> r state) HTTP_CHUNK_SIZE)
+              (block
+                (var size_t value 0)
+                (var size_t i 0)
+                (for ()
+                  (&& (< i length) (!= ([] (-> r line) i) (char "';'")))
+                  (++ i)
+                  (block
+                    (var uint8_t byte ([] (-> r line) i))
+                    (var unsigned digit)
+                    (if (&& (>= byte '0') (<= byte '9'))
+                      (= digit (- byte '0'))
+                      (if (&& (>= byte 'a') (<= byte 'f'))
+                        (= digit (+ (- byte 'a') 10))
+                        (if (&& (>= byte 'A') (<= byte 'F'))
+                          (= digit (+ (- byte 'A') 10))
+                          (block
+                            (call http_fail r HTTP_ERROR_SYNTAX)
+                            (return)))))
+                    (if (> value (/ (- SIZE_MAX digit) 16))
+                      (block
+                        (call http_fail r HTTP_ERROR_CAPACITY)
+                        (return)))
+                    (= value (+ (* value 16) digit))))
+                (if (== i 0)
+                  (block
+                    (call http_fail r HTTP_ERROR_SYNTAX)
+                    (return)))
+                (if (> value (- NET_HTTP_BODY_CAPACITY (-> r length)))
+                  (block
+                    (call http_fail r HTTP_ERROR_CAPACITY)
+                    (return)))
+                (= (-> r remaining) value)
+                (= (-> r state) (?: value HTTP_CHUNK_DATA HTTP_TRAILERS))))))))
+    (fn size_t http_response_feed
+      ((HttpResponse (* r)) (cesta_read_bytes input))
+      (var size_t consumed 0)
+      (while (&& (&& (< consumed (. input len)) (!= (-> r state) HTTP_COMPLETE)) (!= (-> r state) HTTP_FAILED))
+        (block
+          (var uint8_t byte ([] (. input data) (post++ consumed)))
+          (if (||
+  (|| (== (-> r state) HTTP_FIXED) (== (-> r state) HTTP_UNTIL_CLOSE))
+  (== (-> r state) HTTP_CHUNK_DATA))
+            (block
+              (if (== (-> r length) NET_HTTP_BODY_CAPACITY)
+                (block
+                  (call http_fail r HTTP_ERROR_CAPACITY)
+                  break))
+              (= ([] (-> r body) (post++ (-> r length))) byte)
+              (if (&& (== (-> r state) HTTP_FIXED) (== (-- (-> r remaining)) 0))
+                (= (-> r state) HTTP_COMPLETE)
+                (if (&& (== (-> r state) HTTP_CHUNK_DATA) (== (-- (-> r remaining)) 0))
+                  (= (-> r state) HTTP_CHUNK_CR))))
+            (if (== (-> r state) HTTP_CHUNK_CR)
+              (block
+                (if (== byte '\r')
+                  (= (-> r state) HTTP_CHUNK_LF)
+                  (call http_fail r HTTP_ERROR_SYNTAX)))
+              (if (== (-> r state) HTTP_CHUNK_LF)
+                (block
+                  (if (== byte '\n')
+                    (= (-> r state) HTTP_CHUNK_SIZE)
+                    (call http_fail r HTTP_ERROR_SYNTAX)))
+                (block
+                  (if (|| (> (++ (-> r header_bytes)) 8192) (== (-> r line_length) NET_HTTP_LINE_CAPACITY))
+                    (block
+                      (call http_fail r HTTP_ERROR_CAPACITY)
+                      break))
+                  (if (== byte '\n')
+                    (block
+                      (if (|| (== (-> r line_length) 0) (!= ([] (-> r line) (- (-> r line_length) 1)) '\r'))
+                        (block
+                          (call http_fail r HTTP_ERROR_SYNTAX)
+                          break))
+                      (call complete_line r (- (-> r line_length) 1))
+                      (= (-> r line_length) 0))
+                    (block
+                      (if (||
+  (||
+    (&& (-> r line_length) (== ([] (-> r line) (- (-> r line_length) 1)) '\r'))
+    (&& (&& (< byte 32) (!= byte '\r')) (!= byte '\t')))
+  (== byte 127))
+                        (block
+                          (call http_fail r HTTP_ERROR_SYNTAX)
+                          break))
+                      (= ([] (-> r line) (post++ (-> r line_length))) byte)))))))))
+      (return consumed))
+    (fn void http_response_end
+      ((HttpResponse (* r)))
+      (if (== (-> r state) HTTP_UNTIL_CLOSE)
+        (= (-> r state) HTTP_COMPLETE)
+        (if (&& (!= (-> r state) HTTP_COMPLETE) (!= (-> r state) HTTP_FAILED))
+          (call http_fail r HTTP_ERROR_INCOMPLETE))))
+  ))

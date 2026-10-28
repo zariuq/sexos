@@ -1,0 +1,35 @@
+Module NetworkTxProtocol {
+  Theory Protocols() {
+    Empty Equations {
+      (network_tx_run) == (Protocol "cesta-protocol/1"
+        (Context TxContext)
+        (Hooks
+          (Hook valid tx_valid guard (Requires binding) (Uses) (Proves valid_frame))
+          (Hook submit tx_submit effect (Requires valid_frame binding) (Uses frame) (Proves submitted))
+          (Hook ready tx_ready effect (Requires submitted binding) (Uses frame) (Proves complete))
+          (Hook failed tx_failed guard (Requires submitted binding) (Uses frame) (Proves))
+          (Hook yield tx_yield prepare (Requires submitted binding) (Uses frame) (Proves))
+          (Hook timeout tx_timeout prepare (Requires submitted binding) (Uses frame) (Proves)))
+        (Resources (Resource frame tx_acquire tx_release tx_transfer
+          (AcquireRequires valid_frame binding) (TransferRequires submitted binding)))
+        (Entry (Facts binding) (Owns))
+        (Body (Call valid
+          (Acquire frame
+            (Call submit
+              (Loop (Limit budget)
+                (Call ready
+                  (Transfer frame (Return answered))
+                  (Call failed
+                    (Transfer frame (Return raised))
+                    (Call yield (Continue) (Continue))))
+                (Call timeout
+                  (Transfer frame (Return raised))
+                  (Transfer frame (Return raised))))
+              (Release frame (Return raised)))
+            (Return raised))
+          (Return declined)))
+        (Checks (Fact valid_frame tx_frame_fact) (Fact submitted tx_submitted)
+                (Fact complete tx_complete) (Fact binding tx_binding) (Own frame tx_owned)));
+    }
+  }
+}

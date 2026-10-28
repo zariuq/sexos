@@ -1,0 +1,98 @@
+#if !defined(SEXOS_NETWORK_SERVICE_H)
+#define SEXOS_NETWORK_SERVICE_H 1
+
+#include "sexos_rpc.h"
+
+#include "sexos_mmio.h"
+
+#include "network_result.h"
+
+#define NET_HTTP_BODY_CAPACITY 256u
+
+#define NET_HTTP_LINE_CAPACITY 1024u
+
+typedef enum HttpState {
+  HTTP_STATUS, HTTP_HEADERS, HTTP_FIXED, HTTP_UNTIL_CLOSE, HTTP_CHUNK_SIZE, HTTP_CHUNK_DATA, HTTP_CHUNK_CR, HTTP_CHUNK_LF, HTTP_TRAILERS, HTTP_COMPLETE, HTTP_FAILED
+}
+HttpState;
+
+typedef enum HttpError {
+  HTTP_ERROR_NONE, HTTP_ERROR_SYNTAX, HTTP_ERROR_CAPACITY, HTTP_ERROR_INCOMPLETE, HTTP_ERROR_UNSUPPORTED
+}
+HttpError;
+
+typedef struct HttpResponse {
+  HttpState state;
+  HttpError error;
+  uint16_t status;
+  uint8_t body[NET_HTTP_BODY_CAPACITY];
+  size_t length;
+  uint8_t line[NET_HTTP_LINE_CAPACITY];
+  size_t line_length;
+  size_t header_bytes;
+  size_t remaining;
+  size_t declared_length;
+  bool length_seen;
+  bool transfer_seen;
+  bool chunked;
+  unsigned interim;
+}
+HttpResponse;
+
+void http_response_init(HttpResponse *response);
+
+size_t http_response_feed(HttpResponse *response, cesta_read_bytes input);
+
+void http_response_end(HttpResponse *response);
+
+typedef enum NetworkStep {
+  NET_PENDING, NET_READY, NET_FAILED
+}
+NetworkStep;
+
+typedef enum NetworkFailure {
+  NET_OK, NET_DEVICE_ERROR, NET_RESOURCE_ERROR, NET_TIMEOUT, NET_RESET, NET_HTTP_ERROR
+}
+NetworkFailure;
+
+typedef struct NetworkFrame {
+  uint8_t data[2048];
+  size_t length;
+}
+NetworkFrame;
+
+typedef struct NetworkDevice {
+  uint64_t bar;
+  uint64_t rx_desc;
+  uint64_t tx_desc;
+  uint64_t rx_page[8];
+  uint64_t tx_page;
+  uint64_t tx_phys;
+  unsigned rx_next;
+  unsigned tx_next;
+  bool tx_busy;
+  bool failed;
+  NetworkFailure failure;
+  uint8_t mac[6];
+}
+NetworkDevice;
+
+bool network_device_open(NetworkDevice *device);
+
+bool network_device_submit(NetworkDevice *device, cesta_read_bytes frame);
+
+NetworkStep network_device_poll_tx(NetworkDevice *device);
+
+NetworkStep network_device_receive(NetworkDevice *device, NetworkFrame *frame);
+
+bool network_device_send(NetworkDevice *device, cesta_read_bytes frame);
+
+NetworkFailure network_fetch(NetworkDevice *device, HttpResponse *response);
+
+void network_trace_body(const char *label, cesta_read_bytes body);
+
+void network_service_main(void);
+
+void network_browser_main(void);
+
+#endif

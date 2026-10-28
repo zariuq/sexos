@@ -1,0 +1,36 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (cpp-if "!defined(SEXOS_CESTA_CLIENT_H)"
+      (then
+        (define SEXOS_CESTA_CLIENT_H "1")
+        (include <stdint.h>)
+        (include <stddef.h>)
+        (include <stdbool.h>)
+        (include "client_constants.h")
+        (include "packed_words.h")
+        (include "format_bytes.h")
+
+        (typedef
+          (struct SexosReply (uint64_t status) (uint64_t value)) SexosReply)
+        (typedef
+          (struct SexosListener (unsigned wrapper_budget)) SexosListener)
+        (typedef
+          (struct SexosMessage
+            (uint64_t type_id) (uint64_t arg0) (uint64_t arg1) (uint64_t arg2)
+            (uint32_t caller_pd) (uint32_t padding)) SexosMessage)
+
+        (var SexosReply
+          (function sexos_pdx_call (uint64_t slot) (uint64_t opcode)
+            (uint64_t arg0) (uint64_t arg1) (uint64_t arg2)))
+        (var SexosMessage (function sexos_listen (SexosListener (* listener)) (uint64_t slot)))
+        (var SexosMessage (function sexos_listen_once (uint64_t slot)))
+        (var void (function sexos_yield void))
+        (var void (function sexos_raw_print ((const char) (* text)) (size_t length)))
+        (var void (function sexos_line ((const char) (* format)) ...))
+        (native "void sexos_line(const char *format, ...) __attribute__((format(printf, 1, 2)));\n")
+        (var void (function sexos_fail void))
+        (var void (function kaleidoscope_main void))
+        (var size_t (function sexos_strlen ((const char) (* text))))
+        (native "_Static_assert(sizeof(SexosMessage) == 40 && offsetof(SexosMessage, caller_pd) == 32, \"PDX message ABI\");\n")
+        (native "_Static_assert(sizeof(SexosReply) == 16 && offsetof(SexosReply, value) == 8, \"PDX call ABI\");\n"))
+  )))

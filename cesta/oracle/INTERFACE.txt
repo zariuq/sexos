@@ -1,0 +1,69 @@
+Boot oracle
+-----------
+
+Compares what a SexOS image does at boot with what the upstream Rust image does.
+
+  reference/build.sh REV OUT_DIR LIMINE_DIR [TOOLCHAIN] [LOCKFILE]
+      Builds the upstream Rust system at REV from a git archive export. With
+      bubblewrap available it runs in two phases: cargo fetch with network
+      (no crate code runs), then the upstream build with no network, the
+      toolchain and system directories read-only, and only the export and its
+      CARGO_HOME writable. Paths inside the sandbox are fixed (/src, /toolchain,
+      /cargo-home), so the kernel and every server come out bit for bit the
+      same on every build; only the ISO container's directory timestamps vary.
+      LOCKFILE pins dependency versions (the build fails if cargo changes it).
+      Keeps the ISO, the Cargo.lock, the logs and a manifest (toolchain,
+      Limine, isolation, lockfile, hashes of the ISO and every staged binary).
+
+  run.sh ISO LOG SECONDS [--fixed-clock] [--until MARKER]...
+      Boots ISO headless on the upstream runtime gate's machine (q35, 512 MiB,
+      PKU, xHCI with a USB tablet; no network, no writable disk).
+      --fixed-clock takes time from instruction counts and starts the RTC at a
+      fixed date. --until stops once every marker has appeared.
+
+  boot.sh ISO OUT_PREFIX
+      run.sh with the fixed clock until every line of milestones.txt has
+      appeared (at most 300 s), then oracle.py observe. Writes OUT_PREFIX.log
+      and OUT_PREFIX.json.
+
+  oracle.py observe LOG [--checker scripts/check_bootgraph_log.py]
+  oracle.py compare REF.json NEW.json [--sections ...]
+      An observation lists the modules loaded, protection domains spawned
+      (name, id, key), capabilities granted, handoffs, the first scheduled
+      domain, the ready markers, first sends on each edge, contract
+      fingerprints, whether the clock advances, fault markers, and the
+      upstream checker's gate verdicts. Segment addresses and entry points are
+      kept apart (sections "segments", "entries"): they change whenever a
+      binary changes. compare checks the behaviour sections by default.
+
+  test_oracle.py LOG
+      Controls on a reference log. Eleven mutations of what the boot did (a
+      missing ready marker, grant, collar grant or first send; a changed key,
+      handoff, fingerprint or first scheduled domain; a fault; a dropped module;
+      swapped spawns) must each change the observation. 300 forced splits of
+      whole marker records, made the way preemption makes them, must never
+      change a section silently: the observation stays the same or the changed
+      section is marked inconclusive. The inconclusive share must stay at most
+      10%; the reference log itself must have no inconclusive section.
+
+Split lines. All domains print to one serial line, and a domain can be
+preempted in the middle of a line, with or without a timer or scheduler print
+from interrupt context. The rest of its line appears later, at the start of a
+physical line, after whatever other domains printed. The log does not say
+which domain printed what, so lines are not rejoined wholesale. For each
+pattern, a cut is recognised where the pattern's literal prefix starts without
+a complete match, or where a line ends inside that prefix or an unclosed
+bracket; the cut text ends at the end of the line (when an interrupt print was
+removed there) or where another domain's bracketed marker begins. Each cut
+takes the earliest later line that continues it and that no earlier cut took.
+A section is marked inconclusive when the log can be read more than one way
+there: a cut with continuations giving different texts, cuts competing for one
+continuation, or a complete value whose possible continuation would extend it
+mid-token. compare reports inconclusive sections apart from differences.
+
+reference/4a040a86.json is the observation of the upstream image built in the
+sandbox at 4a040a86 with reference/4a040a86.Cargo.lock (boot.sh). Two
+separately built images gave identical observations, binary sections included,
+and no section is inconclusive. The upstream checker fails ORDER_GATE on that
+image: silkbar and silk-shell send to sexdisplay before it reports ready.
+Comparisons require equal verdicts, not passing ones.

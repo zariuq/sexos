@@ -1,0 +1,536 @@
+{
+ "checker": {
+  "exit": 1,
+  "gates": {
+   "BOOTGRAPH_GATE": [
+    "PASS",
+    ""
+   ],
+   "CAP_GRANT_GATE": [
+    "PASS",
+    ""
+   ],
+   "CLOCK_GATE": [
+    "PASS",
+    "WARN: silkbar.send_update.drop.clock count high (N)"
+   ],
+   "FAULT_GATE": [
+    "PASS",
+    ""
+   ],
+   "ORDER_GATE": [
+    "FAIL",
+    "silkbar->sexdisplay receiver_ready(N)>=send(N); silk-shell->sexdisplay receiver_ready(N)>=send(N)"
+   ]
+  }
+ },
+ "clock": {
+  "monotonic": true,
+  "sends": true
+ },
+ "collar_grants": [
+  "auto grant_id=1 subject=200 object=1 op=LinkObjectToBuffer",
+  "auto grant_id=10 subject=202 object=5 op=LinkObjectToBuffer",
+  "auto grant_id=11 subject=200 object=6 op=LinkObjectToBuffer",
+  "auto grant_id=12 subject=202 object=6 op=LinkObjectToBuffer",
+  "auto grant_id=2 subject=202 object=1 op=LinkObjectToBuffer",
+  "auto grant_id=3 subject=200 object=2 op=LinkObjectToBuffer",
+  "auto grant_id=4 subject=202 object=2 op=LinkObjectToBuffer",
+  "auto grant_id=5 subject=200 object=3 op=LinkObjectToBuffer",
+  "auto grant_id=6 subject=202 object=3 op=LinkObjectToBuffer",
+  "auto grant_id=7 subject=200 object=4 op=LinkObjectToBuffer",
+  "auto grant_id=8 subject=202 object=4 op=LinkObjectToBuffer",
+  "auto grant_id=9 subject=200 object=5 op=LinkObjectToBuffer",
+  "init count=12 generation=13"
+ ],
+ "entries": {
+  "kaleidoscope": "0x4e001ae0",
+  "linen": "0x46003de0",
+  "quil": "0x48007c50",
+  "sexbell": "0x49002030",
+  "sexdisplay": "0x40007fd0",
+  "sexdrive": "0x41009800",
+  "sexfiles": "0x4a010d50",
+  "sexinput": "0x430027d0",
+  "sexnet": "0x4c001af0",
+  "sexstore": "0x47002b30",
+  "sexusb": "0x44007220",
+  "silk-shell": "0x42040750",
+  "silkbar": "0x45002720",
+  "spindle": "0x4b01aa10"
+ },
+ "faults": {
+  "#GP": 0,
+  "#PF": 0,
+  "fault.kill": 0,
+  "panic": 0
+ },
+ "fingerprints": [
+  "abi=4 layout=11 theme=10 fp=0x00201004584e4745"
+ ],
+ "first_scheduled": 1,
+ "first_sends": [
+  "from=sexusb to=sexinput slot=9 op=HID_REPORT",
+  "from=silk-shell to=sexdisplay slot=5 op=SURFACE_UPDATE",
+  "from=silkbar to=sexdisplay slot=SLOT_DISPLAY op=OP_SILKBAR_UPDATE"
+ ],
+ "grants": [
+  "from=kernel to=10 slot=SLOT_BELL target=10 ok=1 optional=1",
+  "from=kernel to=11 slot=SLOT_BLOCK target=2 ok=1 optional=1",
+  "from=kernel to=12 slot=SLOT_BELL target=10 ok=1 optional=1",
+  "from=kernel to=12 slot=SLOT_DISPLAY target=1 ok=1",
+  "from=kernel to=12 slot=SLOT_LINEN target=7 ok=1 optional=1",
+  "from=kernel to=12 slot=SLOT_SHELL target=3 ok=1 optional=1",
+  "from=kernel to=12 slot=SLOT_STORAGE target=11 ok=1 optional=1",
+  "from=kernel to=3 slot=SLOT_BELL target=10 ok=1 optional=1",
+  "from=kernel to=3 slot=SLOT_DISPLAY target=1 ok=1",
+  "from=kernel to=3 slot=SLOT_LINEN target=7 ok=1 optional=1",
+  "from=kernel to=3 slot=SLOT_QUIL target=9 ok=1 optional=1",
+  "from=kernel to=3 slot=SLOT_SEXSTORE target=8 ok=1 optional=1",
+  "from=kernel to=3 slot=SLOT_SHELL target=3 ok=1",
+  "from=kernel to=3 slot=SLOT_SILKBAR target=6 ok=1 optional=1",
+  "from=kernel to=3 slot=SLOT_SPINDLE target=12 ok=1 optional=1",
+  "from=kernel to=4 slot=SLOT_INPUT target=input_ring ok=1",
+  "from=kernel to=4 slot=SLOT_SHELL target=3 ok=1",
+  "from=kernel to=5 slot=9 target=4 ok=1 optional=1",
+  "from=kernel to=6 slot=SLOT_BELL target=10 ok=1 optional=1",
+  "from=kernel to=6 slot=SLOT_DISPLAY target=1 ok=1",
+  "from=kernel to=7 slot=SLOT_DISPLAY target=1 ok=1",
+  "from=kernel to=7 slot=SLOT_STORAGE target=11 ok=1 optional=1",
+  "from=kernel to=9 slot=SLOT_DISPLAY target=1 ok=1",
+  "from=kernel to=9 slot=SLOT_STORAGE target=11 ok=1 optional=1"
+ ],
+ "handoffs": [
+  [
+   "sexdisplay",
+   1
+  ],
+  [
+   "sexdrive",
+   2
+  ],
+  [
+   "silk-shell",
+   3
+  ],
+  [
+   "sexinput",
+   4
+  ],
+  [
+   "sexusb",
+   5
+  ],
+  [
+   "silkbar",
+   6
+  ],
+  [
+   "linen",
+   7
+  ],
+  [
+   "sexstore",
+   8
+  ],
+  [
+   "quil",
+   9
+  ],
+  [
+   "sexbell",
+   10
+  ],
+  [
+   "sexfiles",
+   11
+  ],
+  [
+   "spindle",
+   12
+  ],
+  [
+   "sexnet",
+   13
+  ],
+  [
+   "unknown",
+   14
+  ]
+ ],
+ "inconclusive": [],
+ "interrupted_lines": 4,
+ "memlend": [
+  "begin caller_pd=11 target_pd=2 slot=17",
+  "ok"
+ ],
+ "modules": [
+  "servers/sexdisplay",
+  "servers/silk-shell",
+  "apps/sexdrive",
+  "servers/sexinput",
+  "servers/sexusb",
+  "servers/silkbar",
+  "servers/linen",
+  "servers/sexstore",
+  "servers/quil",
+  "servers/sexbell",
+  "servers/sexfiles",
+  "apps/spindle",
+  "servers/sexnet",
+  "apps/kaleidoscope",
+  "apps/purple-scanout"
+ ],
+ "phase25_complete": true,
+ "ready": [
+  "browser.render.buffer",
+  "linen",
+  "quil",
+  "sexbell",
+  "sexdisplay",
+  "sexdrive",
+  "sexfiles",
+  "sexfiles.bridge.diskfs.buf",
+  "sexfiles.init",
+  "sexinput",
+  "sexnet.passive",
+  "sexstore",
+  "sexusb",
+  "sexusb.route.sexinput",
+  "silk-shell",
+  "silk-shell.boot.ui",
+  "silk-shell.spindle.route",
+  "silk-shell.ui",
+  "silkbar",
+  "silkshell",
+  "spindle"
+ ],
+ "scheduler_ready": true,
+ "segments": {
+  "kaleidoscope": [
+   [
+    "0x4e000000",
+    "0x9cc"
+   ],
+   [
+    "0x4e0019d0",
+    "0x1fc3"
+   ],
+   [
+    "0x4e004998",
+    "0x668"
+   ],
+   [
+    "0x4e005b48",
+    "0x4"
+   ]
+  ],
+  "linen": [
+   [
+    "0x46000000",
+    "0x138c"
+   ],
+   [
+    "0x46002390",
+    "0x638f"
+   ],
+   [
+    "0x46009720",
+    "0x8e0"
+   ],
+   [
+    "0x4600a948",
+    "0x5e8"
+   ]
+  ],
+  "quil": [
+   [
+    "0x48000000",
+    "0x203c"
+   ],
+   [
+    "0x48003040",
+    "0x77df"
+   ],
+   [
+    "0x4800b820",
+    "0x7e0"
+   ],
+   [
+    "0x4800cd40",
+    "0x6172"
+   ]
+  ],
+  "sexbell": [
+   [
+    "0x49000000",
+    "0xefc"
+   ],
+   [
+    "0x49001f00",
+    "0x45b3"
+   ],
+   [
+    "0x490074b8",
+    "0xb48"
+   ],
+   [
+    "0x490086a8",
+    "0x440"
+   ]
+  ],
+  "sexdisplay": [
+   [
+    "0x40000000",
+    "0x2b0c"
+   ],
+   [
+    "0x40003b10",
+    "0xc1b5"
+   ],
+   [
+    "0x40010cc8",
+    "0x338"
+   ],
+   [
+    "0x40011f18",
+    "0xfd36d"
+   ]
+  ],
+  "sexdrive": [
+   [
+    "0x41000000",
+    "0x40ec"
+   ],
+   [
+    "0x410050f0",
+    "0xb5b3"
+   ],
+   [
+    "0x410116a8",
+    "0x958"
+   ],
+   [
+    "0x410127e8",
+    "0x41"
+   ]
+  ],
+  "sexfiles": [
+   [
+    "0x4a000000",
+    "0x2fd4"
+   ],
+   [
+    "0x4a003fe0",
+    "0xf043"
+   ],
+   [
+    "0x4a014028",
+    "0xfd8"
+   ],
+   [
+    "0x4a0155e8",
+    "0x530"
+   ]
+  ],
+  "sexinput": [
+   [
+    "0x43000000",
+    "0x1684"
+   ],
+   [
+    "0x43002690",
+    "0x5483"
+   ],
+   [
+    "0x43008b18",
+    "0x4e8"
+   ],
+   [
+    "0x43009c88",
+    "0xb0"
+   ]
+  ],
+  "sexnet": [
+   [
+    "0x4c000000",
+    "0x9d4"
+   ],
+   [
+    "0x4c0019e0",
+    "0x21bf"
+   ],
+   [
+    "0x4c004ba0",
+    "0x460"
+   ],
+   [
+    "0x4c005d60",
+    "0x88"
+   ]
+  ],
+  "sexstore": [
+   [
+    "0x47000000",
+    "0x150c"
+   ],
+   [
+    "0x47002510",
+    "0x41e5"
+   ],
+   [
+    "0x470076f8",
+    "0x908"
+   ],
+   [
+    "0x47008858",
+    "0x550"
+   ]
+  ],
+  "sexusb": [
+   [
+    "0x44000000",
+    "0x5d3c"
+   ],
+   [
+    "0x44006d40",
+    "0x12125"
+   ],
+   [
+    "0x44019e68",
+    "0x198"
+   ],
+   [
+    "0x4401afe0",
+    "0xac"
+   ]
+  ],
+  "silk-shell": [
+   [
+    "0x42000000",
+    "0x11044"
+   ],
+   [
+    "0x42012050",
+    "0x4e9f3"
+   ],
+   [
+    "0x42061a48",
+    "0x25b8"
+   ],
+   [
+    "0x420642c0",
+    "0x1e3a8"
+   ]
+  ],
+  "silkbar": [
+   [
+    "0x45000000",
+    "0x1394"
+   ],
+   [
+    "0x450023a0",
+    "0x3745"
+   ],
+   [
+    "0x45006ae8",
+    "0x518"
+   ],
+   [
+    "0x45007c48",
+    "0x8d"
+   ]
+  ],
+  "spindle": [
+   [
+    "0x4b000000",
+    "0xca6c"
+   ],
+   [
+    "0x4b00da70",
+    "0x12063"
+   ],
+   [
+    "0x4b020ad8",
+    "0x528"
+   ],
+   [
+    "0x4b021ec0",
+    "0x1c218"
+   ]
+  ]
+ },
+ "spawned_without_ok": [],
+ "spawns": [
+  [
+   "sexdisplay",
+   1,
+   1
+  ],
+  [
+   "sexdrive",
+   2,
+   2
+  ],
+  [
+   "silk-shell",
+   3,
+   3
+  ],
+  [
+   "sexinput",
+   4,
+   4
+  ],
+  [
+   "sexusb",
+   5,
+   5
+  ],
+  [
+   "silkbar",
+   6,
+   6
+  ],
+  [
+   "linen",
+   7,
+   7
+  ],
+  [
+   "sexstore",
+   8,
+   8
+  ],
+  [
+   "quil",
+   9,
+   9
+  ],
+  [
+   "sexbell",
+   10,
+   10
+  ],
+  [
+   "sexfiles",
+   11,
+   11
+  ],
+  [
+   "spindle",
+   12,
+   12
+  ],
+  [
+   "sexnet",
+   13,
+   13
+  ],
+  [
+   "kaleidoscope",
+   14,
+   15
+  ]
+ ]
+}

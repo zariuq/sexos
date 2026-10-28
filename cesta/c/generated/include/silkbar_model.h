@@ -1,0 +1,354 @@
+#if !defined(SEXOS_SILKBAR_MODEL_H)
+#define SEXOS_SILKBAR_MODEL_H 1
+
+#include <stdint.h>
+
+#include <stddef.h>
+
+#include <stdbool.h>
+
+/*SilkBar top-strip model, from crates/silkbar-model. Names follow the Rust crate.*/
+
+/*Geometry constants (default positions for layout construction).*/
+
+#define PANEL_X ((size_t)80)
+
+#define PANEL_Y ((size_t)10)
+
+#define PANEL_W ((size_t)1120)
+
+#define PANEL_H ((size_t)38)
+
+#define PANEL_GLOW ((size_t)2)
+
+#define PANEL_RADIUS_STEP ((size_t)3)
+
+#define PANEL_MARGIN_TOP ((size_t)10)
+
+#define WORKSPACE_COUNT ((size_t)5)
+
+#define MAX_CHIPS ((size_t)4)
+
+/*Selected window option bits (match OPTION_* in silk-shell).*/
+
+#define OPTION_CLOSE UINT32_C(1)
+
+#define OPTION_ZOOM UINT32_C(2)
+
+#define OPTION_MINIMIZE UINT32_C(4)
+
+#define OPTION_MOVE UINT32_C(8)
+
+#define WS_Y ((size_t)18)
+
+#define WS_H ((size_t)22)
+
+#define WS_INACTIVE_W ((size_t)20)
+
+#define WS_ACTIVE_W ((size_t)30)
+
+#define WS_X0 ((size_t)557)
+
+#define WS_X1 ((size_t)589)
+
+#define WS_X2 ((size_t)625)
+
+#define WS_X3 ((size_t)671)
+
+#define WS_X4 ((size_t)707)
+
+#define LAUNCHER_X ((size_t)100)
+
+#define LAUNCHER_Y ((size_t)19)
+
+#define LAUNCHER_W ((size_t)20)
+
+#define LAUNCHER_H ((size_t)20)
+
+#define CHIP_Y ((size_t)18)
+
+#define CHIP_H ((size_t)22)
+
+#define CHIP_W ((size_t)18)
+
+#define CHIP_X0 ((size_t)930)
+
+#define CHIP_X1 ((size_t)958)
+
+#define CHIP_X2 ((size_t)986)
+
+#define CHIP_X3 ((size_t)1090)
+
+#define CLOCK_W ((size_t)80)
+
+#define CHIP_X_BELL ((size_t)1020)
+
+/*Layout boxes: 1 launcher + 5 workspaces + 4 chips + 1 bell.*/
+
+#define LAYOUT_COUNT ((size_t)11)
+
+/*Model layout versions (not the PDX wire protocol).*/
+
+#define ABI_VERSION UINT32_C(4)
+
+#define SILK_DE_BAR_ABI_V1 UINT32_C(4)
+
+#define SILK_DE_BAR_LAYOUT_V1 UINT32_C(11)
+
+#define SILK_DE_BAR_THEME_V1 UINT32_C(10)
+
+#define SILK_DE_REQUIRED_WORKSPACE_SLOTS WORKSPACE_COUNT
+
+#define SILK_DE_REQUIRED_CHIP_SLOTS MAX_CHIPS
+
+#define SILK_DE_CONTRACT_MAGIC UINT32_C(0x53444241)
+
+#define SILK_DE_REQUIRED_MODULES LAYOUT_COUNT
+
+#define SILK_DE_REQUIRED_CHIPS MAX_CHIPS
+
+#define SILKBAR_WORKSPACE_COUNT WORKSPACE_COUNT
+
+#define SILKBAR_WORKSPACE_IDX_MIN ((uint8_t)0)
+
+#define SILKBAR_WORKSPACE_IDX_MAX ((uint8_t)(WORKSPACE_COUNT - 1))
+
+#define SILKBAR_DEFAULT_ACTIVE_WORKSPACE_IDX ((uint8_t)2)
+
+#define SILKBAR_CHIP_COUNT MAX_CHIPS
+
+#define SILKBAR_CHIP_IDX_MIN ((uint8_t)0)
+
+#define SILKBAR_CHIP_IDX_MAX ((uint8_t)(MAX_CHIPS - 1))
+
+/*PDX protocol: ABI version returned by OP_SILKBAR_GET_ABI, and opcodes.*/
+
+#define SILKBAR_ABI_VERSION UINT64_C(3)
+
+#define OP_SILKBAR_PING UINT64_C(0xF0)
+
+#define OP_SILKBAR_GET_ABI UINT64_C(0xF1)
+
+#define OP_SILKBAR_UPDATE UINT64_C(0xF2)
+
+#define APPEARANCE_TOKEN_FOCUS_SURFACE ((size_t)0)
+
+#define APPEARANCE_TOKEN_FRAME_RIM ((size_t)1)
+
+#define APPEARANCE_TOKEN_FRAME_TOP_BAR ((size_t)2)
+
+#define APPEARANCE_TOKEN_ACTIVE_TAB ((size_t)3)
+
+#define APPEARANCE_TOKEN_INACTIVE_TAB ((size_t)4)
+
+#define APPEARANCE_TOKEN_CLOSE_LIGHT ((size_t)5)
+
+#define APPEARANCE_TOKEN_MINIMIZE_LIGHT ((size_t)6)
+
+#define APPEARANCE_TOKEN_ZOOM_LIGHT ((size_t)7)
+
+#define APPEARANCE_TOKEN_COUNT ((size_t)8)
+
+#define UPDATE_QUEUE_CAP ((size_t)32)
+
+typedef enum SilkBarModuleSlot {
+  SILKBAR_MODULE_SLOT_LAUNCHER = 0, SILKBAR_MODULE_SLOT_WORKSPACE0 = 1, SILKBAR_MODULE_SLOT_WORKSPACE1 = 2, SILKBAR_MODULE_SLOT_WORKSPACE2 = 3, SILKBAR_MODULE_SLOT_WORKSPACE3 = 4, SILKBAR_MODULE_SLOT_WORKSPACE4 = 5, SILKBAR_MODULE_SLOT_CHIP0 = 6, SILKBAR_MODULE_SLOT_CHIP1 = 7, SILKBAR_MODULE_SLOT_CHIP2 = 8, SILKBAR_MODULE_SLOT_CLOCK = 9, SILKBAR_MODULE_SLOT_BELL = 10
+}
+SilkBarModuleSlot;
+
+typedef enum SilkBarChipSlot {
+  SILKBAR_CHIP_SLOT_CHIP0 = 0, SILKBAR_CHIP_SLOT_CHIP1 = 1, SILKBAR_CHIP_SLOT_CHIP2 = 2, SILKBAR_CHIP_SLOT_CLOCK = 3
+}
+SilkBarChipSlot;
+
+/*Module and Action carry data: a tag and the payload its case uses.*/
+
+typedef enum SilkBarModuleTag {
+  SILKBAR_MODULE_LAUNCHER, SILKBAR_MODULE_WORKSPACES, SILKBAR_MODULE_STATUS_CHIP, SILKBAR_MODULE_CLOCK, SILKBAR_MODULE_BELL
+}
+SilkBarModuleTag;
+
+typedef struct SilkBarModule {
+  SilkBarModuleTag tag;
+  size_t index;
+}
+SilkBarModule;
+
+typedef enum SilkBarActionTag {
+  SILKBAR_ACTION_NONE, SILKBAR_ACTION_OPEN_LAUNCHER, SILKBAR_ACTION_SWITCH_WORKSPACE, SILKBAR_ACTION_TOGGLE_MODULE, SILKBAR_ACTION_OPEN_CLOCK, SILKBAR_ACTION_OPEN_BELL
+}
+SilkBarActionTag;
+
+typedef struct SilkBarAction {
+  SilkBarActionTag tag;
+  uint8_t workspace;
+  SilkBarModule module;
+}
+SilkBarAction;
+
+typedef struct SilkBarLayoutBox {
+  size_t x;
+  size_t y;
+  size_t w;
+  size_t h;
+  SilkBarModule module;
+  SilkBarAction action;
+}
+SilkBarLayoutBox;
+
+typedef struct SilkBarWorkspaceState {
+  uint8_t index;
+  bool active;
+  bool urgent;
+}
+SilkBarWorkspaceState;
+
+typedef enum SilkBarChipKind {
+  SILKBAR_CHIP_NET, SILKBAR_CHIP_WIFI, SILKBAR_CHIP_BATTERY, SILKBAR_CHIP_CLOCK
+}
+SilkBarChipKind;
+
+typedef struct SilkBarChipState {
+  SilkBarChipKind kind;
+  bool visible;
+}
+SilkBarChipState;
+
+typedef struct SilkBarBellState {
+  uint8_t total_visible;
+  uint8_t redacted_count;
+  uint8_t flags;
+  uint8_t pad;
+}
+SilkBarBellState;
+
+typedef struct SilkBarPhase1Ext {
+  uint32_t active_app_sid;
+  uint8_t accent_tint_idx;
+  bool palette_open;
+  uint8_t palette_selected;
+  uint8_t palette_available;
+  uint8_t pad;
+}
+SilkBarPhase1Ext;
+
+typedef struct SilkBar {
+  SilkBarLayoutBox layout[LAYOUT_COUNT];
+  SilkBarWorkspaceState workspaces[WORKSPACE_COUNT];
+  SilkBarChipState chips[MAX_CHIPS];
+  uint8_t clock_hh;
+  uint8_t clock_mm;
+  uint8_t clock_ss;
+  uint32_t selected_options_mask;
+  SilkBarBellState bell_state;
+  SilkBarPhase1Ext phase1;
+}
+SilkBar;
+
+typedef struct SilkBarTheme {
+  uint32_t bg_top;
+  uint32_t bg_bottom;
+  uint32_t panel_fill;
+  uint32_t panel_glow;
+  uint32_t text;
+  uint32_t muted;
+  uint32_t active;
+  uint32_t urgent;
+  uint32_t chip_fill;
+  uint32_t chip_border;
+}
+SilkBarTheme;
+
+typedef struct SilkBarBevelPalette {
+  uint32_t ws_active_highlight;
+  uint32_t ws_active_shadow;
+  uint32_t ws_inactive_highlight;
+  uint32_t ws_inactive_shadow;
+  uint32_t chip_highlight;
+  uint32_t glow_top_inner;
+  uint32_t glow_bottom_inner;
+  uint32_t glow_bottom_outer;
+  uint32_t panel_border_top;
+  uint32_t panel_border_bottom;
+  uint32_t launcher_highlight;
+  uint32_t launcher_shadow;
+  uint32_t launcher_fill;
+  uint32_t panel_body;
+}
+SilkBarBevelPalette;
+
+/*UpdateKind discriminants cross the PDX boundary as u32.*/
+
+typedef enum SilkBarUpdateKind {
+  SILKBAR_UPDATE_SET_WORKSPACE_ACTIVE = 0, SILKBAR_UPDATE_SET_WORKSPACE_URGENT = 1, SILKBAR_UPDATE_SET_CHIP_VISIBLE = 2, SILKBAR_UPDATE_SET_CHIP_KIND = 3, SILKBAR_UPDATE_SET_CLOCK = 4, SILKBAR_UPDATE_SET_THEME_TOKEN = 5, SILKBAR_UPDATE_SET_SELECTED_OPTIONS = 6, SILKBAR_UPDATE_SET_BELL_PRESENCE = 7, SILKBAR_UPDATE_SET_ACTIVE_APP = 8, SILKBAR_UPDATE_SET_TINT_ACCENT = 9, SILKBAR_UPDATE_SET_PALETTE_STATE = 10
+}
+SilkBarUpdateKind;
+
+/*repr(C): 16 bytes, kind/index/a/b.*/
+
+typedef struct SilkBarUpdate {
+  uint32_t kind;
+  uint8_t index;
+  uint32_t a;
+  uint32_t b;
+}
+SilkBarUpdate;
+
+#define SILKBAR_UPDATE_SIZE sizeof(SilkBarUpdate)
+
+/*repr(C) ring buffer; one slot stays free to tell full from empty.*/
+
+typedef struct SilkBarUpdateQueue {
+  uint32_t head;
+  uint32_t tail;
+  SilkBarUpdate updates[UPDATE_QUEUE_CAP];
+}
+SilkBarUpdateQueue;
+
+_Static_assert(sizeof(SilkBarUpdate) == 16 && offsetof(SilkBarUpdate, a) == 8, "SilkBarUpdate ABI");
+
+
+_Static_assert(sizeof(SilkBarUpdateQueue) == 520, "SilkBarUpdateQueue ABI");
+
+
+extern const SilkBar DEFAULT_SILK_BAR;
+
+extern const SilkBarTheme DEFAULT_THEME;
+
+bool silkbar_module_equal(SilkBarModule a, SilkBarModule b);
+
+bool silkbar_action_equal(SilkBarAction a, SilkBarAction b);
+
+uint32_t silkbar_lighten(uint32_t c);
+
+uint32_t silkbar_darken(uint32_t c);
+
+SilkBarBevelPalette silkbar_theme_bevels(const SilkBarTheme *theme);
+
+SilkBarAction silkbar_hit_test_action(const SilkBar *bar, size_t x, size_t y);
+
+SilkBarUpdate silkbar_update(uint32_t kind, uint8_t index, uint32_t a, uint32_t b);
+
+bool silkbar_apply_raw_update(SilkBar *bar, uint32_t kind, uint8_t index, uint32_t a, uint32_t b);
+
+bool silkbar_apply_update(SilkBar *bar, SilkBarUpdate update);
+
+SilkBarUpdateQueue silkbar_queue_empty(void);
+
+bool silkbar_queue_push(SilkBarUpdateQueue *queue, SilkBarUpdate update);
+
+bool silkbar_queue_pop(SilkBarUpdateQueue *queue, SilkBarUpdate *out);
+
+uint32_t silkbar_queue_drain_into(SilkBarUpdateQueue *queue, SilkBar *bar);
+
+bool silkbar_validate_invariants(void);
+
+uint32_t validate_silkbar_contract(void);
+
+bool silkbar_validate_contract(void);
+
+uint64_t silkbar_contract_fingerprint(void);
+
+bool silkbar_validate_deterministic_vectors(void);
+
+#endif

@@ -1,0 +1,34 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (cpp-if "!defined(SEXOS_CESTA_RPC_H)"
+      (then
+        (define SEXOS_CESTA_RPC_H "1")
+        (include "sexos_client.h")
+        (typedef (struct SexosRequest (SexosMessage message) (uint64_t id)) SexosRequest)
+        (typedef (enum SexosRequestStatus
+          SEXOS_REQUEST_COMPLETE SEXOS_REQUEST_PENDING SEXOS_REQUEST_FAILED SEXOS_REQUEST_TIMEOUT) SexosRequestStatus)
+        (typedef (struct SexosRequestResult
+          (SexosRequestStatus status) (uint64_t value) (uint64_t detail)) SexosRequestResult)
+        (define SEXOS_RPC_UNSUPPORTED "UINT64_MAX")
+        (define SEXOS_RPC_INVALID "(UINT64_MAX - 3)")
+        (define SEXOS_RPC_BUSY "(UINT64_MAX - 1)")
+        (var uint64_t (function sexos_rpc_register void))
+        (var SexosReply (function sexos_rpc_begin (uint64_t slot) (uint64_t opcode)
+          (uint64_t arg0) (uint64_t arg1) (uint64_t arg2)))
+        (var SexosReply (function sexos_rpc_poll (uint64_t id)))
+        (var SexosRequestResult (function sexos_rpc_admit_wait (uint64_t slot) (uint64_t opcode)
+          (uint64_t arg0) (uint64_t arg1) (uint64_t arg2) (uint64_t budget)))
+        (comment "Send a by-value notification once; retry only a queue-full refusal that enqueued nothing.")
+        (var SexosRequestResult (function sexos_send (uint64_t slot) (uint64_t opcode)
+          (uint64_t arg0) (uint64_t arg1) (uint64_t arg2) (uint64_t budget)))
+        (var SexosRequestResult (function sexos_rpc_await (uint64_t id) (uint64_t budget)))
+        (var uint64_t (function sexos_rpc_cancel (uint64_t id)))
+        (var SexosRequest (function sexos_rpc_listen_once (uint64_t slot)))
+        (var uint64_t (function sexos_rpc_reply (uint32_t caller) (uint64_t id) (uint64_t value)))
+        (comment "Compatibility requests require the caller to have no other legacy query outstanding. Native correlated polling leaves all unrelated inbox entries untouched.")
+        (var SexosRequestResult (function sexos_request (uint64_t slot) (uint64_t opcode)
+          (uint64_t arg0) (uint64_t arg1) (uint64_t arg2) (uint64_t budget)))
+        (var SexosRequest (function sexos_receive_request (bool correlated)))
+        (var uint64_t (function sexos_answer_request ((const SexosRequest) (* request)) (uint64_t value)))
+        (var void (function sexos_rpc_defer (SexosMessage message)))
+        (var bool (function sexos_rpc_take_deferred (SexosMessage (* message))))))))

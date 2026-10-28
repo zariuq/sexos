@@ -1,0 +1,35 @@
+Module NetworkRxProtocol {
+  Theory Protocols() {
+    Empty Equations {
+      (network_rx_run) == (Protocol "cesta-protocol/1"
+        (Context RxContext)
+        (Hooks
+          (Hook poll rx_poll effect (Requires binding) (Uses) (Proves available))
+          (Hook valid rx_valid guard (Requires available binding) (Uses descriptor) (Proves valid_frame))
+          (Hook copy rx_copy effect (Requires valid_frame binding) (Uses descriptor bytes) (Proves copied settled))
+          (Hook discard rx_discard prepare (Requires available binding) (Uses descriptor) (Proves settled)))
+        (Resources
+          (Resource descriptor rx_descriptor_acquire rx_descriptor_release rx_descriptor_transfer
+            (AcquireRequires available binding) (TransferRequires settled binding))
+          (Resource bytes rx_bytes_acquire rx_bytes_release rx_bytes_transfer
+            (AcquireRequires valid_frame binding) (TransferRequires copied binding)))
+        (Entry (Facts binding) (Owns))
+        (Body (Call poll
+          (Acquire descriptor
+            (Call valid
+              (Acquire bytes
+                (Call copy
+                  (Transfer bytes (Transfer descriptor (Return answered)))
+                  (Release bytes (Release descriptor (Return raised))))
+                (Release descriptor (Return resource_failure)))
+              (Call discard
+                (Transfer descriptor (Return suspended))
+                (Release descriptor (Return raised))))
+            (Return raised))
+          (Return suspended)))
+        (Checks (Fact binding rx_binding) (Fact available rx_available)
+                (Fact valid_frame rx_frame_fact) (Fact copied rx_copied) (Fact settled rx_settled)
+                (Own descriptor rx_descriptor_owned) (Own bytes rx_bytes_owned)));
+    }
+  }
+}

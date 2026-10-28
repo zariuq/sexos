@@ -1,0 +1,72 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "network_service.h")
+    (typedef (struct
+  TxContext
+  (NetworkDevice (* device))
+  (cesta_read_bytes frame)
+  (uint64_t budget identity)
+  (bool held submitted)
+  (NetworkStep step)) TxContext)
+    (fn (static bool) tx_frame_fact
+      ((TxContext (* c)))
+      (return (&& (&& (. (-> c frame) data) (>= (. (-> c frame) len) 14)) (<= (. (-> c frame) len) 1514))))
+    (fn (static bool) tx_valid
+      ((TxContext (* c)))
+      (return (call tx_frame_fact c)))
+    (fn (static bool) tx_submitted
+      ((TxContext (* c)))
+      (return (-> c submitted)))
+    (fn (static bool) tx_complete
+      ((TxContext (* c)))
+      (return (== (-> c step) NET_READY)))
+    (fn (static bool) tx_owned
+      ((TxContext (* c)))
+      (return (-> c held)))
+    (fn (static bool) tx_binding
+      ((TxContext (* c)))
+      (return (|| (! (-> c held)) (== (-> (-> c device) tx_page) (-> c identity)))))
+    (fn (static bool) tx_acquire
+      ((TxContext (* c)))
+      (if (|| (|| (-> (-> c device) failed) (-> (-> c device) tx_busy)) (-> c held))
+        (return false))
+      (= (-> c identity) (-> (-> c device) tx_page))
+      (= (-> c held) true)
+      (return (call tx_owned c)))
+    (fn (static bool) tx_submit
+      ((TxContext (* c)))
+      (= (-> c submitted) (call network_device_submit (-> c device) (-> c frame)))
+      (return (-> c submitted)))
+    (fn (static bool) tx_ready
+      ((TxContext (* c)))
+      (= (-> c step) (call network_device_poll_tx (-> c device)))
+      (return (call tx_complete c)))
+    (fn (static bool) tx_failed
+      ((TxContext (* c)))
+      (return (== (-> c step) NET_FAILED)))
+    (fn (static bool) tx_yield
+      ((TxContext (* c)))
+      (cast void c)
+      (call sexos_yield)
+      (return true))
+    (fn (static bool) tx_timeout
+      ((TxContext (* c)))
+      (= (-> (-> c device) failed) true)
+      (= (-> (-> c device) failure) NET_TIMEOUT)
+      (= (-> c step) NET_FAILED)
+      (return true))
+    (fn (static void) tx_release
+      ((TxContext (* c)))
+      (= (-> c held) false))
+    (fn (static void) tx_transfer
+      ((TxContext (* c)))
+      (= (-> c held) false))
+    (native "#define network_tx_run_CHECKED 1\n#define network_tx_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()\n")
+    (use-protocols "../interfaces/network_tx_protocol.module" Protocols)
+    (fn bool network_device_send
+      ((NetworkDevice (* device)) (cesta_read_bytes frame))
+      (var TxContext context
+        (init (= (. device) device) (= (. frame) frame) (= (. budget) 65536) (= (. step) NET_PENDING)))
+      (cast void (call network_tx_run (& context)))
+      (return (== (. context step) NET_READY)))
+  ))

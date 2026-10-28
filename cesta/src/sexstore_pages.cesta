@@ -1,0 +1,222 @@
+(cesta checked-c/1
+  (module sexstore_pages)
+  (failure sexstore_pages_failure)
+
+  (fn crc32c_update
+    (params (crc u32) (bytes read))
+    (returns u32)
+    (effects)
+    (body
+      (var state u32 crc)
+      (for index bytes
+        (body
+          (set state (bit-xor state (as u32 (at bytes index))))
+          (var bit usize (usize 0))
+          (while (lt bit (usize 8))
+            (body
+              (if (ne (bit-and state (u32 1)) (u32 0))
+                (then (set state (bit-xor (shr state (usize 1)) (u32 2197175160))))
+                (else (set state (shr state (usize 1)))))
+              (set bit (add bit (usize 1)))))))
+      (return state)))
+
+  (fn crc32c
+    (params (bytes read))
+    (returns u32)
+    (effects)
+    (body
+      (let state u32 (call crc32c_update (u32 4294967295) bytes))
+      (return (bit-xor state (u32 4294967295)))))
+
+  (fn crc16_ibm_update
+    (params (crc u16) (bytes read))
+    (returns u16)
+    (effects)
+    (body
+      (var state u16 crc)
+      (for index bytes
+        (body
+          (set state (bit-xor state (shl (as u16 (at bytes index)) (usize 8))))
+          (var bit usize (usize 0))
+          (while (lt bit (usize 8))
+            (body
+              (if (ne (bit-and state (u16 32768)) (u16 0))
+                (then (set state (bit-xor (shl state (usize 1)) (u16 32773))))
+                (else (set state (shl state (usize 1)))))
+              (set bit (add bit (usize 1)))))))
+      (return state)))
+
+  (fn crc16_ibm
+    (params (bytes read))
+    (returns u16)
+    (effects)
+    (body
+      (let state u16 (call crc16_ibm_update (u16 0) bytes))
+      (return state)))
+
+  (fn load_le
+    (params (bytes read) (offset usize) (width usize))
+    (returns u64)
+    (effects)
+    (body
+      (require (le width (usize 8)))
+      (slice field read bytes offset width)
+      (var value u64 (u64 0))
+      (for index field
+        (body (set value (bit-or value (shl (as u64 (at field index)) (mul index (usize 8)))))))
+      (return value)))
+
+  (fn store_le
+    (params (bytes write) (offset usize) (width usize) (value u64))
+    (returns unit)
+    (effects)
+    (body
+      (require (le width (usize 8)))
+      (slice field write bytes offset width)
+      (for index field
+        (body (put field index (truncate u8 (shr value (mul index (usize 8)))))))
+      (return)))
+
+  (fn record_offset
+    (params (index usize))
+    (returns usize)
+    (effects)
+    (body
+      (require (lt index (usize 16)))
+      (return (add (usize 16) (mul index (usize 24))))))
+
+  (fn page_valid
+    (params (page read))
+    (returns bool)
+    (effects)
+    (body
+      (require (eq (len page) (usize 512)))
+      (let page_id u64 (call load_le page (usize 0) (usize 4)))
+      (if (ne page_id (u64 42405)) (then (return false)) (else))
+      (let stored u64 (call load_le page (usize 8) (usize 4)))
+      (array zeros 4)
+      (slice head read page (usize 0) (usize 8))
+      (slice tail read page (usize 12) (usize 500))
+      (let through_head u32 (call crc32c_update (u32 4294967295) head))
+      (let through_field u32 (call crc32c_update through_head zeros))
+      (let through_tail u32 (call crc32c_update through_field tail))
+      (return (eq stored (as u64 (bit-xor through_tail (u32 4294967295)))))))
+
+  (fn page_seq
+    (params (page read))
+    (returns u32)
+    (effects)
+    (body
+      (let valid bool (call page_valid page))
+      (if valid
+        (then
+          (let seq u64 (call load_le page (usize 4) (usize 4)))
+          (return (truncate u32 seq)))
+        (else))
+      (return (u32 0))))
+
+  (fn page_begin
+    (params (page write) (seq u32))
+    (returns unit)
+    (effects)
+    (body
+      (require (eq (len page) (usize 512)))
+      (call store_le page (usize 0) (usize 4) (u64 42405))
+      (call store_le page (usize 4) (usize 4) (as u64 seq))
+      (return)))
+
+  (fn page_put_record
+    (params (page write) (index usize) (state u8) (generation u8) (key u32) (value u64))
+    (returns unit)
+    (effects)
+    (body
+      (require (eq (len page) (usize 512)))
+      (let offset usize (call record_offset index))
+      (var flags u8 (u8 0))
+      (if (eq state (u8 1)) (then (set flags (u8 1))) (else))
+      (if (eq state (u8 2)) (then (set flags (u8 2))) (else))
+      (call store_le page offset (usize 2) (u64 54757))
+      (put page (add offset (usize 2)) (u8 1))
+      (put page (add offset (usize 3)) flags)
+      (call store_le page (add offset (usize 4)) (usize 2) (as u64 index))
+      (call store_le page (add offset (usize 6)) (usize 2) (u64 0))
+      (put page (add offset (usize 8)) state)
+      (put page (add offset (usize 9)) generation)
+      (call store_le page (add offset (usize 10)) (usize 2) (u64 0))
+      (call store_le page (add offset (usize 12)) (usize 4) (as u64 key))
+      (call store_le page (add offset (usize 16)) (usize 8) value)
+      (slice record read page offset (usize 24))
+      (let crc u16 (call crc16_ibm record))
+      (end record)
+      (call store_le page (add offset (usize 6)) (usize 2) (as u64 crc))
+      (return)))
+
+  (fn page_seal
+    (params (page write))
+    (returns unit)
+    (effects)
+    (body
+      (require (eq (len page) (usize 512)))
+      (call store_le page (usize 8) (usize 4) (u64 0))
+      (borrow whole read page)
+      (let crc u32 (call crc32c whole))
+      (end whole)
+      (call store_le page (usize 8) (usize 4) (as u64 crc))
+      (return)))
+
+  (fn record_valid
+    (params (page read) (index usize))
+    (returns bool)
+    (effects)
+    (body
+      (require (eq (len page) (usize 512)))
+      (let offset usize (call record_offset index))
+      (let magic u64 (call load_le page offset (usize 2)))
+      (if (ne magic (u64 54757)) (then (return false)) (else))
+      (if (ne (at page (add offset (usize 2))) (u8 1)) (then (return false)) (else))
+      (let slot_id u64 (call load_le page (add offset (usize 4)) (usize 2)))
+      (if (ne slot_id (as u64 index)) (then (return false)) (else))
+      (let stored u64 (call load_le page (add offset (usize 6)) (usize 2)))
+      (array zeros 2)
+      (slice head read page offset (usize 6))
+      (slice tail read page (add offset (usize 8)) (usize 16))
+      (let through_head u16 (call crc16_ibm_update (u16 0) head))
+      (let through_field u16 (call crc16_ibm_update through_head zeros))
+      (let through_tail u16 (call crc16_ibm_update through_field tail))
+      (if (ne (as u64 through_tail) stored) (then (return false)) (else))
+      (return (le (at page (add offset (usize 8))) (u8 2)))))
+
+  (fn record_state
+    (params (page read) (index usize))
+    (returns u8)
+    (effects)
+    (body
+      (let offset usize (call record_offset index))
+      (return (at page (add offset (usize 8))))))
+
+  (fn record_generation
+    (params (page read) (index usize))
+    (returns u8)
+    (effects)
+    (body
+      (let offset usize (call record_offset index))
+      (return (at page (add offset (usize 9))))))
+
+  (fn record_key
+    (params (page read) (index usize))
+    (returns u32)
+    (effects)
+    (body
+      (let offset usize (call record_offset index))
+      (let key u64 (call load_le page (add offset (usize 12)) (usize 4)))
+      (return (truncate u32 key))))
+
+  (fn record_value
+    (params (page read) (index usize))
+    (returns u64)
+    (effects)
+    (body
+      (let offset usize (call record_offset index))
+      (let value u64 (call load_le page (add offset (usize 16)) (usize 8)))
+      (return value)))
+)

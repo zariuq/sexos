@@ -1,0 +1,21 @@
+{
+  "schema": "sexos-log-differences/1",
+  "changes": [
+    {
+      "id": "log-kaleidoscope-network-grant",
+      "reason": "The reference installs this capability but omits its bootgraph grant log. The new kernel logs every declared grant.",
+      "section": "grants",
+      "operation": "insert-item",
+      "index": 7,
+      "after": "from=kernel to=14 slot=SLOT_NET target=13 ok=1 optional=1"
+    },
+    {
+      "id": "name-kaleidoscope-handoff",
+      "reason": "The reference labels domain 14 unknown. Its module and genesis name are kaleidoscope.",
+      "section": "handoffs",
+      "operation": "replace-item",
+      "before": ["unknown", 14],
+      "after": ["kaleidoscope", 14]
+    }
+  ]
+}

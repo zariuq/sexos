@@ -1,0 +1,137 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "network_service.h")
+    (fn (static bool) query
+      ((uint64_t operation) (uint64_t argument) (uint64_t (* value)))
+      (var SexosRequestResult result
+        (call sexos_request SEXOS_SLOT_net SEXOS_NET_request operation argument 0 1048576))
+      (if (!= (. result status) SEXOS_REQUEST_COMPLETE)
+        (block
+          (call
+            sexos_line
+            "[browser.network.request.failed] kind=%u detail=%llu"
+            (cast unsigned (. result status))
+            (cast (unsigned long long) (. result detail)))
+          (return false)))
+      (= (* value) (. result value))
+      (return true))
+    (fn (static bool) draw_text
+      (((const uint8_t) (* text)) (size_t length) (size_t offset))
+      (for (var size_t start 0)
+        (< start length)
+        (+= start 8)
+        (block
+          (var size_t count (- length start))
+          (if (> count 8)
+            (= count 8))
+          (var uint64_t word (call packed_words_load_le64 (compound cesta_read_bytes (+ text start) count)))
+          (var uint64_t metadata (call packed_words_display_metadata (+ offset start) count 0x00CDD6F4))
+          (var SexosRequestResult delivered
+            (call sexos_send SEXOS_SLOT_display SEXOS_DISPLAY_text_chunk 300 word metadata 1048576))
+          (call
+            sexos_line
+            "[browser.network.draw] offset=%zu bytes=%zu word=0x%016llX status=%llu"
+            (+ offset start)
+            count
+            (cast (unsigned long long) word)
+            (cast (unsigned long long) (. delivered detail)))
+          (if (!= (. delivered status) SEXOS_REQUEST_COMPLETE)
+            (return false))))
+      (return true))
+    (fn void network_browser_main
+      (void)
+      (var uint64_t raw)
+      (var bool received (call query SEXOS_NET_http_result 0 (& raw)))
+      (var uint32_t result (?: (&& received (<= raw UINT32_MAX)) (cast uint32_t raw) UINT32_MAX))
+      (var bool complete (&& (call NetworkResult_valid result) (== (call NetworkResult_kind result) 1)))
+      (var size_t length (?: complete (cast size_t (call NetworkResult_length result)) 0))
+      (var uint8_t ([] body NET_HTTP_BODY_CAPACITY) (init 0))
+      (if complete
+        (block
+          (for (var size_t offset 0)
+            (< offset length)
+            (+= offset 8)
+            (block
+              (var uint64_t word)
+              (if (! (call query SEXOS_NET_body_chunk (/ offset 8) (& word)))
+                (block
+                  (= complete false)
+                  break))
+              (var size_t count (- length offset))
+              (if (> count 8)
+                (= count 8))
+              (call packed_words_store_le64 (compound cesta_write_bytes (+ body offset) count) word)))))
+      (if complete
+        (call network_trace_body "browser.network.body" (compound cesta_read_bytes body length)))
+      (var SexosRequestResult created
+        (call
+          sexos_send
+          SEXOS_SLOT_display
+          SEXOS_DISPLAY_create_surface
+          300
+          (| (<< (cast uint64_t 120) 32) 80)
+          (| (<< (cast uint64_t 120) 32) 520)
+          1048576))
+      (call
+        sexos_line
+        "[browser.network.surface] kind=%u detail=%llu"
+        (cast unsigned (. created status))
+        (cast (unsigned long long) (. created detail)))
+      (var bool presented (== (. created status) SEXOS_REQUEST_COMPLETE))
+      (var (static const uint8_t) ([] title) "Kaleidoscope")
+      (if presented
+        (= presented (call draw_text title (- (sizeof title) 1) 0)))
+      (var uint8_t ([] status_line 32) (init 0))
+      (var size_t status_length)
+      (if complete
+        (block
+          (var (static const uint8_t) ([] prefix) "HTTP ")
+          (call memcpy status_line prefix (- (sizeof prefix) 1))
+          (= status_length (- (sizeof prefix) 1))
+          (+=
+            status_length
+            (call
+              format_bytes_unsigned_decimal
+              (compound cesta_write_bytes (+ status_line status_length) (- (sizeof status_line) status_length))
+              (call NetworkResult_status result)))
+          (var (static const uint8_t) ([] suffix) " from 10.0.2.2")
+          (call memcpy (+ status_line status_length) suffix (- (sizeof suffix) 1))
+          (+= status_length (- (sizeof suffix) 1)))
+        (block
+          (var (static const uint8_t) ([] failure) "Network request failed")
+          (call memcpy status_line failure (- (sizeof failure) 1))
+          (= status_length (- (sizeof failure) 1))))
+      (if presented
+        (= presented (call draw_text status_line status_length 32)))
+      (if complete
+        (block
+          (var uint8_t ([] display 64))
+          (var size_t display_length (?: (< length (sizeof display)) length (sizeof display)))
+          (for (var size_t i 0)
+            (< i display_length)
+            (++ i)
+            (= ([] display i) (?: (&& (>= ([] body i) 32) (< ([] body i) 127)) ([] body i) (char "' '"))))
+          (if presented
+            (= presented (call draw_text display display_length 64)))))
+      (if presented
+        (block
+          (var SexosRequestResult committed
+            (call sexos_send SEXOS_SLOT_display SEXOS_DISPLAY_commit 300 50 100 1048576))
+          (call
+            sexos_line
+            "[browser.network.commit] kind=%u detail=%llu"
+            (cast unsigned (. committed status))
+            (cast (unsigned long long) (. committed detail)))
+          (= presented (== (. committed status) SEXOS_REQUEST_COMPLETE))))
+      (call
+        sexos_line
+        "[browser.network.result] complete=%u status=%u bytes=%zu"
+        (?: complete 1u 0u)
+        (?: complete (cast unsigned (call NetworkResult_status result)) 0u)
+        (?: complete length 0))
+      (call sexos_line (?: presented "[browser.visible.polish.done]" "[browser.visible.failed]"))
+      (for ()
+        ()
+        ()
+        (call sexos_yield)))
+  ))

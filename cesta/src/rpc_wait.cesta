@@ -1,0 +1,130 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "sexos_rpc.h")
+    (typedef (struct
+  RpcWaitContext
+  (uint64_t slot opcode arg0 arg1 arg2 budget id sealed)
+  (bool owned)
+  (SexosRequestResult result)) RpcWaitContext)
+    (fn (static bool) rpc_wait_identity
+      ((RpcWaitContext (* c)))
+      (return (&& (!= (-> c id) 0) (== (-> c id) (-> c sealed)))))
+    (fn (static bool) rpc_wait_owned
+      ((RpcWaitContext (* c)))
+      (return (&& (-> c owned) (call rpc_wait_identity c))))
+    (fn (static bool) rpc_wait_complete
+      ((RpcWaitContext (* c)))
+      (return (== (. (-> c result) status) SEXOS_REQUEST_COMPLETE)))
+    (fn (static bool) rpc_wait_acquire
+      ((RpcWaitContext (* c)))
+      (if (|| (-> c owned) (! (call rpc_wait_identity c)))
+        (return false))
+      (= (-> c owned) true)
+      (return (call rpc_wait_owned c)))
+    (fn (static bool) rpc_admit_begin
+      ((RpcWaitContext (* c)))
+      (var SexosReply result
+        (call sexos_rpc_begin (-> c slot) (-> c opcode) (-> c arg0) (-> c arg1) (-> c arg2)))
+      (if (== (. result status) 0)
+        (block
+          (= (-> c result) (compound SexosRequestResult SEXOS_REQUEST_COMPLETE (. result value) 0))
+          (return true)))
+      (=
+        (. (-> c result) status)
+        (?: (== (. result status) SEXOS_RPC_UNSUPPORTED) SEXOS_REQUEST_PENDING SEXOS_REQUEST_FAILED))
+      (= (. (-> c result) detail) (. result status))
+      (return false))
+    (fn (static bool) rpc_notify_send
+      ((RpcWaitContext (* c)))
+      (var SexosReply result
+        (call sexos_pdx_call (-> c slot) (-> c opcode) (-> c arg0) (-> c arg1) (-> c arg2)))
+      (=
+        (-> c result)
+        (compound
+          SexosRequestResult
+          (?:
+            (== (. result status) 0)
+            SEXOS_REQUEST_COMPLETE
+            (?: (== (. result status) SEXOS_RPC_BUSY) SEXOS_REQUEST_PENDING SEXOS_REQUEST_FAILED))
+          (. result value)
+          (. result status)))
+      (return (== (. (-> c result) status) SEXOS_REQUEST_COMPLETE)))
+    (fn (static bool) rpc_wait_poll
+      ((RpcWaitContext (* c)))
+      (var SexosReply result (call sexos_rpc_poll (-> c id)))
+      (if (== (. result status) 0)
+        (= (-> c result) (compound SexosRequestResult SEXOS_REQUEST_COMPLETE (. result value) 0))
+        (block
+          (=
+            (. (-> c result) status)
+            (?: (== (. result status) SEXOS_RPC_BUSY) SEXOS_REQUEST_PENDING SEXOS_REQUEST_FAILED))
+          (= (. (-> c result) detail) (. result status))))
+      (return (call rpc_wait_complete c)))
+    (fn (static bool) rpc_wait_failed
+      ((RpcWaitContext (* c)))
+      (return (== (. (-> c result) status) SEXOS_REQUEST_FAILED)))
+    (fn (static bool) rpc_wait_yield
+      ((RpcWaitContext (* c)))
+      (cast void c)
+      (call sexos_yield)
+      (return true))
+    (fn (static bool) rpc_wait_timeout
+      ((RpcWaitContext (* c)))
+      (= (-> c result) (compound SexosRequestResult SEXOS_REQUEST_TIMEOUT 0 0))
+      (return true))
+    (fn (static void) rpc_wait_release
+      ((RpcWaitContext (* c)))
+      (cast void (call sexos_rpc_cancel (-> c id)))
+      (= (-> c owned) false))
+    (fn (static void) rpc_wait_transfer
+      ((RpcWaitContext (* c)))
+      (= (-> c owned) false))
+    (native "#define rpc_admit_run_CHECKED 1\n#define rpc_wait_run_CHECKED 1\n#define rpc_notify_run_CHECKED 1\n#define rpc_admit_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()\n#define rpc_wait_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()\n#define rpc_notify_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()\n")
+    (use-protocols "../interfaces/rpc_protocols.module" Protocols)
+    (fn SexosRequestResult sexos_rpc_admit_wait
+      ((uint64_t slot)
+        (uint64_t opcode)
+        (uint64_t arg0)
+        (uint64_t arg1)
+        (uint64_t arg2)
+        (uint64_t budget))
+      (var RpcWaitContext context
+        (init
+          (= (. slot) slot)
+          (= (. opcode) opcode)
+          (= (. arg0) arg0)
+          (= (. arg1) arg1)
+          (= (. arg2) arg2)
+          (= (. budget) budget)))
+      (cast void (call rpc_admit_run (& context)))
+      (return (. context result)))
+    (fn SexosRequestResult sexos_rpc_await
+      ((uint64_t id) (uint64_t budget))
+      (var RpcWaitContext context
+        (init
+          (= (. id) id)
+          (= (. sealed) id)
+          (= (. budget) budget)
+          (= (. result) (init SEXOS_REQUEST_PENDING 0 0))))
+      (if (! (call rpc_wait_acquire (& context)))
+        (return (compound SexosRequestResult SEXOS_REQUEST_FAILED 0 SEXOS_RPC_INVALID)))
+      (cast void (call rpc_wait_run (& context)))
+      (return (. context result)))
+    (fn SexosRequestResult sexos_send
+      ((uint64_t slot)
+        (uint64_t opcode)
+        (uint64_t arg0)
+        (uint64_t arg1)
+        (uint64_t arg2)
+        (uint64_t budget))
+      (var RpcWaitContext context
+        (init
+          (= (. slot) slot)
+          (= (. opcode) opcode)
+          (= (. arg0) arg0)
+          (= (. arg1) arg1)
+          (= (. arg2) arg2)
+          (= (. budget) budget)))
+      (cast void (call rpc_notify_run (& context)))
+      (return (. context result)))
+  ))

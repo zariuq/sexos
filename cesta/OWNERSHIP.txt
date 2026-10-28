@@ -1,0 +1,46 @@
+BELL'S CHECKED OWNERSHIP ENVELOPE
+
+src/sexbell.cesta enables Cesta's native ownership check for every function
+body. Bell's mutable state remains one local Sexbell record containing inline
+queues, policies, spam counters and diagnostic budgets. Helpers receive loans
+of that state or of the particular field they need.
+
+The generation helper receives a uint64_t pointer. A queue loan can therefore
+remain live while the independent generation counter is updated. This is a
+C interface change with a smaller memory footprint; no borrow ledger is
+present in the executable.
+
+find_policy returns a shared, nullable loan of the policy_table subobject.
+derive_lane_first_proof writes a static, nullable string into its output slot.
+Those lifetime declarations are checked against their bodies. The native
+formatting, tick, reply and listener interfaces have explicit obligations;
+their implementations remain outside Bell's checked body.
+
+check-ownership reads Bell under GCC and Clang with every combination of the
+three proof-profile flags. The resulting permission plans must agree. Source
+controls must refuse overlapping call arguments, a returned local address,
+a local address stored as static data and a false static-return declaration.
+
+  make check-ownership CESTA=cesta
+
+qualify-ownership additionally admits the emitted plans in Lean. It uses the
+shared plan reader from the Cesta source tree and the existing MeTTapedia Lean
+package; supply CESTA_SOURCE and LEAN_ROOT for those checkouts.
+
+  make qualify-ownership CESTA=cesta CESTA_SOURCE=... LEAN_ROOT=...
+
+The mathematical layer separates lifetime, access permission and release
+authority. Its spatial law is parametric in the footprint representation;
+contiguous C ranges and finite, potentially strided footprints are instances.
+Bell uses the C range instance. Branches and loops are checked over permission
+states, and actual function plans are joined by a proved module admission rule.
+
+This is a permission/control proof. C-to-plan projection, ABI calculation,
+printing, compilation, native calls and hardware remain separate tested or
+conditional boundaries. The native surface does not yet admit reference-
+bearing aggregate fields or all dynamic bounds, and this port is not a proof
+of arbitrary C or whole-system memory safety.
+
+The ordinary build remains cesta build. Its readable C export builds without
+Cesta. The existing Rust differential, sanitizer, plain-C identity and boot
+checks remain necessary alongside ownership admission.

@@ -1,0 +1,212 @@
+SexOS client port through Cesta
+==============================
+
+The Rust implementation at 4a040a86 remains unchanged as the reference.
+Fourteen boot-image programs have Cesta targets; silk-shell has one translated
+models unit and still runs as Rust. The experimental sexos-kernel target is
+described in KERNEL.txt. Native Cesta code is not a completed Rust safety system:
+general ownership, borrows and concurrency obligations remain separate work.
+
+Source and output
+-----------------
+
+src/kaleidoscope.cesta is structured native-c/1. The repeated text receiving,
+packing and sending loops are shared functions. Its listener budget belongs
+to a local client instance instead of a mutable global.
+
+interfaces/client.data declares the client's syscall, slot and operation
+numbers. interfaces/client.export derives their C enumerations.
+src/client_interface.cesta declares the message and native call interface.
+
+The checked byte packing and numeric formatting functions come from Cesta's
+checked/examples/PackedWords.cesta and FormatBytes.cesta. Regeneration writes
+them and their headers into generated/. Their owners, byte views, moves and
+control-flow permissions are checked in Cesta and admitted into Lean.
+
+runtime/ contains the explicit native boundary: x86-64 register traps,
+freestanding memory functions and bounded line assembly. The main client and
+this boundary are ordinary structured C; they are not yet accepted by the
+checked byte-buffer fragment as a whole. General record ownership, variants,
+try, owned globals and concurrent borrowing are still required for the full
+port's checked systems core.
+
+c/ is a self-contained readable-C export with a Makefile. It builds with GCC
+or Clang alone. Neither Cesta nor Rust is needed to build that export.
+
+Translated components
+---------------------
+
+  Rust source                       Cesta source                          Evidence
+  apps/kaleidoscope                 src/kaleidoscope.cesta                tests/client_differential.py
+  crates/silkbar-model              src/silkbar_model.cesta (+ _interface) tests/silkbar_model_differential.py
+  servers/silkbar                   src/silkbar.cesta                     tests/silkbar_differential.py
+  servers/sexinput                  src/sexinput.cesta                    tests/sexinput_differential.py
+  servers/sexstore                  src/sexstore.cesta (+ _durable,       tests/sexstore_differential.py
+                                    _pages, _interface)
+  servers/sexdisplay                src/sexdisplay.cesta                  tests/sexdisplay_differential.py
+  servers/sexbell                   src/sexbell.cesta                     tests/sexbell_differential.py
+  servers/linen                     src/linen.cesta                       tests/linen_differential.py
+  crates/sex-object-model           src/sex_object_model_interface.cesta  tests/linen_differential.py
+  servers/quil                      src/quil.cesta                        tests/quil_differential.py
+  crates/sex-graphics               src/sex_graphics.cesta (+ _interface) tests/sex_graphics_differential.py
+  apps/spindle                      src/spindle.cesta                     tests/spindle_differential.py
+  purple-scanout                    src/purple_scanout.cesta              tests/purple_scanout_differential.py
+  servers/sexfiles                  src/sexfiles.cesta (+ _diskfs,        tests/sexfiles_differential.py
+                                    _proof, _interface)
+  apps/sexdrive                     src/sexdrive.cesta (+                 tests/sexdrive_differential.py
+                                    sexos_mmio_interface)
+  servers/sexusb                    src/sexusb.cesta                      tests/sexusb_differential.py
+  servers/sexnet                    src/sexnet.cesta                      tests/sexnet_differential.py
+
+Each is booted in place of its Rust binary (tools/package_client.py --replace
+PATH=BINARY) and its boot observation compared with the reference.
+tools/compare_markers.py also compares, per ported server, which of the markers
+its Cesta source prints appear in the boot with the reference boot, which shows
+a proof lane or path present in one image and absent in the other.
+
+Translation scheme. The Rust stays the reference; the Cesta port keeps its
+names, its order of effects and its log lines, and states its structure:
+- pub const NAME: T = v becomes a define with Rust's name and type,
+  e.g. (define PANEL_X "((size_t)80)"); repr(u32) and fieldless enums become C
+  enums with a component prefix.
+- An enum carrying data becomes a tag and the payload its cases use, with an
+  equality function for #[derive(PartialEq)] (until Cesta's own variants).
+- Structs keep their field order; repr(C) layouts are asserted.
+- impl methods become functions on a pointer; Option<T> becomes bool with an
+  out parameter; Result<T, E> from pdx_call_checked becomes a reply status,
+  and Result<bool, u64> a status with the bool as an out parameter.
+- A closure becomes a function pointer and the environment it captured, passed
+  together (EmitEvent and its context in sexinput).
+- Function-local static mut budgets and flags become fields of one owned
+  state value (Silkbar, Sexinput), so no global mutable state remains; the
+  statics of one helper form their own record (PointerNormalizer).
+- Rust's `as` to a narrower signed integer becomes a wrap function with
+  defined arithmetic, since C leaves that conversion implementation-defined.
+- A match over (stage, tick) that replays a fixed script becomes a table of
+  steps and an index (the SilkBar click and keyboard proofs).
+- Rust's checked indexing and its panic (a spinning handler) are kept where an
+  index is not already guarded: the check calls sexos_spin_forever.
+- State too large for the 64 KiB stack (sexdisplay's glass buffers, Quil's
+  document, reload copy and undo ring) is one value in static storage,
+  reached only through the pointer main takes.
+- A Result whose error can be 0 (Quil's READ_V2 decoding reports a status
+  without magnitude as Err(0)) becomes bool with the error as an out
+  parameter; where every error is nonzero, 0 stands for Ok.
+- Flags that nothing reads after they are set (the done flag of each Quil
+  startup proof, which runs once) and code nothing calls have no counterpart.
+- crates/sex-object-model is header-only (sex_object_model.h): its types,
+  flags and inline functions. Linen's sexobject.rs adapters, unused by the
+  server, keep external linkage; the Linen comparison checks both against
+  the crate.
+- Behaviour is ported as observed, not as commented: Bell's eviction keeps the
+  newest of equal-lane entries, as its code does, though its comment says the
+  oldest; the comparison checks the observed rule.
+- Byte formats become checked code: sexstore's page and record layout, its
+  CRC-32C and CRC-16 are a checked-c/1 module (src/sexstore_pages.cesta)
+  whose views, indices and shifts are checked and whose permissions are
+  admitted; the server and its durable layer call it through byte views.
+- option_env! proof flags become 0/1 macros set by -D at build time, and so
+  do cfg! gates. A target defines what the reference build spec
+  (sexos_build_spec.toml) passes its crate: quil is built with
+  --cfg sexfiles_quil_persistence_proof, so its target defines that name.
+- serial_println! becomes sexos_line: one raw_print per completed line.
+- Queue indices are reduced on every access, so no state reaches outside an
+  array even where Rust relied on private fields.
+Each differential test compiles the Rust from the pinned revision on the host,
+replaces only scaffolding (no_std attributes, panic handler, the exported
+entry) and crates/sex-pdx with a scripted provider, and compares every log
+line, PDX call, listen, tick read and yield with the Cesta build; mutations of
+the Cesta source must change the comparison. The Linen and Quil comparisons
+write their provider once, in C (tests/differential_support.py): the Rust
+reference links it, so both servers meet one environment, and a Rust panic
+ends the trace as the translation's spin does. They count spin-loop hints,
+require each named path to be reached and check that every build gate of the
+Rust is a flag of the translation.
+
+src/server_interface.cesta and runtime/server_*.c add the server side of
+crates/sex-pdx: get_ticks (syscall 34) and pdx_try_listen_raw, which yields
+once when nothing waits. runtime/start_x86_64.S calls SEXOS_MAIN, which each
+target names (default kaleidoscope_main). sexos_line also formats zero-padded
+hexadecimal (%0Nx, %0Nllx), as Rust's {:016x}, and signed decimals (%d,
+%lld), as Rust's {} on signed integers. sys_set_state (syscall 42) and
+heap_init of sex-rt (syscalls 31 and 30, 64 KiB) complete what sexinput uses;
+pdx_reply (syscall 29) what sexstore uses. sexos_line also prints uppercase
+hexadecimal (%X, %0NX), as Rust's {:X}. sexos_spin_loop_hint is
+core::hint::spin_loop (one pause), and sexos_spin_forever a panic handler
+that spins. The sexdisplay comparison maps two
+host framebuffers at fixed addresses and builds both programs with those
+addresses in place of the kernel's high half.
+
+Build and regeneration
+----------------------
+
+With cesta on PATH:
+
+    make
+    make check
+    make export
+    make -C c
+
+To select a different compiler for an existing plain-C build, force its
+objects to rebuild:
+
+    make -C c -B CC=clang
+
+Editing the shared checked helper libraries requires their Cesta source tree:
+
+    make regenerate CESTA_SOURCE=/path/to/cesta-source
+
+CESTA may select an explicit Cesta executable for every command. Regeneration
+keeps identical generated files unchanged. make check requires the hosted C
+compilers and Rust compiler for the reference probes. make qualify increases
+the differential panel to 512 scenarios and includes sanitizers. These test
+tools are not dependencies of the plain-C application build.
+
+Native boundary
+---------------
+
+The trap bridge follows sexos_contract.toml: call uses RAX for status and RSI
+for value; listen uses RAX, RSI, RDX, R10 and R8. The C message layout is checked
+against the pinned Rust record under both C compilers. The native bridge must
+honor these register and lifetime contracts.
+
+sexos_line checks every buffer write through the checked formatting helpers.
+It supports literal text, %s, %u, %llu, %zu, %x, %llx, %#llx and %%. Lines,
+including their newline, are limited to 512 bytes. Oversized or malformed
+formats fail before the requested line is sent. The project enables compiler checking of
+constant format strings and argument types. Completing the general Rust
+formatting surface is a later runtime task.
+
+Each completed line uses one raw_print syscall. This removes fragmentation by
+format argument; it does not prove that the kernel's raw serial writer is
+atomic with respect to interrupts or other CPUs.
+
+Qualification and observation
+-----------------------------
+
+tests/client_differential.py compiles the original application's business
+logic from revision 4a040a86 with a hosted trap provider. The Cesta-authored and
+exported clients must produce the same ordered logical lines, non-print PDX
+calls/replies, listens and yields. Scenarios vary lengths, errors, empty polls,
+DNS replies, chunk failures and payload bytes. Raw print fragmentation and
+pointer addresses are outside this observation.
+
+tools/qualify_client.py performs the hosted checks, builds with both C
+compilers, requires executables identical to the plain-C builds, and
+boots both against a freshly observed Rust image. Its inputs are explicit:
+
+    python3 tools/qualify_client.py --cesta cesta \
+      --cesta-source /path/to/cesta-source \
+      --reference-tree /path/to/reference/iso_root \
+      --reference-image /path/to/reference.iso \
+      --limine /path/to/limine --out build/client-qualification
+
+Choose a new output directory for each run. Packaging copies the reference
+staging tree and verifies that only apps/kaleidoscope changed. The boot waits
+for the reference milestones and the browser's completed render. oracle/
+retains the reference build, observation and comparison tools.
+
+The Rust reference's ordering gate fails because silkbar and silk-shell send
+before sexdisplay reports readiness. The client comparison requires the same
+verdict and reports it as a failure in the reference, not a green system gate.
+Binary addresses and ELF segment layouts intentionally change with the port.

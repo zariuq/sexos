@@ -1,0 +1,59 @@
+Module RpcProtocols {
+  Theory Protocols() {
+    Empty Equations {
+      (rpc_admit_run) == (Protocol "cesta-protocol/1"
+        (Context RpcWaitContext)
+        (Hooks
+          (Hook begin rpc_admit_begin effect (Requires) (Uses) (Proves))
+          (Hook failed rpc_wait_failed guard (Requires) (Uses) (Proves))
+          (Hook yield rpc_wait_yield prepare (Requires) (Uses) (Proves))
+          (Hook timeout rpc_wait_timeout prepare (Requires) (Uses) (Proves)))
+        (Resources)
+        (Entry (Facts) (Owns))
+        (Body (Loop (Limit budget)
+          (Call begin (Return answered)
+            (Call failed (Return raised)
+              (Call yield (Continue) (Continue))))
+          (Call timeout (Return raised) (Return raised))))
+        (Checks));
+
+      (rpc_notify_run) == (Protocol "cesta-protocol/1"
+        (Context RpcWaitContext)
+        (Hooks
+          (Hook send rpc_notify_send effect (Requires) (Uses) (Proves))
+          (Hook failed rpc_wait_failed guard (Requires) (Uses) (Proves))
+          (Hook yield rpc_wait_yield prepare (Requires) (Uses) (Proves))
+          (Hook timeout rpc_wait_timeout prepare (Requires) (Uses) (Proves)))
+        (Resources)
+        (Entry (Facts) (Owns))
+        (Body (Loop (Limit budget)
+          (Call send (Return answered)
+            (Call failed (Return raised)
+              (Call yield (Continue) (Continue))))
+          (Call timeout (Return raised) (Return raised))))
+        (Checks));
+
+      (rpc_wait_run) == (Protocol "cesta-protocol/1"
+        (Context RpcWaitContext)
+        (Hooks
+          (Hook poll rpc_wait_poll effect (Requires identity) (Uses request) (Proves complete))
+          (Hook failed rpc_wait_failed guard (Requires identity) (Uses request) (Proves))
+          (Hook yield rpc_wait_yield prepare (Requires identity) (Uses request) (Proves))
+          (Hook timeout rpc_wait_timeout prepare (Requires identity) (Uses request) (Proves)))
+        (Resources (Resource request rpc_wait_acquire rpc_wait_release rpc_wait_transfer
+          (AcquireRequires identity) (TransferRequires complete)))
+        (Entry (Facts identity) (Owns request))
+        (Body (Loop (Limit budget)
+          (Call poll
+            (Transfer request (Return answered))
+            (Call failed
+              (Release request (Return raised))
+              (Call yield (Continue) (Continue))))
+          (Call timeout
+            (Release request (Return raised))
+            (Release request (Return raised)))))
+        (Checks (Fact identity rpc_wait_identity) (Fact complete rpc_wait_complete)
+                (Own request rpc_wait_owned)));
+    }
+  }
+}

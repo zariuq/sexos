@@ -1,0 +1,102 @@
+#if !defined(SEXOS_SEX_OBJECT_MODEL_H)
+#define SEXOS_SEX_OBJECT_MODEL_H 1
+
+#include <stdint.h>
+
+#include <stddef.h>
+
+#include <stdbool.h>
+
+/*The SexObject model (crates/sex-object-model): the planned durable typed unit of SexOS. Types only, no storage, opcodes or behaviour. SexObject names the concept and is never a type; SexObjectHeader is its fixed 80-byte logical header, SexObjectKind its bounded kind, SexObjectRef an opaque cross-domain reference that fits two PDX words.*/
+
+/*SexObjectHeader flags: tombstoned (deleted; writes denied, generation readable), sealed (immutable content), redacted (policy filtering on stat), migrating (moving between backends; reads denied).*/
+
+#define SEX_OBJECT_FLAG_TOMBSTONED UINT32_C(0x01)
+
+#define SEX_OBJECT_FLAG_SEALED UINT32_C(0x02)
+
+#define SEX_OBJECT_FLAG_REDACTED UINT32_C(0x04)
+
+#define SEX_OBJECT_FLAG_MIGRATING UINT32_C(0x08)
+
+/*repr(u32); every V1 discriminant fits SexfilesObjectEntry.kind (u16). 7 is reserved: SceneSnapshot is deferred because it has raw pointer fields.*/
+
+typedef enum SexObjectKind {
+  SEX_OBJECT_KIND_RAW_BLOB = 0, SEX_OBJECT_KIND_APP_MANIFEST = 1, SEX_OBJECT_KIND_APP_STATE = 2, SEX_OBJECT_KIND_LINEN_PROJECT = 3, SEX_OBJECT_KIND_QUIL_DOCUMENT = 4, SEX_OBJECT_KIND_SPINDLE_SESSION = 5, SEX_OBJECT_KIND_BELL_EVENT = 6, SEX_OBJECT_KIND_COLLAR_GRANT = 8, SEX_OBJECT_KIND_MESH_FACT = 9, SEX_OBJECT_KIND_CRASH_REPORT = 10, SEX_OBJECT_KIND_PACKAGE = 11
+}
+SexObjectKind;
+
+/*A storage discriminant as a kind; false for unknown values and the reserved 7.*/
+
+static inline bool sex_object_kind_from_u16(uint16_t v, SexObjectKind *out) {
+  if (v == 7 || v > 11) return false;
+  *out = (SexObjectKind) v;
+  return true;
+}
+static inline uint16_t sex_object_kind_as_u16(SexObjectKind kind) {
+  return (uint16_t) kind;
+}
+/*object_id travels in arg0 (0 is the null sentinel), generation in arg1: the rights generation for capability checks, the content generation for a content version.*/
+
+typedef struct SexObjectRef {
+  uint64_t object_id;
+  uint64_t generation;
+}
+SexObjectRef;
+
+static inline SexObjectRef sex_object_ref_new(uint64_t object_id, uint64_t generation) {
+  return (SexObjectRef) {
+    .object_id = object_id,.generation = generation
+  };
+}
+static inline bool sex_object_ref_is_null(SexObjectRef ref) {
+  return ref.object_id == 0;
+}
+/*repr(C), 80 bytes. Three generations: content (the payload write epoch; the metadata generation stands in for it in V1), rights (capability and revocation, authoritative in SexFiles) and metadata. In V1 a logical view over SexfilesObjectEntry; no disk format change until M2. Both reserved words are zero in V1.*/
+
+typedef struct SexObjectHeader {
+  uint64_t object_id;
+  uint64_t content_generation;
+  uint64_t rights_generation;
+  uint64_t metadata_generation;
+  uint64_t object_size_bytes;
+  uint64_t first_block;
+  uint32_t owner_pd;
+  uint32_t kind;
+  uint32_t checksum;
+  uint32_t flags;
+  uint64_t reserved0;
+  uint64_t reserved1;
+}
+SexObjectHeader;
+
+_Static_assert(sizeof(SexObjectHeader) == 80 && offsetof(SexObjectHeader, owner_pd) == 48 && offsetof(SexObjectHeader, reserved0) == 64, "SexObjectHeader must be exactly 80 bytes");
+
+
+_Static_assert(sizeof(SexObjectRef) == 16, "SexObjectRef must be exactly 16 bytes");
+
+
+/*The reference for Collar-checked access carries the rights generation; the content reference, the content generation.*/
+
+static inline SexObjectRef sex_object_header_cap_ref(const SexObjectHeader *h) {
+  return sex_object_ref_new(h->object_id, h->rights_generation);
+}
+static inline SexObjectRef sex_object_header_object_ref(const SexObjectHeader *h) {
+  return sex_object_ref_new(h->object_id, h->content_generation);
+}
+static inline bool sex_object_header_is_tombstoned(const SexObjectHeader *h) {
+  return (h->flags & SEX_OBJECT_FLAG_TOMBSTONED) != 0;
+}
+static inline bool sex_object_header_is_sealed(const SexObjectHeader *h) {
+  return (h->flags & SEX_OBJECT_FLAG_SEALED) != 0;
+}
+static inline bool sex_object_header_is_redacted(const SexObjectHeader *h) {
+  return (h->flags & SEX_OBJECT_FLAG_REDACTED) != 0;
+}
+/*The stored kind; false when it is unknown, reserved or above u16.*/
+
+static inline bool sex_object_header_kind(const SexObjectHeader *h, SexObjectKind *out) {
+  if (h->kind > UINT16_MAX) return false;
+  return sex_object_kind_from_u16((uint16_t) h->kind, out);
+}
+#endif

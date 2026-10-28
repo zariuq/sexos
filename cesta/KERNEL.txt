@@ -1,0 +1,174 @@
+Experimental single-address-space kernel
+=======================================
+
+sexos-kernel is the x86-64 Cesta kernel target. The original Rust at 4a040a86
+remains the reference. Fourteen userland targets are translated; silk-shell
+still uses its Rust binary. The Cesta sources use native-c/1, not the checked
+byte-buffer core as a whole.
+
+Build and export
+----------------
+
+    cesta build -j 1 sexos-kernel
+    make export
+    make -C c
+
+The exported project contains ordinary C, assembly, headers and the linker
+script and builds without Cesta. Regeneration derives kernel_genesis.h from
+interfaces/kernel.data and sexos_kernel.h from src/kernel_interface.cesta.
+The kernel and userland share the syscall enumeration in client.data.
+
+Source organization
+-------------------
+
+kernel_memory: frames, virtual addresses, page tables and checked user copies.
+kernel_platform: ACPI, APICs, timer, input and PCI.
+kernel_domains: ELF loading, capability genesis, domains and scheduling.
+kernel_entry: boot, CPU tables and traps.
+kernel_syscalls: the user ABI, queues, legacy replies, memory and lending.
+kernel_rpc: bounded correlated calls, authenticated completion and cancellation.
+runtime/kernel: assembly entry, CPU accessors, serial formatting and linking.
+
+The domain/ring/input grant tables are declared once. Cesta derives C rows;
+tools/genesis_lean.py generates the Lean genesis instance from the same data.
+Regeneration equality is checked before the kernel model comparison runs.
+
+Intentional differences from the reference
+-----------------------------------------
+
+- A reply consumes a right created when its sender received a call. A reply
+  without that right is refused. Credits use 64-bit counters because ordinary
+  one-way display traffic can exceed 65,535 calls. A full counter defers the next
+  call without consuming it until a reply releases space.
+- MAP_MEMORY accepts only allocated blocks owned by the caller. Ordinary,
+  PCI and lent mappings use the caller's key and are non-executable. Allocated
+  frames are zeroed. Metadata and size limits are checked before allocation;
+  failed large requests preserve the allocator's remaining regions.
+- Key 0 stays closed. The x86-64 kernel stops if PKU is unavailable. The key-14
+  shared-buffer request checks that its producer can write and consumer can
+  read the shared key, and refuses full metadata storage.
+- ELF loading checks W^X and rejects the recognized key-register-write byte
+  pattern. The CPU entry enables supported SMEP/SMAP and kernel write
+  protection, masks interrupts during syscalls and checks extended-state
+  configuration. These mechanisms are not a proof of hostile-image isolation.
+- Framebuffer exposure splits large mappings, grants only the requested
+  pages and explicitly makes those pages non-executable. A map-split log
+  records the original page size.
+- A user fault stops its domain; a kernel fault stops the kernel.
+- Per-domain serial assembly keeps complete bounded lines together. Grant
+  logging includes the network grant to kaleidoscope, and its handoff uses
+  its name instead of unknown. The in-kernel e1000/HTTP demonstration is not
+  ported: NET_DIAG currently implements the reference's no-NIC responses.
+
+These differences are explicit implementation choices, not strict behavioural
+equivalence to every operation of the original kernel. Unused mock objects,
+signal/trampoline machinery and other unreachable reference modules are
+omitted. Comparing total line counts does not establish feature equivalence.
+
+Evidence and proof boundary
+---------------------------
+
+    make check
+    make check-kernel-model LEAN_ROOT="$METTAPEDIA_LEAN"
+
+The latter requires the Mettapedia Lean package. TraceReplay invokes the
+SingleAddressSpace.step definition directly. The C host includes the actual
+exported domain and syscall units. It executes all declared genesis ring
+grants, page-sized allocation/lending, FIFO capacity/wraparound and mixed
+requests, comparing results and state after every request. The projection
+includes ring/frame capabilities, FIFO payloads, pending reply counts, reply
+slots, frame ownership, mappings and access to declared domain keys. GCC and
+Clang, optimization variants, sanitizers and code mutations exercise the link.
+
+Its scope is a fixed call type with checked payload projections, page-sized
+allocations and infallible host allocation/mapping providers. Input/device
+capabilities, shared key 14, hardware loads/stores, allocator failure and
+pending-counter exhaustion are outside that abstract trace comparison.
+Separate C controls test the finite metadata/counter/size bounds and shared
+endpoints. They are tests, not newly proved cases of the unbounded Lean model.
+Protocol-level request/reply separation and correlation to individual request
+identifiers are not established by that fixed-call-type comparison.
+
+The memory gate compiles the actual memory unit against a RAM/CPU provider.
+It tests zeroing, preservation after failed allocation, virtual-address
+bounds, real page-table walks, access masks, read-only mappings and splitting
+a supervisor 1-GiB mapping into an NX user page with inaccessible neighbours.
+The compiled memory routines are also compared with libc; post-compilation
+symbol renaming preserves any compiler-generated self-call so it cannot be
+mistakenly supplied by libc.
+
+Lean proves properties of the abstract kernel and its generated genesis,
+and abstract delegation/revocation laws. The trace evaluator's whole-run
+invariant follows from the kernel's proved step invariant. There is no C
+refinement proof here. Assembly, ELF loading, page tables, the hardware memory
+model, DMA, shared buffers and scheduling are not covered by those theorems.
+Allocation/mapping failure may leave consumed frames or partial mappings;
+transactional rollback remains work. General checked ownership and borrows
+are also unfinished.
+
+Boot comparison
+---------------
+
+The default comparison is strict. An explicit
+
+    python3 oracle/oracle.py compare reference.json candidate.json \
+        --allow oracle/kernel-log-differences.json
+
+permits exactly two named grant/handoff log corrections. Every correction
+must occur exactly as declared. Other grants, sends, faults, checker verdicts
+and incomplete observations remain visible; faults and ambiguities cannot
+become a successful default comparison just because both logs share them.
+
+One boot difference is schedule-dependent. The synthetic drag uses the same
+button state as USB input. A zero-motion report arriving after drag-down but
+before drag-up releases that button and cancels the remainder of the script;
+before or after the drag it produces no event. Five fixed arrival schedules
+are compared against the unchanged Rust server. The send difference is not
+suppressed by the log-correction policy.
+
+boot_client.py supports snapshot NVMe input, a restricted virtual e1000
+network with an explicit guest-visible gateway, and a USB keyboard. It records
+input hashes and preserves existing
+logs. A device's presence or ready marker is not evidence of a completed
+device transfer. Device-specific completion markers and reference comparisons
+are required before claiming those paths work.
+
+The paired snapshot scenario currently exercises NVMe identify, nine writes
+and five successful readback checks on both kernels. USB controller commands
+and HID report-descriptor transfer complete; ordinary HID input delivery is
+not yet qualified. The NIC diagnostic profile completes transmit descriptors
+but has not established ARP reception, even with the virtual gateway matched
+to the guest. Its browser milestone remains missing on both kernels. This
+diagnostic profile is not a passed whole-system qualification.
+
+With a NIC present, the reference NET_DIAG demonstration reports a mock HTTP
+success (source 1); this prototype reports no result. A real receive/HTTP
+implementation and its qualification remain required.
+
+Foundational direction
+----------------------
+
+The reusable cores are authority confinement, authenticated delivery,
+delegation/revocation and explicit memory lending. They are useful both for
+kernel domains and for agents sharing tools, mailboxes or storage. Refinement
+must connect implementations to those models layer by layer; a model theorem
+alone is not an implementation theorem. Useful precedents are seL4's explicit
+proof assumptions and CertiKOS's certified abstraction layers:
+
+https://sel4.systems/Verification/assumptions.html
+https://flint.cs.yale.edu/certikos/publications/ccal.html
+
+Native service profile
+----------------------
+
+SERVICES.txt describes the independent bounded HTTP service, correlated request
+ABI and checked wait protocols. sexos-kernel-network opts into the NetworkGrants
+table, including the browser display capability absent from the reference boot.
+The default genesis is unchanged. tools/genesis_lean.py --network generates the
+corresponding Lean instance explicitly; its browser confinement statement includes
+the compositor as a possible recipient of browser-owned memory. It does not
+weaken the compositor's own memory-confinement theorem.
+
+check-services and qualify-services exercise the actual correlated kernel units,
+HTTP parser and packet/descriptor adapters. Their implementation/model comparisons
+remain tests. The original fixed-call model gate above retains its original scope.

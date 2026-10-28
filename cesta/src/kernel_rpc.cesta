@@ -1,0 +1,100 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "sexos_kernel.h")
+
+    (comment "Correlated calls are separate from the legacy reply slot. Each caller owns a bounded set of outstanding requests. Only the peer that received a request may complete it; polling or cancellation consumes its identity.")
+
+    (fn (static RpcSlot) * rpc_find ((Domain (* caller)) (uint64_t id))
+      (if (== id 0) (return NULL))
+      (for (var uint32_t i 0) (< i KERNEL_RPC_CAPACITY) (++ i)
+        (if (&& (!= (. ([] (-> caller rpc) i) state) RPC_FREE)
+                (== (. ([] (-> caller rpc) i) id) id))
+          (return (& ([] (-> caller rpc) i)))))
+      (return NULL))
+
+    (fn (static void) rpc_call ((Domain (* caller)) (TrapFrame (* f)))
+      (var (const Cap) (* cap) (call cap_get caller (-> f rdi)))
+      (= (-> f rax) ERR_CAP_INVALID)
+      (var uint64_t opcode (-> f rsi))
+      (= (-> f rsi) 0)
+      (if (== opcode 0) (return))
+      (if (|| (== cap NULL) (!= (-> cap kind) CAP_DOMAIN)) (return))
+      (var Domain (* peer) (call domain_get (-> cap target)))
+      (if (== peer NULL) (return))
+      (if (! (-> peer rpc_enabled))
+        (block (= (-> f rax) NO_ADDRESS) (return)))
+      (= (-> f rax) ERR_SERVICE_NOT_READY)
+      (if (== (-> caller rpc_next) UINT64_MAX) (return))
+      (var RpcSlot (* vacant) NULL)
+      (for (var uint32_t i 0) (< i KERNEL_RPC_CAPACITY) (++ i)
+        (if (== (. ([] (-> caller rpc) i) state) RPC_FREE)
+          (block (= vacant (& ([] (-> caller rpc) i))) break)))
+      (if (== vacant NULL) (return))
+      (var uint64_t id (+ (-> caller rpc_next) 1))
+      (var RingEntry message (compound RingEntry
+        (= (. type_id) opcode) (= (. caller) (-> caller id))
+        (= (. sender) (-> caller id)) (= (. request_id) id)
+        (= (. arg0) (-> f rdx)) (= (. arg1) (-> f r10)) (= (. arg2) (-> f r8))))
+      (if (! (call domain_enqueue peer message)) (return))
+      (= (* vacant) (compound RpcSlot (= (. id) id) (= (. peer) (-> peer id)) (= (. state) RPC_QUEUED)))
+      (= (-> caller rpc_next) id)
+      (= (-> f rsi) id)
+      (= (-> f rax) 0))
+
+    (fn bool kernel_rpc_claim ((Domain (* receiver)) ((const RingEntry) (* message)))
+      (var Domain (* caller) (call domain_get (-> message sender)))
+      (if (== caller NULL) (return false))
+      (var RpcSlot (* request) (call rpc_find caller (-> message request_id)))
+      (if (|| (== request NULL) (|| (!= (-> request peer) (-> receiver id))
+                                  (!= (-> request state) RPC_QUEUED))) (return false))
+      (= (-> request state) RPC_HEARD)
+      (return true))
+
+    (fn (static void) rpc_poll ((Domain (* caller)) (TrapFrame (* f)))
+      (var RpcSlot (* request) (call rpc_find caller (-> f rdi)))
+      (= (-> f rsi) 0)
+      (= (-> f rax) ERR_CAP_INVALID)
+      (if (== request NULL) (return))
+      (if (!= (-> request state) RPC_READY)
+        (block (= (-> f rax) ERR_SERVICE_NOT_READY) (return)))
+      (= (-> f rsi) (-> request value))
+      (= (* request) (compound RpcSlot (= (. state) RPC_FREE)))
+      (= (-> f rax) 0))
+
+    (fn (static void) rpc_reply ((Domain (* peer)) (TrapFrame (* f)))
+      (var Domain (* caller) (call domain_get (cast uint32_t (-> f rdi))))
+      (= (-> f rax) ERR_CAP_INVALID)
+      (if (== caller NULL) (return))
+      (var RpcSlot (* request) (call rpc_find caller (-> f rsi)))
+      (if (|| (== request NULL) (|| (!= (-> request peer) (-> peer id))
+                                  (!= (-> request state) RPC_HEARD))) (return))
+      (= (-> request value) (-> f rdx))
+      (= (-> request state) RPC_READY)
+      (= (-> f rax) 0))
+
+    (fn void kernel_rpc_syscall ((Domain (* d)) (TrapFrame (* f)) (uint64_t number))
+      (switch number
+        (block
+          (case SEXOS_RPC_register
+            (block (= (-> d rpc_enabled) true) (= (-> f rax) 1))) break
+          (case SEXOS_RPC_call (call rpc_call d f)) break
+          (case SEXOS_RPC_poll (call rpc_poll d f)) break
+          (case SEXOS_RPC_listen
+            (block
+              (var RingEntry message (call kernel_listen_message d (cast uint32_t (-> f rdi))))
+              (= (-> f rax) (. message type_id))
+              (= (-> f rsi) (. message caller))
+              (= (-> f rdx) (. message arg0))
+              (= (-> f r10) (. message arg1))
+              (= (-> f r8) (. message arg2))
+              (= (-> f r9) (. message request_id)))) break
+          (case SEXOS_RPC_reply (call rpc_reply d f)) break
+          (case SEXOS_RPC_cancel
+            (block
+              (var RpcSlot (* request) (call rpc_find d (-> f rdi)))
+              (= (-> f rax) ERR_CAP_INVALID)
+              (if (!= request NULL)
+                (block
+                  (= (* request) (compound RpcSlot (= (. state) RPC_FREE)))
+                  (= (-> f rax) 0))))) break
+          (default (= (-> f rax) NO_ADDRESS)))))))

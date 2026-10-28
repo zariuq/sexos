@@ -1,0 +1,690 @@
+#if !defined(SEXOS_SEXFILES_H)
+#define SEXOS_SEXFILES_H 1
+
+#include "sexos_server.h"
+
+#include "sex_object_model.h"
+
+#include "format_bytes.h"
+
+#include "packed_words.h"
+
+void *memcpy(void *destination, const void *source, size_t count);
+
+void *memset(void *destination, int value, size_t count);
+
+int memcmp(const void *first, const void *second, size_t count);
+
+/*Shared interface, state record, and internal function declarations for servers/sexfiles.*/
+
+/*Block DMA protocol constants (crates/sex-pdx).*/
+
+#define BLOCK_READ UINT64_C(1)
+
+#define BLOCK_WRITE UINT64_C(2)
+
+#define BLOCK_SYNC UINT64_C(3)
+
+#define BLOCK_OK UINT64_C(0)
+
+#define BLOCK_ERR_BAD_CMD UINT64_C(1)
+
+#define BLOCK_ERR_BAD_LEN UINT64_C(2)
+
+#define BLOCK_ERR_BAD_CAP UINT64_C(3)
+
+#define BLOCK_ERR_NO_DEVICE UINT64_C(4)
+
+#define BLOCK_ERR_TIMEOUT UINT64_C(5)
+
+#define BLOCK_SECTOR_SIZE UINT64_C(512)
+
+#define BLOCK_MAX_XFER UINT64_C(4096)
+
+/*Canonical disk layout constants (crates/sex-pdx).*/
+
+#define DISK_TOTAL_SECTORS UINT64_C(2048)
+
+#define SEXDRIVE_AP3_WRITE_PROOF_LBA UINT64_C(2047)
+
+#define SEXDRIVE_AP3_WRITE_PROOF_SECTORS UINT64_C(1)
+
+#define SEXDRIVE_AP4_MULTI_BASE_LBA UINT64_C(128)
+
+#define SEXDRIVE_AP4_MULTI_SECTORS UINT64_C(4)
+
+#define SEXDRIVE_AP5A_PERSIST_BASE_LBA UINT64_C(256)
+
+#define SEXDRIVE_AP5A_PERSIST_SECTORS UINT64_C(4)
+
+#define SEXDRIVE_AP6_NEG_MISMATCH_LBA UINT64_C(384)
+
+#define SEXDRIVE_AP6_NEG_MISMATCH_SECTORS UINT64_C(1)
+
+#define DISKFS_MANIFEST_LBA UINT64_C(2046)
+
+#define DISKFS_MANIFEST_SECTORS UINT64_C(1)
+
+#define DISKFS_LEGACY_SLOTS_START_LBA UINT64_C(1926)
+
+#define DISKFS_LEGACY_SLOTS_SECTORS UINT64_C(120)
+
+#define DISKFS_SEXFILES_PROOF_START_LBA UINT64_C(2038)
+
+#define DISKFS_SEXFILES_PROOF_SECTORS UINT64_C(8)
+
+#define DISKFS_LINEN_OBJECT_START_LBA UINT64_C(2030)
+
+#define DISKFS_LINEN_OBJECT_SECTORS UINT64_C(8)
+
+#define DISKFS_QUIL_OBJECT_START_LBA UINT64_C(2022)
+
+#define DISKFS_QUIL_OBJECT_SECTORS UINT64_C(8)
+
+#define DISKFS_V4_INDIRECT_BASE_LBA_PDX UINT64_C(1911)
+
+#define DISKFS_V4_INDIRECT_SECTORS UINT64_C(15)
+
+#define DISKFS_V4_POOL_BASE_LBA UINT64_C(400)
+
+#define DISKFS_V4_BLOCK_SECTORS UINT64_C(8)
+
+#define DISKFS_V4_POOL_BLOCKS UINT64_C(176)
+
+#define DISKFS_V4_POOL_SECTORS UINT64_C(1408)
+
+#define SEXFS_V0_META_START_LBA UINT64_C(0)
+
+#define SEXFS_V0_META_END_LBA UINT64_C(47)
+
+#define SEXFS_V0_OBJECT_START_LBA UINT64_C(128)
+
+#define SEXFS_V0_OBJECT_END_LBA UINT64_C(2019)
+
+#define DISKFS_V2_STATUS_OK UINT64_C(0x00)
+
+#define DISKFS_V2_STATUS_EOF UINT64_C(0x01)
+
+#define DISKFS_V2_STATUS_ERR UINT64_C(0xFF)
+
+/*SexFiles PDX message opcodes, flags, and error codes (servers/sexfiles/src/messages.rs).*/
+
+#define OP_RAMFS_OPEN UINT64_C(0x30)
+
+#define OP_RAMFS_READ UINT64_C(0x31)
+
+#define OP_RAMFS_WRITE UINT64_C(0x32)
+
+#define OP_RAMFS_CLOSE UINT64_C(0x33)
+
+#define OP_RAMFS_LIST UINT64_C(0x34)
+
+#define OP_RAMFS_STAT UINT64_C(0x35)
+
+#define OP_RAMFS_CREATE_OWNER UINT64_C(0x36)
+
+#define OP_RAMFS_OBJECT_ID UINT64_C(0x37)
+
+#define OP_DISKFS_WRITE UINT64_C(0x38)
+
+#define OP_DISKFS_READ UINT64_C(0x39)
+
+#define OP_DISKFS_FLUSH UINT64_C(0x3A)
+
+#define OP_DISKFS_STAT UINT64_C(0x3B)
+
+#define OP_DISKFS_MANIFEST_HASH UINT64_C(0x3C)
+
+#define OP_RAMFS_READNAME UINT64_C(0x3D)
+
+#define OP_DISKFS_SELECT UINT64_C(0x3E)
+
+#define OP_RAMFS_STATUS UINT64_C(0x3F)
+
+#define OP_SEXOBJECT_NATIVE_PERSIST_PROOF UINT64_C(0x40)
+
+#define OP_SEXOBJECT_READ_BACK UINT64_C(0x41)
+
+#define OP_DISKFS_CREATE UINT64_C(0x42)
+
+#define OP_DISKFS_LIST UINT64_C(0x43)
+
+#define OP_DISKFS_DELETE UINT64_C(0x47)
+
+#define OP_DISKFS_RENAME UINT64_C(0x48)
+
+#define OP_DISKFS_TRUNCATE UINT64_C(0x49)
+
+#define OP_DISKFS_READ_V2 UINT64_C(0x4A)
+
+#define DISKFS_MAX_WRITE ((size_t)16)
+
+#define DISKFS_MAX_READ ((size_t)8)
+
+#define DISKFS_V2_MAX_READ ((size_t)6)
+
+#define DISKFS_OBJECT_SIZE UINT64_C(4096)
+
+#define RAMFS_O_CREATE UINT32_C(0x01)
+
+#define RAMFS_O_EXCL UINT32_C(0x02)
+
+#define ERR_INVALID_HANDLE INT64_C(-1)
+
+#define ERR_NAME_TOO_LONG INT64_C(-2)
+
+#define ERR_NOT_FOUND INT64_C(-3)
+
+#define ERR_OVERFLOW INT64_C(-4)
+
+#define ERR_FULL INT64_C(-5)
+
+#define ERR_PERM_DENIED INT64_C(-6)
+
+#define ERR_BAD_CMD INT64_C(-7)
+
+#define ERR_EXISTS INT64_C(-8)
+
+#define ERR_CORRUPT INT64_C(-9)
+
+#define RAMFS_MAX_FILES ((size_t)64)
+
+#define RAMFS_SLOT_CAP ((size_t)256)
+
+#define RAMFS_MAX_FILE_SIZE ((size_t)4096)
+
+#define RAMFS_MAX_NAME ((size_t)24)
+
+/*Capability rights bitmask and table capacity (servers/sexfiles/src/backends/ramfs.rs).*/
+
+#define CAP_RIGHT_READ ((uint8_t)0x01)
+
+#define CAP_RIGHT_WRITE ((uint8_t)0x02)
+
+#define CAP_RIGHT_APPEND ((uint8_t)0x04)
+
+#define CAP_RIGHT_LIST ((uint8_t)0x08)
+
+#define CAP_RIGHT_DELETE ((uint8_t)0x10)
+
+#define CAP_RIGHT_GRANT ((uint8_t)0x20)
+
+#define CAP_RIGHT_OPEN_EXISTING ((uint8_t)(CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_APPEND | CAP_RIGHT_DELETE | CAP_RIGHT_GRANT))
+
+#define CAP_MAX_RECORDS ((size_t)256)
+
+/*Defer ring capacity (servers/sexfiles/src/pdx.rs).*/
+
+#define DEFER_CAP ((size_t)8)
+
+/*DiskFS constants (servers/sexfiles/src/backends/diskfs.rs & vfs.rs).*/
+
+#define DISKFS_BLOCK_SIZE UINT32_C(4096)
+
+#define DISKFS_MAX_OBJECTS ((size_t)16)
+
+#define DISKFS_JOURNAL_CAPACITY ((size_t)64)
+
+#define DISKFS_MAX_CHECKPOINTS ((size_t)4)
+
+#define DISKFS_MAGIC UINT64_C(0x315653454C494653)
+
+#define DISKFS_CHECKPOINT_MAGIC UINT64_C(0x43484B504E545631)
+
+#define DISKFS_EXTENT_BLOCK_COUNT ((size_t)1024)
+
+#define DISKFS_EXTENT_BITMAP_WORDS ((size_t)16)
+
+#define DISKFS_EXTENT_JOURNAL_CAPACITY ((size_t)32)
+
+#define DISKFS_EXTENT_JOURNAL_KIND ((uint16_t)10)
+
+#define DISKFS_WRITE_PROOF_LBA UINT64_C(2047)
+
+#define DISKFS_PROOF_OBJECT_START_LBA UINT64_C(2038)
+
+#define DISKFS_PROOF_OBJECT_SECTORS UINT64_C(8)
+
+#define DISKFS_MANIFEST_MAGIC UINT64_C(0x31564D4B53494453)
+
+#define DISKFS_MANIFEST_VERSION ((uint16_t)1)
+
+#define DISKFS_MANIFEST_ENTRY_MAX ((uint16_t)15)
+
+#define DISKFS_MANIFEST_FLAG_READ ((uint16_t)0x1)
+
+#define DISKFS_MANIFEST_FLAG_WRITE ((uint16_t)0x2)
+
+#define DISKFS_V2_ENTRY_COUNT ((uint16_t)3)
+
+#define DISKFS_OBJECT_SLOT_LINEN_LBA UINT64_C(2030)
+
+#define DISKFS_OBJECT_SLOT_QUIL_LBA UINT64_C(2022)
+
+#define DISKFS_OBJECT_SLOT_SECTORS UINT64_C(8)
+
+#define DISKFS_OBJECT_SLOT_SIZE UINT32_C(4096)
+
+#define DISKFS_V2_MANIFEST_VERSION ((uint16_t)2)
+
+#define DISKFS_SLOTS ((size_t)15)
+
+#define DISKFS_V3_NAME_MAX ((size_t)24)
+
+#define DISKFS_V3_SYSTEM_SLOTS UINT64_C(3)
+
+#define DISKFS_V3_VERSION ((uint16_t)3)
+
+#define DISKFS_V4_VERSION ((uint16_t)4)
+
+#define DISKFS_V4_BLOCK_BYTES UINT64_C(4096)
+
+#define DISKFS_V4_MAX_OBJECT_BLOCKS UINT32_C(16)
+
+#define DISKFS_V4_MAX_OBJECT_BYTES UINT64_C(65536)
+
+#define DISKFS_V4_MAX_EXTENTS ((size_t)8)
+
+#define DISKFS_V4_INDIRECT_TOP_LBA UINT64_C(1925)
+
+#define DISKFS_CLIENT_SLOTS ((size_t)32)
+
+#define JOURNAL_KIND_TX_BEGIN ((uint16_t)1)
+
+#define JOURNAL_KIND_OBJECT_METADATA_UPDATE ((uint16_t)2)
+
+#define JOURNAL_KIND_TX_COMMIT ((uint16_t)3)
+
+typedef struct DeferEntry {
+  uint64_t type_id;
+  uint32_t caller_pd;
+  uint64_t a0;
+  uint64_t a1;
+  uint64_t a2;
+}
+DeferEntry;
+
+typedef struct RamfsFileEntry {
+  uint64_t handle;
+  uint64_t object_id;
+  bool active;
+  bool in_use;
+  uint32_t owner_pd;
+  uint64_t cap_generation;
+  uint8_t name[RAMFS_MAX_NAME];
+  uint8_t name_len;
+  uint8_t data[RAMFS_MAX_FILE_SIZE];
+  size_t data_len;
+}
+RamfsFileEntry;
+
+typedef struct RamfsCapRecord {
+  uint64_t object_id;
+  uint32_t subject_pd;
+  uint8_t rights;
+  uint64_t generation;
+  bool valid;
+}
+RamfsCapRecord;
+
+typedef struct DiskManifestEntryV1 {
+  uint64_t name_hash;
+  uint64_t start_lba;
+  uint32_t len_bytes;
+  uint16_t flags;
+}
+DiskManifestEntryV1;
+
+typedef struct SexfilesSuperblock {
+  uint64_t magic;
+  uint16_t version_major;
+  uint16_t version_minor;
+  uint32_t block_size;
+  uint64_t fs_generation;
+  uint64_t object_table_start_block;
+  uint32_t object_table_entry_count;
+  uint64_t feature_flags;
+  uint32_t checksum;
+}
+SexfilesSuperblock;
+
+typedef struct SexfilesObjectEntry {
+  uint64_t object_id;
+  uint16_t kind;
+  uint32_t owner_pd;
+  uint64_t rights_generation;
+  uint64_t object_size_bytes;
+  uint64_t first_block;
+  uint64_t metadata_generation;
+  uint32_t checksum;
+  bool in_use;
+}
+SexfilesObjectEntry;
+
+typedef struct JournalRecord {
+  uint16_t kind;
+  uint64_t tx_id;
+  uint64_t generation;
+  uint64_t object_id;
+  uint64_t metadata_generation;
+  uint16_t payload_len;
+  uint32_t checksum;
+}
+JournalRecord;
+
+typedef struct SexfilesCheckpoint {
+  uint64_t magic;
+  uint64_t checkpoint_generation;
+  uint64_t fs_generation;
+  SexfilesObjectEntry table[DISKFS_MAX_OBJECTS];
+  uint32_t checksum;
+  bool valid;
+}
+SexfilesCheckpoint;
+
+typedef struct ReplayOutcome {
+  bool committed_applied;
+  bool uncommitted_ignored;
+  bool corrupt_rejected;
+  bool generation_order;
+  bool object_restored;
+}
+ReplayOutcome;
+
+typedef struct RebootOutcome {
+  bool write_committed;
+  uint32_t objects_created;
+  size_t journal_records;
+  size_t replay_applied;
+  bool objects_restored;
+  bool fs_generation_advanced;
+}
+RebootOutcome;
+
+typedef struct DiskFsState {
+  bool mounted;
+  SexfilesSuperblock superblock;
+  SexfilesObjectEntry table[DISKFS_MAX_OBJECTS];
+  JournalRecord journal[DISKFS_JOURNAL_CAPACITY];
+  size_t journal_len;
+  uint64_t next_tx_id;
+  uint64_t extent_bitmap[DISKFS_EXTENT_BITMAP_WORDS];
+  JournalRecord extent_journal[DISKFS_EXTENT_JOURNAL_CAPACITY];
+  size_t extent_journal_len;
+  SexfilesCheckpoint checkpoints[DISKFS_MAX_CHECKPOINTS];
+  uint64_t next_checkpoint_generation;
+}
+DiskFsState;
+
+typedef struct V4Extent {
+  uint16_t start_lba;
+  uint16_t sector_count;
+}
+V4Extent;
+
+typedef struct V4Entry {
+  uint8_t name[DISKFS_V3_NAME_MAX];
+  uint32_t size_bytes;
+  uint16_t gen;
+}
+V4Entry;
+
+typedef struct V4Cache {
+  bool valid;
+  size_t slot;
+  V4Extent extents[DISKFS_V4_MAX_EXTENTS];
+  size_t count;
+}
+V4Cache;
+
+typedef struct SexfilesState {
+  SexosListener listener;
+  uint32_t trampoline_hot_log_budget;
+  uint32_t tramp_listen_budget;
+  uint32_t vfs_hot_log_budget;
+  uint32_t diskfs_hot_log_budget;
+  DeferEntry defer_ring[DEFER_CAP];
+  size_t defer_len;
+  RamfsFileEntry ramfs_files[RAMFS_SLOT_CAP];
+  size_t ramfs_files_len;
+  RamfsCapRecord ramfs_caps[CAP_MAX_RECORDS];
+  size_t ramfs_caps_len;
+  uint64_t ramfs_next_object_id;
+  uint64_t ramfs_next_handle;
+  DiskFsState diskfs_state;
+  uint64_t diskfs_next_object_id;
+  uint64_t ipc_ops_total;
+  uint64_t diskfs_bridge_buf_va;
+  uint64_t diskfs_manifest_ready;
+  uint64_t diskfs_selected_path_id[DISKFS_CLIENT_SLOTS];
+  uint64_t diskfs_select_used;
+  uint64_t diskfs_bridge_reuse_printed;
+  V4Entry v4_table[DISKFS_SLOTS];
+  uint64_t v4_loaded;
+  uint64_t v4_generation;
+  uint64_t v4_bitmap[3];
+  V4Cache v4_extent_cache;
+}
+SexfilesState;
+
+extern SexfilesState sexfiles_state;
+
+void sexfiles_state_init(SexfilesState *s);
+
+bool sexfiles_take_budget(uint32_t *budget);
+
+bool defer_stash(uint64_t type_id, uint32_t caller_pd, uint64_t a0, uint64_t a1, uint64_t a2);
+
+bool defer_pop(DeferEntry *out);
+
+SexObjectHeader sexobject_header_from_entry(const SexfilesObjectEntry *entry);
+
+uint64_t collar_rights_generation(const SexfilesObjectEntry *entry);
+
+/*RamFs backend operations (servers/sexfiles/src/backends/ramfs.rs).*/
+
+int64_t ramfs_open(const uint8_t *name, size_t name_len, uint32_t flags, uint32_t mode, uint32_t caller_pd, uint64_t *out_handle);
+
+int64_t ramfs_read(uint64_t handle, uint64_t offset, uint8_t *buf, size_t buf_len, uint32_t caller_pd, uint64_t *out_n);
+
+int64_t ramfs_write(uint64_t handle, uint64_t offset, const uint8_t *data, size_t data_len, uint32_t caller_pd, uint64_t *out_n);
+
+int64_t ramfs_close(uint64_t handle, uint32_t caller_pd);
+
+int64_t ramfs_stat(uint64_t handle, uint32_t caller_pd, uint64_t *out_size, uint32_t *out_name_len);
+
+bool ramfs_list_at(size_t index, uint32_t caller_pd, uint64_t *out_handle, uint32_t *out_name_len);
+
+size_t ramfs_len(uint32_t caller_pd);
+
+int64_t ramfs_create_with_owner(const uint8_t *name, size_t name_len, uint32_t owner_pd, uint32_t caller_pd, uint64_t *out_handle);
+
+int64_t ramfs_object_id_for_handle(uint64_t handle, uint32_t caller_pd, uint64_t *out_id);
+
+int64_t ramfs_proof_grant_caps_by_name(uint32_t owner_pd, const uint8_t *name, size_t name_len, uint32_t subject_pd, uint8_t rights);
+
+int64_t ramfs_proof_revoke_caps_by_name(uint32_t owner_pd, const uint8_t *name, size_t name_len);
+
+int64_t ramfs_proof_inject_stale_generation_cap(const uint8_t *name, size_t name_len, uint32_t subject_pd, uint8_t rights, uint64_t stale_generation);
+
+/*VFS routing and DiskFS bridge buffer (servers/sexfiles/src/vfs.rs).*/
+
+uint64_t diskfs_bridge_get_buf_va(void);
+
+uint64_t handle_vfs_message(uint64_t type_id, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint32_t caller_pd);
+
+/*DiskFS backend, manifest, and SexFS v0 operations (servers/sexfiles/src/backends/diskfs.rs).*/
+
+uint64_t diskfs_block_call(uint64_t opcode, uint64_t arg0, uint64_t arg1, uint64_t arg2);
+
+uint64_t diskfs_block_read(uint64_t offset, uint64_t size, uint64_t buffer_cap);
+
+uint64_t diskfs_block_write(uint64_t offset, uint64_t size, uint64_t buffer_cap);
+
+uint64_t diskfs_block_sync(void);
+
+uint64_t diskfs_fsync(void);
+
+uint64_t diskfs_manifest_name_hash(const uint8_t *name, size_t len);
+
+void diskfs_proof_manifest_build_single_entry_sector(uint8_t *out_sector);
+
+bool diskfs_proof_manifest_parse_single_entry(const uint8_t *sector, DiskManifestEntryV1 *out_entry, uint64_t *out_err);
+
+void diskfs_proof_manifest_build_v2_entries_sector(uint8_t *out_sector);
+
+bool diskfs_proof_manifest_parse_v2_entries(const uint8_t *sector, DiskManifestEntryV1 *out_entries, uint16_t *out_count, uint64_t *out_err);
+
+bool diskfs_lookup_by_path_id(uint64_t path_id, uint64_t buf_va, DiskManifestEntryV1 *out_entry, uint64_t *out_err);
+
+const char *diskfs_path_for_id(uint64_t path_id, size_t *out_len, uint64_t *out_err);
+
+bool diskfs_lookup_path(const uint8_t *path, size_t path_len, uint64_t buf_va, DiskManifestEntryV1 *out_entry, uint64_t *out_err);
+
+bool diskfs_write_object(const uint8_t *path, size_t path_len, uint64_t offset, const uint8_t *data, size_t data_len, uint64_t buf_va, uint64_t *out_written, uint64_t *out_err);
+
+bool diskfs_write_object_entry(DiskManifestEntryV1 entry, uint64_t offset, const uint8_t *data, size_t data_len, uint64_t buf_va, uint64_t *out_written, uint64_t *out_err);
+
+bool diskfs_read_object(const uint8_t *path, size_t path_len, uint64_t offset, uint8_t *out_buf, size_t out_len, uint64_t buf_va, uint64_t *out_read, uint64_t *out_err);
+
+bool diskfs_read_object_entry(DiskManifestEntryV1 entry, uint64_t offset, uint8_t *out_buf, size_t out_len, uint64_t buf_va, uint64_t *out_read, uint64_t *out_err);
+
+bool diskfs_ensure_manifest(uint64_t buf_va, uint64_t *out_err);
+
+bool diskfs_ensure_manifest_v2(uint64_t buf_va, uint64_t *out_err);
+
+int64_t diskfs_format_init_empty(void);
+
+int64_t diskfs_mount(SexfilesSuperblock *out_sb);
+
+int64_t diskfs_create_object_entry(uint16_t kind, uint32_t owner_pd, uint64_t *out_oid);
+
+int64_t diskfs_stat_object_entry(uint64_t object_id, SexfilesObjectEntry *out_entry);
+
+size_t diskfs_journal_len(void);
+
+int64_t diskfs_proof_inject_bad_record_for_checksum(void);
+
+int64_t diskfs_proof_replay_recovery_scenario(ReplayOutcome *out);
+
+int64_t diskfs_proof_reboot_persistence_roundtrip(RebootOutcome *out);
+
+int64_t diskfs_proof_fill_journal_and_test_full(void);
+
+int64_t diskfs_proof_inject_bad_entry_checksum(uint64_t object_id);
+
+int64_t diskfs_allocate_blocks(uint32_t count, uint64_t *out_first);
+
+int64_t diskfs_free_blocks(uint64_t first_block, uint32_t count);
+
+size_t diskfs_used_blocks(void);
+
+size_t diskfs_total_blocks(void);
+
+int64_t diskfs_proof_extent_bounds(void);
+
+int64_t diskfs_proof_extent_full(void);
+
+int64_t diskfs_proof_extent_journaled(size_t *out_alloc_delta, size_t *out_free_delta);
+
+int64_t diskfs_proof_extent_alloc_and_reuse(void);
+
+int64_t diskfs_create_checkpoint(uint64_t *out_cp_gen);
+
+bool diskfs_find_latest_valid_checkpoint(size_t *out_idx, SexfilesCheckpoint *out_cp);
+
+int64_t diskfs_restore_checkpoint(const SexfilesCheckpoint *cp, uint64_t *out_gen);
+
+int64_t diskfs_proof_corrupt_skip_scenario(bool *out_ok);
+
+int64_t diskfs_proof_generation_monotonic_scenario(bool *out_ok);
+
+int64_t diskfs_proof_checkpoint_roundtrip(size_t *out_count, bool *out_verified);
+
+int64_t diskfs_proof_validate_block_route(void);
+
+int64_t diskfs_proof_validate_block_write(uint64_t block_offset, uint32_t block_len);
+
+int64_t diskfs_proof_validate_block_read(uint64_t block_offset, uint32_t block_len);
+
+int64_t diskfs_proof_block_roundtrip_match(void);
+
+int64_t proof_sexfs_v0_superblock_format_mount(void);
+
+int64_t proof_sexobject_table_persist(void);
+
+int64_t proof_sexobject_table_extent_alloc(void);
+
+int64_t proof_sexobject_extent_write_full_block(void);
+
+int64_t proof_sexobject_write_read_persist(void);
+
+int64_t proof_sexobject_multi_object(void);
+
+bool sexobject_native_persist_linen_proof(uint64_t *out_object_id, int64_t *out_err);
+
+bool sexobject_read_back_for_quil(uint64_t object_id, size_t *out_len, int64_t *out_err);
+
+/*Startup proof harnesses (servers/sexfiles/src/proof.rs).*/
+
+void run_all_proofs(void);
+
+void run_diskfs_object_table_proofs(void);
+
+void run_sexfiles_journal_proofs(void);
+
+void run_sexfiles_replay_proofs(void);
+
+void run_sexfiles_cap_record_proofs(void);
+
+void run_linen_sexfiles_metadata_proofs(void);
+
+void run_linen_disk_object_proof(void);
+
+void run_sexfiles_fault_injection_proofs(void);
+
+void run_sexfiles_real_block_proofs(void);
+
+void run_sexfiles_reboot_proofs(void);
+
+void run_sexfiles_extent_proofs(void);
+
+void run_sexfiles_checkpoint_proofs(void);
+
+void run_sexobject_view_proof(void);
+
+void run_diskfs_multi_object_proofs(void);
+
+void run_diskfs100_ap2_proof(void);
+
+void run_diskfs_bridge_strict_proof_v1(void);
+
+void run_diskfs_negative_bounds_auth_proof(void);
+
+void run_diskfs100_ap4_write_proof(void);
+
+void run_diskfs100_ap4_read_proof(void);
+
+void run_diskfs100_ap5_neg_mismatch(void);
+
+void run_diskfs100_ap5_neg_missing_image(void);
+
+void run_diskfs100_ap5_neg_read_no_write(void);
+
+void run_diskfs100_ap5_neg_flush_skip(void);
+
+void run_diskfs100_ap6_flush_fsync(void);
+
+void run_sexfs_v0_superblock_format_mount_proofs(void);
+
+void run_sexobject_extent_write_full_block_proofs(void);
+
+void run_sexobject_table_extent_alloc_proofs(void);
+
+void run_sexobject_table_persist_proofs(void);
+
+void run_sexobject_write_read_persist_proofs(void);
+
+void run_sexobject_multi_object_proofs(void);
+
+#endif

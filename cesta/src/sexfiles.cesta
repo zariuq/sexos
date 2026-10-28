@@ -1,0 +1,1968 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "sexfiles.h")
+
+    (comment "SexFiles server: message defer ring, SexObject header adapter, RamFS backend, DiskFS V4 bridge, VFS dispatch, and trampoline entry (servers/sexfiles/src/{pdx,sexobject,backends/ramfs,vfs,trampoline,main}.rs).")
+
+    (comment "Build-time proof flags and cfg gates (servers/sexfiles/src/trampoline.rs & build.rs).")
+    (cpp-if "defined(SEXFILES_RAMFS_PROOF)"
+      (then (define RAMFS_PROOF_ENABLED "1"))
+      (else (define RAMFS_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_DISKFS_OBJECT_TABLE_PROOF)"
+      (then (define DISKFS_OBJECT_TABLE_PROOF_ENABLED "1"))
+      (else (define DISKFS_OBJECT_TABLE_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_SEXFILES_JOURNAL_PROOF)"
+      (then (define SEXFILES_JOURNAL_PROOF_ENABLED "1"))
+      (else (define SEXFILES_JOURNAL_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_SEXFILES_REPLAY_PROOF)"
+      (then (define SEXFILES_REPLAY_PROOF_ENABLED "1"))
+      (else (define SEXFILES_REPLAY_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_SEXFILES_CAP_RECORD_PROOF)"
+      (then (define SEXFILES_CAP_RECORD_PROOF_ENABLED "1"))
+      (else (define SEXFILES_CAP_RECORD_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_LINEN_SEXFILES_METADATA_PROOF)"
+      (then (define LINEN_SEXFILES_METADATA_PROOF_ENABLED "1"))
+      (else (define LINEN_SEXFILES_METADATA_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_SEXFILES_FAULT_INJECTION_PROOF)"
+      (then (define SEXFILES_FAULT_INJECTION_PROOF_ENABLED "1"))
+      (else (define SEXFILES_FAULT_INJECTION_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_SEXFILES_REAL_BLOCK_PROOF)"
+      (then (define SEXFILES_REAL_BLOCK_PROOF_ENABLED "1"))
+      (else (define SEXFILES_REAL_BLOCK_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_SEXFILES_REBOOT_PROOF)"
+      (then (define SEXFILES_REBOOT_PROOF_ENABLED "1"))
+      (else (define SEXFILES_REBOOT_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_SEXFILES_EXTENT_PROOF)"
+      (then (define SEXFILES_EXTENT_PROOF_ENABLED "1"))
+      (else (define SEXFILES_EXTENT_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_SEXFILES_CHECKPOINT_PROOF)"
+      (then (define SEXFILES_CHECKPOINT_PROOF_ENABLED "1"))
+      (else (define SEXFILES_CHECKPOINT_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXFILES_ROUTE_AUDIT_ONLY)"
+      (then (define SEXFILES_ROUTE_AUDIT_ONLY_ENABLED "1"))
+      (else (define SEXFILES_ROUTE_AUDIT_ONLY_ENABLED "0")))
+    (cpp-if "defined(SEXOS_SEXOBJECT_VIEW_PROOF)"
+      (then (define SEXOBJECT_VIEW_PROOF_ENABLED "1"))
+      (else (define SEXOBJECT_VIEW_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOS_LINEN_DISK_OBJECT_PROOF)"
+      (then (define LINEN_DISK_OBJECT_PROOF_ENABLED "1"))
+      (else (define LINEN_DISK_OBJECT_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXFS_V0_SUPERBLOCK_FORMAT_MOUNT_PROOF)"
+      (then (define SEXFS_V0_SUPERBLOCK_FORMAT_MOUNT_PROOF_ENABLED "1"))
+      (else (define SEXFS_V0_SUPERBLOCK_FORMAT_MOUNT_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOBJECT_TABLE_PERSIST_PROOF)"
+      (then (define SEXOBJECT_TABLE_PERSIST_PROOF_ENABLED "1"))
+      (else (define SEXOBJECT_TABLE_PERSIST_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOBJECT_TABLE_EXTENT_ALLOC_PROOF)"
+      (then (define SEXOBJECT_TABLE_EXTENT_ALLOC_PROOF_ENABLED "1"))
+      (else (define SEXOBJECT_TABLE_EXTENT_ALLOC_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOBJECT_EXTENT_WRITE_FULL_BLOCK_PROOF)"
+      (then (define SEXOBJECT_EXTENT_WRITE_FULL_BLOCK_PROOF_ENABLED "1"))
+      (else (define SEXOBJECT_EXTENT_WRITE_FULL_BLOCK_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOBJECT_WRITE_READ_PERSIST_PROOF)"
+      (then (define SEXOBJECT_WRITE_READ_PERSIST_PROOF_ENABLED "1"))
+      (else (define SEXOBJECT_WRITE_READ_PERSIST_PROOF_ENABLED "0")))
+    (cpp-if "defined(SEXOBJECT_MULTI_OBJECT_PROOF)"
+      (then (define SEXOBJECT_MULTI_OBJECT_PROOF_ENABLED "1"))
+      (else (define SEXOBJECT_MULTI_OBJECT_PROOF_ENABLED "0")))
+
+    (cpp-if "defined(sexfiles_diskfs100_ap4_write) || defined(SEXFILES_DISKFS_100_AP4_WRITE)"
+      (then (define DISKFS_100_AP4_WRITE_PROOF_ENABLED "1"))
+      (else (define DISKFS_100_AP4_WRITE_PROOF_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs100_ap4_read) || defined(SEXFILES_DISKFS_100_AP4_READ) || defined(sexfiles_diskfs100_ap5_neg_read_no_write) || defined(SEXFILES_DISKFS_100_AP5_NEG_READ_NO_WRITE)"
+      (then (define DISKFS_100_AP4_READ_PROOF_ENABLED "1"))
+      (else (define DISKFS_100_AP4_READ_PROOF_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs100_ap5_neg_read_no_write) || defined(SEXFILES_DISKFS_100_AP5_NEG_READ_NO_WRITE)"
+      (then (define DISKFS_100_AP5_NEG_READ_NO_WRITE_ENABLED "1"))
+      (else (define DISKFS_100_AP5_NEG_READ_NO_WRITE_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs100_ap5_neg_mismatch) || defined(SEXFILES_DISKFS_100_AP5_NEG_MISMATCH)"
+      (then (define DISKFS_100_AP5_NEG_MISMATCH_ENABLED "1"))
+      (else (define DISKFS_100_AP5_NEG_MISMATCH_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs100_ap5_neg_missing_image) || defined(SEXFILES_DISKFS_100_AP5_NEG_MISSING_IMAGE)"
+      (then (define DISKFS_100_AP5_NEG_MISSING_IMAGE_ENABLED "1"))
+      (else (define DISKFS_100_AP5_NEG_MISSING_IMAGE_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs100_ap5_neg_flush_skip) || defined(SEXFILES_DISKFS_100_AP5_NEG_FLUSH_SKIP)"
+      (then (define DISKFS_100_AP5_NEG_FLUSH_SKIP_ENABLED "1"))
+      (else (define DISKFS_100_AP5_NEG_FLUSH_SKIP_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs100_ap6_flush_fsync) || defined(SEXFILES_DISKFS_100_AP6_FLUSH_FSYNC)"
+      (then (define DISKFS_100_AP6_FLUSH_FSYNC_ENABLED "1"))
+      (else (define DISKFS_100_AP6_FLUSH_FSYNC_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs_negative_bounds_auth_proof) || defined(SEXFILES_DISKFS_NEGATIVE_BOUNDS_AUTH_PROOF)"
+      (then (define DISKFS_NEGATIVE_BOUNDS_AUTH_PROOF_ENABLED "1"))
+      (else (define DISKFS_NEGATIVE_BOUNDS_AUTH_PROOF_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs_bridge_strict_proof) || defined(SEXFILES_DISKFS_BRIDGE_STRICT_PROOF)"
+      (then (define DISKFS_BRIDGE_STRICT_PROOF_ENABLED "1"))
+      (else (define DISKFS_BRIDGE_STRICT_PROOF_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs100_ap2_proof) || defined(SEXFILES_DISKFS_100_PROOF)"
+      (then (define DISKFS_100_AP2_PROOF_ENABLED "1"))
+      (else (define DISKFS_100_AP2_PROOF_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs100_ap3_proof) || defined(SEXFILES_DISKFS_100_AP3_PROOF)"
+      (then (define DISKFS_100_AP3_PROOF_ENABLED "1"))
+      (else (define DISKFS_100_AP3_PROOF_ENABLED "0")))
+    (cpp-if "defined(sexfiles_diskfs_multi_object_proof) || defined(SEXFILES_DISKFS_100_AP3_PROOF)"
+      (then (define DISKFS_MULTI_OBJECT_PROOF_ENABLED "1"))
+      (else (define DISKFS_MULTI_OBJECT_PROOF_ENABLED "0")))
+
+    (var (type SexfilesState (_Alignas 4096)) sexfiles_state)
+
+    (fn void sexfiles_state_init ((SexfilesState (* s)))
+      (call memset s 0 (sizeof (* s)))
+      (= (. (-> s listener) wrapper_budget) 8)
+      (= (-> s trampoline_hot_log_budget) 120)
+      (= (-> s tramp_listen_budget) 8)
+      (= (-> s vfs_hot_log_budget) 200)
+      (= (-> s diskfs_hot_log_budget) 200)
+      (= (-> s ramfs_next_object_id) 1)
+      (= (-> s ramfs_next_handle) 1)
+      (= (. (-> s diskfs_state) next_tx_id) 1)
+      (= (. (-> s diskfs_state) next_checkpoint_generation) 1)
+      (= (-> s diskfs_next_object_id) 1))
+
+    (fn bool sexfiles_take_budget ((uint32_t (* budget)))
+      (if (> (* budget) 0)
+        (block
+          (-= (* budget) 1)
+          (return true)))
+      (return false))
+
+    (comment "SEXFILES_DEFER_V1: defer ring for client messages arriving during diskfs_block_call (servers/sexfiles/src/pdx.rs).")
+    (fn bool defer_stash ((uint64_t type_id) (uint32_t caller_pd) (uint64_t a0) (uint64_t a1) (uint64_t a2))
+      (if (>= (. sexfiles_state defer_len) DEFER_CAP)
+        (block
+          (call sexos_line "[sexfiles.defer.drop] type=%#llx caller=%u reason=stash_full"
+            (cast (unsigned long long) type_id) (cast unsigned caller_pd))
+          (return false)))
+      (var size_t i (. sexfiles_state defer_len))
+      (= ([] (. sexfiles_state defer_ring) i)
+        (compound DeferEntry
+          (= (. type_id) type_id)
+          (= (. caller_pd) caller_pd)
+          (= (. a0) a0)
+          (= (. a1) a1)
+          (= (. a2) a2)))
+      (= (. sexfiles_state defer_len) (+ i 1))
+      (call sexos_line "[sexfiles.defer.stash] type=%#llx caller=%u depth=%zu"
+        (cast (unsigned long long) type_id) (cast unsigned caller_pd) (+ i 1))
+      (return true))
+
+    (fn bool defer_pop ((DeferEntry (* out)))
+      (if (== (. sexfiles_state defer_len) 0)
+        (return false))
+      (var DeferEntry m ([] (. sexfiles_state defer_ring) 0))
+      (var size_t n (. sexfiles_state defer_len))
+      (for (var size_t i 1) (< i n) (++ i)
+        (= ([] (. sexfiles_state defer_ring) (- i 1)) ([] (. sexfiles_state defer_ring) i)))
+      (= (. sexfiles_state defer_len) (- n 1))
+      (call sexos_line "[sexfiles.defer.replay] type=%#llx caller=%u depth=%zu"
+        (cast (unsigned long long) (. m type_id)) (cast unsigned (. m caller_pd)) (- n 1))
+      (= (* out) m)
+      (return true))
+
+    (comment "SexObject header adapter (servers/sexfiles/src/sexobject.rs).")
+    (fn uint64_t collar_rights_generation (((const SexfilesObjectEntry) (* entry)))
+      (return (-> entry rights_generation)))
+
+    (fn SexObjectHeader sexobject_header_from_entry (((const SexfilesObjectEntry) (* entry)))
+      (return
+        (compound SexObjectHeader
+          (= (. object_id) (-> entry object_id))
+          (= (. content_generation) (-> entry metadata_generation))
+          (= (. rights_generation) (-> entry rights_generation))
+          (= (. metadata_generation) (-> entry metadata_generation))
+          (= (. object_size_bytes) (-> entry object_size_bytes))
+          (= (. first_block) (-> entry first_block))
+          (= (. owner_pd) (-> entry owner_pd))
+          (= (. kind) (cast uint32_t (-> entry kind)))
+          (= (. checksum) (-> entry checksum))
+          (= (. flags) (?: (-> entry in_use) 0 SEX_OBJECT_FLAG_TOMBSTONED))
+          (= (. reserved0) 0)
+          (= (. reserved1) 0))))
+
+    (comment "RamFs backend (servers/sexfiles/src/backends/ramfs.rs).")
+    (fn (static size_t) ramfs_find_active_by_handle ((uint64_t handle))
+      (for (var size_t i 0) (< i (. sexfiles_state ramfs_files_len)) (++ i)
+        (block
+          (var (const RamfsFileEntry) (* f) (& ([] (. sexfiles_state ramfs_files) i)))
+          (if (&& (-> f in_use) (&& (-> f active) (== (-> f handle) handle)))
+            (return i))))
+      (return SIZE_MAX))
+
+    (fn (static size_t) ramfs_find_any_by_name (((const uint8_t) (* name)) (size_t name_len))
+      (for (var size_t i 0) (< i (. sexfiles_state ramfs_files_len)) (++ i)
+        (block
+          (var (const RamfsFileEntry) (* f) (& ([] (. sexfiles_state ramfs_files) i)))
+          (if (&& (-> f in_use)
+                  (&& (== (cast size_t (-> f name_len)) name_len)
+                      (== (call memcmp (-> f name) name name_len) 0)))
+            (return i))))
+      (return SIZE_MAX))
+
+    (fn (static int64_t) ramfs_allocate (((const uint8_t) (* name)) (size_t name_len) (uint32_t owner_pd) (uint64_t (* out_handle)))
+      (var size_t active_count 0)
+      (for (var size_t i 0) (< i (. sexfiles_state ramfs_files_len)) (++ i)
+        (if (&& (. ([] (. sexfiles_state ramfs_files) i) in_use)
+                (. ([] (. sexfiles_state ramfs_files) i) active))
+          (++ active_count)))
+      (if (|| (>= active_count RAMFS_MAX_FILES) (>= (. sexfiles_state ramfs_files_len) RAMFS_SLOT_CAP))
+        (return ERR_FULL))
+      (var uint64_t handle (. sexfiles_state ramfs_next_handle))
+      (+= (. sexfiles_state ramfs_next_handle) 1)
+      (var uint64_t object_id (. sexfiles_state ramfs_next_object_id))
+      (+= (. sexfiles_state ramfs_next_object_id) 1)
+      (var size_t idx (. sexfiles_state ramfs_files_len))
+      (+= (. sexfiles_state ramfs_files_len) 1)
+      (var RamfsFileEntry (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (call memset entry 0 (sizeof (* entry)))
+      (= (-> entry handle) handle)
+      (= (-> entry object_id) object_id)
+      (= (-> entry active) true)
+      (= (-> entry in_use) true)
+      (= (-> entry owner_pd) owner_pd)
+      (= (-> entry cap_generation) 1)
+      (call memcpy (-> entry name) name name_len)
+      (= (-> entry name_len) (cast uint8_t name_len))
+      (= (-> entry data_len) 0)
+      (= (* out_handle) handle)
+      (return 0))
+
+    (fn (static int64_t) ramfs_check_access ((uint32_t caller_pd) ((const RamfsFileEntry) (* entry)) (uint8_t required))
+      (if (|| (== caller_pd 0) (== caller_pd (-> entry owner_pd)))
+        (return 0))
+      (for (var size_t i 0) (< i (. sexfiles_state ramfs_caps_len)) (++ i)
+        (block
+          (var RamfsCapRecord cap ([] (. sexfiles_state ramfs_caps) i))
+          (if (&& (. cap valid)
+                  (&& (== (. cap object_id) (-> entry object_id))
+                      (&& (== (. cap subject_pd) caller_pd)
+                          (&& (== (. cap generation) (-> entry cap_generation))
+                              (== (& (. cap rights) required) required)))))
+            (return 0))))
+      (return ERR_PERM_DENIED))
+
+    (fn (static int64_t) ramfs_check_access_any ((uint32_t caller_pd) ((const RamfsFileEntry) (* entry)) (uint8_t required_any))
+      (if (|| (== caller_pd 0) (== caller_pd (-> entry owner_pd)))
+        (return 0))
+      (for (var size_t i 0) (< i (. sexfiles_state ramfs_caps_len)) (++ i)
+        (block
+          (var RamfsCapRecord cap ([] (. sexfiles_state ramfs_caps) i))
+          (if (&& (. cap valid)
+                  (&& (== (. cap object_id) (-> entry object_id))
+                      (&& (== (. cap subject_pd) caller_pd)
+                          (&& (== (. cap generation) (-> entry cap_generation))
+                              (!= (& (. cap rights) required_any) 0)))))
+            (return 0))))
+      (return ERR_PERM_DENIED))
+
+    (fn (static int64_t) ramfs_grant_cap_internal (((const RamfsFileEntry) (* entry)) (uint32_t subject_pd) (uint8_t rights))
+      (if (== rights 0)
+        (return ERR_PERM_DENIED))
+      (for (var size_t i 0) (< i (. sexfiles_state ramfs_caps_len)) (++ i)
+        (block
+          (var RamfsCapRecord (* rec) (& ([] (. sexfiles_state ramfs_caps) i)))
+          (if (&& (== (-> rec object_id) (-> entry object_id))
+                  (== (-> rec subject_pd) subject_pd))
+            (block
+              (= (-> rec rights) rights)
+              (= (-> rec generation) (-> entry cap_generation))
+              (= (-> rec valid) true)
+              (return 0)))))
+      (if (>= (. sexfiles_state ramfs_caps_len) CAP_MAX_RECORDS)
+        (return ERR_FULL))
+      (var size_t idx (. sexfiles_state ramfs_caps_len))
+      (+= (. sexfiles_state ramfs_caps_len) 1)
+      (= ([] (. sexfiles_state ramfs_caps) idx)
+        (compound RamfsCapRecord
+          (= (. object_id) (-> entry object_id))
+          (= (. subject_pd) subject_pd)
+          (= (. rights) rights)
+          (= (. generation) (-> entry cap_generation))
+          (= (. valid) true)))
+      (return 0))
+
+    (fn (static void) ramfs_revoke_caps_internal ((uint64_t object_id))
+      (for (var size_t i 0) (< i (. sexfiles_state ramfs_caps_len)) (++ i)
+        (if (== (. ([] (. sexfiles_state ramfs_caps) i) object_id) object_id)
+          (= (. ([] (. sexfiles_state ramfs_caps) i) valid) false))))
+
+    (fn int64_t ramfs_proof_grant_caps_by_name ((uint32_t owner_pd) ((const uint8_t) (* name)) (size_t name_len) (uint32_t subject_pd) (uint8_t rights))
+      (var size_t idx (call ramfs_find_any_by_name name name_len))
+      (if (== idx SIZE_MAX)
+        (return ERR_NOT_FOUND))
+      (var (const RamfsFileEntry) (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (if (&& (!= owner_pd 0) (!= owner_pd (-> entry owner_pd)))
+        (return ERR_PERM_DENIED))
+      (return (call ramfs_grant_cap_internal entry subject_pd rights)))
+
+    (fn int64_t ramfs_proof_revoke_caps_by_name ((uint32_t owner_pd) ((const uint8_t) (* name)) (size_t name_len))
+      (var size_t idx (call ramfs_find_any_by_name name name_len))
+      (if (== idx SIZE_MAX)
+        (return ERR_NOT_FOUND))
+      (var RamfsFileEntry (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (if (&& (!= owner_pd 0) (!= owner_pd (-> entry owner_pd)))
+        (return ERR_PERM_DENIED))
+      (if (< (-> entry cap_generation) UINT64_MAX)
+        (+= (-> entry cap_generation) 1))
+      (call ramfs_revoke_caps_internal (-> entry object_id))
+      (return 0))
+
+    (fn int64_t ramfs_proof_inject_stale_generation_cap (((const uint8_t) (* name)) (size_t name_len) (uint32_t subject_pd) (uint8_t rights) (uint64_t stale_generation))
+      (var size_t idx (call ramfs_find_any_by_name name name_len))
+      (if (== idx SIZE_MAX)
+        (return ERR_NOT_FOUND))
+      (var (const RamfsFileEntry) (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (if (>= (. sexfiles_state ramfs_caps_len) CAP_MAX_RECORDS)
+        (return ERR_FULL))
+      (var size_t cidx (. sexfiles_state ramfs_caps_len))
+      (+= (. sexfiles_state ramfs_caps_len) 1)
+      (= ([] (. sexfiles_state ramfs_caps) cidx)
+        (compound RamfsCapRecord
+          (= (. object_id) (-> entry object_id))
+          (= (. subject_pd) subject_pd)
+          (= (. rights) rights)
+          (= (. generation) stale_generation)
+          (= (. valid) true)))
+      (return 0))
+
+    (fn int64_t ramfs_object_id_for_handle ((uint64_t handle) (uint32_t caller_pd) (uint64_t (* out_id)))
+      (var size_t idx (call ramfs_find_active_by_handle handle))
+      (if (== idx SIZE_MAX)
+        (return ERR_INVALID_HANDLE))
+      (var (const RamfsFileEntry) (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (if (&& (!= caller_pd 0) (!= caller_pd (-> entry owner_pd)))
+        (return ERR_PERM_DENIED))
+      (= (* out_id) (-> entry object_id))
+      (return 0))
+
+    (fn int64_t ramfs_open (((const uint8_t) (* name)) (size_t name_len) (uint32_t flags) (uint32_t mode) (uint32_t caller_pd) (uint64_t (* out_handle)))
+      (cast void mode)
+      (if (> name_len RAMFS_MAX_NAME)
+        (return ERR_NAME_TOO_LONG))
+      (if (== name_len 0)
+        (return ERR_NOT_FOUND))
+      (var size_t idx (call ramfs_find_any_by_name name name_len))
+      (if (!= idx SIZE_MAX)
+        (block
+          (if (!= (& flags RAMFS_O_EXCL) 0)
+            (return ERR_NOT_FOUND))
+          (var RamfsFileEntry (* existing) (& ([] (. sexfiles_state ramfs_files) idx)))
+          (var int64_t err (call ramfs_check_access_any caller_pd existing CAP_RIGHT_OPEN_EXISTING))
+          (if (!= err 0)
+            (return err))
+          (if (! (-> existing active))
+            (block
+              (= (-> existing active) true)
+              (= (-> existing handle) (. sexfiles_state ramfs_next_handle))
+              (+= (. sexfiles_state ramfs_next_handle) 1)))
+          (= (* out_handle) (-> existing handle))
+          (return 0)))
+      (if (!= (& flags RAMFS_O_CREATE) 0)
+        (return (call ramfs_allocate name name_len caller_pd out_handle)))
+      (return ERR_NOT_FOUND))
+
+    (fn int64_t ramfs_read ((uint64_t handle) (uint64_t offset) (uint8_t (* buf)) (size_t buf_len) (uint32_t caller_pd) (uint64_t (* out_n)))
+      (var size_t idx (call ramfs_find_active_by_handle handle))
+      (if (== idx SIZE_MAX)
+        (return ERR_INVALID_HANDLE))
+      (var (const RamfsFileEntry) (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (var int64_t err (call ramfs_check_access caller_pd entry CAP_RIGHT_READ))
+      (if (!= err 0)
+        (return err))
+      (var size_t start (cast size_t offset))
+      (if (>= start (-> entry data_len))
+        (block
+          (= (* out_n) 0)
+          (return 0)))
+      (var size_t avail (- (-> entry data_len) start))
+      (var size_t to_read (?: (< buf_len avail) buf_len avail))
+      (if (> to_read RAMFS_MAX_FILE_SIZE)
+        (= to_read RAMFS_MAX_FILE_SIZE))
+      (if (> to_read 0)
+        (call memcpy buf (+ (-> entry data) start) to_read))
+      (= (* out_n) (cast uint64_t to_read))
+      (return 0))
+
+    (fn int64_t ramfs_write ((uint64_t handle) (uint64_t offset) ((const uint8_t) (* data)) (size_t data_len) (uint32_t caller_pd) (uint64_t (* out_n)))
+      (var size_t idx (call ramfs_find_active_by_handle handle))
+      (if (== idx SIZE_MAX)
+        (return ERR_INVALID_HANDLE))
+      (var RamfsFileEntry (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (var size_t start (cast size_t offset))
+      (var uint8_t required (?: (>= start (-> entry data_len)) CAP_RIGHT_APPEND CAP_RIGHT_WRITE))
+      (var int64_t err (call ramfs_check_access caller_pd entry required))
+      (if (!= err 0)
+        (return err))
+      (if (|| (> start RAMFS_MAX_FILE_SIZE) (> data_len (- RAMFS_MAX_FILE_SIZE start)))
+        (return ERR_OVERFLOW))
+      (var size_t end (+ start data_len))
+      (if (> end (-> entry data_len))
+        (block
+          (call memset (+ (-> entry data) (-> entry data_len)) 0 (- end (-> entry data_len)))
+          (= (-> entry data_len) end)))
+      (if (> data_len 0)
+        (call memcpy (+ (-> entry data) start) data data_len))
+      (= (* out_n) (cast uint64_t data_len))
+      (return 0))
+
+    (fn int64_t ramfs_close ((uint64_t handle) (uint32_t caller_pd))
+      (var size_t idx (call ramfs_find_active_by_handle handle))
+      (if (== idx SIZE_MAX)
+        (return ERR_INVALID_HANDLE))
+      (var RamfsFileEntry (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (var int64_t err (call ramfs_check_access caller_pd entry CAP_RIGHT_READ))
+      (if (!= err 0)
+        (return err))
+      (= (-> entry active) false)
+      (return 0))
+
+    (fn int64_t ramfs_stat ((uint64_t handle) (uint32_t caller_pd) (uint64_t (* out_size)) (uint32_t (* out_name_len)))
+      (var size_t idx (call ramfs_find_active_by_handle handle))
+      (if (== idx SIZE_MAX)
+        (return ERR_INVALID_HANDLE))
+      (var (const RamfsFileEntry) (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (var int64_t err (call ramfs_check_access caller_pd entry CAP_RIGHT_READ))
+      (if (!= err 0)
+        (return err))
+      (= (* out_size) (cast uint64_t (-> entry data_len)))
+      (= (* out_name_len) (cast uint32_t (-> entry name_len)))
+      (return 0))
+
+    (fn bool ramfs_list_at ((size_t index) (uint32_t caller_pd) (uint64_t (* out_handle)) (uint32_t (* out_name_len)))
+      (var size_t count 0)
+      (for (var size_t i 0) (< i (. sexfiles_state ramfs_files_len)) (++ i)
+        (block
+          (var (const RamfsFileEntry) (* entry) (& ([] (. sexfiles_state ramfs_files) i)))
+          (if (&& (-> entry in_use) (-> entry active))
+            (block
+              (var bool allow
+                (|| (== caller_pd 0)
+                    (|| (== caller_pd (-> entry owner_pd))
+                        (== (call ramfs_check_access caller_pd entry CAP_RIGHT_LIST) 0))))
+              (if allow
+                (block
+                  (if (== count index)
+                    (block
+                      (= (* out_handle) (-> entry handle))
+                      (= (* out_name_len) (cast uint32_t (-> entry name_len)))
+                      (return true)))
+                  (++ count)))))))
+      (return false))
+
+    (fn size_t ramfs_len ((uint32_t caller_pd))
+      (var size_t count 0)
+      (for (var size_t i 0) (< i (. sexfiles_state ramfs_files_len)) (++ i)
+        (block
+          (var (const RamfsFileEntry) (* e) (& ([] (. sexfiles_state ramfs_files) i)))
+          (if (&& (-> e in_use) (-> e active))
+            (block
+              (if (== caller_pd 0)
+                (++ count)
+                (if (|| (== (-> e owner_pd) caller_pd)
+                        (== (call ramfs_check_access caller_pd e CAP_RIGHT_LIST) 0))
+                  (++ count)))))))
+      (return count))
+
+    (fn int64_t ramfs_create_with_owner (((const uint8_t) (* name)) (size_t name_len) (uint32_t owner_pd) (uint32_t caller_pd) (uint64_t (* out_handle)))
+      (if (&& (!= caller_pd 0) (!= caller_pd owner_pd))
+        (return ERR_PERM_DENIED))
+      (if (> name_len RAMFS_MAX_NAME)
+        (return ERR_NAME_TOO_LONG))
+      (if (== name_len 0)
+        (return ERR_NOT_FOUND))
+      (if (!= (call ramfs_find_any_by_name name name_len) SIZE_MAX)
+        (return ERR_NOT_FOUND))
+      (if (>= (. sexfiles_state ramfs_files_len) RAMFS_SLOT_CAP)
+        (return ERR_FULL))
+      (var uint64_t handle (. sexfiles_state ramfs_next_handle))
+      (+= (. sexfiles_state ramfs_next_handle) 1)
+      (var uint64_t object_id (. sexfiles_state ramfs_next_object_id))
+      (+= (. sexfiles_state ramfs_next_object_id) 1)
+      (var size_t idx (. sexfiles_state ramfs_files_len))
+      (+= (. sexfiles_state ramfs_files_len) 1)
+      (var RamfsFileEntry (* entry) (& ([] (. sexfiles_state ramfs_files) idx)))
+      (call memset entry 0 (sizeof (* entry)))
+      (= (-> entry handle) handle)
+      (= (-> entry object_id) object_id)
+      (= (-> entry active) true)
+      (= (-> entry in_use) true)
+      (= (-> entry owner_pd) owner_pd)
+      (= (-> entry cap_generation) 1)
+      (call memcpy (-> entry name) name name_len)
+      (= (-> entry name_len) (cast uint8_t name_len))
+      (= (-> entry data_len) 0)
+      (= (* out_handle) handle)
+      (return 0))
+
+    (comment "VFS routing and DiskFS V4 dynamic variable-length object store (servers/sexfiles/src/vfs.rs).")
+    (fn (static inline bool) vfs_hot_log (void)
+      (return (call sexfiles_take_budget (& (. sexfiles_state vfs_hot_log_budget)))))
+
+    (fn (static inline uint64_t) sat_add_u64 ((uint64_t a) (uint64_t b))
+      (var uint64_t sum (+ a b))
+      (return (?: (< sum a) UINT64_MAX sum)))
+
+    (fn (static inline uint64_t) read_le16 (((const uint8_t) (* p)))
+      (return (| (cast uint64_t ([] p 0)) (<< (cast uint64_t ([] p 1)) 8))))
+
+    (fn (static inline uint64_t) read_le32 (((const uint8_t) (* p)))
+      (return
+        (| (| (cast uint64_t ([] p 0)) (<< (cast uint64_t ([] p 1)) 8))
+           (| (<< (cast uint64_t ([] p 2)) 16) (<< (cast uint64_t ([] p 3)) 24)))))
+
+    (fn (static inline uint64_t) read_le64 (((const uint8_t) (* p)))
+      (var uint64_t v 0)
+      (for (var size_t i 0) (< i 8) (++ i)
+        (|= v (<< (cast uint64_t ([] p i)) (* i 8))))
+      (return v))
+
+    (fn (static inline void) write_le16 ((uint8_t (* p)) (uint16_t v))
+      (= ([] p 0) (cast uint8_t (& v 0xFFu)))
+      (= ([] p 1) (cast uint8_t (& (>> v 8) 0xFFu))))
+
+    (fn (static inline void) write_le32 ((uint8_t (* p)) (uint32_t v))
+      (for (var size_t i 0) (< i 4) (++ i)
+        (= ([] p i) (cast uint8_t (& (>> v (* i 8)) 0xFFu)))))
+
+    (fn (static inline void) write_le64 ((uint8_t (* p)) (uint64_t v))
+      (for (var size_t i 0) (< i 8) (++ i)
+        (= ([] p i) (cast uint8_t (& (>> v (* i 8)) 0xFFu)))))
+
+    (fn (static uint64_t) diskfs_selected_for ((uint32_t caller_pd))
+      (return ([] (. sexfiles_state diskfs_selected_path_id) (% (cast size_t caller_pd) DISKFS_CLIENT_SLOTS))))
+
+    (fn uint64_t diskfs_bridge_get_buf_va (void)
+      (var uint64_t va (. sexfiles_state diskfs_bridge_buf_va))
+      (if (&& (!= va 0) (!= va UINT64_MAX))
+        (block
+          (if (== (. sexfiles_state diskfs_bridge_reuse_printed) 0)
+            (block
+              (= (. sexfiles_state diskfs_bridge_reuse_printed) 1)
+              (call sexos_line "[sexfiles.bridge.diskfs.buf.reuse] va=%#llx"
+                (cast (unsigned long long) va))))
+          (return va)))
+      (var uint64_t new_va (call sexos_grant_mem_lend SEXOS_SLOT_block 4096 SEXOS_SLOT_buf_lend))
+      (if (&& (!= new_va 0) (!= new_va UINT64_MAX))
+        (block
+          (= (. sexfiles_state diskfs_bridge_buf_va) new_va)
+          (call sexos_line "[sexfiles.bridge.diskfs.buf.ready] buf_va=%#llx"
+            (cast (unsigned long long) new_va))))
+      (return new_va))
+
+    (fn (static inline uint64_t) v4_indirect_lba ((size_t i))
+      (return (- DISKFS_V4_INDIRECT_TOP_LBA (cast uint64_t i))))
+
+    (fn (static size_t) v4_name_len (((const uint8_t) (* name)))
+      (var size_t n 0)
+      (while (&& (< n DISKFS_V3_NAME_MAX) (!= ([] name n) 0))
+        (++ n))
+      (return n))
+
+    (fn (static bool) v4_in_use ((size_t i))
+      (return (!= ([] (. ([] (. sexfiles_state v4_table) i) name) 0) 0)))
+
+    (fn (static uint16_t) v4_checksum_entry (((const V4Entry) (* e)))
+      (var uint32_t h (call UINT32_C 0x811C9DC5))
+      (for (var size_t i 0) (< i DISKFS_V3_NAME_MAX) (++ i)
+        (block
+          (^= h (cast uint32_t ([] (-> e name) i)))
+          (*= h (call UINT32_C 0x01000193))))
+      (for (var size_t i 0) (< i 4) (++ i)
+        (block
+          (^= h (cast uint32_t (& (>> (-> e size_bytes) (* i 8)) 0xFFu)))
+          (*= h (call UINT32_C 0x01000193))))
+      (for (var size_t i 0) (< i 2) (++ i)
+        (block
+          (^= h (cast uint32_t (& (>> (-> e gen) (* i 8)) 0xFFu)))
+          (*= h (call UINT32_C 0x01000193))))
+      (return (cast uint16_t (^ h (>> h 16)))))
+
+    (fn (static bool) v4_bitmap_test (((const uint64_t) (* bm)) (uint64_t block_idx))
+      (var size_t w (cast size_t (/ block_idx 64)))
+      (var uint64_t b (% block_idx 64))
+      (return (!= (& ([] bm w) (<< (call UINT64_C 1) b)) 0)))
+
+    (fn (static void) v4_bitmap_set ((uint64_t (* bm)) (uint64_t block_idx))
+      (var size_t w (cast size_t (/ block_idx 64)))
+      (var uint64_t b (% block_idx 64))
+      (|= ([] bm w) (<< (call UINT64_C 1) b)))
+
+    (fn (static void) v4_bitmap_clear ((uint64_t (* bm)) (uint64_t block_idx))
+      (var size_t w (cast size_t (/ block_idx 64)))
+      (var uint64_t b (% block_idx 64))
+      (&= ([] bm w) (~ (<< (call UINT64_C 1) b))))
+
+    (fn (static void) v4_cache_put ((size_t i) ((const V4Extent) (* extents)) (size_t count))
+      (= (. (. sexfiles_state v4_extent_cache) valid) true)
+      (= (. (. sexfiles_state v4_extent_cache) slot) i)
+      (call memcpy (. (. sexfiles_state v4_extent_cache) extents) extents (sizeof (. (. sexfiles_state v4_extent_cache) extents)))
+      (= (. (. sexfiles_state v4_extent_cache) count) count))
+
+    (fn (static void) v4_cache_invalidate ((size_t i))
+      (if (&& (. (. sexfiles_state v4_extent_cache) valid) (== (. (. sexfiles_state v4_extent_cache) slot) i))
+        (= (. (. sexfiles_state v4_extent_cache) valid) false)))
+
+    (fn (static bool) v4_indirect_read ((size_t i) (uint64_t buf_va) (V4Extent (* out_extents)) (size_t (* out_count)))
+      (var uint8_t ([] sector 512))
+      (if (!= (call diskfs_block_read (* (call v4_indirect_lba i) 512) 512 SEXOS_SLOT_buf_lend) 0)
+        (return false))
+      (var (volatile const uint8_t) (* p) (cast ((volatile const uint8_t) *) (cast uintptr_t buf_va)))
+      (for (var size_t k 0) (< k 512) (++ k)
+        (= ([] sector k) ([] p k)))
+      (if (|| (!= ([] sector 0) (cast uint8_t 'S'))
+              (|| (!= ([] sector 1) (cast uint8_t 'F'))
+                  (|| (!= ([] sector 2) (cast uint8_t 'E'))
+                      (!= ([] sector 3) (cast uint8_t 'X')))))
+        (return false))
+      (var uint16_t version (cast uint16_t (call read_le16 (+ sector 4))))
+      (if (!= version 1)
+        (return false))
+      (var size_t count (cast size_t (call read_le16 (+ sector 6))))
+      (if (> count DISKFS_V4_MAX_EXTENTS)
+        (return false))
+      (var uint32_t stored_cs (cast uint32_t (call read_le32 (+ sector 8))))
+      (call memset out_extents 0 (sizeof (. (. sexfiles_state v4_extent_cache) extents)))
+      (var uint32_t h (call UINT32_C 0x811C9DC5))
+      (for (var size_t k 0) (< k count) (++ k)
+        (block
+          (var size_t off (+ 12 (* k 4)))
+          (var uint16_t sb (cast uint16_t (call read_le16 (+ sector off))))
+          (var uint16_t sc (cast uint16_t (call read_le16 (+ sector (+ off 2)))))
+          (= ([] out_extents k) (compound V4Extent (= (. start_lba) sb) (= (. sector_count) sc)))
+          (for (var size_t b 0) (< b 4) (++ b)
+            (block
+              (^= h (cast uint32_t ([] sector (+ off b))))
+              (*= h (call UINT32_C 0x01000193))))))
+      (if (!= h stored_cs)
+        (return false))
+      (= (* out_count) count)
+      (return true))
+
+    (fn (static size_t) v4_cache_get ((size_t i) (uint64_t buf_va) (V4Extent (* out_extents)))
+      (if (&& (. (. sexfiles_state v4_extent_cache) valid) (== (. (. sexfiles_state v4_extent_cache) slot) i))
+        (block
+          (call memcpy out_extents (. (. sexfiles_state v4_extent_cache) extents) (sizeof (. (. sexfiles_state v4_extent_cache) extents)))
+          (return (. (. sexfiles_state v4_extent_cache) count))))
+      (var size_t count 0)
+      (if (! (call v4_indirect_read i buf_va out_extents (& count)))
+        (block
+          (call memset out_extents 0 (sizeof (. (. sexfiles_state v4_extent_cache) extents)))
+          (= count 0)))
+      (call v4_cache_put i out_extents count)
+      (return count))
+
+    (fn (static bool) v4_indirect_write ((size_t i) (uint64_t buf_va) ((const V4Extent) (* extents)) (size_t count) (uint64_t (* out_err)))
+      (var uint8_t ([] sector 512))
+      (call memset sector 0 512)
+      (= ([] sector 0) (cast uint8_t 'S'))
+      (= ([] sector 1) (cast uint8_t 'F'))
+      (= ([] sector 2) (cast uint8_t 'E'))
+      (= ([] sector 3) (cast uint8_t 'X'))
+      (call write_le16 (+ sector 4) 1)
+      (call write_le16 (+ sector 6) (cast uint16_t count))
+      (var uint32_t h (call UINT32_C 0x811C9DC5))
+      (for (var size_t k 0) (< k count) (++ k)
+        (block
+          (var size_t off (+ 12 (* k 4)))
+          (call write_le16 (+ sector off) (. ([] extents k) start_lba))
+          (call write_le16 (+ sector (+ off 2)) (. ([] extents k) sector_count))
+          (for (var size_t b 0) (< b 4) (++ b)
+            (block
+              (^= h (cast uint32_t ([] sector (+ off b))))
+              (*= h (call UINT32_C 0x01000193))))))
+      (call write_le32 (+ sector 8) h)
+      (var (volatile uint8_t) (* p) (cast ((volatile uint8_t) *) (cast uintptr_t buf_va)))
+      (for (var size_t k 0) (< k 512) (++ k)
+        (= ([] p k) ([] sector k)))
+      (var uint64_t lba (call v4_indirect_lba i))
+      (var uint64_t status (call diskfs_block_write (* lba 512) 512 SEXOS_SLOT_buf_lend))
+      (if (!= status 0)
+        (block
+          (= (* out_err) status)
+          (return false)))
+      (var uint8_t ([] check 512))
+      (if (!= (call diskfs_block_read (* lba 512) 512 SEXOS_SLOT_buf_lend) 0)
+        (block
+          (= (* out_err) (cast uint64_t ERR_BAD_CMD))
+          (return false)))
+      (for (var size_t k 0) (< k 512) (++ k)
+        (= ([] check k) ([] p k)))
+      (if (!= (call memcmp check sector 512) 0)
+        (block
+          (= (* out_err) (cast uint64_t ERR_BAD_CMD))
+          (return false)))
+      (return true))
+
+    (fn (static bool) v4_zero_block ((uint64_t start_lba) (uint64_t buf_va) (uint64_t (* out_err)))
+      (var (volatile uint8_t) (* p) (cast ((volatile uint8_t) *) (cast uintptr_t buf_va)))
+      (for (var size_t k 0) (< k 512) (++ k)
+        (= ([] p k) 0))
+      (for (var uint64_t s 0) (< s DISKFS_V4_BLOCK_SECTORS) (++ s)
+        (block
+          (var uint64_t status (call diskfs_block_write (* (+ start_lba s) 512) 512 SEXOS_SLOT_buf_lend))
+          (if (!= status 0)
+            (block
+              (= (* out_err) status)
+              (return false)))))
+      (return true))
+
+    (fn (static bool) v4_zero_tail ((V4Extent e) (uint64_t keep_len) (uint64_t buf_va) (uint64_t (* out_err)))
+      (var uint64_t cap (* (cast uint64_t (. e sector_count)) 512))
+      (if (>= keep_len cap)
+        (return true))
+      (var uint64_t sector (/ keep_len 512))
+      (var size_t boundary_off (cast size_t (% keep_len 512)))
+      (var (volatile uint8_t) (* p) (cast ((volatile uint8_t) *) (cast uintptr_t buf_va)))
+      (if (!= boundary_off 0)
+        (block
+          (var uint64_t lba (+ (cast uint64_t (. e start_lba)) sector))
+          (var uint64_t rstatus (call diskfs_block_read (* lba 512) 512 SEXOS_SLOT_buf_lend))
+          (if (!= rstatus 0)
+            (block
+              (= (* out_err) rstatus)
+              (return false)))
+          (for (var size_t k boundary_off) (< k 512) (++ k)
+            (= ([] p k) 0))
+          (var uint64_t status (call diskfs_block_write (* lba 512) 512 SEXOS_SLOT_buf_lend))
+          (if (!= status 0)
+            (block
+              (= (* out_err) status)
+              (return false)))
+          (+= sector 1)))
+      (if (< (* sector 512) cap)
+        (block
+          (for (var size_t k 0) (< k 512) (++ k)
+            (= ([] p k) 0))
+          (while (< (* sector 512) cap)
+            (block
+              (var uint64_t lba (+ (cast uint64_t (. e start_lba)) sector))
+              (var uint64_t status (call diskfs_block_write (* lba 512) 512 SEXOS_SLOT_buf_lend))
+              (if (!= status 0)
+                (block
+                  (= (* out_err) status)
+                  (return false)))
+              (+= sector 1)))))
+      (return true))
+
+    (fn (static void) v4_free_pool_only ((uint64_t (* bm)) ((const V4Extent) (* freed)) (size_t freed_len))
+      (var uint64_t pool_end_lba (+ DISKFS_V4_POOL_BASE_LBA (* DISKFS_V4_POOL_BLOCKS DISKFS_V4_BLOCK_SECTORS)))
+      (for (var size_t k 0) (< k freed_len) (++ k)
+        (block
+          (var V4Extent e ([] freed k))
+          (var uint64_t start (cast uint64_t (. e start_lba)))
+          (var uint64_t end (+ start (cast uint64_t (. e sector_count))))
+          (if (&& (>= start DISKFS_V4_POOL_BASE_LBA)
+                  (&& (<= end pool_end_lba)
+                      (&& (== (% (- start DISKFS_V4_POOL_BASE_LBA) DISKFS_V4_BLOCK_SECTORS) 0)
+                          (== (% (cast uint64_t (. e sector_count)) DISKFS_V4_BLOCK_SECTORS) 0))))
+            (block
+              (var uint64_t b0 (/ (- start DISKFS_V4_POOL_BASE_LBA) DISKFS_V4_BLOCK_SECTORS))
+              (var uint64_t bn (/ (cast uint64_t (. e sector_count)) DISKFS_V4_BLOCK_SECTORS))
+              (for (var uint64_t b 0) (< b bn) (++ b)
+                (call v4_bitmap_clear bm (+ b0 b))))))))
+
+    (fn (static bool) v4_allocate ((uint64_t (* bm)) (uint64_t need_blocks) (V4Extent (* out)) (size_t n) (size_t (* out_n)) (int64_t (* out_err)))
+      (var size_t start_n n)
+      (var uint64_t need need_blocks)
+      (var uint64_t block_idx 0)
+      (while (> need 0)
+        (block
+          (if (>= block_idx DISKFS_V4_POOL_BLOCKS)
+            (block
+              (call v4_free_pool_only bm (+ out start_n) (- n start_n))
+              (= (* out_err) ERR_FULL)
+              (return false)))
+          (if (call v4_bitmap_test bm block_idx)
+            (block
+              (+= block_idx 1)
+              continue))
+          (var uint64_t run_start block_idx)
+          (var uint64_t run_len 0)
+          (while (&& (< block_idx DISKFS_V4_POOL_BLOCKS)
+                     (&& (! (call v4_bitmap_test bm block_idx)) (< run_len need)))
+            (block
+              (+= run_len 1)
+              (+= block_idx 1)))
+          (if (>= n DISKFS_V4_MAX_EXTENTS)
+            (block
+              (call v4_free_pool_only bm (+ out start_n) (- n start_n))
+              (= (* out_err) ERR_FULL)
+              (return false)))
+          (for (var uint64_t b 0) (< b run_len) (++ b)
+            (call v4_bitmap_set bm (+ run_start b)))
+          (= ([] out n)
+            (compound V4Extent
+              (= (. start_lba) (cast uint16_t (+ DISKFS_V4_POOL_BASE_LBA (* run_start DISKFS_V4_BLOCK_SECTORS))))
+              (= (. sector_count) (cast uint16_t (* run_len DISKFS_V4_BLOCK_SECTORS)))))
+          (+= n 1)
+          (-= need run_len)))
+      (= (* out_n) n)
+      (return true))
+
+    (fn (static bool) v4_persist ((uint64_t buf_va) (uint64_t (* out_err)))
+      (var uint8_t ([] sector 512))
+      (call memset sector 0 512)
+      (call write_le64 (+ sector 0) DISKFS_MANIFEST_MAGIC)
+      (call write_le16 (+ sector 8) DISKFS_V4_VERSION)
+      (call write_le16 (+ sector 10) (cast uint16_t DISKFS_SLOTS))
+      (var uint64_t prev_gen (. sexfiles_state v4_generation))
+      (= (. sexfiles_state v4_generation) (+ prev_gen 1))
+      (var uint32_t g (+ (cast uint32_t prev_gen) 1))
+      (call write_le32 (+ sector 12) g)
+      (for (var size_t i 0) (< i DISKFS_SLOTS) (++ i)
+        (block
+          (var V4Entry e ([] (. sexfiles_state v4_table) i))
+          (var size_t off (+ 16 (* i 32)))
+          (call memcpy (+ sector off) (. e name) DISKFS_V3_NAME_MAX)
+          (call write_le32 (+ sector (+ off 24)) (. e size_bytes))
+          (call write_le16 (+ sector (+ off 28)) (call v4_checksum_entry (& e)))
+          (call write_le16 (+ sector (+ off 30)) (. e gen))))
+      (var (volatile uint8_t) (* p) (cast ((volatile uint8_t) *) (cast uintptr_t buf_va)))
+      (for (var size_t k 0) (< k 512) (++ k)
+        (= ([] p k) ([] sector k)))
+      (var uint64_t status (call diskfs_block_write (* DISKFS_MANIFEST_LBA 512) 512 SEXOS_SLOT_buf_lend))
+      (if (!= status 0)
+        (block
+          (= (* out_err) status)
+          (return false)))
+      (var uint8_t ([] check 512))
+      (if (!= (call diskfs_block_read (* DISKFS_MANIFEST_LBA 512) 512 SEXOS_SLOT_buf_lend) 0)
+        (block
+          (= (* out_err) (cast uint64_t ERR_BAD_CMD))
+          (return false)))
+      (for (var size_t k 0) (< k 512) (++ k)
+        (= ([] check k) ([] p k)))
+      (if (!= (call memcmp check sector 512) 0)
+        (block
+          (call sexos_line "[sexfiles.diskfs.v4.persist.err] reason=verify_mismatch")
+          (= (* out_err) (cast uint64_t ERR_BAD_CMD))
+          (return false)))
+      (call sexos_line "[sexfiles.diskfs.v4.persist.ok] generation=%u" (cast unsigned g))
+      (return true))
+
+    (fn (static void) v4_bitmap_rebuild ((uint64_t buf_va))
+      (var uint64_t ([] bm 3) (init 0 0 0))
+      (var bool dropped false)
+      (var uint64_t pool_end_lba (+ DISKFS_V4_POOL_BASE_LBA (* DISKFS_V4_POOL_BLOCKS DISKFS_V4_BLOCK_SECTORS)))
+      (for (var size_t i 0) (< i DISKFS_SLOTS) (++ i)
+        (block
+          (if (! (call v4_in_use i))
+            continue)
+          (var uint64_t size_bytes (cast uint64_t (. ([] (. sexfiles_state v4_table) i) size_bytes)))
+          (if (== size_bytes 0)
+            continue)
+          (var V4Extent ([] extents DISKFS_V4_MAX_EXTENTS))
+          (var size_t count 0)
+          (if (! (call v4_indirect_read i buf_va extents (& count)))
+            (block
+              (call sexos_line "[sexfiles.diskfs.v4.rebuild.drop] slot=%zu reason=indirect_unreadable" i)
+              (call memset (& ([] (. sexfiles_state v4_table) i)) 0 (sizeof ([] (. sexfiles_state v4_table) 0)))
+              (= dropped true)
+              continue))
+          (var bool ok true)
+          (var uint64_t total_bytes 0)
+          (for (var size_t k 0) (< k count) (++ k)
+            (block
+              (var V4Extent e ([] extents k))
+              (if (== (. e sector_count) 0)
+                (block
+                  (= ok false)
+                  break))
+              (var uint64_t start (cast uint64_t (. e start_lba)))
+              (var uint64_t end (+ start (cast uint64_t (. e sector_count))))
+              (if (&& (>= start DISKFS_V4_POOL_BASE_LBA) (<= end pool_end_lba))
+                (block
+                  (if (|| (!= (% (- start DISKFS_V4_POOL_BASE_LBA) DISKFS_V4_BLOCK_SECTORS) 0)
+                          (!= (% (cast uint64_t (. e sector_count)) DISKFS_V4_BLOCK_SECTORS) 0))
+                    (block
+                      (= ok false)
+                      break))
+                  (var uint64_t b0 (/ (- start DISKFS_V4_POOL_BASE_LBA) DISKFS_V4_BLOCK_SECTORS))
+                  (var uint64_t bn (/ (cast uint64_t (. e sector_count)) DISKFS_V4_BLOCK_SECTORS))
+                  (var bool bad false)
+                  (for (var uint64_t b 0) (< b bn) (++ b)
+                    (if (call v4_bitmap_test bm (+ b0 b))
+                      (block
+                        (= bad true)
+                        break)))
+                  (if bad
+                    (block
+                      (= ok false)
+                      break))
+                  (for (var uint64_t b 0) (< b bn) (++ b)
+                    (call v4_bitmap_set bm (+ b0 b))))
+                (if (&& (> end DISKFS_V4_POOL_BASE_LBA) (< start pool_end_lba))
+                  (block
+                    (= ok false)
+                    break)))
+              (+= total_bytes (* (cast uint64_t (. e sector_count)) 512))))
+          (if (|| (! ok) (< total_bytes size_bytes))
+            (block
+              (call sexos_line "[sexfiles.diskfs.v4.rebuild.drop] slot=%zu reason=extent_overlap_or_short" i)
+              (call memset (& ([] (. sexfiles_state v4_table) i)) 0 (sizeof ([] (. sexfiles_state v4_table) 0)))
+              (= dropped true)))))
+      (call memcpy (. sexfiles_state v4_bitmap) bm (sizeof bm))
+      (if dropped
+        (block
+          (var uint64_t dummy_err 0)
+          (cast void (call v4_persist buf_va (& dummy_err))))))
+
+    (fn (static bool) v4_locate (((const V4Extent) (* extents)) (size_t count) (uint64_t logical_offset) (DiskManifestEntryV1 (* out_piece)) (uint64_t (* out_rel_off)) (uint64_t (* out_err)))
+      (var uint64_t cum 0)
+      (for (var size_t k 0) (< k count) (++ k)
+        (block
+          (var V4Extent e ([] extents k))
+          (var uint64_t cap (* (cast uint64_t (. e sector_count)) 512))
+          (if (< logical_offset (+ cum cap))
+            (block
+              (= (* out_piece)
+                (compound DiskManifestEntryV1
+                  (= (. name_hash) 0)
+                  (= (. start_lba) (cast uint64_t (. e start_lba)))
+                  (= (. len_bytes) (cast uint32_t cap))
+                  (= (. flags) 0)))
+              (= (* out_rel_off) (- logical_offset cum))
+              (return true)))
+          (+= cum cap)))
+      (= (* out_err) (cast uint64_t ERR_OVERFLOW))
+      (return false))
+
+    (fn (static bool) v4_resolve_offset ((size_t i) (uint64_t logical_offset) (uint64_t buf_va) (DiskManifestEntryV1 (* out_piece)) (uint64_t (* out_rel_off)) (uint64_t (* out_err)))
+      (var V4Extent ([] extents DISKFS_V4_MAX_EXTENTS))
+      (var size_t count (call v4_cache_get i buf_va extents))
+      (return (call v4_locate extents count logical_offset out_piece out_rel_off out_err)))
+
+    (fn (static bool) v4_get ((uint64_t path_id) (V4Entry (* out_entry)) (uint64_t (* out_err)))
+      (if (>= path_id (cast uint64_t DISKFS_SLOTS))
+        (block
+          (= (* out_err) (cast uint64_t ERR_BAD_CMD))
+          (return false)))
+      (var size_t i (cast size_t path_id))
+      (if (! (call v4_in_use i))
+        (block
+          (= (* out_err) (cast uint64_t ERR_NOT_FOUND))
+          (return false)))
+      (= (* out_entry) ([] (. sexfiles_state v4_table) i))
+      (return true))
+
+    (fn (static inline bool) ranges_overlap ((uint64_t a_start) (uint64_t a_len) (uint64_t b_start) (uint64_t b_len))
+      (return (&& (< a_start (+ b_start b_len)) (< b_start (+ a_start a_len)))))
+
+    (fn (static void) v4_layout_selfcheck (void)
+      (var uint64_t pool_end (+ DISKFS_V4_POOL_BASE_LBA (* DISKFS_V4_POOL_BLOCKS DISKFS_V4_BLOCK_SECTORS)))
+      (typedef (struct ReservedRegion ((const char) (* name)) (uint64_t start) (uint64_t len)) ReservedRegion)
+      (var (const ReservedRegion) ([] reserved 6)
+        (init
+          (init "sexdrive_ap3" SEXDRIVE_AP3_WRITE_PROOF_LBA SEXDRIVE_AP3_WRITE_PROOF_SECTORS)
+          (init "sexdrive_ap4" SEXDRIVE_AP4_MULTI_BASE_LBA SEXDRIVE_AP4_MULTI_SECTORS)
+          (init "sexdrive_ap5a" SEXDRIVE_AP5A_PERSIST_BASE_LBA SEXDRIVE_AP5A_PERSIST_SECTORS)
+          (init "sexdrive_ap6" SEXDRIVE_AP6_NEG_MISMATCH_LBA SEXDRIVE_AP6_NEG_MISMATCH_SECTORS)
+          (init "diskfs_manifest" DISKFS_MANIFEST_LBA DISKFS_MANIFEST_SECTORS)
+          (init "diskfs_legacy_slots" DISKFS_LEGACY_SLOTS_START_LBA DISKFS_LEGACY_SLOTS_SECTORS)))
+      (var bool ok true)
+      (for (var size_t i 0) (< i 6) (++ i)
+        (if (call ranges_overlap DISKFS_V4_POOL_BASE_LBA (* DISKFS_V4_POOL_BLOCKS DISKFS_V4_BLOCK_SECTORS) (. ([] reserved i) start) (. ([] reserved i) len))
+          (block
+            (call sexos_line "[sexfiles.diskfs.v4.layout.fail] pool=%llu..%llu collides_with=%s region=%llu..%llu"
+              (cast (unsigned long long) DISKFS_V4_POOL_BASE_LBA) (cast (unsigned long long) pool_end)
+              (. ([] reserved i) name)
+              (cast (unsigned long long) (. ([] reserved i) start))
+              (cast (unsigned long long) (+ (. ([] reserved i) start) (. ([] reserved i) len))))
+            (= ok false))))
+      (if ok
+        (call sexos_line "[sexfiles.diskfs.v4.layout.ok] pool=%llu..%llu indirect_top=%llu manifest=%llu"
+          (cast (unsigned long long) DISKFS_V4_POOL_BASE_LBA) (cast (unsigned long long) pool_end)
+          (cast (unsigned long long) DISKFS_V4_INDIRECT_TOP_LBA) (cast (unsigned long long) DISKFS_MANIFEST_LBA))))
+
+    (fn (static bool) v4_ensure ((uint64_t buf_va) (uint64_t (* out_err)))
+      (if (!= (. sexfiles_state v4_loaded) 0)
+        (return true))
+      (call v4_layout_selfcheck)
+      (var uint8_t ([] sector 512))
+      (if (!= (call diskfs_block_read (* DISKFS_MANIFEST_LBA 512) 512 SEXOS_SLOT_buf_lend) 0)
+        (block
+          (= (* out_err) (cast uint64_t ERR_BAD_CMD))
+          (return false)))
+      (var (volatile const uint8_t) (* p) (cast ((volatile const uint8_t) *) (cast uintptr_t buf_va)))
+      (for (var size_t k 0) (< k 512) (++ k)
+        (= ([] sector k) ([] p k)))
+      (var uint64_t magic (call read_le64 (+ sector 0)))
+      (var uint16_t version (cast uint16_t (call read_le16 (+ sector 8))))
+      (if (&& (== magic DISKFS_MANIFEST_MAGIC) (== version DISKFS_V4_VERSION))
+        (block
+          (var uint32_t g (cast uint32_t (call read_le32 (+ sector 12))))
+          (= (. sexfiles_state v4_generation) (cast uint64_t g))
+          (var uint32_t live 0)
+          (for (var size_t i 0) (< i DISKFS_SLOTS) (++ i)
+            (block
+              (var size_t off (+ 16 (* i 32)))
+              (var V4Entry e)
+              (call memset (& e) 0 (sizeof e))
+              (call memcpy (. e name) (+ sector off) DISKFS_V3_NAME_MAX)
+              (= (. e size_bytes) (cast uint32_t (call read_le32 (+ sector (+ off 24)))))
+              (var uint16_t stored_cs (cast uint16_t (call read_le16 (+ sector (+ off 28)))))
+              (= (. e gen) (cast uint16_t (call read_le16 (+ sector (+ off 30)))))
+              (if (&& (!= ([] (. e name) 0) 0) (!= (call v4_checksum_entry (& e)) stored_cs))
+                (block
+                  (call sexos_line "[sexfiles.diskfs.v4.load.drop] slot=%zu reason=checksum" i)
+                  (call memset (& e) 0 (sizeof e))))
+              (if (!= ([] (. e name) 0) 0)
+                (++ live))
+              (= ([] (. sexfiles_state v4_table) i) e)))
+          (= (. sexfiles_state v4_loaded) 1)
+          (call sexos_line "[sexfiles.diskfs.v4.load.ok] live=%u generation=%u" (cast unsigned live) (cast unsigned g))
+          (call v4_bitmap_rebuild buf_va)
+          (return true)))
+      (var bool recognized_legacy (&& (== magic DISKFS_MANIFEST_MAGIC) (< version DISKFS_V4_VERSION)))
+      (var bool genuinely_blank true)
+      (for (var size_t k 0) (< k 512) (++ k)
+        (if (!= ([] sector k) 0)
+          (block
+            (= genuinely_blank false)
+            break)))
+      (if (&& (! recognized_legacy) (! genuinely_blank))
+        (block
+          (call sexos_line "[sexfiles.diskfs.v4.mount.err] reason=corrupt_manifest magic=%#llx version=%u"
+            (cast (unsigned long long) magic) (cast unsigned version))
+          (= (* out_err) (cast uint64_t ERR_CORRUPT))
+          (return false)))
+      (typedef (struct LegacySeed ((const char) (* name)) (size_t len) (uint16_t lba)) LegacySeed)
+      (var (const LegacySeed) ([] legacy 3)
+        (init
+          (init "sexfiles-proof-v1" 17 2038)
+          (init "linen-object-v1" 15 2030)
+          (init "quil-object-v1" 14 2022)))
+      (for (var size_t i 0) (< i DISKFS_SLOTS) (++ i)
+        (if (< i 3)
+          (block
+            (var V4Entry e)
+            (call memset (& e) 0 (sizeof e))
+            (call memcpy (. e name) (. ([] legacy i) name) (. ([] legacy i) len))
+            (= (. e size_bytes) 4096)
+            (= (. e gen) 1)
+            (= ([] (. sexfiles_state v4_table) i) e)
+            (var V4Extent ([] extents 1) (init (init (. ([] legacy i) lba) 8)))
+            (var uint64_t er 0)
+            (if (! (call v4_indirect_write i buf_va extents 1 (& er)))
+              (block
+                (call sexos_line "[sexfiles.diskfs.v4.migrate.err] slot=%zu err=%llu"
+                  i (cast (unsigned long long) er))
+                (= (* out_err) er)
+                (return false))))
+          (call memset (& ([] (. sexfiles_state v4_table) i)) 0 (sizeof ([] (. sexfiles_state v4_table) 0)))))
+      (if (! (call v4_persist buf_va out_err))
+        (return false))
+      (= (. sexfiles_state v4_loaded) 1)
+      (call sexos_line "[sexfiles.diskfs.v4.migrate.ok] from_version=%u seeded=3" (cast unsigned version))
+      (call v4_bitmap_rebuild buf_va)
+      (return true))
+
+    (fn (static size_t) v4_unpack_name ((uint64_t lo) (uint64_t hi) (uint8_t (* out_name)))
+      (call memset out_name 0 DISKFS_V3_NAME_MAX)
+      (call write_le64 (+ out_name 0) lo)
+      (call write_le64 (+ out_name 8) hi)
+      (var size_t n 0)
+      (while (&& (< n 16) (!= ([] out_name n) 0))
+        (block
+          (if (|| (< ([] out_name n) 0x20) (> ([] out_name n) 0x7E))
+            (= ([] out_name n) (cast uint8_t '_')))
+          (++ n)))
+      (for (var size_t k n) (< k DISKFS_V3_NAME_MAX) (++ k)
+        (= ([] out_name k) 0))
+      (return n))
+
+    (fn (static uint64_t) handle_diskfs_select ((uint64_t path_id) (uint32_t caller_pd))
+      (if (call vfs_hot_log)
+        (call sexos_line "[sexfiles.bridge.diskfs.recv] op=0x3E select path_id=%llu"
+          (cast (unsigned long long) path_id)))
+      (var uint64_t buf_va (call diskfs_bridge_get_buf_va))
+      (if (|| (== buf_va 0) (== buf_va UINT64_MAX))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.select.err] reason=grant_failed")
+          (return (cast uint64_t ERR_NOT_FOUND))))
+      (var uint64_t err 0)
+      (if (! (call v4_ensure buf_va (& err)))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.select.err] reason=v4_ensure_failed code=%llu"
+            (cast (unsigned long long) err))
+          (return err)))
+      (var V4Entry entry)
+      (if (call v4_get path_id (& entry) (& err))
+        (block
+          (= ([] (. sexfiles_state diskfs_selected_path_id) (% (cast size_t caller_pd) DISKFS_CLIENT_SLOTS)) path_id)
+          (if (== (. sexfiles_state diskfs_select_used) 0)
+            (block
+              (= (. sexfiles_state diskfs_select_used) 1)
+              (call sexos_line "[sexfiles.bridge.diskfs.select.v1_single_client]")))
+          (call sexos_line "[sexfiles.bridge.diskfs.select.ok] caller=%u path_id=%llu"
+            (cast unsigned caller_pd) (cast (unsigned long long) path_id))
+          (return 0)))
+      (call sexos_line "[sexfiles.bridge.diskfs.select.err] path_id=%llu code=%llu"
+        (cast (unsigned long long) path_id) (cast (unsigned long long) err))
+      (return err))
+
+    (fn (static uint64_t) handle_diskfs_write ((uint64_t byte_offset) (uint64_t data_lo) (uint64_t data_hi) (uint32_t caller_pd))
+      (if (call vfs_hot_log)
+        (call sexos_line "[sexfiles.bridge.diskfs.recv] op=0x38 offset=%llu"
+          (cast (unsigned long long) byte_offset)))
+      (if (|| (>= byte_offset DISKFS_V4_MAX_OBJECT_BYTES)
+              (> (call sat_add_u64 byte_offset (cast uint64_t DISKFS_MAX_WRITE)) DISKFS_V4_MAX_OBJECT_BYTES))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.write.err] reason=cap_exceeded offset=%llu cap=%llu"
+            (cast (unsigned long long) byte_offset) (cast (unsigned long long) DISKFS_V4_MAX_OBJECT_BYTES))
+          (return (cast uint64_t ERR_OVERFLOW))))
+      (if (> (call sat_add_u64 (% byte_offset DISKFS_V4_BLOCK_BYTES) (cast uint64_t DISKFS_MAX_WRITE)) DISKFS_V4_BLOCK_BYTES)
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.write.err] reason=block_straddle offset=%llu"
+            (cast (unsigned long long) byte_offset))
+          (return (cast uint64_t ERR_OVERFLOW))))
+      (var uint64_t buf_va (call diskfs_bridge_get_buf_va))
+      (if (|| (== buf_va 0) (== buf_va UINT64_MAX))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.write.err] reason=grant_failed buf_va=%#llx"
+            (cast (unsigned long long) buf_va))
+          (return (cast uint64_t ERR_NOT_FOUND))))
+      (var uint64_t err 0)
+      (if (! (call v4_ensure buf_va (& err)))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.write.err] reason=v4_ensure_failed code=%llu"
+            (cast (unsigned long long) err))
+          (return err)))
+      (var uint64_t path_id (call diskfs_selected_for caller_pd))
+      (if (>= path_id (cast uint64_t DISKFS_SLOTS))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.write.err] reason=bad_path_id caller=%u path_id=%llu"
+            (cast unsigned caller_pd) (cast (unsigned long long) path_id))
+          (return (cast uint64_t ERR_BAD_CMD))))
+      (var size_t i (cast size_t path_id))
+      (if (! (call v4_in_use i))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.write.err] reason=slot_not_in_use caller=%u path_id=%llu"
+            (cast unsigned caller_pd) (cast (unsigned long long) path_id))
+          (return (cast uint64_t ERR_NOT_FOUND))))
+      (var V4Entry entry ([] (. sexfiles_state v4_table) i))
+      (var uint64_t need_end (call sat_add_u64 byte_offset (cast uint64_t DISKFS_MAX_WRITE)))
+      (var V4Extent ([] extents DISKFS_V4_MAX_EXTENTS))
+      (var size_t orig_count (call v4_cache_get i buf_va extents))
+      (var size_t count orig_count)
+      (var uint64_t cur_capacity 0)
+      (for (var size_t k 0) (< k count) (++ k)
+        (+= cur_capacity (* (cast uint64_t (. ([] extents k) sector_count)) 512)))
+      (if (> need_end cur_capacity)
+        (block
+          (var uint64_t more_bytes (- need_end cur_capacity))
+          (var uint64_t more_blocks (/ (- (+ more_bytes DISKFS_V4_BLOCK_BYTES) 1) DISKFS_V4_BLOCK_BYTES))
+          (var size_t new_count 0)
+          (var int64_t alloc_err 0)
+          (if (! (call v4_allocate (. sexfiles_state v4_bitmap) more_blocks extents count (& new_count) (& alloc_err)))
+            (block
+              (call sexos_line "[sexfiles.bridge.diskfs.write.err] reason=alloc_failed need_blocks=%llu"
+                (cast (unsigned long long) more_blocks))
+              (return (cast uint64_t alloc_err))))
+          (for (var size_t k count) (< k new_count) (++ k)
+            (block
+              (var V4Extent e ([] extents k))
+              (var uint64_t s 0)
+              (while (< s (cast uint64_t (. e sector_count)))
+                (block
+                  (var uint64_t er 0)
+                  (if (! (call v4_zero_block (+ (cast uint64_t (. e start_lba)) s) buf_va (& er)))
+                    (block
+                      (call sexos_line "[sexfiles.bridge.diskfs.write.err] reason=zero_fill_failed lba=%llu code=%llu"
+                        (cast (unsigned long long) (+ (cast uint64_t (. e start_lba)) s))
+                        (cast (unsigned long long) er))
+                      (call v4_free_pool_only (. sexfiles_state v4_bitmap) (+ extents count) (- new_count count))
+                      (return er)))
+                  (+= s DISKFS_V4_BLOCK_SECTORS)))))
+          (= count new_count)))
+      (var DiskManifestEntryV1 piece)
+      (var uint64_t rel_off 0)
+      (if (! (call v4_locate extents count byte_offset (& piece) (& rel_off) (& err)))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.write.err] reason=locate_failed offset=%llu count=%zu code=%llu"
+            (cast (unsigned long long) byte_offset) count (cast (unsigned long long) err))
+          (if (> count orig_count)
+            (call v4_free_pool_only (. sexfiles_state v4_bitmap) (+ extents orig_count) (- count orig_count)))
+          (return err)))
+      (var uint8_t ([] inline_data 16))
+      (call write_le64 (+ inline_data 0) data_lo)
+      (call write_le64 (+ inline_data 8) data_hi)
+      (var uint64_t written 0)
+      (if (! (call diskfs_write_object_entry piece rel_off inline_data 16 buf_va (& written) (& err)))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.write.err] offset=%llu code=%llu"
+            (cast (unsigned long long) byte_offset) (cast (unsigned long long) err))
+          (if (> count orig_count)
+            (call v4_free_pool_only (. sexfiles_state v4_bitmap) (+ extents orig_count) (- count orig_count)))
+          (return err)))
+      (if (> count orig_count)
+        (block
+          (if (! (call v4_indirect_write i buf_va extents count (& err)))
+            (block
+              (call v4_free_pool_only (. sexfiles_state v4_bitmap) (+ extents orig_count) (- count orig_count))
+              (return err)))
+          (call v4_cache_put i extents count)
+          (call sexos_line "[sexfiles.diskfs.v4.crash_point.extent_committed] slot=%zu new_count=%zu"
+            i count)))
+      (if (> need_end (cast uint64_t (. entry size_bytes)))
+        (block
+          (= (. entry size_bytes) (cast uint32_t need_end))
+          (= ([] (. sexfiles_state v4_table) i) entry)
+          (if (! (call v4_persist buf_va (& err)))
+            (return err))
+          (call sexos_line "[sexfiles.diskfs.v4.crash_point.manifest_committed] slot=%zu size=%u"
+            i (cast unsigned (. entry size_bytes)))))
+      (call sexos_line "[sexfiles.bridge.diskfs.write.ok] offset=%llu written=%llu"
+        (cast (unsigned long long) byte_offset) (cast (unsigned long long) written))
+      (return written))
+
+    (fn (static uint64_t) handle_diskfs_read ((uint64_t byte_offset) (uint64_t max_len) (uint32_t caller_pd))
+      (if (call vfs_hot_log)
+        (call sexos_line "[sexfiles.bridge.diskfs.recv] op=0x39 offset=%llu"
+          (cast (unsigned long long) byte_offset)))
+      (if (|| (== max_len 0) (> max_len (cast uint64_t DISKFS_MAX_READ)))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.read.err] reason=bad_max_len max_len=%llu"
+            (cast (unsigned long long) max_len))
+          (return (cast uint64_t ERR_OVERFLOW))))
+      (var uint64_t buf_va (call diskfs_bridge_get_buf_va))
+      (if (|| (== buf_va 0) (== buf_va UINT64_MAX))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.read.err] reason=grant_failed buf_va=%#llx"
+            (cast (unsigned long long) buf_va))
+          (return (cast uint64_t ERR_NOT_FOUND))))
+      (var uint64_t err 0)
+      (if (! (call v4_ensure buf_va (& err)))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.read.err] reason=v4_ensure_failed code=%llu"
+            (cast (unsigned long long) err))
+          (return err)))
+      (var uint64_t path_id (call diskfs_selected_for caller_pd))
+      (var V4Entry entry)
+      (if (! (call v4_get path_id (& entry) (& err)))
+        (return err))
+      (if (|| (>= byte_offset (cast uint64_t (. entry size_bytes)))
+              (> (call sat_add_u64 byte_offset max_len) (cast uint64_t (. entry size_bytes))))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.read.err] reason=read_past_end offset=%llu max_len=%llu size=%u"
+            (cast (unsigned long long) byte_offset) (cast (unsigned long long) max_len)
+            (cast unsigned (. entry size_bytes)))
+          (return (cast uint64_t ERR_OVERFLOW))))
+      (var DiskManifestEntryV1 piece)
+      (var uint64_t rel_off 0)
+      (if (! (call v4_resolve_offset (cast size_t path_id) byte_offset buf_va (& piece) (& rel_off) (& err)))
+        (return err))
+      (var size_t rlen (cast size_t max_len))
+      (var uint8_t ([] rbuf 8) (init 0 0 0 0 0 0 0 0))
+      (var uint64_t n 0)
+      (if (call diskfs_read_object_entry piece rel_off rbuf rlen buf_va (& n) (& err))
+        (block
+          (var uint64_t reply 0)
+          (var size_t i 0)
+          (while (&& (< i (cast size_t n)) (< i 8))
+            (block
+              (|= reply (<< (cast uint64_t ([] rbuf i)) (* i 8)))
+              (++ i)))
+          (call sexos_line "[sexfiles.bridge.diskfs.read.ok] offset=%llu read=%llu"
+            (cast (unsigned long long) byte_offset) (cast (unsigned long long) n))
+          (if (call vfs_hot_log)
+            (call sexos_line "[sexfiles.bridge.diskfs.read.reply] caller=%u value=%#llx off=%llu read=%llu"
+              (cast unsigned caller_pd) (cast (unsigned long long) reply)
+              (cast (unsigned long long) byte_offset) (cast (unsigned long long) n)))
+          (return reply)))
+      (call sexos_line "[sexfiles.bridge.diskfs.read.err] caller=%u err=%llu off=%llu"
+        (cast unsigned caller_pd) (cast (unsigned long long) err)
+        (cast (unsigned long long) byte_offset))
+      (return err))
+
+    (fn (static inline uint64_t) diskfs_v2_pack_err ((uint64_t e))
+      (var uint64_t mag (?: (< (cast int64_t e) 0) (- (call UINT64_C 0) e) e))
+      (return (| (<< DISKFS_V2_STATUS_ERR 56) (<< (& mag 0xFFu) 48))))
+
+    (fn (static inline uint64_t) diskfs_v2_encode_eof (void)
+      (return (<< DISKFS_V2_STATUS_EOF 56)))
+
+    (fn (static inline uint64_t) diskfs_v2_encode_ok ((size_t n) ((const uint8_t) (* payload)))
+      (var size_t len (?: (< n DISKFS_V2_MAX_READ) n DISKFS_V2_MAX_READ))
+      (var uint64_t word 0)
+      (for (var size_t i 0) (< i len) (++ i)
+        (|= word (<< (cast uint64_t ([] payload i)) (* i 8))))
+      (return (| (| (<< DISKFS_V2_STATUS_OK 56) (<< (& (cast uint64_t len) 0xFFu) 48)) (& word (call UINT64_C 0xFFFFFFFFFFFF)))))
+
+    (fn (static uint64_t) handle_diskfs_read_v2 ((uint64_t byte_offset) (uint64_t want_len) (uint32_t caller_pd))
+      (if (|| (== want_len 0) (> want_len (cast uint64_t DISKFS_V2_MAX_READ)))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.read_v2.err] reason=bad_want_len want_len=%llu"
+            (cast (unsigned long long) want_len))
+          (return (call diskfs_v2_pack_err (cast uint64_t ERR_OVERFLOW)))))
+      (var uint64_t buf_va (call diskfs_bridge_get_buf_va))
+      (if (|| (== buf_va 0) (== buf_va UINT64_MAX))
+        (return (call diskfs_v2_pack_err (cast uint64_t ERR_NOT_FOUND))))
+      (var uint64_t err 0)
+      (if (! (call v4_ensure buf_va (& err)))
+        (return (call diskfs_v2_pack_err err)))
+      (var uint64_t path_id (call diskfs_selected_for caller_pd))
+      (var V4Entry entry)
+      (if (! (call v4_get path_id (& entry) (& err)))
+        (return (call diskfs_v2_pack_err err)))
+      (if (== byte_offset (cast uint64_t (. entry size_bytes)))
+        (return (call diskfs_v2_encode_eof)))
+      (if (|| (> byte_offset (cast uint64_t (. entry size_bytes)))
+              (> (call sat_add_u64 byte_offset want_len) (cast uint64_t (. entry size_bytes))))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.read_v2.err] reason=read_past_end offset=%llu want_len=%llu size=%u"
+            (cast (unsigned long long) byte_offset) (cast (unsigned long long) want_len)
+            (cast unsigned (. entry size_bytes)))
+          (return (call diskfs_v2_pack_err (cast uint64_t ERR_OVERFLOW)))))
+      (var DiskManifestEntryV1 piece)
+      (var uint64_t rel_off 0)
+      (if (! (call v4_resolve_offset (cast size_t path_id) byte_offset buf_va (& piece) (& rel_off) (& err)))
+        (return (call diskfs_v2_pack_err err)))
+      (var size_t rlen (cast size_t want_len))
+      (var uint8_t ([] rbuf 6) (init 0 0 0 0 0 0))
+      (var uint64_t n 0)
+      (if (call diskfs_read_object_entry piece rel_off rbuf rlen buf_va (& n) (& err))
+        (block
+          (var size_t nr (cast size_t n))
+          (call sexos_line "[sexfiles.bridge.diskfs.read_v2.ok] offset=%llu read=%zu"
+            (cast (unsigned long long) byte_offset) nr)
+          (return (call diskfs_v2_encode_ok nr rbuf))))
+      (call sexos_line "[sexfiles.bridge.diskfs.read_v2.err] caller=%u err=%llu off=%llu"
+        (cast unsigned caller_pd) (cast (unsigned long long) err)
+        (cast (unsigned long long) byte_offset))
+      (return (call diskfs_v2_pack_err err)))
+
+    (fn (static uint64_t) handle_diskfs_truncate ((uint64_t new_len) (uint32_t caller_pd))
+      (if (call vfs_hot_log)
+        (call sexos_line "[sexfiles.bridge.diskfs.recv] op=0x49 new_len=%llu"
+          (cast (unsigned long long) new_len)))
+      (var uint64_t buf_va (call diskfs_bridge_get_buf_va))
+      (if (|| (== buf_va 0) (== buf_va UINT64_MAX))
+        (return (cast uint64_t ERR_NOT_FOUND)))
+      (var uint64_t err 0)
+      (if (! (call v4_ensure buf_va (& err)))
+        (return err))
+      (var uint64_t path_id (call diskfs_selected_for caller_pd))
+      (if (>= path_id (cast uint64_t DISKFS_SLOTS))
+        (return (cast uint64_t ERR_BAD_CMD)))
+      (var size_t i (cast size_t path_id))
+      (if (! (call v4_in_use i))
+        (return (cast uint64_t ERR_NOT_FOUND)))
+      (var V4Entry entry ([] (. sexfiles_state v4_table) i))
+      (if (> new_len (cast uint64_t (. entry size_bytes)))
+        (block
+          (call sexos_line "[sexfiles.bridge.diskfs.truncate.err] reason=would_grow new_len=%llu size=%u"
+            (cast (unsigned long long) new_len) (cast unsigned (. entry size_bytes)))
+          (return (cast uint64_t ERR_OVERFLOW))))
+      (if (== new_len (cast uint64_t (. entry size_bytes)))
+        (return new_len))
+      (= (. entry size_bytes) (cast uint32_t new_len))
+      (= ([] (. sexfiles_state v4_table) i) entry)
+      (if (! (call v4_persist buf_va (& err)))
+        (return err))
+      (call sexos_line "[sexfiles.diskfs.v4.crash_point.manifest_committed] slot=%zu size=%u"
+        i (cast unsigned (. entry size_bytes)))
+      (var V4Extent ([] extents DISKFS_V4_MAX_EXTENTS))
+      (var size_t count (call v4_cache_get i buf_va extents))
+      (var uint64_t cum 0)
+      (var size_t keep 0)
+      (var V4Extent ([] freed DISKFS_V4_MAX_EXTENTS))
+      (var size_t freed_n 0)
+      (for (var size_t k 0) (< k count) (++ k)
+        (block
+          (var V4Extent e ([] extents k))
+          (var uint64_t cap (* (cast uint64_t (. e sector_count)) 512))
+          (if (<= (+ cum cap) new_len)
+            (block
+              (= ([] extents keep) e)
+              (++ keep))
+            (if (>= cum new_len)
+              (block
+                (= ([] freed freed_n) e)
+                (++ freed_n))
+              (block
+                (= ([] extents keep) e)
+                (++ keep)
+                (if (! (call v4_zero_tail e (- new_len cum) buf_va (& err)))
+                  (return err)))))
+          (+= cum cap)))
+      (if (> freed_n 0)
+        (block
+          (if (! (call v4_indirect_write i buf_va extents keep (& err)))
+            (return err))
+          (call v4_cache_put i extents keep)
+          (call v4_free_pool_only (. sexfiles_state v4_bitmap) freed freed_n)))
+      (call sexos_line "[sexfiles.bridge.diskfs.truncate.ok] new_len=%llu freed_extents=%zu"
+        (cast (unsigned long long) new_len) freed_n)
+      (return new_len))
+
+    (fn (static uint64_t) handle_diskfs_flush (void)
+      (if (call vfs_hot_log)
+        (call sexos_line "[sexfiles.bridge.diskfs.recv] op=0x3A"))
+      (var uint64_t status (call diskfs_fsync))
+      (if (== status 0)
+        (call sexos_line "[sexfiles.bridge.diskfs.flush.ok]")
+        (call sexos_line "[sexfiles.bridge.diskfs.flush.err] status=%llu honest=flush_not_emulated_by_qemu_nvme"
+          (cast (unsigned long long) status)))
+      (return status))
+
+    (fn (static uint64_t) handle_diskfs_stat ((uint32_t caller_pd))
+      (if (call vfs_hot_log)
+        (call sexos_line "[sexfiles.bridge.diskfs.recv] op=0x3B"))
+      (var uint64_t path_id (call diskfs_selected_for caller_pd))
+      (var V4Entry entry)
+      (var uint64_t err 0)
+      (if (! (call v4_get path_id (& entry) (& err)))
+        (return err))
+      (var size_t nlen (call v4_name_len (. entry name)))
+      (var char ([] path_str 25))
+      (call memcpy path_str (. entry name) nlen)
+      (= ([] path_str nlen) 0)
+      (var uint64_t flags (cast uint64_t (| DISKFS_MANIFEST_FLAG_READ DISKFS_MANIFEST_FLAG_WRITE)))
+      (var uint64_t size (cast uint64_t (. entry size_bytes)))
+      (var uint64_t packed (| (<< flags 32) (& size (call UINT64_C 0xFFFFFFFF))))
+      (if (call vfs_hot_log)
+        (call sexos_line "[sexfiles.bridge.diskfs.stat.ok] path_id=%llu path=%s size=%llu flags=%#llx"
+          (cast (unsigned long long) path_id) path_str
+          (cast (unsigned long long) size) (cast (unsigned long long) flags)))
+      (return packed))
+
+    (fn (static uint64_t) handle_diskfs_manifest_hash ((uint32_t caller_pd))
+      (if (call vfs_hot_log)
+        (call sexos_line "[sexfiles.bridge.diskfs.recv] op=0x3C"))
+      (var uint64_t path_id (call diskfs_selected_for caller_pd))
+      (var V4Entry entry)
+      (var uint64_t err 0)
+      (if (! (call v4_get path_id (& entry) (& err)))
+        (return err))
+      (var size_t nlen (call v4_name_len (. entry name)))
+      (var uint64_t hash (call diskfs_manifest_name_hash (. entry name) nlen))
+      (call sexos_line "[sexfiles.bridge.diskfs.manifest_hash.ok] path_id=%llu hash=%#llx"
+        (cast (unsigned long long) path_id) (cast (unsigned long long) hash))
+      (return hash))
+
+    (fn (static uint64_t) handle_diskfs_create ((uint64_t name_lo) (uint64_t name_hi) (uint64_t buf_va))
+      (var uint8_t ([] name DISKFS_V3_NAME_MAX))
+      (var size_t n (call v4_unpack_name name_lo name_hi name))
+      (if (== n 0)
+        (return (cast uint64_t ERR_BAD_CMD)))
+      (for (var size_t i 0) (< i DISKFS_SLOTS) (++ i)
+        (if (&& (call v4_in_use i) (== (call memcmp (. ([] (. sexfiles_state v4_table) i) name) name DISKFS_V3_NAME_MAX) 0))
+          (block
+            (call sexos_line "[sexfiles.diskfs.v4.create.err] reason=exists slot=%zu" i)
+            (return (cast uint64_t ERR_EXISTS)))))
+      (var size_t slot SIZE_MAX)
+      (for (var size_t i (cast size_t DISKFS_V3_SYSTEM_SLOTS)) (< i DISKFS_SLOTS) (++ i)
+        (if (! (call v4_in_use i))
+          (block
+            (= slot i)
+            break)))
+      (if (== slot SIZE_MAX)
+        (block
+          (call sexos_line "[sexfiles.diskfs.v4.create.err] reason=full")
+          (return (cast uint64_t ERR_FULL))))
+      (var uint16_t gen (cast uint16_t (+ (. ([] (. sexfiles_state v4_table) slot) gen) 1)))
+      (if (== gen 0)
+        (= gen 1))
+      (var V4Entry e)
+      (call memset (& e) 0 (sizeof e))
+      (call memcpy (. e name) name DISKFS_V3_NAME_MAX)
+      (= (. e size_bytes) 0)
+      (= (. e gen) gen)
+      (= ([] (. sexfiles_state v4_table) slot) e)
+      (call sexos_line "[sexfiles.diskfs.v4.crash_point.create_pending] slot=%zu gen=%u"
+        slot (cast unsigned gen))
+      (var uint64_t er 0)
+      (if (! (call v4_persist buf_va (& er)))
+        (block
+          (call memset (& ([] (. sexfiles_state v4_table) slot)) 0 (sizeof ([] (. sexfiles_state v4_table) 0)))
+          (return er)))
+      (call sexos_line "[sexfiles.diskfs.v4.create.ok] slot=%zu gen=%u"
+        slot (cast unsigned gen))
+      (return (cast uint64_t slot)))
+
+    (fn (static uint64_t) handle_diskfs_list ((uint64_t path_id) (uint64_t query))
+      (if (== query 0xFEu)
+        (return (. sexfiles_state v4_generation)))
+      (if (== query 0xFFu)
+        (block
+          (if (>= path_id (cast uint64_t DISKFS_SLOTS))
+            (return 0))
+          (var size_t i (cast size_t path_id))
+          (var uint64_t used (?: (call v4_in_use i) 1u 0u))
+          (var uint64_t gen (cast uint64_t (. ([] (. sexfiles_state v4_table) i) gen)))
+          (return (| (| (<< used 62) (<< gen 32)) (cast uint64_t DISKFS_SLOTS)))))
+      (if (|| (>= path_id (cast uint64_t DISKFS_SLOTS)) (! (call v4_in_use (cast size_t path_id))))
+        (return 0))
+      (var (const uint8_t) (* name) (. ([] (. sexfiles_state v4_table) (cast size_t path_id)) name))
+      (var size_t chunk (?: (< (cast size_t query) 2) (cast size_t query) 2))
+      (var uint64_t v 0)
+      (for (var size_t k 0) (< k 8) (++ k)
+        (block
+          (var size_t idx (+ (* chunk 8) k))
+          (if (< idx DISKFS_V3_NAME_MAX)
+            (|= v (<< (cast uint64_t ([] name idx)) (* k 8))))))
+      (return v))
+
+    (fn (static uint64_t) handle_diskfs_delete ((uint64_t path_id) (uint64_t buf_va))
+      (if (< path_id DISKFS_V3_SYSTEM_SLOTS)
+        (return (cast uint64_t ERR_PERM_DENIED)))
+      (if (>= path_id (cast uint64_t DISKFS_SLOTS))
+        (return (cast uint64_t ERR_BAD_CMD)))
+      (var size_t i (cast size_t path_id))
+      (if (! (call v4_in_use i))
+        (return (cast uint64_t ERR_NOT_FOUND)))
+      (var V4Extent ([] extents DISKFS_V4_MAX_EXTENTS))
+      (var size_t count 0)
+      (if (! (call v4_indirect_read i buf_va extents (& count)))
+        (block
+          (call memset extents 0 (sizeof (. (. sexfiles_state v4_extent_cache) extents)))
+          (= count 0)))
+      (call memset (. ([] (. sexfiles_state v4_table) i) name) 0 DISKFS_V3_NAME_MAX)
+      (= (. ([] (. sexfiles_state v4_table) i) size_bytes) 0)
+      (= (. ([] (. sexfiles_state v4_table) i) gen) (cast uint16_t (+ (. ([] (. sexfiles_state v4_table) i) gen) 1)))
+      (call sexos_line "[sexfiles.diskfs.v4.crash_point.delete_pending] slot=%zu" i)
+      (var uint64_t err 0)
+      (if (! (call v4_persist buf_va (& err)))
+        (return err))
+      (call sexos_line "[sexfiles.diskfs.v4.crash_point.delete_committed] slot=%zu" i)
+      (call v4_free_pool_only (. sexfiles_state v4_bitmap) extents count)
+      (var uint64_t dummy_err 0)
+      (cast void (call v4_indirect_write i buf_va extents 0 (& dummy_err)))
+      (call v4_cache_invalidate i)
+      (call sexos_line "[sexfiles.diskfs.v4.delete.ok] slot=%zu" i)
+      (return 0))
+
+    (fn (static uint64_t) handle_diskfs_rename ((uint64_t path_id) (uint64_t name_lo) (uint64_t name_hi) (uint64_t buf_va))
+      (if (< path_id DISKFS_V3_SYSTEM_SLOTS)
+        (return (cast uint64_t ERR_PERM_DENIED)))
+      (if (>= path_id (cast uint64_t DISKFS_SLOTS))
+        (return (cast uint64_t ERR_BAD_CMD)))
+      (var size_t i (cast size_t path_id))
+      (if (! (call v4_in_use i))
+        (return (cast uint64_t ERR_NOT_FOUND)))
+      (var uint8_t ([] name DISKFS_V3_NAME_MAX))
+      (var size_t n (call v4_unpack_name name_lo name_hi name))
+      (if (== n 0)
+        (return (cast uint64_t ERR_BAD_CMD)))
+      (for (var size_t j 0) (< j DISKFS_SLOTS) (++ j)
+        (if (&& (!= j i) (&& (call v4_in_use j) (== (call memcmp (. ([] (. sexfiles_state v4_table) j) name) name DISKFS_V3_NAME_MAX) 0)))
+          (return (cast uint64_t ERR_EXISTS))))
+      (call memcpy (. ([] (. sexfiles_state v4_table) i) name) name DISKFS_V3_NAME_MAX)
+      (call sexos_line "[sexfiles.diskfs.v4.crash_point.rename_pending] slot=%zu" i)
+      (var uint64_t err 0)
+      (if (! (call v4_persist buf_va (& err)))
+        (return err))
+      (call sexos_line "[sexfiles.diskfs.v4.rename.ok] slot=%zu" i)
+      (return 0))
+
+    (fn (static size_t) vfs_unpack_name ((uint64_t arg0) (uint64_t arg1) (uint64_t arg2) (uint8_t (* out_name)))
+      (call write_le64 (+ out_name 0) arg0)
+      (call write_le64 (+ out_name 8) arg1)
+      (call write_le64 (+ out_name 16) arg2)
+      (var size_t len 24)
+      (while (&& (> len 0) (== ([] out_name (- len 1)) 0))
+        (-- len))
+      (return len))
+
+    (fn uint64_t handle_vfs_message ((uint64_t type_id) (uint64_t arg0) (uint64_t arg1) (uint64_t arg2) (uint32_t caller_pd))
+      (call sexos_line "[sexfiles.vfs.enter] type=%#llx caller=%u a0=%#llx a1=%#llx"
+        (cast (unsigned long long) type_id) (cast unsigned caller_pd)
+        (cast (unsigned long long) arg0) (cast (unsigned long long) arg1))
+      (+= (. sexfiles_state ipc_ops_total) 1)
+      (switch type_id
+        (block
+          (case OP_RAMFS_OPEN
+            (block
+              (var uint8_t ([] name_bytes 24))
+              (var size_t name_len (call vfs_unpack_name arg0 arg1 (& arg2 (~ (<< (call UINT64_C 0xFF) 24))) name_bytes))
+              (var uint32_t flags (cast uint32_t (>> arg2 24)))
+              (var uint64_t handle 0)
+              (var int64_t err (call ramfs_open name_bytes name_len flags 0 caller_pd (& handle)))
+              (return (?: (== err 0) handle (cast uint64_t err)))))
+          (case OP_RAMFS_READ
+            (block
+              (var size_t max_len (?: (< (cast size_t arg2) RAMFS_MAX_FILE_SIZE) (cast size_t arg2) RAMFS_MAX_FILE_SIZE))
+              (var size_t to_read (?: (< max_len 8) max_len 8))
+              (var uint8_t ([] buf 8) (init 0 0 0 0 0 0 0 0))
+              (var uint64_t n 0)
+              (var int64_t err (call ramfs_read arg0 arg1 buf to_read caller_pd (& n)))
+              (if (!= err 0)
+                (return (cast uint64_t err)))
+              (var uint64_t reply 0)
+              (var size_t limit (?: (< (cast size_t n) 8) (cast size_t n) 8))
+              (for (var size_t i 0) (< i limit) (++ i)
+                (|= reply (<< (cast uint64_t ([] buf i)) (* i 8))))
+              (return reply)))
+          (case OP_RAMFS_WRITE
+            (block
+              (var uint8_t ([] data 8))
+              (call write_le64 data arg2)
+              (var uint64_t n 0)
+              (var int64_t err (call ramfs_write arg0 arg1 data 8 caller_pd (& n)))
+              (return (?: (== err 0) n (cast uint64_t err)))))
+          (case OP_RAMFS_CLOSE
+            (block
+              (var int64_t err (call ramfs_close arg0 caller_pd))
+              (return (?: (== err 0) 0 (cast uint64_t err)))))
+          (case OP_RAMFS_LIST
+            (block
+              (var uint64_t handle 0)
+              (var uint32_t name_len 0)
+              (if (call ramfs_list_at (cast size_t arg0) caller_pd (& handle) (& name_len))
+                (return (| (<< handle 32) (cast uint64_t name_len))))
+              (return 0)))
+          (case OP_RAMFS_CREATE_OWNER
+            (block
+              (var uint8_t ([] name_bytes 24))
+              (var size_t name_len (call vfs_unpack_name arg0 arg1 (& arg2 (~ (<< (call UINT64_C 0xFFFFFFFF) 32))) name_bytes))
+              (var uint32_t owner_pd (cast uint32_t (>> arg2 32)))
+              (var uint64_t handle 0)
+              (var int64_t err (call ramfs_create_with_owner name_bytes name_len owner_pd caller_pd (& handle)))
+              (return (?: (== err 0) handle (cast uint64_t err)))))
+          (case OP_RAMFS_OBJECT_ID
+            (block
+              (var uint64_t id 0)
+              (var int64_t err (call ramfs_object_id_for_handle arg0 caller_pd (& id)))
+              (return (?: (== err 0) id (cast uint64_t err)))))
+          (case OP_RAMFS_STAT
+            (block
+              (var uint64_t size 0)
+              (var uint32_t name_len 0)
+              (var int64_t err (call ramfs_stat arg0 caller_pd (& size) (& name_len)))
+              (return (?: (== err 0) (| (<< size 32) (cast uint64_t name_len)) (cast uint64_t err)))))
+          (case OP_RAMFS_READNAME
+            (block
+              (var size_t max_len (?: (< (cast size_t arg2) 8) (cast size_t arg2) 8))
+              (var uint8_t ([] buf 8) (init 0 0 0 0 0 0 0 0))
+              (var uint64_t n 0)
+              (var int64_t err (call ramfs_read arg0 arg1 buf max_len caller_pd (& n)))
+              (if (== err 0)
+                (block
+                  (var uint64_t packed 0)
+                  (var size_t limit (?: (< (cast size_t n) 8) (cast size_t n) 8))
+                  (for (var size_t i 0) (< i limit) (++ i)
+                    (|= packed (<< (cast uint64_t ([] buf i)) (* i 8))))
+                  (call sexos_line "[sexfiles.ramfs.readname.ok] handle=%llu off=%llu len=%zu"
+                    (cast (unsigned long long) arg0) (cast (unsigned long long) arg1) max_len)
+                  (return packed)))
+              (call sexos_line "[sexfiles.ramfs.readname.deny] handle=%llu err=%lld"
+                (cast (unsigned long long) arg0) (cast (long long) err))
+              (return (cast uint64_t err))))
+          (case OP_DISKFS_WRITE
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x38 name=write caller=%u" (cast unsigned caller_pd)))
+              (var uint64_t reply (call handle_diskfs_write arg0 arg1 arg2 caller_pd))
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.reply] op=0x38 caller=%u value=%#llx"
+                  (cast unsigned caller_pd) (cast (unsigned long long) reply)))
+              (return reply)))
+          (case OP_DISKFS_READ
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x39 name=read caller=%u" (cast unsigned caller_pd)))
+              (var uint64_t reply (call handle_diskfs_read arg0 arg1 caller_pd))
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.reply] op=0x39 caller=%u value=%#llx"
+                  (cast unsigned caller_pd) (cast (unsigned long long) reply)))
+              (return reply)))
+          (case OP_DISKFS_FLUSH
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x3A name=flush caller=%u" (cast unsigned caller_pd)))
+              (var uint64_t reply (call handle_diskfs_flush))
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.reply] op=0x3A caller=%u value=%#llx"
+                  (cast unsigned caller_pd) (cast (unsigned long long) reply)))
+              (return reply)))
+          (case OP_DISKFS_STAT
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x3B name=stat caller=%u" (cast unsigned caller_pd)))
+              (var uint64_t reply (call handle_diskfs_stat caller_pd))
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.reply] op=0x3B caller=%u value=%#llx"
+                  (cast unsigned caller_pd) (cast (unsigned long long) reply)))
+              (return reply)))
+          (case OP_DISKFS_MANIFEST_HASH
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x3C name=hash caller=%u" (cast unsigned caller_pd)))
+              (var uint64_t reply (call handle_diskfs_manifest_hash caller_pd))
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.reply] op=0x3C caller=%u value=%#llx"
+                  (cast unsigned caller_pd) (cast (unsigned long long) reply)))
+              (return reply)))
+          (case OP_DISKFS_CREATE
+            (block
+              (call sexos_line "[sexfiles.route.dispatch] op=0x42 name=create caller=%u" (cast unsigned caller_pd))
+              (var uint64_t buf_va (call diskfs_bridge_get_buf_va))
+              (if (|| (== buf_va 0) (== buf_va UINT64_MAX))
+                (return (cast uint64_t ERR_NOT_FOUND)))
+              (var uint64_t err 0)
+              (if (! (call v4_ensure buf_va (& err)))
+                (return err))
+              (var uint64_t reply (call handle_diskfs_create arg1 arg2 buf_va))
+              (call sexos_line "[sexfiles.route.reply] op=0x42 caller=%u value=%#llx"
+                (cast unsigned caller_pd) (cast (unsigned long long) reply))
+              (return reply)))
+          (case OP_DISKFS_LIST
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x43 name=list caller=%u" (cast unsigned caller_pd)))
+              (var uint64_t buf_va (call diskfs_bridge_get_buf_va))
+              (if (|| (== buf_va 0) (== buf_va UINT64_MAX))
+                (return (cast uint64_t ERR_NOT_FOUND)))
+              (var uint64_t err 0)
+              (if (! (call v4_ensure buf_va (& err)))
+                (return err))
+              (return (call handle_diskfs_list arg0 arg1))))
+          (case OP_DISKFS_DELETE
+            (block
+              (call sexos_line "[sexfiles.route.dispatch] op=0x47 name=delete caller=%u" (cast unsigned caller_pd))
+              (var uint64_t buf_va (call diskfs_bridge_get_buf_va))
+              (if (|| (== buf_va 0) (== buf_va UINT64_MAX))
+                (return (cast uint64_t ERR_NOT_FOUND)))
+              (var uint64_t err 0)
+              (if (! (call v4_ensure buf_va (& err)))
+                (return err))
+              (return (call handle_diskfs_delete arg0 buf_va))))
+          (case OP_DISKFS_RENAME
+            (block
+              (call sexos_line "[sexfiles.route.dispatch] op=0x48 name=rename caller=%u" (cast unsigned caller_pd))
+              (var uint64_t buf_va (call diskfs_bridge_get_buf_va))
+              (if (|| (== buf_va 0) (== buf_va UINT64_MAX))
+                (return (cast uint64_t ERR_NOT_FOUND)))
+              (var uint64_t err 0)
+              (if (! (call v4_ensure buf_va (& err)))
+                (return err))
+              (return (call handle_diskfs_rename arg0 arg1 arg2 buf_va))))
+          (case OP_DISKFS_TRUNCATE
+            (block
+              (call sexos_line "[sexfiles.route.dispatch] op=0x49 name=truncate caller=%u" (cast unsigned caller_pd))
+              (var uint64_t reply (call handle_diskfs_truncate arg0 caller_pd))
+              (call sexos_line "[sexfiles.route.reply] op=0x49 caller=%u value=%#llx"
+                (cast unsigned caller_pd) (cast (unsigned long long) reply))
+              (return reply)))
+          (case OP_DISKFS_READ_V2
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x4A name=read_v2 caller=%u" (cast unsigned caller_pd)))
+              (var uint64_t reply (call handle_diskfs_read_v2 arg0 arg1 caller_pd))
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.reply] op=0x4A caller=%u value=%#llx"
+                  (cast unsigned caller_pd) (cast (unsigned long long) reply)))
+              (return reply)))
+          (case OP_DISKFS_SELECT
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x3E name=select caller=%u" (cast unsigned caller_pd)))
+              (var uint64_t reply (call handle_diskfs_select arg0 caller_pd))
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.reply] op=0x3E caller=%u value=%#llx"
+                  (cast unsigned caller_pd) (cast (unsigned long long) reply)))
+              (return reply)))
+          (case OP_SEXOBJECT_NATIVE_PERSIST_PROOF
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x40 ok=1 caller=%u" (cast unsigned caller_pd)))
+              (var uint64_t object_id 0)
+              (var int64_t err 0)
+              (if (call sexobject_native_persist_linen_proof (& object_id) (& err))
+                (block
+                  (if (call vfs_hot_log)
+                    (call sexos_line "[sexfiles.route.reply] op=0x40 status=S ok=1 caller=%u object_id=%llu"
+                      (cast unsigned caller_pd) (cast (unsigned long long) object_id)))
+                  (return object_id)))
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.reply] op=0x40 status=E ok=0 caller=%u err=%lld"
+                  (cast unsigned caller_pd) (cast (long long) err)))
+              (return (cast uint64_t err))))
+          (case OP_SEXOBJECT_READ_BACK
+            (block
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.dispatch] op=0x41 name=sexobject_read_back caller=%u" (cast unsigned caller_pd)))
+              (var size_t len 0)
+              (var int64_t err 0)
+              (if (call sexobject_read_back_for_quil arg0 (& len) (& err))
+                (block
+                  (if (call vfs_hot_log)
+                    (call sexos_line "[sexfiles.route.reply] op=0x41 caller=%u len=%zu ok=1"
+                      (cast unsigned caller_pd) len))
+                  (return (cast uint64_t len))))
+              (if (call vfs_hot_log)
+                (call sexos_line "[sexfiles.route.reply] op=0x41 caller=%u err=%lld"
+                  (cast unsigned caller_pd) (cast (long long) err)))
+              (return (cast uint64_t err))))
+          (case OP_RAMFS_STATUS
+            (block
+              (call sexos_line "[sexfiles.status.query] object=%llu ok=1 reason=received" (cast (unsigned long long) arg0))
+              (call sexos_line "[sexfiles.status.result] object=%llu exists=0 size=0 generation=0 ok=1 reason=phaseb1_marker"
+                (cast (unsigned long long) arg0))
+              (return 0)))
+          (default
+            (return (cast uint64_t ERR_NOT_FOUND))))))
+
+    (comment "Trampoline initialization and PDX message loop (servers/sexfiles/src/trampoline.rs & main.rs).")
+    (fn (static inline bool) tramp_hot_log (void)
+      (return (call sexfiles_take_budget (& (. sexfiles_state trampoline_hot_log_budget)))))
+
+    (fn (static void) trampoline_main (void)
+      (call sexos_line "[sexfiles.trampoline.enter] ok=1")
+      (call sexos_line "[sexfiles.trampoline.before_register] slot=1 ok=1")
+
+      (if RAMFS_PROOF_ENABLED
+        (call run_all_proofs))
+      (if DISKFS_OBJECT_TABLE_PROOF_ENABLED
+        (call run_diskfs_object_table_proofs))
+      (if SEXFILES_JOURNAL_PROOF_ENABLED
+        (call run_sexfiles_journal_proofs))
+      (if SEXFILES_REPLAY_PROOF_ENABLED
+        (call run_sexfiles_replay_proofs))
+      (if SEXFILES_CAP_RECORD_PROOF_ENABLED
+        (call run_sexfiles_cap_record_proofs))
+      (if LINEN_SEXFILES_METADATA_PROOF_ENABLED
+        (call run_linen_sexfiles_metadata_proofs))
+      (if SEXFILES_FAULT_INJECTION_PROOF_ENABLED
+        (call run_sexfiles_fault_injection_proofs))
+      (if SEXFILES_REAL_BLOCK_PROOF_ENABLED
+        (call run_sexfiles_real_block_proofs))
+      (if SEXFILES_REBOOT_PROOF_ENABLED
+        (call run_sexfiles_reboot_proofs))
+      (if SEXFILES_EXTENT_PROOF_ENABLED
+        (call run_sexfiles_extent_proofs))
+      (if SEXFILES_CHECKPOINT_PROOF_ENABLED
+        (call run_sexfiles_checkpoint_proofs))
+
+      (if DISKFS_100_AP4_WRITE_PROOF_ENABLED
+        (block
+          (call run_diskfs100_ap4_write_proof)
+          (return)))
+
+      (if DISKFS_100_AP4_READ_PROOF_ENABLED
+        (block
+          (call run_diskfs100_ap4_read_proof)
+          (if DISKFS_100_AP5_NEG_READ_NO_WRITE_ENABLED
+            (call run_diskfs100_ap5_neg_read_no_write))
+          (return)))
+
+      (if DISKFS_100_AP5_NEG_MISMATCH_ENABLED
+        (block
+          (call run_diskfs100_ap5_neg_mismatch)
+          (return)))
+
+      (if DISKFS_100_AP5_NEG_MISSING_IMAGE_ENABLED
+        (block
+          (call run_diskfs100_ap5_neg_missing_image)
+          (return)))
+
+      (if DISKFS_100_AP5_NEG_FLUSH_SKIP_ENABLED
+        (block
+          (call run_diskfs100_ap5_neg_flush_skip)
+          (return)))
+
+      (if DISKFS_100_AP6_FLUSH_FSYNC_ENABLED
+        (block
+          (call run_diskfs100_ap6_flush_fsync)
+          (return)))
+
+      (if DISKFS_NEGATIVE_BOUNDS_AUTH_PROOF_ENABLED
+        (block
+          (call run_diskfs_negative_bounds_auth_proof)
+          (return)))
+
+      (if DISKFS_BRIDGE_STRICT_PROOF_ENABLED
+        (block
+          (call run_diskfs_bridge_strict_proof_v1)
+          (return)))
+
+      (if DISKFS_100_AP2_PROOF_ENABLED
+        (block
+          (call run_diskfs100_ap2_proof)
+          (return)))
+
+      (if DISKFS_100_AP3_PROOF_ENABLED
+        (block
+          (call run_diskfs_multi_object_proofs)
+          (return)))
+
+      (if DISKFS_MULTI_OBJECT_PROOF_ENABLED
+        (block
+          (if SEXFILES_ROUTE_AUDIT_ONLY_ENABLED
+            (call sexos_line "[sexfiles.disk.multi.skip] reason=route_audit")
+            (call run_diskfs_multi_object_proofs))))
+
+      (if SEXOBJECT_VIEW_PROOF_ENABLED
+        (call run_sexobject_view_proof))
+      (if LINEN_DISK_OBJECT_PROOF_ENABLED
+        (call run_linen_disk_object_proof))
+      (if SEXFS_V0_SUPERBLOCK_FORMAT_MOUNT_PROOF_ENABLED
+        (call run_sexfs_v0_superblock_format_mount_proofs))
+      (if SEXOBJECT_TABLE_PERSIST_PROOF_ENABLED
+        (call run_sexobject_table_persist_proofs))
+      (if SEXOBJECT_TABLE_EXTENT_ALLOC_PROOF_ENABLED
+        (call run_sexobject_table_extent_alloc_proofs))
+      (if SEXOBJECT_EXTENT_WRITE_FULL_BLOCK_PROOF_ENABLED
+        (call run_sexobject_extent_write_full_block_proofs))
+      (if SEXOBJECT_WRITE_READ_PERSIST_PROOF_ENABLED
+        (call run_sexobject_write_read_persist_proofs))
+      (if SEXOBJECT_MULTI_OBJECT_PROOF_ENABLED
+        (call run_sexobject_multi_object_proofs))
+
+      (call sexos_line "[sexfiles.ready]")
+      (call sexos_line "[sexfiles.init.ready] slot=1 ok=1")
+      (call sexos_line "[sexfiles.trampoline.loop.enter] ok=1")
+
+      (while 1
+        (block
+          (if (> (. sexfiles_state tramp_listen_budget) 0)
+            (block
+              (-= (. sexfiles_state tramp_listen_budget) 1)
+              (if (call tramp_hot_log)
+                (call sexos_line "[sexfiles.trampoline.listen.enter]"))))
+          (var DeferEntry d)
+          (var uint64_t type_id 0)
+          (var uint32_t caller 0)
+          (var uint64_t arg0 0)
+          (var uint64_t arg1 0)
+          (var uint64_t arg2 0)
+          (if (call defer_pop (& d))
+            (block
+              (= type_id (. d type_id))
+              (= caller (. d caller_pd))
+              (= arg0 (. d a0))
+              (= arg1 (. d a1))
+              (= arg2 (. d a2)))
+            (block
+              (var SexosMessage m (call sexos_listen (& (. sexfiles_state listener)) 0))
+              (= type_id (. m type_id))
+              (= caller (. m caller_pd))
+              (= arg0 (. m arg0))
+              (= arg1 (. m arg1))
+              (= arg2 (. m arg2))))
+          (if (call tramp_hot_log)
+            (call sexos_line "[sexfiles.trampoline.after_listen] type=%#llx caller=%u a0=%#llx a1=%#llx"
+              (cast (unsigned long long) type_id) (cast unsigned caller)
+              (cast (unsigned long long) arg0) (cast (unsigned long long) arg1)))
+          (if (call tramp_hot_log)
+            (call sexos_line "[sexfiles.route.recv] type=%#llx caller=%u a0=%#llx a1=%#llx"
+              (cast (unsigned long long) type_id) (cast unsigned caller)
+              (cast (unsigned long long) arg0) (cast (unsigned long long) arg1)))
+          (var uint64_t reply (call handle_vfs_message type_id arg0 arg1 arg2 caller))
+          (if (!= type_id 0)
+            (block
+              (if (== type_id OP_DISKFS_READ)
+                (call sexos_line "[sexfiles.bridge.diskfs.read.reply.sent] caller=%u value=%#llx"
+                  (cast unsigned caller) (cast (unsigned long long) reply)))
+              (cast void (call sexos_reply caller reply)))))))
+
+    (fn void sexfiles_main (void)
+      (call sexfiles_state_init (& sexfiles_state))
+      (call sexos_line "[sexfiles.init.start] ok=1")
+      (call sexos_heap_init)
+      (call sexos_line "[sexfiles.ready]")
+      (call sexos_line "[sexfiles.init.before_trampoline] ok=1")
+      (call trampoline_main)
+      (call sexos_line "[sexfiles.trampoline.return.unexpected] ok=0")
+      (while 1
+        (call sexos_yield))))
+)
