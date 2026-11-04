@@ -1,0 +1,136 @@
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#include "shell_text_delivery.h"
+static bool text_scalar(uint32_t scalar)
+{
+    return scalar==9 || scalar==10 || (scalar>=32 && scalar!=127 && !(scalar>=128 && scalar<=159) && scalar<=0x10ffff && !(scalar>=0xd800 && scalar<=0xdfff));
+}
+bool shell_text_valid(const ShellTextBytes *text)
+{
+    if(text->len>SHELL_TEXT_CAPACITY)return false;
+    for(size_t at=0;at<text->len;){
+        uint8_t first=text->bytes[at];size_t count=0;uint32_t scalar=0,minimum=0;
+        if(first<128){count=1;scalar=first;}
+        else if(first>=0xc2 && first<=0xdf){count=2;scalar=first&31;minimum=0x80;}
+        else if(first>=0xe0 && first<=0xef){count=3;scalar=first&15;minimum=0x800;}
+        else if(first>=0xf0 && first<=0xf4){count=4;scalar=first&7;minimum=0x10000;}
+        else return false;
+        if(count>text->len-at)return false;
+        for(size_t i=1;i<count;++i){uint8_t byte=text->bytes[at+i];if((byte&0xc0)!=0x80)return false;scalar=(scalar<<6)|(byte&63);}
+        if(scalar<minimum || !text_scalar(scalar))return false;
+        at+=count;
+    }
+    return true;
+}
+bool shell_text_boundary(const ShellTextBytes *text,size_t at)
+{
+    return text->len<=SHELL_TEXT_CAPACITY && at<=text->len && (at==text->len || (text->bytes[at]&0xc0)!=0x80);
+}
+uint64_t shell_text_hash(const ShellTextBytes *text)
+{
+    uint64_t value=UINT64_C(0xcbf29ce484222325);if(text->len>SHELL_TEXT_CAPACITY)return value;
+    for(size_t i=0;i<text->len;++i)value=(value^text->bytes[i])*UINT64_C(0x100000001b3);
+    return value;
+}
+static uint64_t text_hash_word(uint64_t value,uint16_t number)
+{
+    value=(value^(uint8_t)number)*UINT64_C(0x100000001b3);
+    return(value^(uint8_t)(number>>8))*UINT64_C(0x100000001b3);
+}
+uint64_t shell_text_selected_hash(const ShellTextBytes *text,uint16_t start,uint16_t end)
+{
+    if(text->len>SHELL_TEXT_CAPACITY || start>end || end>text->len || (start==end && start))return 0;
+    uint64_t value=shell_text_hash(text);static const uint8_t prefix[]="SEXOS-TEXT-SELECT-v1";
+    for(size_t i=0;i<sizeof(prefix)-1;++i)value=(value^prefix[i])*UINT64_C(0x100000001b3);
+    value=text_hash_word(value,(uint16_t)text->len);value=text_hash_word(value,start);return text_hash_word(value,end);
+}
+ShellTextOutbox shell_text_new(uint64_t surface,bool atomic)
+{
+    return(ShellTextOutbox){.surface=surface,.atomic=atomic};
+}
+bool shell_text_queue_selected(ShellTextOutbox *out,const ShellTextBytes *text,uint32_t color,ShellTextMetadata metadata,uint16_t start,uint16_t end)
+{
+    if(start>end || end>text->len || (start==end && start) || (!out->atomic && (start || end)))return false;
+    if(text->len>SHELL_TEXT_CAPACITY || (out->atomic && (!out->surface || out->surface>UINT16_MAX || !shell_text_valid(text) || !shell_text_boundary(text,start) || !shell_text_boundary(text,end))))return false;
+    if(out->sequence==UINT32_MAX)return false;
+    ++out->sequence;
+    ShellTextBatch batch={.text={.len=text->len},.color=color,.metadata=metadata,.sequence=out->sequence,.selection_start=start,.selection_end=end};
+    for(size_t i=0;i<text->len;++i)batch.text.bytes[i]=text->bytes[i];
+    if(!out->active){out->current=batch;out->active=true;out->latest=false;}
+    else {out->desired=batch;out->latest=true;}
+    return true;
+}
+bool shell_text_queue(ShellTextOutbox *out,const ShellTextBytes *text,uint32_t color,ShellTextMetadata metadata)
+{
+    return shell_text_queue_selected(out,text,color,metadata,0,0);
+}
+bool shell_text_pending(const ShellTextOutbox *out)
+{
+    return out->active || out->latest;
+}
+void shell_text_cancel(ShellTextOutbox *out)
+{
+    if(out->active)shell_text_native_erase(&out->current);
+    if(out->latest)shell_text_native_erase(&out->desired);
+    out->active=false;out->latest=false;
+}
+bool shell_text_receive(ShellTextOutbox *out,uint32_t caller,uint64_t value,ShellTextReceipt *receipt)
+{
+    if(!out->atomic || caller!=1 || (uint8_t)value!=0x56 || (value>>56))return false;
+    uint16_t surface=(uint16_t)(value>>8);uint32_t sequence=(uint32_t)(value>>24);
+    if(!surface || !sequence || !out->active || !out->current.awaiting || surface!=out->surface || sequence!=out->current.sequence)return false;
+    *receipt=(ShellTextReceipt){out->current.metadata,out->current.text.len};
+    shell_text_native_erase(&out->current);out->active=false;return true;
+}
+static ShellTextOperation text_operation(const ShellTextOutbox *out)
+{
+    const ShellTextBatch *batch=&out->current;ShellTextOperation op={.surface=out->surface};
+    size_t chunk=batch->text.len-batch->offset;if(chunk>8)chunk=8;
+    if(out->atomic){
+        if(!batch->cleared){op.opcode=0x276;op.packed=batch->sequence|((uint64_t)batch->text.len<<32);op.control=batch->color;}
+        else if(batch->offset<batch->text.len){
+            op.opcode=0x277;
+            for(size_t i=0;i<chunk;++i)op.packed|=(uint64_t)batch->text.bytes[batch->offset+i]<<(i*8);
+            op.control=((uint64_t)batch->sequence<<32)|((uint64_t)batch->offset<<8)|chunk;
+        }else if((batch->selection_start || batch->selection_end) && !batch->selection_sent){op.opcode=0x28b;op.packed=batch->sequence;op.control=batch->selection_start|((uint64_t)batch->selection_end<<16);}
+        else {op.opcode=0x278;op.packed=batch->sequence;op.control=(batch->selection_start || batch->selection_end)?shell_text_selected_hash(&batch->text,batch->selection_start,batch->selection_end):shell_text_hash(&batch->text);}
+    }else if(!batch->cleared)op.opcode=0xFA;
+    else {
+        op.opcode=0xFB;
+        for(size_t i=0;i<chunk;++i)op.packed|=(uint64_t)batch->text.bytes[batch->offset+i]<<(i*8);
+        op.control=(batch->offset&255)|((uint64_t)chunk<<8)|(((uint64_t)(batch->offset>>8)&15)<<12)|((uint64_t)batch->color<<32);
+    }
+    return op;
+}
+ShellTextPoll shell_text_poll(ShellTextOutbox *out,size_t budget)
+{
+    if(!out->active && out->latest){out->current=out->desired;out->active=true;out->latest=false;}
+    if(!out->active)return(ShellTextPoll){.kind=SHELL_TEXT_IDLE};
+    for(size_t attempt=0;attempt<budget;++attempt){
+        if(out->current.awaiting)return(ShellTextPoll){.kind=SHELL_TEXT_PENDING};
+        if(out->current.text.len>SHELL_TEXT_CAPACITY || out->current.offset>out->current.text.len){shell_text_cancel(out);return(ShellTextPoll){.kind=SHELL_TEXT_FAILED,.status=1};}
+        size_t chunk=out->current.text.len-out->current.offset;if(chunk>8)chunk=8;
+        ShellTextAdmission result=shell_text_display_admit(text_operation(out));
+        if(result.kind==SHELL_TEXT_FULL)return(ShellTextPoll){.kind=SHELL_TEXT_DEFERRED};
+        if(result.kind!=SHELL_TEXT_ACCEPTED){shell_text_native_erase(&out->current);out->active=false;return(ShellTextPoll){.kind=SHELL_TEXT_FAILED,.status=result.status};}
+        if(out->atomic){
+            if(!out->current.cleared)out->current.cleared=true;
+            else if(out->current.offset<out->current.text.len)out->current.offset+=chunk;
+            else if((out->current.selection_start || out->current.selection_end) && !out->current.selection_sent)out->current.selection_sent=true;
+            else out->current.awaiting=true;
+        }else{
+            if(!out->current.cleared)out->current.cleared=true;else out->current.offset+=chunk;
+            if(out->current.offset==out->current.text.len){ShellTextReceipt receipt={out->current.metadata,out->current.text.len};shell_text_native_erase(&out->current);out->active=false;return(ShellTextPoll){.kind=SHELL_TEXT_COMPLETE,.receipt=receipt};}
+        }
+    }
+    return(ShellTextPoll){.kind=SHELL_TEXT_PENDING};
+}
+
+

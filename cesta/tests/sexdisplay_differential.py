@@ -31,7 +31,7 @@ from pathlib import Path
 import random
 import shutil
 
-from differential_support import LISTEN, first_difference, pinned_function, run
+from differential_support import LISTEN, first_difference, pinned_function, run, run_commands
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -405,13 +405,15 @@ def main():
     parser.add_argument("--cesta", default="cesta")
     parser.add_argument("--cases", type=int, default=24)
     parser.add_argument("--all-variants", action="store_true", help="all 32 combinations of the five flags")
+    parser.add_argument("--jobs",type=int,default=min(4,os.cpu_count() or 1))
+    parser.add_argument("--work",type=Path)
     args = parser.parse_args()
     cesta = shutil.which(args.cesta) or args.cesta
     variants = ([c for n in range(len(FLAGS) + 1) for c in combinations(FLAGS, n)]
                 if args.all_variants else DEFAULT_VARIANTS)
-    work = HERE / "build/sexdisplay-differential"
-    if work.exists():
-        shutil.rmtree(work)
+    work = args.work or HERE / "build/sexdisplay-differential"
+    work=work.resolve()
+    if work.exists():raise SystemExit("choose a new --work directory; prior evidence is preserved")
     work.mkdir(parents=True)
     show = lambda path: run(["git", "-C", REPO, "show", f"{REVISION}:{path}"]).stdout.decode()
     (work / "model.rs").write_text(show("crates/silkbar-model/src/lib.rs"))
@@ -440,7 +442,7 @@ def main():
         reference = work / f"reference-{tag}"
         run(["rustc", "--edition", "2021", "-O", "-A", "warnings", "--extern",
              f"silkbar_model={work / 'libsilkbar_model.rlib'}", rust, "-o", reference], env=env)
-        defines = [f"-D{name}" for name in variant]
+        defines = ["-DSEXOS_DISPLAY_READY_PUBLISHER=0", "-DSEXOS_DISPLAY_DRAIN_MAX=16", *(f"-D{name}" for name in variant)]
         harnesses = []
         for compiler in ("gcc", "clang"):
             objs = []
@@ -453,14 +455,16 @@ def main():
             run([compiler, "-std=c11", "-O2", "-DSEXOS_HOST", f"-DFB_LIVE_ADDR=UINT64_C({LIVE:#x})", *platform, *sanitizers,
                  *include, work / "provider.c", *objs, *runtime, "-o", harness])
             harnesses.append((compiler, harness))
-        for number, case in enumerate(cases):
-            expected = run([reference, *case]).stdout
+        expected_cases=run_commands([([reference,*case],None)for case in cases],args.jobs)
+        for number, (case,expected) in enumerate(zip(cases,expected_cases)):
             references[variant, number] = expected
-            for compiler, harness in harnesses:
-                actual = run([harness, *case]).stdout
-                if actual != expected:
-                    raise SystemExit(first_difference(actual, expected, f"variant {tag} scenario {number} {compiler}"))
-            compared += len(expected.splitlines())
+        tasks=[(compiler,harness,number,case)for compiler,harness in harnesses for number,case in enumerate(cases)]
+        outputs=run_commands([([harness,*case],None)for _,harness,_,case in tasks],args.jobs)
+        for (compiler,_,number,_),actual in zip(tasks,outputs):
+            expected=references[variant,number]
+            if actual != expected:
+                raise SystemExit(first_difference(actual, expected, f"variant {tag} scenario {number} {compiler}"))
+        compared += sum(len(expected.splitlines()) for expected in expected_cases)
     # Controls: each change to the translation must change some trace or frame.
     original = (HERE / "src/sexdisplay.cesta").read_text()
     atlas = ("SEXOS_ATLAS_PHASE_C_RENDER_STUB_PROOF",)
@@ -486,16 +490,35 @@ def main():
         assert (variant, 0) in references, variant
         mutant = work / f"sexdisplay-mutant-{number}.cesta"
         mutant.write_text(original.replace(old_text, new_text))
-        defines = [f"-D{name}" for name in variant]
+        defines = ["-DSEXOS_DISPLAY_READY_PUBLISHER=0", "-DSEXOS_DISPLAY_DRAIN_MAX=16", *(f"-D{name}" for name in variant)]
         run([cesta, "cc", "--cc", "gcc", "-std=c11", "-O2", *defines, *platform, *include, "-c", mutant, "-o", work / "mutant.o"])
         run([cesta, "cc", "--cc", "gcc", "-std=c11", "-O2", *include, "-c", HERE / "src/silkbar_model.cesta", "-o", work / "model.o"])
         run(["gcc", "-std=c11", "-O2", "-DSEXOS_HOST", f"-DFB_LIVE_ADDR=UINT64_C({LIVE:#x})", *platform, *include, work / "provider.c",
              work / "mutant.o", work / "model.o", *runtime, "-o", work / "mutant-harness"])
-        if not any(run([work / "mutant-harness", *case]).stdout != references[variant, index] for index, case in enumerate(cases)):
+        mutant_outputs=run_commands([([work/"mutant-harness",*case],None)for case in cases],args.jobs)
+        detected=[actual!=references[variant,index]for index,actual in enumerate(mutant_outputs)]
+        if not any(detected):
             raise SystemExit(f"mutation not detected: {old_text} -> {new_text}")
+    # Current upstream deliberately raises the per-frame bound from the frozen
+    # reference's 16 to 256. Exercise the default independently so the
+    # compatibility define cannot accidentally become the production value.
+    current_display = work / "current-display.o"
+    current_model = work / "current-model.o"
+    current_harness = work / "current-harness"
+    run([cesta, "cc", "--cc", "gcc", "-std=c11", "-O2", *warnings,
+         "-DSEXOS_DISPLAY_READY_PUBLISHER=0", *platform, *include,
+         "-c", HERE / "src/sexdisplay.cesta", "-o", current_display])
+    run([cesta, "cc", "--cc", "gcc", "-std=c11", "-O2", *warnings, *include,
+         "-c", HERE / "src/silkbar_model.cesta", "-o", current_model])
+    run(["gcc", "-std=c11", "-O2", "-DSEXOS_HOST", f"-DFB_LIVE_ADDR=UINT64_C({LIVE:#x})",
+         *platform, *include, work / "provider.c", current_display, current_model,
+         *runtime, "-o", current_harness])
+    current = run([current_harness, 1, 1, 100, 0, 0, 160, 90, 0]).stdout.splitlines()
+    assert sum(line.startswith(b"T ") for line in current) == 256
+    assert b"L [sexdisplay.render.budget] drained=256 surface=0 strip=0 primary=0" in current
     print(f"sexdisplay: Cesta translation equals the Rust compositor on {compared} trace lines, framebuffer hashes included "
           f"({args.cases} scenarios x {len(variants)} build variants, GCC and Clang, address and UB sanitizers); "
-          f"{len(mutations)} mutations detected")
+          f"{len(mutations)} mutations detected; current upstream 256-message drain exercised")
 
 
 if __name__ == "__main__":

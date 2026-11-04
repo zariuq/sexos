@@ -1,0 +1,13 @@
+{
+  "pin": "44053ea9b017fe89008413f7cc8a6b1a4d28d015",
+  "sources": [
+    {
+      "path": "crates/sex-http/src/codec.rs",
+      "sha256": "5844ad35713fecaf175f824facbe1c13c7ee96ca8b0dd417aba326cf90331e79"
+    },
+    {
+      "path": "apps/kaleidoscope/src/http_navigation.rs",
+      "sha256": "5b7b7c36c76b79fe27960c8c2f9df7c3900158b53cfd0502ab9cc1e37d646c38"
+    }
+  ]
+}

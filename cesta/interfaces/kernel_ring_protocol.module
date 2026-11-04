@@ -1,0 +1,32 @@
+Module KernelRing {
+  Theory Protocols() {
+    Empty Equations {
+      (kernel_ring_run) == (Protocol "cesta-protocol/1"
+        (Context KernelRingContext)
+        (Hooks
+          (Hook snapshot kernel_ring_inspect prepare
+            (Requires) (Uses) (Proves snapshotted))
+          (Hook transform kernel_ring_copy prepare
+            (Requires snapshotted) (Uses) (Proves transformed))
+          (Hook swap kernel_ring_swap prepare
+            (Requires snapshotted transformed) (Uses) (Proves swapped))
+          (Hook commit kernel_ring_advance effect
+            (Requires snapshotted transformed swapped) (Uses) (Proves)
+            (Invalidates snapshotted transformed swapped)))
+        (Resources)
+        (Entry (Facts) (Owns))
+        (Body
+          (Call snapshot
+            (Call transform
+              (Call swap
+                (Call commit (Return done) (Return engine_failure))
+                (Return engine_failure))
+              (Return engine_failure))
+            (Return declined)))
+        (Checks
+          (Fact snapshotted kernel_ring_is_current)
+          (Fact transformed kernel_ring_is_copied)
+          (Fact swapped kernel_ring_is_swapped)));
+    }
+  }
+}

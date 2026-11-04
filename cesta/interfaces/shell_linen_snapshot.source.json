@@ -1,0 +1,9 @@
+{
+  "pin": "c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321",
+  "dependencies": {
+    "servers/silk-shell/src/linen_async.rs": "a85e08cf13f02469edde1b4884a75c858eef93427b2a2f343e1b4b07a6792433",
+    "servers/silk-shell/src/document_policy.rs": "e282edfa214b0be0776165c95e1591ffbdb94d3bdbe6426b73c2707bb38afff4",
+    "servers/silk-shell/src/linen_text_delivery.rs": "5048f93e17eed3b1a74ac64cdf4cbbe87c25f6de069f8af4d97a5e4a53f2b9c7"
+  },
+  "scope": "Current linen_async.rs and document_policy.rs; live Models adapters remain required."
+}

@@ -1,0 +1,58 @@
+#ifndef SEXOS_SHELL_VIEWPORT_H
+#define SEXOS_SHELL_VIEWPORT_H
+#include "silk_shell_custody.h"
+#include "sexos_server.h"
+enum { SHELL_VIEW_DOCUMENT=0, SHELL_VIEW_SPINDLE=1 };
+#define SHELL_COUNT_DOCUMENT_ROW(app,ordinal,target,surface,frame,life,close,has_activate,activate,route,n,c0,c1,c2) + ((app)!=SHELL_APP_SPINDLE)
+#define SHELL_COUNT_SPINDLE_ROW(app,ordinal,target,surface,frame,life,close,has_activate,activate,route,n,c0,c1,c2) + ((app)==SHELL_APP_SPINDLE)
+enum { SHELL_DOCUMENT_VIEW_COUNT=0 SEXOS_SHELL_APP_ROWS(SHELL_COUNT_DOCUMENT_ROW),
+       SHELL_SPINDLE_VIEW_COUNT=0 SEXOS_SHELL_APP_ROWS(SHELL_COUNT_SPINDLE_ROW) };
+#undef SHELL_COUNT_DOCUMENT_ROW
+#undef SHELL_COUNT_SPINDLE_ROW
+typedef struct ShellViewportNotice { uint32_t target,task,w,h; uint64_t sequence; } ShellViewportNotice;
+typedef struct ShellViewportDelivery {
+    bool desired,last,dead;
+    ShellViewportNotice notice;
+    uint32_t last_w,last_h;
+    uint64_t sequence;
+} ShellViewportDelivery;
+typedef struct ShellDocumentDelivery { ShellViewportDelivery state; } ShellDocumentDelivery;
+typedef struct ShellSpindleDelivery { ShellViewportDelivery state; } ShellSpindleDelivery;
+typedef struct ShellWorkspaceRefresh { uint32_t target,task; bool pending,closed; } ShellWorkspaceRefresh;
+typedef struct ShellViewRect {uint32_t x,y,w,h;} ShellViewRect;
+typedef struct ShellSpindleLayout {ShellViewRect panes[4];size_t cols,rows[2];} ShellSpindleLayout;
+typedef struct ShellDocumentLayout {uint32_t w,h,scale;size_t cols,rows;uint32_t top;size_t toolbar_rows;} ShellDocumentLayout;
+typedef struct ShellViewChild {bool present;uint64_t sid;int32_t x,y;uint32_t w,h;} ShellViewChild;
+typedef struct ShellViewChildren {ShellViewChild values[4];} ShellViewChildren;
+bool shell_viewport_target(uint8_t kind,uint32_t target);
+ShellDocumentDelivery shell_document_delivery_new(void);
+void shell_document_delivery_queue(ShellDocumentDelivery *delivery,uint32_t target,uint32_t task,uint32_t w,uint32_t h);
+void shell_document_delivery_refresh(ShellDocumentDelivery *delivery);
+bool shell_document_delivery_pending(const ShellDocumentDelivery *delivery);
+void shell_document_delivery_retire(ShellDocumentDelivery *delivery);
+void shell_document_delivery_poll(ShellDocumentDelivery *delivery,bool live,bool ready,uint64_t slot);
+ShellSpindleDelivery shell_spindle_delivery_new(void);
+void shell_spindle_delivery_queue(ShellSpindleDelivery *delivery,uint32_t target,uint32_t task,uint32_t w,uint32_t h);
+void shell_spindle_delivery_refresh(ShellSpindleDelivery *delivery);
+bool shell_spindle_delivery_pending(const ShellSpindleDelivery *delivery);
+void shell_spindle_delivery_retire(ShellSpindleDelivery *delivery);
+void shell_spindle_delivery_poll(ShellSpindleDelivery *delivery,bool live,bool ready,uint64_t slot);
+bool shell_viewport_decode(uint8_t kind,uint32_t caller,uint32_t target,uint32_t task,uint64_t a,uint64_t b,uint64_t sequence,uint64_t last,ShellViewportNotice *out);
+ShellWorkspaceRefresh shell_workspace_refresh_new(uint32_t target,uint32_t task);
+void shell_workspace_refresh_changed(ShellWorkspaceRefresh *refresh);
+bool shell_workspace_refresh_pending(const ShellWorkspaceRefresh *refresh);
+void shell_workspace_refresh_close(ShellWorkspaceRefresh *refresh);
+void shell_workspace_refresh_poll(ShellWorkspaceRefresh *refresh,uint64_t slot);
+ShellSpindleLayout shell_spindle_layout(uint32_t w,uint32_t h);
+size_t shell_spindle_columns(const ShellSpindleLayout *layout);
+size_t shell_spindle_lines(const ShellSpindleLayout *layout);
+ShellDocumentLayout shell_document_layout(uint32_t target,uint32_t w,uint32_t h);
+size_t shell_document_header_rows(const ShellDocumentLayout *layout);
+size_t shell_document_toolbar_per_row(const ShellDocumentLayout *layout);
+size_t shell_document_hint_rows(const ShellDocumentLayout *layout);
+size_t shell_document_chrome_rows(const ShellDocumentLayout *layout);
+size_t shell_document_body_rows(const ShellDocumentLayout *layout);
+uint8_t shell_document_hit(const ShellDocumentLayout *layout,uint32_t x,uint32_t y);
+ShellViewChildren shell_desktop_children(uint64_t frame,int32_t x,int32_t y,uint32_t w,uint32_t h);
+ShellCustodyWord shell_desktop_parent_frame(uint64_t child);
+#endif

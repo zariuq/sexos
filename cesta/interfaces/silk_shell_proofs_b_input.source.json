@@ -1,0 +1,16 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "functions": [
+    {"name":"maybe_run_window_drag_synthetic_proof","flag":"SEXOS_WINDOW_DRAG_PROOF","source_sha256":"5d574569736156e976484f447471a6df83915b95d3204ff4b846b7acbc9c836f"},
+    {"name":"maybe_run_silk_de_integrated_interaction_proof","flag":"SILK_DE_INTEGRATED_INTERACTION_PROOF","source_sha256":"61e3e90c43d833b2e74581f5fa1a0743871d591a22301c0096d4b72627f410ff"},
+    {"name":"maybe_run_keyboard_window_synthetic_proof","flag":"SEXOS_KEYBOARD_WINDOW_PROOF","source_sha256":"2ad16ebedd623702e0721cb3ccf29e16fe193f5a160a6814f480a510c80fd6ee"},
+    {"name":"maybe_run_visible_focus_topbar_proof","flag":"SEXOS_VISIBLE_FOCUS_TOPBAR_PROOF","source_sha256":"3af0d885e48005ef38c2a9e17ff264c9e912ad248f358c3bc3628b2edb9ed5c6"},
+    {"name":"maybe_run_keyboard_safe_close_proof","flag":"SEXOS_KEYBOARD_SAFE_CLOSE_PROOF","source_sha256":"f37d6461fdd4271f8711d7860c1ccd0a25b3bee0aad8b0a1ac4eb33eceb913df"},
+    {"name":"maybe_run_keyboard_gui_broad_action_proof","flag":"SEXOS_KEYBOARD_GUI_BROAD_PROOF","source_sha256":"dedcd6720981cad1818549b2f73058f9e55f617f88f759465567e57f3f4d1f2e"},
+    {"name":"maybe_run_spindle_real_keyboard_focus_proof","flag":"SEXOS_SPINDLE_REAL_KEYBOARD_FOCUS_PROOF","source_sha256":"1989d2448312b73e79b5fbbe5a156b2e52ce1a58bfafc11dbc4fcbc5bd6962ce"},
+    {"name":"maybe_run_mesh_keyboard_map_proof","flag":"SEXOS_MESH_KEYBOARD_MAP_PROOF","source_sha256":"23c9a3616404879585f445d355c567bf16f7e8fa7e74b36e5ddaf4648bc12ecc"},
+    {"name":"maybe_run_frame_light_zoom_synthetic_proof","flag":"SEXOS_FRAME_LIGHT_ZOOM_SYNTHETIC_PROOF","source_sha256":"26c7622206655052f3302a81b802836652831e39f5684f577d7f477d0af1e8cc"},
+    {"name":"maybe_run_input_negative_proof","flag":"SEXOS_INPUT_NEGATIVE_PROOF","source_sha256":"51f25ecf8f7880e527c802bef47563a202e72648ba022b576173d9bdac9b2367"},
+    {"name":"maybe_run_cursor_autodemo","flag":"SEXOS_CURSOR_AUTODEMO","source_sha256":"731a89a75e6d96786386751b52e1499985da89b787aa96724dd1f8201d64af45"}
+  ]
+}

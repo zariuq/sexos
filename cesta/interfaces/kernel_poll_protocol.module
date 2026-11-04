@@ -1,0 +1,21 @@
+Module KernelPoll {
+  Theory Protocols() {
+    Empty Equations {
+      (kernel_poll_run) == (Protocol "cesta-protocol/1"
+        (Context KernelPollContext)
+        (Hooks
+          (Hook inspect kernel_poll_inspect prepare (Requires) (Uses) (Proves ready))
+          (Hook consume kernel_poll_consume effect
+            (Requires ready) (Uses) (Proves copied) (Invalidates ready))
+          (Hook publish kernel_poll_publish effect (Requires copied) (Uses) (Proves)))
+        (Resources)
+        (Entry (Facts) (Owns))
+        (Body
+          (Call inspect
+            (Call consume (Call publish (Return done) (Return engine_failure))
+              (Return engine_failure))
+            (Return declined)))
+        (Checks (Fact ready kernel_poll_is_ready) (Fact copied kernel_poll_is_copied)));
+    }
+  }
+}

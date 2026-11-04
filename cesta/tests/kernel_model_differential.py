@@ -150,7 +150,7 @@ def main():
     mutations = [
         ("kernel_domains.c", "r->count >= KERNEL_RING_CAPACITY", "r->count >= KERNEL_RING_CAPACITY - 1"),
         ("kernel_domains.c", "(r->head + r->count) % KERNEL_RING_CAPACITY", "r->head"),
-        ("kernel_domains.c", "(r->head + 1) % KERNEL_RING_CAPACITY", "(r->head + 2) % KERNEL_RING_CAPACITY"),
+        ("kernel_domains.c", "(c->head + 1u) % KERNEL_RING_CAPACITY", "(c->head + 2u) % KERNEL_RING_CAPACITY"),
         ("kernel_syscalls.c", "call_entry.arg0 = f->rdx;", "call_entry.arg0 = f->rdx + 1;"),
         ("kernel_syscalls.c", "call_entry.arg1 = f->r10;", "call_entry.arg1 = f->r10 + 1;"),
         ("kernel_syscalls.c", "call_entry.arg2 = f->r8;", "call_entry.arg2 = f->r8 + 1;"),

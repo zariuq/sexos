@@ -1,0 +1,32 @@
+Module KernelAppActivation {
+  Theory Protocols() {
+    Empty Equations {
+      (kernel_app_activation_run) == (Protocol "cesta-protocol/1"
+        (Context KernelAppActivationContext)
+        (Hooks
+          (Hook snapshot kernel_app_activation_snapshot prepare
+            (Requires) (Uses) (Proves snapshotted))
+          (Hook transform kernel_app_activation_transform prepare
+            (Requires snapshotted) (Uses) (Proves transformed))
+          (Hook swap kernel_app_activation_swap prepare
+            (Requires snapshotted transformed) (Uses) (Proves swapped))
+          (Hook commit kernel_app_activation_commit effect
+            (Requires snapshotted transformed swapped) (Uses) (Proves)
+            (Invalidates snapshotted transformed swapped)))
+        (Resources)
+        (Entry (Facts) (Owns))
+        (Body
+          (Call snapshot
+            (Call transform
+              (Call swap
+                (Call commit (Return done) (Return engine_failure))
+                (Return engine_failure))
+              (Return engine_failure))
+            (Return declined)))
+        (Checks
+          (Fact snapshotted kernel_app_activation_is_snapshotted)
+          (Fact transformed kernel_app_activation_is_transformed)
+          (Fact swapped kernel_app_activation_is_swapped)));
+    }
+  }
+}

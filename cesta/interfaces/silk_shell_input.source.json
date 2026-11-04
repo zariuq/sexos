@@ -1,0 +1,472 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "source_sha256": "341fa37c96f8e24d99e179853c346a909093c129a8b8b76b46d2253d7e551338",
+  "functions": [
+    {
+      "name": "input_trace_shell_summary",
+      "start": 9697,
+      "end": 9703,
+      "sha256": "d0555a0d3aee2bc2c48e3e84468d25ba924cdfde1eba9188ac282347422efb76"
+    },
+    {
+      "name": "flush_pending_cursor_send",
+      "start": 9722,
+      "end": 9725,
+      "sha256": "33ce6ed09c7789653066852e6e3e723ab6eb8690d87d871ac1b9ecd7760775ad"
+    },
+    {
+      "name": "send_cursor_checked",
+      "start": 9729,
+      "end": 9802,
+      "sha256": "8b84b07cadf4ab20071831a821236ddbc79fcf2b4a97fafeaca79c2af78a0ebd"
+    },
+    {
+      "name": "apply_rel_pointer",
+      "start": 9808,
+      "end": 9957,
+      "sha256": "8d0b2ec4f1af614401aa4f53747dee809de0e3a0e6815bd4e3cf9adb82f96d7d"
+    },
+    {
+      "name": "normalize_abs_coord",
+      "start": 9964,
+      "end": 9968,
+      "sha256": "b72f64ffd6dca031b29648c00c39fbef1b1d8a103bd89b2f5880c5db28a54244"
+    },
+    {
+      "name": "process_abs_tablet",
+      "start": 9973,
+      "end": 10076,
+      "sha256": "3d7d9117552ba749a75803874f850bd537b0379e59d2eb999b75094754854b0e"
+    },
+    {
+      "name": "handle_hid_event",
+      "start": 10146,
+      "end": 10982,
+      "sha256": "9c5f433197438d07c3d8503f7475584fde9d87f3f5d52343b2d4b0f1130b8eae"
+    },
+    {
+      "name": "clamp_surface_size",
+      "start": 11042,
+      "end": 11046,
+      "sha256": "9d17bf04edce02f09ef744318485db94eb03dda02b1123d2a889be80232321c3"
+    },
+    {
+      "name": "emit_snapshot",
+      "start": 11048,
+      "end": 11103,
+      "sha256": "0fe11ee16636f6531caea9470436b14b0e2622587427c5ac76bc77a234f0534e"
+    },
+    {
+      "name": "get_surface_bounds",
+      "start": 11109,
+      "end": 11126,
+      "sha256": "b380348691b57c6752bccd0bb3af775a0b626cd4703ec7dd244e9398ce8b6602"
+    },
+    {
+      "name": "point_in_surface",
+      "start": 11131,
+      "end": 11171,
+      "sha256": "d4540dbc69979c44aec48a9355add082af6edb5bee9a1aa68a6fb044e6a4d971"
+    },
+    {
+      "name": "surface_is_alive",
+      "start": 11174,
+      "end": 11199,
+      "sha256": "149dde0c988da3cfdc5d98f71a9aaf8b78911a2dcaf6ae80dc5a5e207e0dcc34"
+    },
+    {
+      "name": "record_tombstone_event",
+      "start": 11203,
+      "end": 11227,
+      "sha256": "48db3d8eca390d09c112ba15a8c06175fc65ec33ab565db4d5ee13f794937737"
+    },
+    {
+      "name": "is_tombstoned",
+      "start": 11231,
+      "end": 11240,
+      "sha256": "0e080e94989d43359d31ffb04e188537a4a0e2cc2f562dbfd184b26ccf80ac04"
+    },
+    {
+      "name": "clear_focus_if_dead",
+      "start": 11250,
+      "end": 11289,
+      "sha256": "72f690f895337e04935fdfdcb5427c561bb257c7375749fe7121fd844636d09b"
+    },
+    {
+      "name": "clear_drag_if_dead",
+      "start": 11292,
+      "end": 11308,
+      "sha256": "85889f511a30a48407c781c14e6c7b99ab2bef05b730871ad8d896b0f205b9e5"
+    },
+    {
+      "name": "clear_hover_if_dead",
+      "start": 11312,
+      "end": 11328,
+      "sha256": "b6c702f1c7a4b85b501cbd2cdca44508dd94d2f350c88172c9036e992fa01d6c"
+    },
+    {
+      "name": "clear_drag_if_wrong_scene",
+      "start": 11332,
+      "end": 11341,
+      "sha256": "31dcc1490046142a8c5e5c78c50ad94f8aec029f5d87dcee0e5d34a5edfbfa81"
+    }
+  ],
+  "globals": {
+    "INPUT_TRACE_APPLIES": "input.INPUT_TRACE_APPLIES",
+    "INPUT_TRACE_BUDGET_HIT": "input.INPUT_TRACE_BUDGET_HIT",
+    "INPUT_TRACE_DRAG_MOVES": "input.INPUT_TRACE_DRAG_MOVES",
+    "INPUT_TRACE_MAX_JUMP": "input.INPUT_TRACE_MAX_JUMP",
+    "INPUT_TRACE_SENDS": "input.INPUT_TRACE_SENDS",
+    "CURSOR_SEND_PENDING": "input.CURSOR_SEND_PENDING",
+    "POINTER_X": "input.POINTER_X",
+    "POINTER_Y": "input.POINTER_Y",
+    "ABS_SAMPLE_COUNT": "input.ABS_SAMPLE_COUNT",
+    "CURSOR_APPLIES_SINCE_SEND": "input.CURSOR_APPLIES_SINCE_SEND",
+    "CURSOR_SEND_COUNT": "input.CURSOR_SEND_COUNT",
+    "INPUT_TRACE_SEQ": "input.INPUT_TRACE_SEQ",
+    "SHELL_APPLY_TICK": "input.SHELL_APPLY_TICK",
+    "ABS_SEEN_VALID": "input.ABS_SEEN_VALID",
+    "PENDING_COUNT": "input.PENDING_COUNT",
+    "PENDING_DX": "input.PENDING_DX",
+    "PENDING_DY": "input.PENDING_DY",
+    "POINTER_USB_STATE_INIT": "input.POINTER_USB_STATE_INIT",
+    "REAL_POINTER_SEEN": "input.REAL_POINTER_SEEN",
+    "LAST_VALID_ABS_X": "input.LAST_VALID_ABS_X",
+    "LAST_VALID_ABS_Y": "input.LAST_VALID_ABS_Y",
+    "POINTER_BUTTONS": "input.POINTER_BUTTONS",
+    "ATLAS_DRAG_INTENT": "atlas.ATLAS_DRAG_INTENT",
+    "ATLAS_MODE_ENABLED": "chrome.ATLAS_MODE_ENABLED",
+    "COMMAND_PALETTE_DAILY_PROOF_ACTIVE": "proofs_a.COMMAND_PALETTE_DAILY_PROOF_ACTIVE",
+    "COMMAND_PALETTE_OPEN": "surfaces.COMMAND_PALETTE_OPEN",
+    "DRAG_CAPTURE_MOVE_SEEN": "proofs_a.DRAG_CAPTURE_MOVE_SEEN",
+    "DRAG_PENDING_ACTIVE": "input.DRAG_PENDING_ACTIVE",
+    "F9_TOGGLE_DOWN": "input.F9_TOGGLE_DOWN",
+    "FOCUSED_SURFACE_ID": "chrome.FOCUSED_SURFACE_ID",
+    "INPUT_NEGATIVE_BAD_BUTTON_SEEN": "proofs_a.INPUT_NEGATIVE_BAD_BUTTON_SEEN",
+    "INPUT_NEGATIVE_BUTTON_UP_NO_CAPTURE_SEEN": "proofs_a.INPUT_NEGATIVE_BUTTON_UP_NO_CAPTURE_SEEN",
+    "INPUT_NEGATIVE_UNKNOWN_CLASS_SEEN": "proofs_a.INPUT_NEGATIVE_UNKNOWN_CLASS_SEEN",
+    "INTERACTION": "input.INTERACTION",
+    "KEYBOARD_CURSOR_DEBUG_BEGUN": "proofs_a.KEYBOARD_CURSOR_DEBUG_BEGUN",
+    "KEYBOARD_CURSOR_DEBUG_DONE": "proofs_a.KEYBOARD_CURSOR_DEBUG_DONE",
+    "KEYBOARD_CURSOR_MOVE_BUDGET": "proofs_a.KEYBOARD_CURSOR_MOVE_BUDGET",
+    "MESH_SELECTED_ROW": "surfaces.MESH_SELECTED_ROW",
+    "SELECTED_LINEN_OBJECT_ID": "models.SELECTED_LINEN_OBJECT_ID",
+    "SPINDLE_CTRL_DOWN": "surfaces.SPINDLE_CTRL_DOWN",
+    "FOCUS_ID": "chrome.FOCUS_ID",
+    "SNAPSHOT": "chrome.SNAPSHOT",
+    "SURFACE_100_ALIVE": "chrome.SURFACE_100_ALIVE",
+    "SURFACE_101_ALIVE": "chrome.SURFACE_101_ALIVE",
+    "SURFACE_101_X": "chrome.SURFACE_101_X",
+    "SURFACE_101_Y": "chrome.SURFACE_101_Y",
+    "SURFACE_102_ALIVE": "chrome.SURFACE_102_ALIVE",
+    "SURFACE_102_X": "chrome.SURFACE_102_X",
+    "SURFACE_102_Y": "chrome.SURFACE_102_Y",
+    "SURFACE_103_ALIVE": "chrome.SURFACE_103_ALIVE",
+    "SURFACE_103_X": "chrome.SURFACE_103_X",
+    "SURFACE_103_Y": "chrome.SURFACE_103_Y",
+    "SURFACE_200_X": "input.SURFACE_200_X",
+    "SURFACE_200_Y": "input.SURFACE_200_Y",
+    "SURFACE_201_X": "input.SURFACE_201_X",
+    "SURFACE_201_Y": "input.SURFACE_201_Y",
+    "SURFACE_202_X": "input.SURFACE_202_X",
+    "SURFACE_202_Y": "input.SURFACE_202_Y",
+    "SURFACE_203_X": "input.SURFACE_203_X",
+    "SURFACE_203_Y": "input.SURFACE_203_Y",
+    "SURFACE_204_X": "input.SURFACE_204_X",
+    "SURFACE_204_Y": "input.SURFACE_204_Y",
+    "WINDOWS": "chrome.WINDOWS",
+    "SURFACE_0x99_H": "input.SURFACE_0x99_H",
+    "SURFACE_0x99_W": "input.SURFACE_0x99_W",
+    "SURFACE_0x99_X": "input.SURFACE_0x99_X",
+    "SURFACE_0x99_Y": "input.SURFACE_0x99_Y",
+    "SURFACE_101_H": "chrome.SURFACE_101_H",
+    "SURFACE_101_W": "chrome.SURFACE_101_W",
+    "SURFACE_102_H": "chrome.SURFACE_102_H",
+    "SURFACE_102_W": "chrome.SURFACE_102_W",
+    "SURFACE_103_H": "chrome.SURFACE_103_H",
+    "SURFACE_103_W": "chrome.SURFACE_103_W",
+    "SURFACE_200_H": "input.SURFACE_200_H",
+    "SURFACE_200_W": "input.SURFACE_200_W",
+    "SURFACE_201_H": "input.SURFACE_201_H",
+    "SURFACE_201_W": "input.SURFACE_201_W",
+    "SURFACE_202_H": "input.SURFACE_202_H",
+    "SURFACE_202_W": "input.SURFACE_202_W",
+    "SURFACE_203_H": "input.SURFACE_203_H",
+    "SURFACE_203_W": "input.SURFACE_203_W",
+    "SURFACE_204_H": "input.SURFACE_204_H",
+    "SURFACE_204_W": "input.SURFACE_204_W",
+    "SURFACE_205_H": "input.SURFACE_205_H",
+    "SURFACE_205_W": "input.SURFACE_205_W",
+    "SURFACE_205_X": "input.SURFACE_205_X",
+    "SURFACE_205_Y": "input.SURFACE_205_Y",
+    "BELL_ACTIVE": "input.BELL_ACTIVE",
+    "CLOCK_ACTIVE": "input.CLOCK_ACTIVE",
+    "LAUNCHER_ACTIVE": "input.LAUNCHER_ACTIVE",
+    "SCENE_SETTINGS_ACTIVE": "input.SCENE_SETTINGS_ACTIVE",
+    "STATUS_ACTIVE": "input.STATUS_ACTIVE",
+    "TOMBSTONE_RING": "chrome.TOMBSTONE_RING",
+    "TOMBSTONE_RING_NEXT": "chrome.TOMBSTONE_RING_NEXT",
+    "HOVERED_FRAME_ID": "chrome.HOVERED_FRAME_ID",
+    "HOVERED_FRAME_LIGHT": "chrome.HOVERED_FRAME_LIGHT",
+    "HOVER_KIND": "chrome.HOVER_KIND",
+    "APP_CUSTODY": "apps.entries",
+    "DESKTOP_WIDTH": "apps.width",
+    "DESKTOP_HEIGHT": "apps.height"
+  },
+  "locals": [
+    {
+      "name": "send_cursor_checked__CURSOR_CLAMP_SEND_BUDGET",
+      "type": "u32",
+      "initial": "16",
+      "field": "input.send_cursor_checked__CURSOR_CLAMP_SEND_BUDGET"
+    },
+    {
+      "name": "send_cursor_checked__INPUT_TRACE_SEND_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.send_cursor_checked__INPUT_TRACE_SEND_BUDGET"
+    },
+    {
+      "name": "send_cursor_checked__CURSOR_DELTA_BUDGET",
+      "type": "u32",
+      "initial": "96",
+      "field": "input.send_cursor_checked__CURSOR_DELTA_BUDGET"
+    },
+    {
+      "name": "send_cursor_checked__CURSOR_SEND_BUDGET",
+      "type": "u32",
+      "initial": "64",
+      "field": "input.send_cursor_checked__CURSOR_SEND_BUDGET"
+    },
+    {
+      "name": "send_cursor_checked__CURSOR_RATE_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.send_cursor_checked__CURSOR_RATE_BUDGET"
+    },
+    {
+      "name": "apply_rel_pointer__POINTER_GAIN_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.apply_rel_pointer__POINTER_GAIN_BUDGET"
+    },
+    {
+      "name": "apply_rel_pointer__REL_TRANSFER_BUDGET",
+      "type": "u32",
+      "initial": "128",
+      "field": "input.apply_rel_pointer__REL_TRANSFER_BUDGET"
+    },
+    {
+      "name": "apply_rel_pointer__CURSOR_MOTION_BOUNDS_REL_BUDGET",
+      "type": "u32",
+      "initial": "64",
+      "field": "input.apply_rel_pointer__CURSOR_MOTION_BOUNDS_REL_BUDGET"
+    },
+    {
+      "name": "apply_rel_pointer__CURSOR_CLAMP_BUDGET",
+      "type": "u32",
+      "initial": "16",
+      "field": "input.apply_rel_pointer__CURSOR_CLAMP_BUDGET"
+    },
+    {
+      "name": "apply_rel_pointer__USB_POINTER_CURSOR_BOUNDS_BUDGET",
+      "type": "u32",
+      "initial": "64",
+      "field": "input.apply_rel_pointer__USB_POINTER_CURSOR_BOUNDS_BUDGET"
+    },
+    {
+      "name": "apply_rel_pointer__INPUT_TRACE_APPLY_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.apply_rel_pointer__INPUT_TRACE_APPLY_BUDGET"
+    },
+    {
+      "name": "process_abs_tablet__USB_TABLET_ABS_SCALE_BUDGET",
+      "type": "u32",
+      "initial": "128",
+      "field": "input.process_abs_tablet__USB_TABLET_ABS_SCALE_BUDGET"
+    },
+    {
+      "name": "process_abs_tablet__CURSOR_MOTION_BOUNDS_ABS_BUDGET",
+      "type": "u32",
+      "initial": "64",
+      "field": "input.process_abs_tablet__CURSOR_MOTION_BOUNDS_ABS_BUDGET"
+    },
+    {
+      "name": "process_abs_tablet__ABS_SAMPLE_BUDGET",
+      "type": "u32",
+      "initial": "192",
+      "field": "input.process_abs_tablet__ABS_SAMPLE_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__HID_RECV_DRAIN_BUDGET",
+      "type": "u32",
+      "initial": "64",
+      "field": "input.handle_hid_event__HID_RECV_DRAIN_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__KEY_RECV_DRAIN_BUDGET",
+      "type": "u32",
+      "initial": "64",
+      "field": "input.handle_hid_event__KEY_RECV_DRAIN_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__KEYTRACE_BUDGET",
+      "type": "u32",
+      "initial": "64",
+      "field": "input.handle_hid_event__KEYTRACE_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__SPINDLE_DRAIN_ROUTE_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__SPINDLE_DRAIN_ROUTE_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__QUIL_DRAIN_ROUTE_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__QUIL_DRAIN_ROUTE_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__MESH_DRAIN_ROUTE_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__MESH_DRAIN_ROUTE_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__BELL_DRAIN_ROUTE_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__BELL_DRAIN_ROUTE_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__COLLAR_DRAIN_ROUTE_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__COLLAR_DRAIN_ROUTE_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__ATLAS_DRAIN_ROUTE_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__ATLAS_DRAIN_ROUTE_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__KBD_UI_CONSUME_DRAIN_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__KBD_UI_CONSUME_DRAIN_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__KEY_ROUTE_DRAIN_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__KEY_ROUTE_DRAIN_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__KEY_ROUTE_DRAIN_BUDGET_LINEN",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__KEY_ROUTE_DRAIN_BUDGET_LINEN"
+    },
+    {
+      "name": "handle_hid_event__SPINDLE_ROUTE_DRAIN_BUDGET",
+      "type": "u32",
+      "initial": "32",
+      "field": "input.handle_hid_event__SPINDLE_ROUTE_DRAIN_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__SILK_KEY_REJECT_BUDGET",
+      "type": "u32",
+      "initial": "8",
+      "field": "input.handle_hid_event__SILK_KEY_REJECT_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__REL_RECV_DRAIN_BUDGET",
+      "type": "u32",
+      "initial": "64",
+      "field": "input.handle_hid_event__REL_RECV_DRAIN_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__HID_DRAIN_USB_POINTER_SHELL_APPLY_BUDGET",
+      "type": "u32",
+      "initial": "64",
+      "field": "input.handle_hid_event__HID_DRAIN_USB_POINTER_SHELL_APPLY_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__HID_DRAIN_POINTER_MOVE_OK_BUDGET",
+      "type": "u32",
+      "initial": "8",
+      "field": "input.handle_hid_event__HID_DRAIN_POINTER_MOVE_OK_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__INLINE_BTN_BUDGET",
+      "type": "u32",
+      "initial": "16",
+      "field": "input.handle_hid_event__INLINE_BTN_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__BUTTON_EDGE_OK_BUDGET",
+      "type": "u32",
+      "initial": "16",
+      "field": "input.handle_hid_event__BUTTON_EDGE_OK_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__CLICK_BLOCK_BUDGET",
+      "type": "u32",
+      "initial": "8",
+      "field": "input.handle_hid_event__CLICK_BLOCK_BUDGET"
+    },
+    {
+      "name": "handle_hid_event__INLINE_CLICK_TARGET_BUDGET",
+      "type": "u32",
+      "initial": "16",
+      "field": "input.handle_hid_event__INLINE_CLICK_TARGET_BUDGET"
+    },
+    {
+      "name": "clear_drag_if_wrong_scene__DRAG_SCENE_BUDGET",
+      "type": "u32",
+      "initial": "4",
+      "field": "input.clear_drag_if_wrong_scene__DRAG_SCENE_BUDGET"
+    }
+  ],
+  "support_functions": [
+    {
+      "name": "desktop_width",
+      "start": 8277,
+      "end": 8279,
+      "sha256": "03e4d6ab62669dbd9c760e5f37f56f0499b4e0855208320c02b9e9f2ffef2d13"
+    },
+    {
+      "name": "desktop_height",
+      "start": 8280,
+      "end": 8282,
+      "sha256": "840045385624218d5f7325f293ca6ccc0690c3b537874ceca2365962543d62a8"
+    },
+    {
+      "name": "quil_has_focus",
+      "start": 16260,
+      "end": 16260,
+      "sha256": "7b90a0150b1f13991097b51b7ba3d003b43efdd950504b6aa89f6374c6124937"
+    },
+    {
+      "name": "spindle_key_word",
+      "start": 16280,
+      "end": 16280,
+      "sha256": "25be3fb6c9fc4f9a754241ca8d33398f38639539f80177be3fe95f98c7c1929f"
+    },
+    {
+      "name": "spindle_has_focus",
+      "start": 16281,
+      "end": 16281,
+      "sha256": "1529dac343b71cccfda44faf43f6561f0e219779608e5829b39068132578613a"
+    }
+  ],
+  "dependencies": {
+    "crates/sex-pdx/src/app_key.rs": "0cd55d4d371068e3a3428763951cabf52f327a32b38d0243edcb2b03e2b96418",
+    "servers/silk-shell/src/app_custody.rs": "07847af51c94ddd5c9dac06214beef38287697d72a919c34185ee6598ed2abd0",
+    "crates/sex-pdx/src/app_catalog.rs": "b64e70fd3e9d813b20edd479bab9c68edbd1485f0af382fdc0f0d9424a2c2f0c",
+    "crates/sex-pdx/src/app_lifecycle.rs": "95b5404b95fe2fa12107f960c022f2544191ab461db9acda2469095decee9e00"
+  }
+}

@@ -272,7 +272,8 @@ def main():
     if args.mutations:
         original_client = (HERE / "src/kaleidoscope.cesta").read_text()
         changes = [("color", "0x00CDD6F4", "0x00112233"),
-                   ("body-routing", "(if (> body_length 0)", "(if (== body_length 0)"),
+                   ("body-routing", "(if (> body_length 0)\n              (block\n                (call sexos_line \"[browser.body.render.begin]\")",
+                    "(if (== body_length 0)\n              (block\n                (call sexos_line \"[browser.body.render.begin]\")"),
                    ("reply-status", "(!= (. reply type_id) 1)", "(== (. reply type_id) 1)")]
         for name, before_text, after_text in changes:
             assert before_text in original_client, name + ": mutation point disappeared"

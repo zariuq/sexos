@@ -1,0 +1,34 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (include "kaleidoscope_asset_pipeline.h")
+  (ownership
+    (check-all)
+    (foreign kaleidoscope_qoi_init (obligation "Initializes decoder metadata from the borrowed fixed source and retains no pointer."))
+    (foreign kaleidoscope_qoi_advance (obligation "Advances only the supplied decoder and fixed pixel output; retains no pointer."))
+    (foreign kaleidoscope_qoi_cancel (obligation "Terminally erases the supplied fixed pixel output and decoder state."))
+    (foreign kaleidoscope_png_is_png (obligation "Reads only the fixed source signature and retains no pointer."))
+    (foreign kaleidoscope_png_decode (obligation "Decodes into the supplied fixed scratch and pixel records; retains no pointer.")))
+  (native "
+static void asset_source_erase(KaleidoscopeQoiSource *source)
+{for(size_t i=0;i<KALEIDOSCOPE_QOI_MAX_INPUT;i++)source->bytes[i]=0;source->len=0;}
+static void asset_scratch_erase(KaleidoscopePngScratch *scratch)
+{for(size_t i=0;i<KALEIDOSCOPE_PNG_SCRATCH_BYTES;i++)scratch->bytes[i]=0;}
+static uint64_t asset_wire_hash(const KaleidoscopeQoiSource *source)
+{uint64_t hash=UINT64_C(0xcbf29ce484222325);for(size_t i=0;i<source->len;i++){hash^=source->bytes[i];hash*=UINT64_C(0x100000001b3);}return hash;}
+void kaleidoscope_asset_image_init(KaleidoscopeAssetImage *image)
+{if(image)*image=(KaleidoscopeAssetImage){0};}
+void kaleidoscope_asset_image_clear(KaleidoscopeAssetImage *image)
+{if(!image)return;if(image->format==KALEIDOSCOPE_ASSET_QOI)kaleidoscope_qoi_cancel(&image->qoi,&image->pixels);for(size_t i=0;i<KALEIDOSCOPE_QOI_MAX_PIXELS;i++)image->pixels.values[i]=0;asset_source_erase(&image->source);asset_scratch_erase(&image->scratch);*image=(KaleidoscopeAssetImage){0};}
+bool kaleidoscope_asset_image_begin(KaleidoscopeAssetImage *image,const KaleidoscopeQoiSource *source,uint32_t ticket)
+{
+ if(!image||!source||!ticket||source->len>KALEIDOSCOPE_QOI_MAX_INPUT){return false;}kaleidoscope_asset_image_clear(image);image->source.len=source->len;for(size_t i=0;i<source->len;i++)image->source.bytes[i]=source->bytes[i];image->ticket=ticket;image->wire_bytes=source->len;image->wire_hash=asset_wire_hash(source);
+ if(kaleidoscope_png_is_png(&image->source)){KaleidoscopePngResult result=kaleidoscope_png_decode(&image->source,&image->scratch,&image->pixels);asset_scratch_erase(&image->scratch);asset_source_erase(&image->source);if(result.error){kaleidoscope_asset_image_clear(image);return false;}image->format=KALEIDOSCOPE_ASSET_PNG;image->width=result.width;image->height=result.height;image->decoded=true;return true;}
+ if(kaleidoscope_qoi_init(&image->source,&image->qoi)){kaleidoscope_asset_image_clear(image);return false;}image->format=KALEIDOSCOPE_ASSET_QOI;image->width=image->qoi.width;image->height=image->qoi.height;return true;
+}
+bool kaleidoscope_asset_image_advance(KaleidoscopeAssetImage *image,bool *became_ready)
+{if(!image||!became_ready)return false;*became_ready=false;if(image->ready)return true;if(image->decoded){image->decoded=false;image->ready=true;*became_ready=true;return true;}if(image->format!=KALEIDOSCOPE_ASSET_QOI)return true;KaleidoscopeQoiStep step=kaleidoscope_qoi_advance(&image->qoi,&image->source,&image->pixels);if(step.error){kaleidoscope_asset_image_clear(image);return false;}if(step.state==KALEIDOSCOPE_QOI_READY){asset_source_erase(&image->source);image->ready=true;*became_ready=true;}return true;}
+bool kaleidoscope_asset_image_pending(const KaleidoscopeAssetImage *image)
+{return image&&!image->ready&&(image->decoded||image->format==KALEIDOSCOPE_ASSET_QOI);}
+size_t kaleidoscope_asset_image_pixel_count(const KaleidoscopeAssetImage *image)
+{return image&&image->ready?image->width*image->height:0;}
+")))

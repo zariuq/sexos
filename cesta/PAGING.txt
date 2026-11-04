@@ -1,0 +1,76 @@
+BOUNDED FAULT AND PAGER TRANSACTIONS
+
+The current kernel reserves one eight-page pool for Sext, two eight-page demand
+arenas for Browser and Bell, and all intermediate page-table infrastructure at
+BOOT. Slot34 holds the pool; slots36/37 hold the exact mappings; each client
+holds its own demand grant at35. Runtime operations56..61 never allocate frames,
+virtual addresses or page tables. Sext chooses and zeroes its backing.
+
+pager_state.cesta checks the fault metadata and mapping-ledger functions under
+native ownership. The token issuer never wraps. Prepared, Pending and Claimed
+are distinct phases: publication follows successful notice enqueue, and query
+of an unready matching transaction returns Retry. A wrong identity is not a
+retryable success. Completion returns its record once; an exact latest retry
+returns no new completion. The most recent completion cache is not a history
+of arbitrary old tokens.
+
+A published mapping reserves its frame even before completion finalizes. Exact
+commit retries finish that binding without touching the PTE or re-zeroing live
+client data. Pre-publication rejection rolls the claim back only after no leaf
+has changed. An uncertain post-publication completion retains frame custody.
+Normal reclaim requires a finalized exact tuple and detach/invalidation before
+ledger retirement. Retired token floors and permanent closed-range records
+prevent a stale request from reacquiring released authority.
+
+Cleanup first validates terminal, detached task ownership and every occupied
+or empty leaf in the arena. It retires fault metadata before the first leaf
+write, clears and invalidates every binding, then closes the range. Unfinished
+published mappings are included. A cached cleanup retry returns its original
+bitmap/task without examining or altering a newer frame owner. Callers retain
+their own exactly-once application rule for that bitmap.
+
+Native execution boundary
+--------------------------
+
+The native adapter authenticates actual held capability kinds, full-width
+selectors, the immutable mapping/pool identity and actual registered task.
+It checks complete selected-frame zeroing before publishing the NX mapping
+under the target's key. Only Accessed/Dirty bits may vary on retirement.
+
+The current kernel enrolls Limine's processor inventory before user entry. Every
+AP publishes its LAPIC identity once, disables interrupts and remains permanently
+parked; only the BSP executes transitions. Each committed epoch advances the
+sealed park certificate. These conditions serialize publication and park. They
+are not AP scheduling or an SMP lock/shootdown proof. A fault retains its exact supervisor stack frame and
+cannot be resumed by ordinary IPC. Metadata completion precedes ready-queue
+publication. A queued task owns one admission; ordinary inbox/reply and timer
+wakes coalesce without consuming payload. Idle switches to a separate retained
+kernel stack, so terminal cleanup cannot mistake an idle task stack for one
+that has already detached. Kernel stacks/control metadata are not reclaimed.
+
+Qualification
+---------------
+
+    make check-pager
+    make qualify-pager LEAN_ROOT=... CESTA_SOURCE=...
+
+The pure differential uses actual Rust fault_transaction.rs and paging_state.rs
+bodies, appending only state-inspection probes. It compares every result and
+complete normalized state, including failures, completion retries, token
+exhaustion, quotas, unfinalized occupancy and permanent range closure.
+
+The native RAM gate uses the production allocator, ELF loader, page walks and
+adapters. CPU/TLB effects are observed providers. Controls exercise dirty-frame
+refusal, wide rights/selectors, exact completion retry without zeroing, old
+reclaim/cleanup replay during new occupancy, whole-arena preflight and wake
+isolation. GCC and Clang run at O0/O2 and under address/UB sanitizers; deliberately
+broken semantics must fail. Ownership-plan admission checks the emitted plans;
+it does not establish C-to-hardware refinement.
+
+The separate pager_boot.py gate uses the normal kernel ELF and real Sext with
+freestanding probe clients. Other service payloads are inert in that fixture.
+It tests CPU faults, retained registers, release/reuse, timer wake and terminal
+cleanup. The optional --idle-snapshot gate checks actual ELF stack bounds against
+a bounded CPU-stack/deadline diagnostic at idle entry and an independent stopped
+QMP register snapshot at final HLT. The diagnostic is emitted once per boot.
+This fixture does not qualify the ordinary desktop/service graph.

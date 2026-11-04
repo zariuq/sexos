@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Compiled policy expansion, with explicit held-grant/registry/backend doubles."""
+import json,os,re,subprocess,tempfile
+from pathlib import Path
+
+def main():
+ root=Path(__file__).resolve().parents[1];catalog=(root/'crates/sex-pdx/src/app_catalog.rs').read_text();m=re.search(r'pub const INCARNATIONS: \[Incarnation; (\d+)\] = \[',catalog);assert m;end=catalog.index('\n];',m.end())
+ # Independent current roster expectation. Synthetic policy rows are descriptive
+ # host metadata; they neither create grants nor assign/infer registered tasks.
+ browsers=re.findall(r'Incarnation\s*\{\s*app:\s*App::Browser,\s*ordinal:\s*(\d+),\s*target:\s*(\d+),\s*surface:\s*(\d+),',catalog)
+ assert int(m[1])==28 and browsers==[('0','15','300'),('1','30','343'),('2','31','344')], 'current source roster changed'
+ quils=re.findall(r'^\s*quil\((\d+),\s*(\d+),',catalog,re.M)
+ spindles=re.findall(r'Incarnation\s*\{\s*app:\s*App::Spindle,\s*ordinal:\s*(\d+),\s*target:\s*(\d+),',catalog)
+ # Independent actual roster goldens; only subsequent synthetic ordinals are
+ # computed. Catalog metadata is not a registered-task identity or authority.
+ assert [int(t) for _,t in quils]==[9,16,18,19,20,21,22,23,32,33,34,35,36,37,38,39]
+ assert [int(t) for _,t in spindles]==[12,17,24,25,26,27,28,29,40]
+ families=(quils,spindles,[(o,t)for o,t,_ in browsers])
+ for rows in families:assert [int(o)for o,_ in rows]==list(range(len(rows))), 'noncanonical family ordinals'
+ actual_targets={int(t)for rows in families for _,t in rows}
+ assert len(actual_targets)==28 and not actual_targets.intersection({100,101,102}), 'synthetic identity alias'
+ next_ordinals=tuple(len(rows)for rows in families)
+
+ extra='''
+ quil(%d,100,400,None,210,211,Some(212),213),
+ Incarnation{app:App::Spindle,ordinal:%d,target:101,surface:401,shell_surface:Some(402),lifecycle_slot:214,close_slot:215,activation_slot:Some(216),route_slot:217,children:&[403,404,405]},
+ Incarnation{app:App::Browser,ordinal:%d,target:102,surface:406,shell_surface:None,lifecycle_slot:218,close_slot:219,activation_slot:Some(220),route_slot:221,children:&[]},''' % next_ordinals
+ catalog=catalog[:end]+extra+catalog[end:];catalog=catalog[:m.start(1)]+str(int(m[1])+3)+catalog[m.end(1):]
+ with tempfile.TemporaryDirectory(prefix='sexos-incarnation-policy-')as temp:
+  out=Path(temp);cp=out/'catalog.rs';cp.write_text(catalog);source=(root/'servers/silk-shell/src/main.rs').read_text();parts=[]
+  for name in ['quil_activation_edge','app_activation_info','app_reserve_remaining','app_launcher_status','app_route_slot']:
+   a=source.index('fn '+name+'(');i=source.index('{',a)+1;depth=1
+   while depth:depth+=(source[i]=='{')-(source[i]=='}');i+=1
+   parts.append(source[a:i])
+  shell=out/'shell.rs';shell.write_text('\n'.join(parts));fixture=(root/'tests/incarnation_expansion.rs').read_text()
+  fixture=re.sub(r'#\[path="(\.\./[^"]+)"\]',lambda m:'#[path='+json.dumps(str(cp if m[1].endswith('/app_catalog.rs')else(root/m[1][3:]).resolve()))+']',fixture)
+  fixture+=r'''
+#[test]fn explicit_expanded_lineage_preserves_actual_three_browser_rows(){
+ assert_eq!(app_catalog::COUNT,31);
+ let browsers:Vec<_>=app_catalog::INCARNATIONS.iter().filter(|r|r.app==app_catalog::App::Browser)
+  .map(|r|(r.ordinal,r.target,r.surface,r.lifecycle_slot,r.close_slot,r.activation_slot,r.route_slot)).collect();
+ assert_eq!(browsers,[(0,15,300,40,43,None,43),(1,30,343,154,155,Some(156),157),
+  (2,31,344,158,159,Some(160),161),(3,102,406,218,219,Some(220),221)]);
+ for(target,predecessor)in[(100,39),(101,40),(102,31)]{
+  let row=app_catalog::by_target(target).expect("explicit synthetic row");
+  assert_eq!(app_catalog::predecessor(row).map(|r|r.target),Some(predecessor));
+ }
+}
+'''
+
+  test=out/'test.rs';test.write_text(fixture);binary=out/'tests';subprocess.run(['rustc','--edition=2021','--test',str(test),'-o',str(binary)],check=True,env={**os.environ,'EXPANDED_SHELL_POLICY':str(shell)});subprocess.run([str(binary),'--test-threads=1'],check=True)
+  # Compiled regressions must fail: stopping at the former last Quil incarnation
+  # or applying Browser restrictions only to the original hard-coded caller.
+  original_shell=shell.read_text()
+  for name,changed in [('old_chain',original_shell.replace('row.app==app&&row.ordinal!=0','row.app==app&&row.ordinal!=0&&row.target!=100'))]:
+   assert changed!=original_shell;shell.write_text(changed)
+   mutant=out/(name+'-test');subprocess.run(['rustc','--edition=2021','--test',str(test),'-o',str(mutant)],check=True,env={**os.environ,'EXPANDED_SHELL_POLICY':str(shell)})
+   result=subprocess.run([str(mutant),'--test-threads=1'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+   if result.returncode!=101:raise RuntimeError('old-chain regression survived: '+result.stdout)
+   print('[incarnation.policy.control] old_chain_compile_rejected_by_tests=1')
+  shell.write_text(original_shell)
+  doc=(root/'servers/sexfiles/src/document.rs').read_text();changed=doc.replace('if app_catalog::is_browser(caller){','if caller==15{');assert changed!=doc
+  d=out/'document-mutant.rs';d.write_text(changed);old=json.dumps(str(root/'servers/sexfiles/src/document.rs'));new=json.dumps(str(d));assert old in fixture
+  test.write_text(fixture.replace(old,new));mutant=out/'browser-test';subprocess.run(['rustc','--edition=2021','--test',str(test),'-o',str(mutant)],check=True,env={**os.environ,'EXPANDED_SHELL_POLICY':str(shell)})
+  result=subprocess.run([str(mutant),'--test-threads=1'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+  if result.returncode!=101:raise RuntimeError('original-browser-only regression survived: '+result.stdout)
+  print('[incarnation.policy.control] original_browser_only_compile_rejected_by_tests=1')
+  view=(root/'crates/sex-pdx/src/document_view.rs').read_text();guard='!crate::app_catalog::DOCUMENT_TARGETS.contains(&target)';assert view.count(guard)==2
+  # Queue and decode must independently admit a future catalogued subject.
+  for index in [0,1]:
+   places=[m.start()for m in re.finditer(re.escape(guard),view)];start=places[index]
+   changed=view[:start]+'!matches!(target,9|15|16|18)'+view[start+len(guard):]
+   path=out/f'viewport-{index}.rs';path.write_text(changed);old=json.dumps(str(root/'crates/sex-pdx/src/document_view.rs'));assert old in fixture
+   test.write_text(fixture.replace(old,json.dumps(str(path))));binary=out/f'viewport-{index}-test'
+   subprocess.run(['rustc','--edition=2021','--test',str(test),'-o',str(binary)],check=True,env={**os.environ,'EXPANDED_SHELL_POLICY':str(shell)})
+   result=subprocess.run([str(binary),'--test-threads=1'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+   if result.returncode!=101:raise RuntimeError('old viewport admission survived: '+result.stdout)
+   print(f'[incarnation.policy.control] viewport_guard={index} old_allowlist_rejected_by_tests=1')
+  delivery=(root/'servers/silk-shell/src/linen_text_delivery.rs').read_text()
+  start=delivery.index('pub const DESKTOP_SURFACES');end=delivery.index('pub struct DesktopStates',start)
+  changed=delivery[:start]+'pub const DESKTOP_SURFACES:[u64;16]=[200,201,153,300,301,306,307,156,154,160,161,162,302,303,304,305];\n'+delivery[end:]
+  path=out/'old-frame-admission.rs';path.write_text(changed);old=json.dumps(str(root/'servers/silk-shell/src/linen_text_delivery.rs'));assert old in fixture
+  test.write_text(fixture.replace(old,json.dumps(str(path))));binary=out/'old-frame-admission-test'
+  subprocess.run(['rustc','--edition=2021','--test',str(test),'-o',str(binary)],check=True,env={**os.environ,'EXPANDED_SHELL_POLICY':str(shell)})
+  result=subprocess.run([str(binary),'--test-threads=1'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+  if result.returncode!=101:raise RuntimeError('old desktop surfaces survived: '+result.stdout)
+  print('[incarnation.policy.control] old_frame_inventory_rejected_by_tests=1')
+  style=(root/'crates/sex-pdx/src/desktop_style.rs').read_text();guard='let row=&crate::app_catalog::INCARNATIONS[i];';assert style.count(guard)==1
+  changed=style.replace(guard,guard+'if row.target>18{i+=1;continue;}')
+  path=out/'old-family-inventory.rs';path.write_text(changed);old=json.dumps(str(root/'crates/sex-pdx/src/desktop_style.rs'));assert old in fixture
+  test.write_text(fixture.replace(old,json.dumps(str(path))));binary=out/'old-family-inventory-test'
+  subprocess.run(['rustc','--edition=2021','--test',str(test),'-o',str(binary)],check=True,env={**os.environ,'EXPANDED_SHELL_POLICY':str(shell)})
+  result=subprocess.run([str(binary),'--test-threads=1'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+  if result.returncode!=101:raise RuntimeError('old visual family inventory survived: '+result.stdout)
+  print('[incarnation.policy.control] old_family_inventory_rejected_by_tests=1')
+  print('[incarnation.policy] PASS expanded_quil_spindle_browser=1 actual_modules=1 scope=host_doubles_not_boot_authority')
+
+if __name__=='__main__':main()

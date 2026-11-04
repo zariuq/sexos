@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "subsystem": "pdx",
+  "invariants": [
+    {
+      "id": "PDX_SLOT_IDENTITY",
+      "requirement": "Full-width slot arguments must not alias a valid slot or the boot bridge by truncation.",
+      "status": "partial",
+      "sources": [
+        {
+          "path": "kernel/src/syscalls/mod.rs",
+          "anchor": "pub fn dispatch"
+        },
+        {
+          "path": "kernel/src/capability.rs",
+          "anchor": "pub fn grant_capability"
+        }
+      ],
+      "checks": [
+        "capability_slots"
+      ],
+      "gaps": [
+        "Slot identity validation does not authorize the intended operation."
+      ],
+      "depends_on": [
+        "PDX_SOLE_AUTHORITY"
+      ]
+    },
+    {
+      "id": "PDX_AUTHENTICATED_REPLY",
+      "requirement": "A completion belongs to one authenticated outstanding invocation and cannot overwrite another reply.",
+      "status": "partial",
+      "sources": [
+        {
+          "path": "kernel/src/ipc/router.rs",
+          "anchor": "send_reply"
+        }
+      ],
+      "checks": [
+        "reply_sender"
+      ],
+      "gaps": [
+        "Each accepted typed invocation now grants its callee one kernel-recorded reply to that caller, spent only on publication; a target ID alone cannot reply. Obligations are counted per caller, not bound to a specific invocation, so out-of-order replies within one caller remain indistinguishable; no native hostile-reply probe exists yet."
+      ],
+      "depends_on": [
+        "PDX_SOLE_AUTHORITY"
+      ]
+    },
+    {
+      "id": "PDX_REVOCATION",
+      "requirement": "A sanctioned invalidation must prevent future invocation without fabricating new authority.",
+      "status": "partial",
+      "sources": [
+        {
+          "path": "kernel/src/capability_table.rs",
+          "anchor": "pub fn revoke"
+        },
+        {
+          "path": "kernel/src/app_resources.rs",
+          "anchor": "revoke_all()"
+        }
+      ],
+      "checks": [
+        "capability_revocation"
+      ],
+      "gaps": [
+        "Revocation removes slots after seal and app retirement revokes the terminal incarnation's whole table, checked empty; there is no user-initiated or partial revocation protocol, no revocation of capabilities other domains hold that name the retired target (routing is fenced instead), and no cross-core or native negative probe."
+      ],
+      "depends_on": [
+        "CAPABILITY_GENESIS"
+      ]
+    },
+    {
+      "id": "BOOT_SUCCESSOR_ACTIVATION",
+      "requirement": "A fresh app may execute only through its immutable BOOT-reserved activation grant; predecessor identities and retired backing never become the successor.",
+      "status": "partial",
+      "sources": [
+        {
+          "path": "kernel/src/app_resources.rs",
+          "anchor": "pub fn reserve_successor"
+        },
+        {
+          "path": "kernel/src/app_resources.rs",
+          "anchor": "pub fn activation("
+        },
+        {
+          "path": "kernel/src/app_resource_state.rs",
+          "anchor": "pub struct ActivationGrant"
+        },
+        {
+          "path": "kernel/src/pd/create.rs",
+          "anchor": "pub fn create_boot_domain"
+        },
+        {
+          "path": "kernel/src/core_local.rs",
+          "anchor": "INITIALIZED_CORES"
+        },
+        {
+          "path": "servers/silk-shell/src/main.rs",
+          "anchor": "fn quil_launcher_status"
+        },
+        {
+          "path": "apps/spindle/src/main.rs",
+          "anchor": "[spindle.incarnation.start]"
+        },
+        {
+          "path": "servers/linen/src/main.rs",
+          "anchor": "fn linen_request_allowed"
+        },
+        {
+          "path": "apps/spindle/src/history_persistence.rs",
+          "anchor": "pub struct Client"
+        },
+        {
+          "path": "servers/sexfiles/src/spindle_history.rs",
+          "anchor": "pub struct Service"
+        },
+        {
+          "path": "kernel/src/history_recovery.rs",
+          "anchor": "pub fn query"
+        },
+        {
+          "path": "servers/sexfiles/src/history_journal.rs",
+          "anchor": "pub trait SectorIo"
+        },
+        {
+          "path": "crates/sex-pdx/src/app_catalog.rs",
+          "anchor": "pub const INCARNATIONS"
+        },
+        {
+          "path": "kernel/src/app_resources.rs",
+          "anchor": "pub fn audit_boot_catalog"
+        }
+      ],
+      "checks": [
+        "app_resources",
+        "app_activation",
+        "desktop_close_runtime",
+        "service_custody",
+        "boot_app_catalog"
+      ],
+      "gaps": [
+        "The current BOOT catalog reserves eight Quil incarnations 9/16/18/19/20/21/22/23, Spindle12/17 and Browser15; no reserve replenishment. Activation denies more than one initialized execution core; no cross-core TLB completion is implemented. Runtime boot auditing checks actual grant tuples; child/frame ownership remains Display policy and native UI evidence is required separately.",
+        "History recovery uses a bounded BOOT-populated held roster of actual main-task identities, one fixed journal and real block barriers; two Spindle incarnations remain reserved. Persisted main-task identity is not per-request task authentication: fresh/deferred transport does not yet retain every caller-task field. Host fault injection and real two-boot evidence are required separately. Hardware power-loss validation, service-death timeouts and complete epoch replay remain open."
+      ],
+      "depends_on": [
+        "CAPABILITY_GENESIS",
+        "PDX_SOLE_AUTHORITY"
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "event": "PDX_CALL",
+      "preconditions": [
+        "Full-width slot valid; caller and target registered; capability authorizes requested edge."
+      ],
+      "effects": [
+        "Resolve authorized edge; carry authenticated caller and register values."
+      ],
+      "forbidden": [
+        "Truncated slot alias; raw pointer confers authority; PKU substitutes for capability."
+      ],
+      "checks": [
+        "capability_slots",
+        "domain_identity"
+      ]
+    },
+    {
+      "event": "PDX_REPLY",
+      "preconditions": [
+        "Authenticated live exchange exists; receiver identity exact."
+      ],
+      "effects": [
+        "Complete that exchange once; preserve unrelated replies."
+      ],
+      "forbidden": [
+        "Foreign/stale completion; overwrite unrelated exchange."
+      ],
+      "checks": []
+    },
+    {
+      "event": "CAP_GRANT",
+      "preconditions": [
+        "BOOT_DAG genesis phase, before lock."
+      ],
+      "effects": [
+        "Install only sanctioned graph edge."
+      ],
+      "forbidden": [
+        "Unsanctioned runtime minting."
+      ],
+      "checks": []
+    },
+    {
+      "event": "CAP_REVOKE",
+      "preconditions": [
+        "Sanctioned invalidation model explicitly defined; none assumed here."
+      ],
+      "effects": [
+        "Deny future invocations of invalidated identity."
+      ],
+      "forbidden": [
+        "New authority or mutable graph introduced without constitutional design."
+      ],
+      "checks": []
+    },
+    {
+      "event": "BOOT_SUCCESSOR_ACTIVATE",
+      "preconditions": [
+        "Exact immutable holder/predecessor/successor task binding; predecessor all-five service ACKs and private leaf retirement; exact Constructed successor; all absent reserved leaves; BSP-only execution history."
+      ],
+      "effects": [
+        "Restore fresh BOOT leaves, commit one receipt and active routing, then publish one scheduler activation; duplicate requests replay receipt; retain both terminal identities forever."
+      ],
+      "forbidden": [
+        "Runtime capability mint or ELF load; old task resurrection; retired Sext workspace backing reuse as successor; dormant delivery; layout ID used as hardware key."
+      ],
+      "checks": [
+        "app_resources",
+        "app_activation",
+        "desktop_close_runtime"
+      ]
+    }
+  ]
+}

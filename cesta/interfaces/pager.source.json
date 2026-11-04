@@ -1,0 +1,37 @@
+{
+  "pin": "44053ea9b017fe89008413f7cc8a6b1a4d28d015",
+  "sources": [
+    {
+      "path": "kernel/src/fault_transaction.rs",
+      "sha256": "0b5914ff61ea39a942f544e75afa4e11d7516d2c80c57572abc3fcf2a7c460ab"
+    },
+    {
+      "path": "kernel/src/paging_state.rs",
+      "sha256": "61c23d34744793d69bcfde0d6e0b4044a2867134754204cd58759ee5ab37164b"
+    },
+    {
+      "path": "kernel/src/paging.rs",
+      "sha256": "d0cb91bda52e44f8f0863125edf4d64914fe40d59f03193fcf2437a4c62671f2"
+    },
+    {
+      "path": "kernel/src/ipc/pagefault.rs",
+      "sha256": "a4467c56f69e713354fd68b83a6cba3db045ee233a190c84f2c6588fef50aaf5"
+    },
+    {
+      "path": "kernel/src/task_ownership.rs",
+      "sha256": "57e00d7269315b5810adb7d43bcc75e92a140b6fa02b1c2dd8c15533757564f6"
+    },
+    {
+      "path": "kernel/src/self_wait.rs",
+      "sha256": "0e7b60adbce245427e67bf1bb0ba20ddb929c304efbad13ce078fa79e43e4eaf"
+    },
+    {
+      "path": "kernel/src/scheduler.rs",
+      "sha256": "11a43ba0546661cbefce5e66c517f09f05dbd6016abb3181e3c9da939b9e23da"
+    },
+    {
+      "path": "kernel/src/init.rs",
+      "sha256": "6df473422e40bfe024701edc2fcdf76871a5b3f52f324b90db9a9a3492aeef40"
+    }
+  ]
+}

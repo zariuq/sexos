@@ -1,0 +1,57 @@
+
+#include "sexos_client.h"
+#include "kernel_current.h"
+typedef struct {uint64_t status,a,b,c,d;} ProbeReply;
+static volatile uint64_t private_marker=UINT64_C(0x123456789abcdef0);
+static ProbeReply query(uint64_t number,uint64_t slot,uint64_t kind)
+{
+    register uint64_t a __asm__("rax")=number,b __asm__("rsi")=kind,c __asm__("rdx")=0,d __asm__("r10")=0,e __asm__("r8")=0;
+    __asm__ volatile("syscall":"+a"(a),"+S"(b),"+d"(c),"+r"(d),"+r"(e):"D"(slot):"rcx","r11","memory","cc");
+    return (ProbeReply){a,b,c,d,e};
+}
+static _Noreturn void failed(uint64_t target,uint64_t stage)
+{
+    sexos_line("[retire.probe.failed] target=%llu stage=%llu",(unsigned long long)target,(unsigned long long)stage);
+    for(;;)sexos_yield();
+}
+static _Noreturn void finish(uint64_t target,uint64_t task)
+{
+    if(private_marker!=UINT64_C(0x123456789abcdef0))failed(target,1);
+    private_marker=target^UINT64_C(0xfedcba9876543210);
+    sexos_line("[retire.probe.app] target=%llu task=%llu entry=%llu data_fresh=1",(unsigned long long)target,(unsigned long long)task,(unsigned long long)(uintptr_t)&private_marker);
+    (void)query(62,0,0);failed(target,2);
+}
+static void service_messages(void)
+{
+    for(size_t budget=0;budget<64;++budget){
+        SexosMessage m=sexos_listen_once(0);if(!m.type_id)return;
+        if(m.type_id!=0x107 || m.caller_pd || m.caller_task || m.arg2)continue;
+#define ACK_NOTICE(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) do {if(m.arg0==CURRENT_PD_##p_target){ProbeReply state=query(63,p_lifecycle,0);if(!state.status && state.a==m.arg0 && state.b==m.arg1 && state.c==31){ProbeReply ack=query(64,p_lifecycle,m.arg1);if(ack.status)failed(m.arg0,3);}}}while(0);
+        SEXOS_CURRENT_APP_ROWS(ACK_NOTICE)
+#undef ACK_NOTICE
+    }
+}
+void retire_probe_main(void)
+{
+    ProbeReply self=query(63,48,1);
+    if(!self.status){if(!self.a || !self.b || self.d!=3)failed(self.a,4);finish(self.a,self.b);}
+    ProbeReply role=query(66,44,0);bool coordinator=!role.status;
+    bool launched[64]={0};size_t expected=0,completed=0;
+#define COUNT_ACTIVATION(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) do {if(p_ordinal)++expected;}while(0);
+    SEXOS_CURRENT_APP_ROWS(COUNT_ACTIVATION)
+#undef COUNT_ACTIVATION
+    bool logged=false;
+    for(size_t turn=0;turn<200000;++turn){
+        service_messages();
+        if(coordinator){size_t index=0;
+#define TRY_ACTIVATION(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) do {if(p_ordinal){if(index>=64)failed(0,5);if(!launched[index]){ProbeReply state=query(66,p_activation,0);if(!state.status && state.d==1){ProbeReply done=query(66,p_activation,1);if(done.status || done.a!=CURRENT_PD_##p_target || !done.b || done.d!=2)failed(CURRENT_PD_##p_target,6);launched[index]=true;++completed;sexos_line("[retire.probe.activated] predecessor=%u target=%u task=%llu",(unsigned)p_predecessor,(unsigned)CURRENT_PD_##p_target,(unsigned long long)done.b);}}++index;}}while(0);
+            SEXOS_CURRENT_APP_ROWS(TRY_ACTIVATION)
+#undef TRY_ACTIVATION
+            if(completed==expected && !logged){sexos_line("[retire.probe.coordinator.done] activations=%llu",(unsigned long long)completed);logged=true;}
+        }
+        ProbeReply wait=query(70,2,0);if(wait.status)failed(0,7);
+    }
+    failed(0,8);
+}
+
+

@@ -6,8 +6,10 @@ Module NetworkRxProtocol {
         (Hooks
           (Hook poll rx_poll effect (Requires binding) (Uses) (Proves available))
           (Hook valid rx_valid guard (Requires available binding) (Uses descriptor) (Proves valid_frame))
-          (Hook copy rx_copy effect (Requires valid_frame binding) (Uses descriptor bytes) (Proves copied settled))
-          (Hook discard rx_discard prepare (Requires available binding) (Uses descriptor) (Proves settled)))
+          (Hook copy rx_copy effect (Requires valid_frame binding) (Uses descriptor bytes)
+            (Proves copied settled) (Invalidates available valid_frame))
+          (Hook discard rx_discard prepare (Requires available binding) (Uses descriptor)
+            (Proves settled) (Invalidates available valid_frame)))
         (Resources
           (Resource descriptor rx_descriptor_acquire rx_descriptor_release rx_descriptor_transfer
             (AcquireRequires available binding) (TransferRequires settled binding))
@@ -23,10 +25,11 @@ Module NetworkRxProtocol {
                   (Release bytes (Release descriptor (Return raised))))
                 (Release descriptor (Return resource_failure)))
               (Call discard
-                (Transfer descriptor (Return suspended))
+                (Transfer descriptor (Return done))
                 (Release descriptor (Return raised))))
             (Return raised))
-          (Return suspended)))
+          (Return done)))
+        (ExitRequires (answered copied settled))
         (Checks (Fact binding rx_binding) (Fact available rx_available)
                 (Fact valid_frame rx_frame_fact) (Fact copied rx_copied) (Fact settled rx_settled)
                 (Own descriptor rx_descriptor_owned) (Own bytes rx_bytes_owned)));

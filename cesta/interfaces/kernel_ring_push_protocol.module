@@ -1,0 +1,32 @@
+Module KernelRingPush {
+  Theory Protocols() {
+    Empty Equations {
+      (kernel_ring_push_run) == (Protocol "cesta-protocol/1"
+        (Context KernelRingPushContext)
+        (Hooks
+          (Hook snapshot kernel_ring_push_snapshot prepare
+            (Requires) (Uses) (Proves snapshotted))
+          (Hook transform kernel_ring_push_transform prepare
+            (Requires snapshotted) (Uses) (Proves transformed))
+          (Hook swap kernel_ring_push_swap effect
+            (Requires snapshotted transformed) (Uses) (Proves swapped))
+          (Hook commit kernel_ring_push_commit effect
+            (Requires snapshotted transformed swapped) (Uses) (Proves)
+            (Invalidates snapshotted transformed swapped)))
+        (Resources)
+        (Entry (Facts) (Owns))
+        (Body
+          (Call snapshot
+            (Call transform
+              (Call swap
+                (Call commit (Return done) (Return engine_failure))
+                (Return engine_failure))
+              (Return engine_failure))
+            (Return declined)))
+        (Checks
+          (Fact snapshotted kernel_ring_push_is_snapshotted)
+          (Fact transformed kernel_ring_push_is_transformed)
+          (Fact swapped kernel_ring_push_is_swapped)));
+    }
+  }
+}

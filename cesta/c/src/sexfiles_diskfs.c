@@ -50,7 +50,34 @@ static inline void write_le32(uint8_t *p, uint32_t v) {
 static inline void write_le64(uint8_t *p, uint64_t v) {
   for (size_t i = 0; i < 8; ++i) p[i] = (uint8_t)(v >> i * 8 & 0xFFu);
 }
+static bool diskfs_writer_offer(uint64_t *job, uint32_t *home) {
+  RegionWriterReceipt query = sexos_region_writer_query(SEXOS_SLOT_buf_lend);
+  if (query.status != REGION_WRITER_OK || (query.current == 0 || (query.job != 0 || query.peer == 0))) return false;
+  uint64_t next = sexfiles_state.diskfs_writer_job_next;
+  if (next == 0 || next == UINT64_MAX) return false;
+  RegionWriterReceipt offered = sexos_region_writer_change(SEXOS_SLOT_buf_lend, REGION_WRITER_OFFER, query.revision, next);
+  if (offered.status != REGION_WRITER_OK || (offered.current != query.current || offered.job != next)) return false;
+  sexfiles_state.diskfs_writer_job_next = next + 1;
+  *job = next;
+  *home = query.current;
+  return true;
+}
+static bool diskfs_writer_settle(uint64_t job, uint32_t home) {
+  RegionWriterReceipt query = sexos_region_writer_query(SEXOS_SLOT_buf_lend);
+  if (query.status != REGION_WRITER_OK || query.current != home) return false;
+  if (query.job == 0) return true;
+  if (query.job != job) return false;
+  RegionWriterReceipt cancelled = sexos_region_writer_change(SEXOS_SLOT_buf_lend, REGION_WRITER_CANCEL, query.revision, job);
+  return cancelled.status == REGION_WRITER_OK && (cancelled.current == home && cancelled.job == 0);
+}
 uint64_t diskfs_block_call(uint64_t opcode, uint64_t arg0, uint64_t arg1, uint64_t arg2) {
+  bool writer_offered = false;
+  uint64_t writer_job = 0;
+  uint32_t writer_home = 0;
+  if (opcode == BLOCK_READ && arg2 == SEXOS_SLOT_buf_lend) {
+    writer_offered = diskfs_writer_offer(&writer_job, &writer_home);
+    if (!writer_offered) return BLOCK_ERR_NO_DEVICE;
+  }
   if (diskfs_hot_log()) sexos_line("[sexfiles.ap24.provenance] head=COMPILE_TIME_UNKNOWN dirty=0 note=clean_diag");
   if (opcode == BLOCK_READ || opcode == BLOCK_WRITE) {
     const char *op = opcode == BLOCK_READ ? "READ" : "WRITE";
@@ -60,6 +87,7 @@ uint64_t diskfs_block_call(uint64_t opcode, uint64_t arg0, uint64_t arg1, uint64
   if (diskfs_hot_log()) sexos_line("[sexfiles.diskfs.call] slot=%llu opcode=%#llx arg0=%#llx arg1=%#llx arg2=%#llx", (unsigned long long) SEXOS_SLOT_block, (unsigned long long) opcode, (unsigned long long) arg0, (unsigned long long) arg1, (unsigned long long) arg2);
   SexosReply send_res = sexos_pdx_call(SEXOS_SLOT_block, opcode, arg0, arg1, arg2);
   if (send_res.status != 0) {
+    if (writer_offered && !diskfs_writer_settle(writer_job, writer_home)) sexos_fail();
     if (diskfs_hot_log()) sexos_line("[sexfiles.diskfs.reply] status=%#llx value=0 err=enqueue_fail", (unsigned long long) send_res.status);
     if (opcode == BLOCK_READ || opcode == BLOCK_WRITE) {
       const char *op = opcode == BLOCK_READ ? "READ" : "WRITE";
@@ -67,7 +95,17 @@ uint64_t diskfs_block_call(uint64_t opcode, uint64_t arg0, uint64_t arg1, uint64
     }
     return send_res.status;
   } while (1) {
-    SexosMessage msg = sexos_listen(&sexfiles_state.listener, 0);
+    SexosRequest request = (SexosRequest) {
+      .id = 0
+    };
+#if SEXOS_SEXFILES_CURRENT_DOCUMENT
+request = sexos_rpc_listen_once(0);
+
+#else
+request.message = sexos_listen(&sexfiles_state.listener, 0);
+
+#endif
+    SexosMessage msg = request.message;
     if (msg.type_id == 1) {
       uint64_t reply_val = msg.arg0;
       if (diskfs_hot_log()) sexos_line("[sexfiles.diskfs.reply] status=0x0 value=%#llx", (unsigned long long) reply_val);
@@ -75,9 +113,10 @@ uint64_t diskfs_block_call(uint64_t opcode, uint64_t arg0, uint64_t arg1, uint64
         const char *op = opcode == BLOCK_READ ? "READ" : "WRITE";
         if (diskfs_hot_log()) sexos_line("[sexfiles.diskfs.block.reply] op=%s status=%llu bytes=%llu", op, (unsigned long long) reply_val, (unsigned long long) arg1);
       }
+      if (writer_offered && !diskfs_writer_settle(writer_job, writer_home)) sexos_fail();
       return reply_val;
     }
-    if (msg.type_id != 0)(void) defer_stash(msg.type_id, msg.caller_pd, msg.arg0, msg.arg1, msg.arg2);
+    if (msg.type_id != 0)(void) defer_stash(request);
     sexos_yield();
   }
 }

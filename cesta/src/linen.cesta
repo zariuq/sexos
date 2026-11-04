@@ -2,6 +2,7 @@
   (unit
     (include "sexos_server.h")
     (include "sex_object_model.h")
+    (include "linen_capture_service.h")
     (comment "Linen object server, translated from servers/linen/src (main.rs, session.rs, sexobject.rs). The Rust statics (the session table, the tag table, the disk map, the defer stash, the proof stages and the log budget) are fields of one owned Linen state. The Rust installs an allocator that always fails and never uses it; this translation has none.")
 
     (comment "Build-time proof profiles: option_env! in the Rust source, except three cfg! gates (rustc --cfg).")
@@ -93,6 +94,7 @@
     (define ERR_BAD_NAME "INT64_C(-2)")
     (define ERR_NOT_FOUND "INT64_C(-3)")
     (define ERR_PERM_DENIED "INT64_C(-6)")
+    (define ERR_ID_EXHAUSTED "INT64_C(-7)")
 
     (comment "Session (session.rs): bounded and heap-free; 16 objects, names of at most 24 bytes, each with an owner validated on every operation.")
     (typedef (enum ObjectKind (= OBJECT_KIND_DOCUMENT 0) (= OBJECT_KIND_SESSION 1) (= OBJECT_KIND_UNKNOWN 2)) ObjectKind)
@@ -113,7 +115,7 @@
     (typedef (struct Session (LinenSlot ([] slots LINEN_MAX_OBJECTS)) (uint64_t next_id)) Session)
 
     (typedef (struct LinenTag (uint8_t ([] tag LINEN_TAG_MAX_LEN)) (uint8_t len) (uint64_t object_id)) LinenTag)
-    (typedef (struct DeferredRequest (uint64_t type_id) (uint32_t caller_pd) (uint64_t arg0) (uint64_t arg1) (uint64_t arg2)) DeferredRequest)
+    (typedef (struct DeferredRequest (SexosRequest request)) DeferredRequest)
 
     (typedef (struct Linen
       (Session session)
@@ -127,6 +129,9 @@
       (LinenTag ([] tags LINEN_MAX_TAGS)) (size_t tag_count)
       (comment "The session object of each DiskFS V3 slot (0 none), and the manifest generation last walked.")
       (uint64_t ([] disk_session_ids DISKFS_V3_SLOTS)) (uint64_t disk_last_gen)
+      (bool correlated)
+      (LinenCaptureServer capture)
+      (LinenCaptureAnswer answer)
       (comment "LINEN_DEFER_V1: client requests that arrive while a storage reply is awaited, replayed by the serving loop.")
       (DeferredRequest ([] defer LINEN_DEFER_CAP)) (size_t defer_len)
       (comment "pdx_listen_raw's wrapper log budget is one per process: every blocking listen shares it.")
@@ -197,6 +202,8 @@
             (= slot_idx i)
             break)))
       (if (== slot_idx LINEN_MAX_OBJECTS) (return ERR_TABLE_FULL))
+      (comment "Zero is invalid and UINT64_MAX is the workspace-wide scope, not an object identity. Exhaustion preserves the table and output.")
+      (if (|| (== (-> s next_id) 0) (== (-> s next_id) UINT64_MAX)) (return ERR_ID_EXHAUSTED))
       (var uint64_t object_id (-> s next_id))
       (+= (-> s next_id) 1)
       (var LinenSlot (* slot) (& ([] (-> s slots) slot_idx)))
@@ -258,6 +265,21 @@
       (var size_t c 0)
       (for (var size_t i 0) (< i LINEN_MAX_OBJECTS) (++ i) (if (. ([] (-> s slots) i) present) (+= c 1)))
       (return c))
+
+    (fn (static void) linen_capture_public_table (((const Linen) (* l)) (LinenCaptureTable (* out)))
+      (var LinenCaptureTable next (init 0))
+      (for (var size_t i 0) (< i LINEN_MAX_OBJECTS) (++ i)
+        (block
+          (if (! (. ([] (. (-> l session) slots) i) present)) continue)
+          (var (const LinenObject) (* object) (& (. ([] (. (-> l session) slots) i) object)))
+          (= (. ([] (. next rows) i) present) true)
+          (= (. ([] (. next rows) i) id) (-> object object_id))
+          (= (. ([] (. next rows) i) kind) (-> object kind))
+          (= (. ([] (. next rows) i) disk) (cast uint8_t (& (-> object sexfiles_object_id) 0xFF)))
+          (= (. ([] (. next rows) i) len) (-> object name_len))
+          (for (var size_t j 0) (< j LINEN_CAPTURE_NAME_CAPACITY) (++ j)
+            (= ([] (. ([] (. next rows) i) name) j) ([] (-> object name) j)))))
+      (= (* out) next))
 
     (fn (static size_t) session_count_owned (((const Session) (* s)) (uint32_t caller_pd))
       (var size_t c 0)
@@ -502,23 +524,40 @@
           (= ([] name i) (cast uint8_t ([] "0123456789abcdef" (& v 0xF))))
           (>>= v 4))))
 
-    (fn (static void) linen_defer_stash ((Linen (* l)) ((const SexosMessage) (* msg)))
+    (fn (static SexosRequest) linen_receive ((Linen (* l)))
+      (if (-> l correlated) (return (call sexos_receive_request true)))
+      (return (compound SexosRequest (= (. message) (call sexos_listen (& (-> l listener)) 0)) (= (. id) 0))))
+
+    (fn (static bool) linen_answer ((Linen (* l)) ((const SexosRequest) (* request)) (uint64_t value))
+      (comment "Only the permanent shell peer retains a legacy answer. Other legacy clients get one attempt, as current Rust does for Spindle. Every correlated answer retains its full envelope.")
+      (if (&& (== (-> request id) 0) (!= (. (-> request message) caller_pd) 3))
+        (return (== (call sexos_answer_request request value) 0)))
+      (if (. (-> l answer) present) (return false))
+      (= (-> l answer) (compound LinenCaptureAnswer (= (. present) true) (= (. request) (* request)) (= (. value) value)))
+      (return (call linen_capture_answer_poll (& (-> l answer)))))
+
+    (fn (static void) linen_defer_stash ((Linen (* l)) ((const SexosRequest) (* request)))
       (if (>= (-> l defer_len) LINEN_DEFER_CAP)
         (block
-          (call sexos_line "[linen.defer.drop] type=%#llx caller=%u reason=stash_full" (cast (unsigned long long) (-> msg type_id)) (cast unsigned (-> msg caller_pd)))
+          (if (-> l correlated)
+            (call sexos_line "[linen.defer.drop] type=%#llx caller=%u request=%llu reason=stash_full" (cast (unsigned long long) (. (-> request message) type_id)) (cast unsigned (. (-> request message) caller_pd)) (cast (unsigned long long) (-> request id)))
+            (call sexos_line "[linen.defer.drop] type=%#llx caller=%u reason=stash_full" (cast (unsigned long long) (. (-> request message) type_id)) (cast unsigned (. (-> request message) caller_pd))))
+          (if (-> l correlated) (cast void (call linen_answer l request REPLY_NOT_READY)))
           (return)))
-      (= ([] (-> l defer) (-> l defer_len))
-        (compound DeferredRequest (= (. type_id) (-> msg type_id)) (= (. caller_pd) (-> msg caller_pd))
-          (= (. arg0) (-> msg arg0)) (= (. arg1) (-> msg arg1)) (= (. arg2) (-> msg arg2))))
+      (= (. ([] (-> l defer) (-> l defer_len)) request) (* request))
       (+= (-> l defer_len) 1)
-      (call sexos_line "[linen.defer.stash] type=%#llx caller=%u depth=%zu" (cast (unsigned long long) (-> msg type_id)) (cast unsigned (-> msg caller_pd)) (-> l defer_len)))
+      (if (-> l correlated)
+        (call sexos_line "[linen.defer.stash] type=%#llx caller=%u request=%llu depth=%zu" (cast (unsigned long long) (. (-> request message) type_id)) (cast unsigned (. (-> request message) caller_pd)) (cast (unsigned long long) (-> request id)) (-> l defer_len))
+        (call sexos_line "[linen.defer.stash] type=%#llx caller=%u depth=%zu" (cast (unsigned long long) (. (-> request message) type_id)) (cast unsigned (. (-> request message) caller_pd)) (-> l defer_len))))
 
     (fn (static bool) linen_defer_pop ((Linen (* l)) (DeferredRequest (* out)))
       (if (== (-> l defer_len) 0) (return false))
       (= (* out) ([] (-> l defer) 0))
       (for (var size_t i 1) (< i (-> l defer_len)) (++ i) (= ([] (-> l defer) (- i 1)) ([] (-> l defer) i)))
       (-= (-> l defer_len) 1)
-      (call sexos_line "[linen.defer.replay] type=%#llx caller=%u depth=%zu" (cast (unsigned long long) (-> out type_id)) (cast unsigned (-> out caller_pd)) (-> l defer_len))
+      (if (-> l correlated)
+        (call sexos_line "[linen.defer.replay] type=%#llx caller=%u request=%llu depth=%zu" (cast (unsigned long long) (. (. (-> out request) message) type_id)) (cast unsigned (. (. (-> out request) message) caller_pd)) (cast (unsigned long long) (. (-> out request) id)) (-> l defer_len))
+        (call sexos_line "[linen.defer.replay] type=%#llx caller=%u depth=%zu" (cast (unsigned long long) (. (. (-> out request) message) type_id)) (cast unsigned (. (. (-> out request) message) caller_pd)) (-> l defer_len)))
       (return true))
 
     (var (static void) (function handle_hid_event (Linen (* l)) (uint64_t scancode) (uint64_t value)))
@@ -531,7 +570,8 @@
       (while 1
         (block
           (call maybe_run_linen_keyboard_nav_proof l)
-          (var SexosMessage msg (call sexos_listen (& (-> l listener)) 0))
+          (var SexosRequest request (call linen_receive l))
+          (var SexosMessage msg (. request message))
           (if (== (. msg type_id) 0x1)
             (block
               (if (call is_negative (. msg arg0)) (return (call wrap_i64 (. msg arg0))))
@@ -539,7 +579,7 @@
               (return 0)))
           (if (== (. msg type_id) OP_HID_EVENT)
             (call handle_hid_event l (. msg arg0) (. msg arg1))
-            (if (!= (. msg type_id) 0) (call linen_defer_stash l (& msg)))))))
+            (if (!= (. msg type_id) 0) (call linen_defer_stash l (& request)))))))
 
     (fn (static uint64_t) live_disk_objects (((const Linen) (* l)))
       (var uint64_t live 0)
@@ -783,13 +823,14 @@
       (call sexos_line "[linen.sexfiles100.audit.done] ok=1 count=%u" (cast unsigned count)))
 
     (comment "OP_LINEN_CREATE_OBJECT: arg0 packs the kind (bits 0-7) and name length (bits 8-15); arg1 and arg2 carry up to 16 name bytes. The object is created for the caller and its metadata persisted best-effort; the reply is the object id, or the error.")
-    (fn (static void) handle_create_object ((Linen (* l)) (uint64_t arg0) (uint64_t arg1) (uint64_t arg2) (uint32_t caller_pd))
+    (fn (static void) handle_create_object ((Linen (* l)) (uint64_t arg0) (uint64_t arg1) (uint64_t arg2) ((const SexosRequest) (* request)))
+      (var uint32_t caller_pd (. (-> request message) caller_pd))
       (var uint8_t kind_byte (cast uint8_t arg0))
       (var uint8_t name_len (cast uint8_t (>> arg0 8)))
       (if (> kind_byte KIND_UNKNOWN)
         (block
           (call sexos_line "[linen.session.reject] reason=bad_kind kind=%u caller=%u" (cast unsigned kind_byte) (cast unsigned caller_pd))
-          (cast void (call sexos_reply caller_pd REPLY_CAP_INVALID))
+          (cast void (call linen_answer l request REPLY_CAP_INVALID))
           (return)))
       (if (|| (== name_len 0) (> name_len LINEN_MAX_NAME))
         (block
@@ -800,13 +841,13 @@
             (call sexos_line "[linen.session.reject] reason=bad_name_len len=%u max=%zu caller=%u" (cast unsigned name_len) LINEN_MAX_NAME (cast unsigned caller_pd))
             (if (== (& n (- n 1)) 0)
               (call sexos_line "[perf.noise.summary] name=linen.session.reject count=%llu suppressed=%llu" (cast (unsigned long long) n) (cast (unsigned long long) (- n 4)))))
-          (cast void (call sexos_reply caller_pd REPLY_NOT_READY))
+          (cast void (call linen_answer l request REPLY_NOT_READY))
           (return)))
       (if (> name_len LINEN_CREATE_WIRE_MAX_NAME)
         (block
           (call sexos_line "[linen.session.reject] reason=wire_name_len len=%u wire_max=%zu caller=%u" (cast unsigned name_len)
             LINEN_CREATE_WIRE_MAX_NAME (cast unsigned caller_pd))
-          (cast void (call sexos_reply caller_pd REPLY_NOT_READY))
+          (cast void (call linen_answer l request REPLY_NOT_READY))
           (return)))
       (var uint8_t ([] name 24) (init 0))
       (for (var size_t i 0) (< i 8) (++ i) (= ([] name i) (cast uint8_t (>> arg1 (* 8 i)))))
@@ -816,7 +857,7 @@
       (if (!= e 0)
         (block
           (call sexos_line "[linen.session.reject] reason=create_failed err=%lld caller=%u" (cast (long long) e) (cast unsigned caller_pd))
-          (cast void (call sexos_reply caller_pd (cast uint64_t e)))
+          (cast void (call linen_answer l request (cast uint64_t e)))
           (return)))
       (call sexos_line "[linen.session.create] id=%llu kind=%u name_len=%u owner=%u" (cast (unsigned long long) object_id)
         (cast unsigned kind_byte) (cast unsigned name_len) (cast unsigned caller_pd))
@@ -832,20 +873,21 @@
         (block
           (comment "Persistence is best-effort in this revision: the local object stands.")
           (call sexos_line "[linen.sexfiles.persist.warn] id=%llu err=%lld local_only=true" (cast (unsigned long long) object_id) (cast (long long) e))))
-      (cast void (call sexos_reply caller_pd object_id)))
+      (cast void (call linen_answer l request object_id)))
 
     (comment "OP_LINEN_LIST_OBJECTS: the caller's next object from index arg0, packed as id (bits 0-31), kind (32-39) and name length (40-47); 0 when done.")
-    (fn (static void) handle_list_objects ((Linen (* l)) (uint64_t arg0) (uint32_t caller_pd))
+    (fn (static void) handle_list_objects ((Linen (* l)) (uint64_t arg0) ((const SexosRequest) (* request)))
+      (var uint32_t caller_pd (. (-> request message) caller_pd))
       (var LinenObject obj)
       (if (! (call session_list (& (-> l session)) caller_pd (cast uint8_t arg0) (& obj)))
         (block
-          (cast void (call sexos_reply caller_pd 0))
+          (cast void (call linen_answer l request 0))
           (return)))
       (call sexos_line "[linen.session.list] id=%llu kind=%u name_len=%u owner=%u" (cast (unsigned long long) (. obj object_id))
         (cast unsigned (. obj kind)) (cast unsigned (. obj name_len)) (cast unsigned (. obj owner_pd)))
       (call sexos_line "[linen.session.proof.list] id=%llu kind=%u name_len=%u ramfs=%llu" (cast (unsigned long long) (. obj object_id))
         (cast unsigned (. obj kind)) (cast unsigned (. obj name_len)) (cast (unsigned long long) (. obj ramfs_handle)))
-      (cast void (call sexos_reply caller_pd (| (| (& (. obj object_id) 0xFFFFFFFF) (<< (cast uint64_t (. obj kind)) 32)) (<< (cast uint64_t (. obj name_len)) 40)))))
+      (cast void (call linen_answer l request (| (| (& (. obj object_id) 0xFFFFFFFF) (<< (cast uint64_t (. obj kind)) 32)) (<< (cast uint64_t (. obj name_len)) 40)))))
 
     (fn (static uint64_t) name_word (((const uint8_t) (* bytes)) (size_t count))
       (var uint64_t word 0)
@@ -853,37 +895,38 @@
       (return word))
 
     (comment "OP_LINEN_GET_OBJECT: the first 8 name bytes of the caller's object arg0, or the error.")
-    (fn (static void) handle_get_object ((Linen (* l)) (uint64_t object_id) (uint32_t caller_pd))
+    (fn (static void) handle_get_object ((Linen (* l)) (uint64_t object_id) ((const SexosRequest) (* request)))
+      (var uint32_t caller_pd (. (-> request message) caller_pd))
       (var LinenObject obj)
       (var int64_t e (call session_get (& (-> l session)) object_id caller_pd (& obj)))
       (if (!= e 0)
         (block
           (call sexos_line "[linen.session.reject] reason=get_failed id=%llu err=%lld caller=%u" (cast (unsigned long long) object_id)
             (cast (long long) e) (cast unsigned caller_pd))
-          (cast void (call sexos_reply caller_pd (cast uint64_t e)))
+          (cast void (call linen_answer l request (cast uint64_t e)))
           (return)))
       (call sexos_line "[linen.session.get] id=%llu kind=%u name_len=%u owner=%u" (cast (unsigned long long) (. obj object_id))
         (cast unsigned (. obj kind)) (cast unsigned (. obj name_len)) (cast unsigned (. obj owner_pd)))
       (call sexos_line "[linen.session.proof.get] id=%llu owner=%u ramfs=%llu" (cast (unsigned long long) (. obj object_id))
         (cast unsigned (. obj owner_pd)) (cast (unsigned long long) (. obj ramfs_handle)))
-      (cast void (call sexos_reply caller_pd (call name_word (. obj name) 8))))
+      (cast void (call linen_answer l request (call name_word (. obj name) 8))))
 
     (comment "OP_LINEN_GET_PUBLIC_SNAPSHOT: the object in slot arg0 for the shell's public view, without an owner filter; bits 48-55 carry the disk path id plus one (LINEN_LIVE_V1). 0 for an empty slot.")
-    (fn (static void) handle_get_public_snapshot ((Linen (* l)) (uint64_t arg0) (uint32_t caller_pd))
+    (fn (static void) handle_get_public_snapshot ((Linen (* l)) (uint64_t arg0) ((const SexosRequest) (* request)))
       (var size_t slot (& arg0 0xFF))
       (var LinenObject obj)
       (if (! (call session_get_at_slot (& (-> l session)) slot (& obj)))
         (block
-          (cast void (call sexos_reply caller_pd 0))
+          (cast void (call linen_answer l request 0))
           (return)))
       (call sexos_line "[linen.snapshot.slot] slot=%zu id=%llu kind=%u name_len=%u" slot (cast (unsigned long long) (. obj object_id))
         (cast unsigned (. obj kind)) (cast unsigned (. obj name_len)))
-      (cast void (call sexos_reply caller_pd
+      (cast void (call linen_answer l request
         (| (| (| (& (. obj object_id) 0xFFFFFFFF) (<< (cast uint64_t (. obj kind)) 32)) (<< (cast uint64_t (. obj name_len)) 40))
            (<< (& (. obj sexfiles_object_id) 0xFF) 48)))))
 
     (comment "OP_LINEN_GET_PUBLIC_NAME: up to 8 (arg2) name bytes of object arg0 from offset arg1, little-endian; 0 past the end. No owner filter.")
-    (fn (static void) handle_get_public_name ((Linen (* l)) (uint64_t object_id) (uint64_t arg1) (uint64_t arg2) (uint32_t caller_pd))
+    (fn (static void) handle_get_public_name ((Linen (* l)) (uint64_t object_id) (uint64_t arg1) (uint64_t arg2) ((const SexosRequest) (* request)))
       (var size_t byte_offset arg1)
       (var size_t max_len (?: (< arg2 8) arg2 8))
       (var LinenObject obj)
@@ -891,27 +934,27 @@
       (if (!= e 0)
         (block
           (call sexos_line "[linen.snapshot.name.err] id=%llu off=%zu err=%lld" (cast (unsigned long long) object_id) byte_offset (cast (long long) e))
-          (cast void (call sexos_reply caller_pd (cast uint64_t e)))
+          (cast void (call linen_answer l request (cast uint64_t e)))
           (return)))
       (if (>= byte_offset (. obj name_len))
         (block
-          (cast void (call sexos_reply caller_pd 0))
+          (cast void (call linen_answer l request 0))
           (return)))
       (var size_t count (?: (< max_len (- (. obj name_len) byte_offset)) max_len (- (. obj name_len) byte_offset)))
       (call sexos_line "[linen.snapshot.name] id=%llu off=%zu len=%zu" (cast (unsigned long long) object_id) byte_offset count)
-      (cast void (call sexos_reply caller_pd (call name_word (+ (. obj name) byte_offset) count))))
+      (cast void (call linen_answer l request (call name_word (+ (. obj name) byte_offset) count))))
 
     (comment "OP_LINEN_OPEN_INTENT: a stub; no launch, no caps, no authority. 0 accepts, else the error.")
-    (fn (static void) handle_open_intent ((Linen (* l)) (uint64_t object_id) (uint32_t caller_pd))
+    (fn (static void) handle_open_intent ((Linen (* l)) (uint64_t object_id) ((const SexosRequest) (* request)))
       (var LinenObject obj)
       (var int64_t e (call session_get (& (-> l session)) object_id 0 (& obj)))
       (if (== e 0)
         (block
           (call sexos_line "[linen.open_intent.recv] id=%llu kind=%u ok=1" (cast (unsigned long long) object_id) (cast unsigned (. obj kind)))
-          (cast void (call sexos_reply caller_pd 0)))
+          (cast void (call linen_answer l request 0)))
         (block
           (call sexos_line "[linen.open_intent.recv] id=%llu ok=0" (cast (unsigned long long) object_id))
-          (cast void (call sexos_reply caller_pd (cast uint64_t e))))))
+          (cast void (call linen_answer l request (cast uint64_t e))))))
 
     (comment "OP_LINEN_SEARCH_OBJECTS: a token of up to 16 bytes (arg0, arg1, little-endian, ending at the first zero); results are markers only, no reply. A token that is not UTF-8 prints as ?.")
     (fn (static void) handle_search_objects ((Linen (* l)) (uint64_t arg0) (uint64_t arg1))
@@ -1619,6 +1662,43 @@
     (fn (static void) keep_ap1b_marker (void)
       (cast void (* (cast ((volatile const char) *) AP1B_SEXFILES100_BEGIN_MARKER))))
 
+    (fn (static void) linen_dispatch_request ((Linen (* l)) (SexosRequest (* request)))
+      (var SexosMessage (* msg) (& (-> request message)))
+      (switch (-> msg type_id)
+        (block
+          (case OP_HID_EVENT (call handle_hid_event l (-> msg arg0) (-> msg arg1))) break
+          (case OP_LINEN_CREATE_OBJECT (call handle_create_object l (-> msg arg0) (-> msg arg1) (-> msg arg2) request)) break
+          (case OP_LINEN_LIST_OBJECTS (call handle_list_objects l (-> msg arg0) request)) break
+          (case OP_LINEN_GET_OBJECT (call handle_get_object l (-> msg arg0) request)) break
+          (case OP_LINEN_GET_PUBLIC_SNAPSHOT (call handle_get_public_snapshot l (-> msg arg0) request)) break
+          (case OP_LINEN_GET_PUBLIC_NAME (call handle_get_public_name l (-> msg arg0) (-> msg arg1) (-> msg arg2) request)) break
+          (case OP_LINEN_OPEN_INTENT (call handle_open_intent l (-> msg arg0) request)) break
+          (case OP_LINEN_RESCAN_DISK (cast void (call linen_answer l request (call linen_rescan_disk l)))) break
+          (case OP_LINEN_SEARCH_OBJECTS (call handle_search_objects l (-> msg arg0) (-> msg arg1))) break
+          (case LINEN_CAPTURE_OP_BEGIN
+            (block
+              (var LinenCaptureTable table)
+              (call linen_capture_public_table l (& table))
+              (var bool prepared (call linen_capture_service_prepare (& (-> l capture)) (& table) request (& (-> l answer))))
+              (if prepared
+                (call sexos_line "[linen.capture.reply] opcode=begin caller=%u task=%u request=%llu job=%llu value=%#llx"
+                  (cast unsigned (-> msg caller_pd)) (cast unsigned (-> msg caller_task))
+                  (cast (unsigned long long) (-> request id)) (cast (unsigned long long) (-> msg arg0))
+                  (cast (unsigned long long) (. (-> l answer) value))))
+              (cast void (call linen_capture_answer_poll (& (-> l answer)))))) break
+          (case LINEN_CAPTURE_OP_READ
+            (block
+              (var LinenCaptureTable table (init 0))
+              (cast void (call linen_capture_service_prepare (& (-> l capture)) (& table) request (& (-> l answer))))
+              (cast void (call linen_capture_answer_poll (& (-> l answer)))))) break
+          (case LINEN_CAPTURE_OP_END
+            (block
+              (var LinenCaptureTable table (init 0))
+              (cast void (call linen_capture_service_prepare (& (-> l capture)) (& table) request (& (-> l answer))))
+              (cast void (call linen_capture_answer_poll (& (-> l answer)))))) break
+          (default
+            (if (!= (-> request id) 0) (cast void (call linen_answer l request REPLY_CAP_INVALID)))))))
+
     (comment "The one state value; the session and tag tables total about 2 KiB.")
     (fn void linen_main (void)
       (var Linen l (compound Linen
@@ -1626,7 +1706,10 @@
         (= (. disk_last_gen) UINT64_MAX)
         (= (. listener) (compound SexosListener (= (. wrapper_budget) 8)))
         (= (. key_log) 16)))
+      (= (. l capture) (call linen_capture_new 3 3))
+      (= (. l correlated) (== (call sexos_rpc_register) 1))
       (call sexos_line "[linen.init.start]")
+      (if (. l correlated) (call sexos_line "[linen.transport.mode] correlated=1 legacy=0 shell_pd=3 shell_task=3"))
       (comment "A short delay so sexdisplay is ready.")
       (for (var uint32_t i 0) (< i 5000000) (++ i) (call sexos_spin_loop_hint))
       (comment "Linen's own content surface (0xEC upsert: arg1 (y << 32) | x, arg2 (h << 32) | w); the owner binds to Linen on first create.")
@@ -1689,23 +1772,14 @@
       (while 1
         (block
           (call maybe_run_linen_keyboard_nav_proof (& l))
+          (if (. (. l answer) present)
+            (block
+              (if (! (call linen_capture_answer_poll (& (. l answer))))
+                (block (call sexos_yield) continue))))
           (comment "LINEN_DEFER_V1: requests stashed during storage waits are served first.")
-          (var DeferredRequest msg)
-          (if (! (call linen_defer_pop (& l) (& msg)))
-            (block
-              (var SexosMessage m (call sexos_listen (& (. l listener)) 0))
-              (= msg (compound DeferredRequest (= (. type_id) (. m type_id)) (= (. caller_pd) (. m caller_pd))
-                (= (. arg0) (. m arg0)) (= (. arg1) (. m arg1)) (= (. arg2) (. m arg2))))))
-          (switch (. msg type_id)
-            (block
-              (case OP_HID_EVENT (call handle_hid_event (& l) (. msg arg0) (. msg arg1))) break
-              (case OP_LINEN_CREATE_OBJECT (call handle_create_object (& l) (. msg arg0) (. msg arg1) (. msg arg2) (. msg caller_pd))) break
-              (case OP_LINEN_LIST_OBJECTS (call handle_list_objects (& l) (. msg arg0) (. msg caller_pd))) break
-              (case OP_LINEN_GET_OBJECT (call handle_get_object (& l) (. msg arg0) (. msg caller_pd))) break
-              (case OP_LINEN_GET_PUBLIC_SNAPSHOT (call handle_get_public_snapshot (& l) (. msg arg0) (. msg caller_pd))) break
-              (case OP_LINEN_GET_PUBLIC_NAME (call handle_get_public_name (& l) (. msg arg0) (. msg arg1) (. msg arg2) (. msg caller_pd))) break
-              (case OP_LINEN_OPEN_INTENT (call handle_open_intent (& l) (. msg arg0) (. msg caller_pd))) break
-              (case OP_LINEN_RESCAN_DISK (cast void (call sexos_reply (. msg caller_pd) (call linen_rescan_disk (& l))))) break
-              (case OP_LINEN_SEARCH_OBJECTS (call handle_search_objects (& l) (. msg arg0) (. msg arg1))) break
-              (default break))))))
-  ))
+          (var DeferredRequest deferred)
+          (if (! (call linen_defer_pop (& l) (& deferred)))
+            (= (. deferred request) (call linen_receive (& l))))
+          (var SexosRequest request (. deferred request))
+          (call linen_dispatch_request (& l) (& request))))
+  )))

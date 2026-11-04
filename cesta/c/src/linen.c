@@ -1,5 +1,6 @@
 #include "sexos_server.h"
 #include "sex_object_model.h"
+#include "linen_capture_service.h"
 /*Linen object server, translated from servers/linen/src (main.rs, session.rs, sexobject.rs). The Rust statics (the session table, the tag table, the disk map, the defer stash, the proof stages and the log budget) are fields of one owned Linen state. The Rust installs an allocator that always fails and never uses it; this translation has none.*/
 /*Build-time proof profiles: option_env! in the Rust source, except three cfg! gates (rustc --cfg).*/
 #if defined(SEXOS_LINEN_SESSION_PROOF)
@@ -250,6 +251,7 @@
 #define ERR_BAD_NAME INT64_C(-2)
 #define ERR_NOT_FOUND INT64_C(-3)
 #define ERR_PERM_DENIED INT64_C(-6)
+#define ERR_ID_EXHAUSTED INT64_C(-7)
 /*Session (session.rs): bounded and heap-free; 16 objects, names of at most 24 bytes, each with an owner validated on every operation.*/
 typedef enum ObjectKind {
   OBJECT_KIND_DOCUMENT = 0, OBJECT_KIND_SESSION = 1, OBJECT_KIND_UNKNOWN = 2
@@ -288,11 +290,7 @@ typedef struct LinenTag {
 }
 LinenTag;
 typedef struct DeferredRequest {
-  uint64_t type_id;
-  uint32_t caller_pd;
-  uint64_t arg0;
-  uint64_t arg1;
-  uint64_t arg2;
+  SexosRequest request;
 }
 DeferredRequest;
 typedef struct Linen {
@@ -314,6 +312,9 @@ typedef struct Linen {
 /*The session object of each DiskFS V3 slot (0 none), and the manifest generation last walked.*/
   uint64_t disk_session_ids[DISKFS_V3_SLOTS];
   uint64_t disk_last_gen;
+  bool correlated;
+  LinenCaptureServer capture;
+  LinenCaptureAnswer answer;
 /*LINEN_DEFER_V1: client requests that arrive while a storage reply is awaited, replayed by the serving loop.*/
   DeferredRequest defer[LINEN_DEFER_CAP];
   size_t defer_len;
@@ -385,6 +386,8 @@ static int64_t session_create(Session *s, uint8_t kind, const uint8_t *name, siz
     break;
   }
   if (slot_idx == LINEN_MAX_OBJECTS) return ERR_TABLE_FULL;
+/*Zero is invalid and UINT64_MAX is the workspace-wide scope, not an object identity. Exhaustion preserves the table and output.*/
+  if (s->next_id == 0 || s->next_id == UINT64_MAX) return ERR_ID_EXHAUSTED;
   uint64_t object_id = s->next_id;
   s->next_id += 1;
   LinenSlot *slot = &s->slots[slot_idx];
@@ -445,6 +448,22 @@ static size_t session_count(const Session *s) {
   size_t c = 0;
   for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) if (s->slots[i].present) c += 1;
   return c;
+}
+static void linen_capture_public_table(const Linen *l, LinenCaptureTable *out) {
+  LinenCaptureTable next = {
+    0
+  };
+  for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) {
+    if (!l->session.slots[i].present) continue;
+    const LinenObject *object = &l->session.slots[i].object;
+    next.rows[i].present = true;
+    next.rows[i].id = object->object_id;
+    next.rows[i].kind = object->kind;
+    next.rows[i].disk = (uint8_t)(object->sexfiles_object_id & 0xFF);
+    next.rows[i].len = object->name_len;
+    for (size_t j = 0; j < LINEN_CAPTURE_NAME_CAPACITY; ++j) next.rows[i].name[j] = object->name[j];
+  }
+  *out = next;
 }
 static size_t session_count_owned(const Session *s, uint32_t caller_pd) {
   size_t c = 0;
@@ -678,23 +697,40 @@ static void make_linen_meta_name(uint64_t object_id, uint8_t name[24]) {
     v >>= 4;
   }
 }
-static void linen_defer_stash(Linen *l, const SexosMessage *msg) {
+static SexosRequest linen_receive(Linen *l) {
+  if (l->correlated) return sexos_receive_request(true);
+  return (SexosRequest) {
+    .message = sexos_listen(&l->listener, 0),.id = 0
+  };
+}
+static bool linen_answer(Linen *l, const SexosRequest *request, uint64_t value) {
+/*Only the permanent shell peer retains a legacy answer. Other legacy clients get one attempt, as current Rust does for Spindle. Every correlated answer retains its full envelope.*/
+  if (request->id == 0 && request->message.caller_pd != 3) return sexos_answer_request(request, value) == 0;
+  if (l->answer.present) return false;
+  l->answer = (LinenCaptureAnswer) {
+    .present = true,.request = *request,.value = value
+  };
+  return linen_capture_answer_poll(&l->answer);
+}
+static void linen_defer_stash(Linen *l, const SexosRequest *request) {
   if (l->defer_len >= LINEN_DEFER_CAP) {
-    sexos_line("[linen.defer.drop] type=%#llx caller=%u reason=stash_full", (unsigned long long) msg->type_id, (unsigned) msg->caller_pd);
+    if (l->correlated) sexos_line("[linen.defer.drop] type=%#llx caller=%u request=%llu reason=stash_full", (unsigned long long) request->message.type_id, (unsigned) request->message.caller_pd, (unsigned long long) request->id);
+    else sexos_line("[linen.defer.drop] type=%#llx caller=%u reason=stash_full", (unsigned long long) request->message.type_id, (unsigned) request->message.caller_pd);
+    if (l->correlated)(void) linen_answer(l, request, REPLY_NOT_READY);
     return;
   }
-  l->defer[l->defer_len] = (DeferredRequest) {
-    .type_id = msg->type_id,.caller_pd = msg->caller_pd,.arg0 = msg->arg0,.arg1 = msg->arg1,.arg2 = msg->arg2
-  };
+  l->defer[l->defer_len].request = *request;
   l->defer_len += 1;
-  sexos_line("[linen.defer.stash] type=%#llx caller=%u depth=%zu", (unsigned long long) msg->type_id, (unsigned) msg->caller_pd, l->defer_len);
+  if (l->correlated) sexos_line("[linen.defer.stash] type=%#llx caller=%u request=%llu depth=%zu", (unsigned long long) request->message.type_id, (unsigned) request->message.caller_pd, (unsigned long long) request->id, l->defer_len);
+  else sexos_line("[linen.defer.stash] type=%#llx caller=%u depth=%zu", (unsigned long long) request->message.type_id, (unsigned) request->message.caller_pd, l->defer_len);
 }
 static bool linen_defer_pop(Linen *l, DeferredRequest *out) {
   if (l->defer_len == 0) return false;
   *out = l->defer[0];
   for (size_t i = 1; i < l->defer_len; ++i) l->defer[i - 1] = l->defer[i];
   l->defer_len -= 1;
-  sexos_line("[linen.defer.replay] type=%#llx caller=%u depth=%zu", (unsigned long long) out->type_id, (unsigned) out->caller_pd, l->defer_len);
+  if (l->correlated) sexos_line("[linen.defer.replay] type=%#llx caller=%u request=%llu depth=%zu", (unsigned long long) out->request.message.type_id, (unsigned) out->request.message.caller_pd, (unsigned long long) out->request.id, l->defer_len);
+  else sexos_line("[linen.defer.replay] type=%#llx caller=%u depth=%zu", (unsigned long long) out->request.message.type_id, (unsigned) out->request.message.caller_pd, l->defer_len);
   return true;
 }
 static void handle_hid_event(Linen *l, uint64_t scancode, uint64_t value);
@@ -705,14 +741,15 @@ static int64_t pdx_storage_sync(Linen *l, uint64_t opcode, uint64_t arg0, uint64
   if (sent.status != 0) return wrap_i64(sent.status);
   while (1) {
     maybe_run_linen_keyboard_nav_proof(l);
-    SexosMessage msg = sexos_listen(&l->listener, 0);
+    SexosRequest request = linen_receive(l);
+    SexosMessage msg = request.message;
     if (msg.type_id == 0x1) {
       if (is_negative(msg.arg0)) return wrap_i64(msg.arg0);
       *value = msg.arg0;
       return 0;
     }
     if (msg.type_id == OP_HID_EVENT) handle_hid_event(l, msg.arg0, msg.arg1);
-    else if (msg.type_id != 0) linen_defer_stash(l, &msg);
+    else if (msg.type_id != 0) linen_defer_stash(l, &request);
   }
 }
 static uint64_t live_disk_objects(const Linen *l) {
@@ -967,12 +1004,13 @@ static void linen_init_session(Linen *l) {
   sexos_line("[linen.sexfiles100.audit.done] ok=1 count=%u", (unsigned) count);
 }
 /*OP_LINEN_CREATE_OBJECT: arg0 packs the kind (bits 0-7) and name length (bits 8-15); arg1 and arg2 carry up to 16 name bytes. The object is created for the caller and its metadata persisted best-effort; the reply is the object id, or the error.*/
-static void handle_create_object(Linen *l, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint32_t caller_pd) {
+static void handle_create_object(Linen *l, uint64_t arg0, uint64_t arg1, uint64_t arg2, const SexosRequest *request) {
+  uint32_t caller_pd = request->message.caller_pd;
   uint8_t kind_byte = (uint8_t) arg0;
   uint8_t name_len = (uint8_t)(arg0 >> 8);
   if (kind_byte > KIND_UNKNOWN) {
     sexos_line("[linen.session.reject] reason=bad_kind kind=%u caller=%u", (unsigned) kind_byte, (unsigned) caller_pd);
-    (void) sexos_reply(caller_pd, REPLY_CAP_INVALID);
+    (void) linen_answer(l, request, REPLY_CAP_INVALID);
     return;
   }
   if (name_len == 0 || name_len > LINEN_MAX_NAME) {
@@ -981,12 +1019,12 @@ static void handle_create_object(Linen *l, uint64_t arg0, uint64_t arg1, uint64_
     uint64_t n = l->reject_bad_name_len_count;
     if (n <= 4) sexos_line("[linen.session.reject] reason=bad_name_len len=%u max=%zu caller=%u", (unsigned) name_len, LINEN_MAX_NAME, (unsigned) caller_pd);
     else if ((n & (n - 1)) == 0) sexos_line("[perf.noise.summary] name=linen.session.reject count=%llu suppressed=%llu", (unsigned long long) n, (unsigned long long)(n - 4));
-    (void) sexos_reply(caller_pd, REPLY_NOT_READY);
+    (void) linen_answer(l, request, REPLY_NOT_READY);
     return;
   }
   if (name_len > LINEN_CREATE_WIRE_MAX_NAME) {
     sexos_line("[linen.session.reject] reason=wire_name_len len=%u wire_max=%zu caller=%u", (unsigned) name_len, LINEN_CREATE_WIRE_MAX_NAME, (unsigned) caller_pd);
-    (void) sexos_reply(caller_pd, REPLY_NOT_READY);
+    (void) linen_answer(l, request, REPLY_NOT_READY);
     return;
   }
   uint8_t name[24] = {
@@ -998,7 +1036,7 @@ static void handle_create_object(Linen *l, uint64_t arg0, uint64_t arg1, uint64_
   int64_t e = session_create(&l->session, kind_byte, name, name_len, caller_pd, &object_id);
   if (e != 0) {
     sexos_line("[linen.session.reject] reason=create_failed err=%lld caller=%u", (long long) e, (unsigned) caller_pd);
-    (void) sexos_reply(caller_pd, (uint64_t) e);
+    (void) linen_answer(l, request, (uint64_t) e);
     return;
   }
   sexos_line("[linen.session.create] id=%llu kind=%u name_len=%u owner=%u", (unsigned long long) object_id, (unsigned) kind_byte, (unsigned) name_len, (unsigned) caller_pd);
@@ -1012,18 +1050,19 @@ static void handle_create_object(Linen *l, uint64_t arg0, uint64_t arg1, uint64_
   } else {
 /*Persistence is best-effort in this revision: the local object stands.*/
     sexos_line("[linen.sexfiles.persist.warn] id=%llu err=%lld local_only=true", (unsigned long long) object_id, (long long) e);
-  }(void) sexos_reply(caller_pd, object_id);
+  }(void) linen_answer(l, request, object_id);
 }
 /*OP_LINEN_LIST_OBJECTS: the caller's next object from index arg0, packed as id (bits 0-31), kind (32-39) and name length (40-47); 0 when done.*/
-static void handle_list_objects(Linen *l, uint64_t arg0, uint32_t caller_pd) {
+static void handle_list_objects(Linen *l, uint64_t arg0, const SexosRequest *request) {
+  uint32_t caller_pd = request->message.caller_pd;
   LinenObject obj;
   if (!session_list(&l->session, caller_pd, (uint8_t) arg0, &obj)) {
-    (void) sexos_reply(caller_pd, 0);
+    (void) linen_answer(l, request, 0);
     return;
   }
   sexos_line("[linen.session.list] id=%llu kind=%u name_len=%u owner=%u", (unsigned long long) obj.object_id, (unsigned) obj.kind, (unsigned) obj.name_len, (unsigned) obj.owner_pd);
   sexos_line("[linen.session.proof.list] id=%llu kind=%u name_len=%u ramfs=%llu", (unsigned long long) obj.object_id, (unsigned) obj.kind, (unsigned) obj.name_len, (unsigned long long) obj.ramfs_handle);
-  (void) sexos_reply(caller_pd, (obj.object_id & 0xFFFFFFFF) | (uint64_t) obj.kind << 32 | (uint64_t) obj.name_len << 40);
+  (void) linen_answer(l, request, (obj.object_id & 0xFFFFFFFF) | (uint64_t) obj.kind << 32 | (uint64_t) obj.name_len << 40);
 }
 static uint64_t name_word(const uint8_t *bytes, size_t count) {
   uint64_t word = 0;
@@ -1031,58 +1070,59 @@ static uint64_t name_word(const uint8_t *bytes, size_t count) {
   return word;
 }
 /*OP_LINEN_GET_OBJECT: the first 8 name bytes of the caller's object arg0, or the error.*/
-static void handle_get_object(Linen *l, uint64_t object_id, uint32_t caller_pd) {
+static void handle_get_object(Linen *l, uint64_t object_id, const SexosRequest *request) {
+  uint32_t caller_pd = request->message.caller_pd;
   LinenObject obj;
   int64_t e = session_get(&l->session, object_id, caller_pd, &obj);
   if (e != 0) {
     sexos_line("[linen.session.reject] reason=get_failed id=%llu err=%lld caller=%u", (unsigned long long) object_id, (long long) e, (unsigned) caller_pd);
-    (void) sexos_reply(caller_pd, (uint64_t) e);
+    (void) linen_answer(l, request, (uint64_t) e);
     return;
   }
   sexos_line("[linen.session.get] id=%llu kind=%u name_len=%u owner=%u", (unsigned long long) obj.object_id, (unsigned) obj.kind, (unsigned) obj.name_len, (unsigned) obj.owner_pd);
   sexos_line("[linen.session.proof.get] id=%llu owner=%u ramfs=%llu", (unsigned long long) obj.object_id, (unsigned) obj.owner_pd, (unsigned long long) obj.ramfs_handle);
-  (void) sexos_reply(caller_pd, name_word(obj.name, 8));
+  (void) linen_answer(l, request, name_word(obj.name, 8));
 }
 /*OP_LINEN_GET_PUBLIC_SNAPSHOT: the object in slot arg0 for the shell's public view, without an owner filter; bits 48-55 carry the disk path id plus one (LINEN_LIVE_V1). 0 for an empty slot.*/
-static void handle_get_public_snapshot(Linen *l, uint64_t arg0, uint32_t caller_pd) {
+static void handle_get_public_snapshot(Linen *l, uint64_t arg0, const SexosRequest *request) {
   size_t slot = arg0 & 0xFF;
   LinenObject obj;
   if (!session_get_at_slot(&l->session, slot, &obj)) {
-    (void) sexos_reply(caller_pd, 0);
+    (void) linen_answer(l, request, 0);
     return;
   }
   sexos_line("[linen.snapshot.slot] slot=%zu id=%llu kind=%u name_len=%u", slot, (unsigned long long) obj.object_id, (unsigned) obj.kind, (unsigned) obj.name_len);
-  (void) sexos_reply(caller_pd, (obj.object_id & 0xFFFFFFFF) | (uint64_t) obj.kind << 32 | (uint64_t) obj.name_len << 40 | (obj.sexfiles_object_id & 0xFF) << 48);
+  (void) linen_answer(l, request, (obj.object_id & 0xFFFFFFFF) | (uint64_t) obj.kind << 32 | (uint64_t) obj.name_len << 40 | (obj.sexfiles_object_id & 0xFF) << 48);
 }
 /*OP_LINEN_GET_PUBLIC_NAME: up to 8 (arg2) name bytes of object arg0 from offset arg1, little-endian; 0 past the end. No owner filter.*/
-static void handle_get_public_name(Linen *l, uint64_t object_id, uint64_t arg1, uint64_t arg2, uint32_t caller_pd) {
+static void handle_get_public_name(Linen *l, uint64_t object_id, uint64_t arg1, uint64_t arg2, const SexosRequest *request) {
   size_t byte_offset = arg1;
   size_t max_len = arg2 < 8 ? arg2 : 8;
   LinenObject obj;
   int64_t e = session_get(&l->session, object_id, 0, &obj);
   if (e != 0) {
     sexos_line("[linen.snapshot.name.err] id=%llu off=%zu err=%lld", (unsigned long long) object_id, byte_offset, (long long) e);
-    (void) sexos_reply(caller_pd, (uint64_t) e);
+    (void) linen_answer(l, request, (uint64_t) e);
     return;
   }
   if (byte_offset >= obj.name_len) {
-    (void) sexos_reply(caller_pd, 0);
+    (void) linen_answer(l, request, 0);
     return;
   }
   size_t count = max_len < obj.name_len - byte_offset ? max_len : obj.name_len - byte_offset;
   sexos_line("[linen.snapshot.name] id=%llu off=%zu len=%zu", (unsigned long long) object_id, byte_offset, count);
-  (void) sexos_reply(caller_pd, name_word(obj.name + byte_offset, count));
+  (void) linen_answer(l, request, name_word(obj.name + byte_offset, count));
 }
 /*OP_LINEN_OPEN_INTENT: a stub; no launch, no caps, no authority. 0 accepts, else the error.*/
-static void handle_open_intent(Linen *l, uint64_t object_id, uint32_t caller_pd) {
+static void handle_open_intent(Linen *l, uint64_t object_id, const SexosRequest *request) {
   LinenObject obj;
   int64_t e = session_get(&l->session, object_id, 0, &obj);
   if (e == 0) {
     sexos_line("[linen.open_intent.recv] id=%llu kind=%u ok=1", (unsigned long long) object_id, (unsigned) obj.kind);
-    (void) sexos_reply(caller_pd, 0);
+    (void) linen_answer(l, request, 0);
   } else {
     sexos_line("[linen.open_intent.recv] id=%llu ok=0", (unsigned long long) object_id);
-    (void) sexos_reply(caller_pd, (uint64_t) e);
+    (void) linen_answer(l, request, (uint64_t) e);
   }
 }
 /*OP_LINEN_SEARCH_OBJECTS: a token of up to 16 bytes (arg0, arg1, little-endian, ending at the first zero); results are markers only, no reply. A token that is not UTF-8 prints as ?.*/
@@ -1783,6 +1823,54 @@ static const char AP1B_SEXFILES100_BEGIN_MARKER[] = "linen.sexfiles100.audit.beg
 static void keep_ap1b_marker(void) {
   (void) *(volatile const char *) AP1B_SEXFILES100_BEGIN_MARKER;
 }
+static void linen_dispatch_request(Linen *l, SexosRequest *request) {
+  SexosMessage *msg = &request->message;
+  switch (msg->type_id) {
+    case OP_HID_EVENT: handle_hid_event(l, msg->arg0, msg->arg1);
+    break;
+    case OP_LINEN_CREATE_OBJECT: handle_create_object(l, msg->arg0, msg->arg1, msg->arg2, request);
+    break;
+    case OP_LINEN_LIST_OBJECTS: handle_list_objects(l, msg->arg0, request);
+    break;
+    case OP_LINEN_GET_OBJECT: handle_get_object(l, msg->arg0, request);
+    break;
+    case OP_LINEN_GET_PUBLIC_SNAPSHOT: handle_get_public_snapshot(l, msg->arg0, request);
+    break;
+    case OP_LINEN_GET_PUBLIC_NAME: handle_get_public_name(l, msg->arg0, msg->arg1, msg->arg2, request);
+    break;
+    case OP_LINEN_OPEN_INTENT: handle_open_intent(l, msg->arg0, request);
+    break;
+    case OP_LINEN_RESCAN_DISK: (void) linen_answer(l, request, linen_rescan_disk(l));
+    break;
+    case OP_LINEN_SEARCH_OBJECTS: handle_search_objects(l, msg->arg0, msg->arg1);
+    break;
+    case LINEN_CAPTURE_OP_BEGIN: {
+      LinenCaptureTable table;
+      linen_capture_public_table(l, &table);
+      bool prepared = linen_capture_service_prepare(&l->capture, &table, request, &l->answer);
+      if (prepared) sexos_line("[linen.capture.reply] opcode=begin caller=%u task=%u request=%llu job=%llu value=%#llx", (unsigned) msg->caller_pd, (unsigned) msg->caller_task, (unsigned long long) request->id, (unsigned long long) msg->arg0, (unsigned long long) l->answer.value);
+      (void) linen_capture_answer_poll(&l->answer);
+    }
+    break;
+    case LINEN_CAPTURE_OP_READ: {
+      LinenCaptureTable table = {
+        0
+      };
+      (void) linen_capture_service_prepare(&l->capture, &table, request, &l->answer);
+      (void) linen_capture_answer_poll(&l->answer);
+    }
+    break;
+    case LINEN_CAPTURE_OP_END: {
+      LinenCaptureTable table = {
+        0
+      };
+      (void) linen_capture_service_prepare(&l->capture, &table, request, &l->answer);
+      (void) linen_capture_answer_poll(&l->answer);
+    }
+    break;
+    default: if (request->id != 0)(void) linen_answer(l, request, REPLY_CAP_INVALID);
+  }
+}
 /*The one state value; the session and tag tables total about 2 KiB.*/
 void linen_main(void) {
   Linen l = (Linen) {
@@ -1792,7 +1880,10 @@ void linen_main(void) {
       .wrapper_budget = 8
     },.key_log = 16
   };
+  l.capture = linen_capture_new(3, 3);
+  l.correlated = sexos_rpc_register() == 1;
   sexos_line("[linen.init.start]");
+  if (l.correlated) sexos_line("[linen.transport.mode] correlated=1 legacy=0 shell_pd=3 shell_task=3");
 /*A short delay so sexdisplay is ready.*/
   for (uint32_t i = 0; i < 5000000; ++i) sexos_spin_loop_hint();
 /*Linen's own content surface (0xEC upsert: arg1 (y << 32) | x, arg2 (h << 32) | w); the owner binds to Linen on first create.*/
@@ -1853,34 +1944,16 @@ void linen_main(void) {
   if (LINEN_SEXOBJECT_NATIVE_PERSIST_PROOF_ENABLED && !DISKFS_LANES) run_linen_sexobject_native_persist_proof();
   while (1) {
     maybe_run_linen_keyboard_nav_proof(&l);
+    if (l.answer.present) {
+      if (!linen_capture_answer_poll(&l.answer)) {
+        sexos_yield();
+        continue;
+      }
+    }
 /*LINEN_DEFER_V1: requests stashed during storage waits are served first.*/
-    DeferredRequest msg;
-    if (!linen_defer_pop(&l, &msg)) {
-      SexosMessage m = sexos_listen(&l.listener, 0);
-      msg = (DeferredRequest) {
-        .type_id = m.type_id,.caller_pd = m.caller_pd,.arg0 = m.arg0,.arg1 = m.arg1,.arg2 = m.arg2
-      };
-    }
-    switch (msg.type_id) {
-      case OP_HID_EVENT: handle_hid_event(&l, msg.arg0, msg.arg1);
-      break;
-      case OP_LINEN_CREATE_OBJECT: handle_create_object(&l, msg.arg0, msg.arg1, msg.arg2, msg.caller_pd);
-      break;
-      case OP_LINEN_LIST_OBJECTS: handle_list_objects(&l, msg.arg0, msg.caller_pd);
-      break;
-      case OP_LINEN_GET_OBJECT: handle_get_object(&l, msg.arg0, msg.caller_pd);
-      break;
-      case OP_LINEN_GET_PUBLIC_SNAPSHOT: handle_get_public_snapshot(&l, msg.arg0, msg.caller_pd);
-      break;
-      case OP_LINEN_GET_PUBLIC_NAME: handle_get_public_name(&l, msg.arg0, msg.arg1, msg.arg2, msg.caller_pd);
-      break;
-      case OP_LINEN_OPEN_INTENT: handle_open_intent(&l, msg.arg0, msg.caller_pd);
-      break;
-      case OP_LINEN_RESCAN_DISK: (void) sexos_reply(msg.caller_pd, linen_rescan_disk(&l));
-      break;
-      case OP_LINEN_SEARCH_OBJECTS: handle_search_objects(&l, msg.arg0, msg.arg1);
-      break;
-      default: break;
-    }
+    DeferredRequest deferred;
+    if (!linen_defer_pop(&l, &deferred)) deferred.request = linen_receive(&l);
+    SexosRequest request = deferred.request;
+    linen_dispatch_request(&l, &request);
   }
 }

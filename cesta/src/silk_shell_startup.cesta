@@ -1,0 +1,27 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (include "silk_shell_core.h")
+  (ownership
+   (check-all)
+   (function shell_startup_pop (nullable 1)))
+  (native "
+ShellStartupObserve shell_startup_observe(SilkShellCoreState *state,SexosMessage message)
+{
+ if(message.type_id==OP_DISPLAY_READY){
+  if(message.caller_pd==1 && message.arg0==DISPLAY_READY_VERSION && message.arg1==0 && message.arg2==0){state->startup_ready=true;return SHELL_STARTUP_READY;}
+  return SHELL_STARTUP_REJECTED_CONTROL;
+ }
+ if(state->startup_len==SHELL_STARTUP_INBOX_CAPACITY)return SHELL_STARTUP_FULL;
+ size_t index=(state->startup_head+state->startup_len)%SHELL_STARTUP_INBOX_CAPACITY;
+ state->startup_messages[index]=message;state->startup_present[index]=true;++state->startup_len;return SHELL_STARTUP_DEFERRED;
+}
+bool shell_startup_pop(SilkShellCoreState *state,SexosMessage *out)
+{
+ if(!state->startup_len)return false;
+ size_t index=state->startup_head;
+ if(!state->startup_present[index])return false;
+ if(out)*out=state->startup_messages[index];
+ state->startup_present[index]=false;state->startup_head=(state->startup_head+1)%SHELL_STARTUP_INBOX_CAPACITY;--state->startup_len;return true;
+}
+bool shell_startup_pending(const SilkShellCoreState *state){return state->startup_len!=0;}
+")))

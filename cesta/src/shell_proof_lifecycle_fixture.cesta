@@ -1,0 +1,82 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (include "shell_proof_lifecycle_fixture.h")
+  (ownership
+   (check-all)
+   (record ShellChromeContext
+    (field chrome (borrow write))
+    (field models (borrow write))
+    (field apps (borrow write))
+    (field input (borrow write))
+    (field proofs_a (borrow write)))
+   (foreign shell_chrome_lifecycle_register
+    (obligation "Registers a fresh incarnation in the bound Chrome lifecycle table without retaining the fixture context."))
+   (foreign shell_chrome_lifecycle_state
+    (obligation "Copies the current lifecycle state for the bound surface without retaining references."))
+   (foreign shell_chrome_set_lifecycle_state
+    (obligation "Performs only an allowed lifecycle transition for the bound surface."))
+   (foreign shell_chrome_peer_record_tombstone_event
+    (obligation "Appends one bounded tombstone event for the bound surface without retaining fixture references.")))
+  (native "
+bool shell_proof_fixture_surface_supported(uint64_t surface)
+{return surface==SURFACE_ID_TEST3||surface==SURFACE_ID_TEST4;}
+static bool fixture_set_alive(SilkShellChromeState *chrome,uint64_t surface,bool value)
+{if(surface==SURFACE_ID_TEST3){chrome->SURFACE_102_ALIVE=value;return true;}if(surface==SURFACE_ID_TEST4){chrome->SURFACE_103_ALIVE=value;return true;}return false;}
+static bool fixture_rect_write(SilkShellChromeState *chrome,uint64_t surface,ShellProofFixtureRect rect)
+{
+ if(!rect.w||!rect.h)return false;
+ if(surface==SURFACE_ID_TEST3){chrome->SURFACE_102_X=rect.x;chrome->SURFACE_102_Y=rect.y;chrome->SURFACE_102_W=rect.w;chrome->SURFACE_102_H=rect.h;return true;}
+ if(surface==SURFACE_ID_TEST4){chrome->SURFACE_103_X=rect.x;chrome->SURFACE_103_Y=rect.y;chrome->SURFACE_103_W=rect.w;chrome->SURFACE_103_H=rect.h;return true;}return false;
+}
+static ShellProofFixtureRect fixture_rect_read(const SilkShellChromeState *chrome,uint64_t surface)
+{if(surface==SURFACE_ID_TEST3)return(ShellProofFixtureRect){chrome->SURFACE_102_X,chrome->SURFACE_102_Y,chrome->SURFACE_102_W,chrome->SURFACE_102_H};if(surface==SURFACE_ID_TEST4)return(ShellProofFixtureRect){chrome->SURFACE_103_X,chrome->SURFACE_103_Y,chrome->SURFACE_103_W,chrome->SURFACE_103_H};return(ShellProofFixtureRect){0};}
+bool shell_proof_fixture_surface_alive(const ShellChromeContext *ctx,uint64_t surface)
+{if(!ctx||!ctx->chrome)return false;if(surface==SURFACE_ID_TEST3)return ctx->chrome->SURFACE_102_ALIVE;if(surface==SURFACE_ID_TEST4)return ctx->chrome->SURFACE_103_ALIVE;return false;}
+void shell_proof_fixture_clear_tombstones(ShellChromeContext *ctx,uint64_t surface)
+{if(!ctx||!ctx->chrome||!shell_proof_fixture_surface_supported(surface))return;for(size_t i=0;i<TOMBSTONE_RING_SIZE;i++)if(ctx->chrome->TOMBSTONE_RING[i].present&&ctx->chrome->TOMBSTONE_RING[i].surface_id==surface)ctx->chrome->TOMBSTONE_RING[i]=(TombstoneEvent){0};}
+static bool fixture_frame_contains(const ShellFrame *frame,uint64_t surface)
+{if(!frame->present)return false;for(size_t i=0;i<MAX_TABS_PER_FRAME;i++)if(frame->tabs[i].present&&frame->tabs[i].surface_id==surface)return true;return false;}
+bool shell_proof_fixture_clear(ShellChromeContext *ctx,uint64_t surface)
+{
+ if(!ctx||!ctx->chrome||!shell_proof_fixture_surface_supported(surface))return false;
+ for(size_t i=0;i<MAX_FRAMES;i++)if(fixture_frame_contains(&ctx->chrome->FRAMES[i],surface))ctx->chrome->FRAMES[i]=(ShellFrame){0};
+ shell_proof_fixture_clear_tombstones(ctx,surface);if(!fixture_set_alive(ctx->chrome,surface,false))return false;if(ctx->chrome->FOCUSED_SURFACE_ID==surface)ctx->chrome->FOCUSED_SURFACE_ID=0;return true;
+}
+static bool fixture_insert(ShellChromeContext *ctx,uint32_t frame,uint64_t first,uint64_t second,uint8_t tabs,ShellProofFixtureRect rect)
+{
+ for(size_t i=0;i<MAX_FRAMES;i++)if(!ctx->chrome->FRAMES[i].present){ShellFrame value={0};value.present=true;value.frame_id=frame;value.active_tab=0;value.tab_count=tabs;value.tabs[0]=(ShellTab){true,first,0,0};if(tabs==2)value.tabs[1]=(ShellTab){true,second,0,0};value.scene_id=ctx->chrome->ACTIVE_SCENE_IDX;value.flags=FRAME_FLAG_TOP_BAR;value.normal_x=rect.x;value.normal_y=rect.y;value.normal_w=rect.w;value.normal_h=rect.h;ctx->chrome->FRAMES[i]=value;return true;}
+ return false;
+}
+bool shell_proof_fixture_prepare_single(ShellChromeContext *ctx,uint64_t surface,uint32_t frame,ShellProofFixtureRect rect)
+{
+ if(!ctx||!ctx->chrome||!frame||!shell_proof_fixture_surface_supported(surface)||!rect.w||!rect.h)return false;
+ if(!shell_proof_fixture_clear(ctx,surface)||!fixture_rect_write(ctx->chrome,surface,rect)||!fixture_set_alive(ctx->chrome,surface,true))return false;
+ if(!shell_chrome_lifecycle_register(ctx,surface,LIFECYCLE_MAPPED)){(void)fixture_set_alive(ctx->chrome,surface,false);return false;}
+ if(!fixture_insert(ctx,frame,surface,0,1,rect)){(void)fixture_set_alive(ctx->chrome,surface,false);return false;}return true;
+}
+bool shell_proof_fixture_prepare_pair(ShellChromeContext *ctx,uint64_t first,uint64_t second,uint32_t frame,ShellProofFixtureRect first_rect,ShellProofFixtureRect second_rect)
+{
+ if(!ctx||!ctx->chrome||first==second||!frame||!shell_proof_fixture_surface_supported(first)||!shell_proof_fixture_surface_supported(second)||!first_rect.w||!first_rect.h||!second_rect.w||!second_rect.h)return false;
+ if(!shell_proof_fixture_clear(ctx,first)||!shell_proof_fixture_clear(ctx,second)||!fixture_rect_write(ctx->chrome,first,first_rect)||!fixture_rect_write(ctx->chrome,second,second_rect)||!fixture_set_alive(ctx->chrome,first,true)||!fixture_set_alive(ctx->chrome,second,true))return false;
+ if(!shell_chrome_lifecycle_register(ctx,first,LIFECYCLE_MAPPED)||!shell_chrome_lifecycle_register(ctx,second,LIFECYCLE_MAPPED)){(void)fixture_set_alive(ctx->chrome,first,false);(void)fixture_set_alive(ctx->chrome,second,false);return false;}
+ if(!fixture_insert(ctx,frame,first,second,2,first_rect)){(void)fixture_set_alive(ctx->chrome,first,false);(void)fixture_set_alive(ctx->chrome,second,false);return false;}return true;
+}
+ShellProofFixtureFrame shell_proof_fixture_frame(const ShellChromeContext *ctx,uint64_t surface)
+{if(!ctx||!ctx->chrome)return(ShellProofFixtureFrame){0};for(size_t i=0;i<MAX_FRAMES;i++){const ShellFrame *frame=&ctx->chrome->FRAMES[i];if(fixture_frame_contains(frame,surface))return(ShellProofFixtureFrame){true,frame->frame_id,frame->tab_count,frame->active_tab,frame->scene_id,frame->flags,fixture_rect_read(ctx->chrome,surface)};}return(ShellProofFixtureFrame){0};}
+bool shell_proof_fixture_frame_visible(const ShellChromeContext *ctx,uint32_t frame)
+{if(!ctx||!ctx->chrome)return false;for(size_t i=0;i<MAX_FRAMES;i++){const ShellFrame *value=&ctx->chrome->FRAMES[i];if(value->present&&value->frame_id==frame)return value->scene_id==ctx->chrome->ACTIVE_SCENE_IDX&&(value->flags&FRAME_FLAG_MINIMIZED)==0;}return false;}
+bool shell_proof_fixture_scene_has_minimized(const ShellChromeContext *ctx)
+{return ctx&&ctx->chrome&&ctx->chrome->ACTIVE_SCENE_IDX<ATLAS_MAX_SCENES&&(ctx->chrome->SCENES[ctx->chrome->ACTIVE_SCENE_IDX].flags&SCENE_FLAG_HAS_MINIMIZED)!=0;}
+bool shell_proof_fixture_mark_dead(ShellChromeContext *ctx,uint64_t surface)
+{
+ if(!ctx||!ctx->chrome||!shell_proof_fixture_surface_alive(ctx,surface))return false;
+ uint8_t old=LIFECYCLE_MAPPED;(void)shell_chrome_lifecycle_state(ctx,surface,&old);if(!shell_chrome_set_lifecycle_state(ctx,surface,LIFECYCLE_CLOSING))return false;shell_chrome_peer_record_tombstone_event(ctx,surface,old,LIFECYCLE_CLOSING,TOMBSTONE_DESTROY_COMMAND);if(!shell_chrome_set_lifecycle_state(ctx,surface,LIFECYCLE_TOMBSTONED))return false;shell_chrome_peer_record_tombstone_event(ctx,surface,LIFECYCLE_CLOSING,LIFECYCLE_TOMBSTONED,TOMBSTONE_DESTROY_COMMAND);if(!shell_chrome_set_lifecycle_state(ctx,surface,LIFECYCLE_DESTROYED))return false;shell_chrome_peer_record_tombstone_event(ctx,surface,LIFECYCLE_TOMBSTONED,LIFECYCLE_DESTROYED,TOMBSTONE_FINAL_DESTROY);return fixture_set_alive(ctx->chrome,surface,false);
+}
+bool shell_proof_fixture_remove_tab(ShellChromeContext *ctx,uint64_t surface,bool *frame_destroyed)
+{
+ if(frame_destroyed)*frame_destroyed=false;
+ if(!ctx||!ctx->chrome||!shell_proof_fixture_surface_supported(surface))return false;
+ for(size_t i=0;i<MAX_FRAMES;i++){ShellFrame *frame=&ctx->chrome->FRAMES[i];if(!frame->present)continue;for(size_t tab=0;tab<MAX_TABS_PER_FRAME;tab++)if(frame->tabs[tab].present&&frame->tabs[tab].surface_id==surface){for(size_t j=tab;j+1<MAX_TABS_PER_FRAME;j++)frame->tabs[j]=frame->tabs[j+1];frame->tabs[MAX_TABS_PER_FRAME-1]=(ShellTab){0};if(frame->tab_count)frame->tab_count--;if(!frame->tab_count){*frame=(ShellFrame){0};if(frame_destroyed)*frame_destroyed=true;}else if(frame->active_tab>=frame->tab_count)frame->active_tab=(uint8_t)(frame->tab_count-1);return true;}}
+ return false;
+}
+")))

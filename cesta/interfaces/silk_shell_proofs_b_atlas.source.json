@@ -1,0 +1,13 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "functions": [
+    {"name":"maybe_run_atlas_phase_e1_click_scene_switch_proof","flag":"SEXOS_ATLAS_PHASE_E1_CLICK_SCENE_SWITCH_PROOF","source_sha256":"7e75495854f18bdf422bf9ed57f7b372b4dfc957a0a5101ec978cb81d46c6212"},
+    {"name":"maybe_run_atlas_phase_e2_keyboard_scene_cycle_proof","flag":"SEXOS_ATLAS_PHASE_E2_KEYBOARD_SCENE_CYCLE_PROOF","source_sha256":"70b8c950215384ee36237915ccc91aa73a37f0cbb290fd001c783c85a42cfa20"},
+    {"name":"maybe_run_atlas_phase_e3_drag_begin_marker_proof","flag":"SEXOS_ATLAS_PHASE_E3_DRAG_BEGIN_MARKER_PROOF","source_sha256":"50d8f1a75f56723f99e6c0e3fd26200a1af7ee0b1e07107b98691cab19179616"},
+    {"name":"maybe_run_atlas_phase_e4b_same_scene_noop_proof","flag":"SEXOS_ATLAS_PHASE_E4B_SAME_SCENE_NOOP_PROOF","source_sha256":"7eb93ad0ce278cf48fba082f4eeb9b03849a2514a984397c565b8389b7d227bc"},
+    {"name":"maybe_run_atlas_phase_e4c_cross_scene_reparent_proof","flag":"SEXOS_ATLAS_PHASE_E4C_CROSS_SCENE_REPARENT_PROOF","source_sha256":"ec69b7df48789e31f738440b1911bb2d693dd37cd728ea8c8d663b7d46bbb33e"},
+    {"name":"maybe_run_atlas_phase_e4c2_true_reparent_proof","flag":"SEXOS_ATLAS_PHASE_E4C2_TRUE_REPARENT_PROOF","source_sha256":"69885b3a4c44ff3de7e43a074fb91ed0a1823605c7fa20726a491125ca30bfa0"},
+    {"name":"maybe_run_atlas_phase_e4d_real_pointer_drop_proof","flag":"SEXOS_ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF","source_sha256":"42cea967730856b236316e20cf294426a782cc56fe88eb492749c4e6ec42d7df"},
+    {"name":"maybe_run_atlas_overview_final_closeout_proof","flag":"SEXOS_ATLAS_OVERVIEW_FINAL_CLOSEOUT_PROOF","source_sha256":"8a1d23bf10954a924467f4acb9537c226c40c3bac767c0a5cc194c4a84ad6e0c"}
+  ]
+}

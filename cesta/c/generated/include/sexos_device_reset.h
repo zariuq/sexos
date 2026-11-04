@@ -1,0 +1,55 @@
+
+#ifndef SEXOS_DEVICE_RESET_H
+#define SEXOS_DEVICE_RESET_H
+#include <stdint.h>
+#include <stdbool.h>
+typedef enum {
+    DEVICE_RESET_OK,
+    DEVICE_RESET_INVALID,
+    DEVICE_RESET_STALE,
+    DEVICE_RESET_INTERRUPTED,
+    DEVICE_RESET_HARDWARE,
+    DEVICE_RESET_EXHAUSTED
+} DeviceResetStatus;
+typedef enum {
+    DEVICE_RESET_QUERY,
+    DEVICE_RESET_BEGIN,
+    DEVICE_RESET_OBSERVE_QUIESCENT,
+    DEVICE_RESET_RESUME,
+    DEVICE_RESET_ACK_INTERRUPT,
+    DEVICE_RESET_OWNER_DEAD
+} DeviceResetAction;
+typedef enum {
+    DEVICE_RESET_ACTIVE,
+    DEVICE_RESET_RESETTING,
+    DEVICE_RESET_QUIESCENT,
+    DEVICE_RESET_ORPHANED
+} DeviceResetPhase;
+typedef struct {
+    bool present;
+    uint32_t owner,device,identity;
+    uint64_t slot,generation,interrupt_revision,acknowledged_revision;
+    uint8_t vector;
+    DeviceResetPhase phase;
+} DeviceResetState;
+typedef struct {
+    DeviceResetAction action;
+    uint64_t expected_generation,interrupt_revision,acknowledged_revision;
+    uint32_t cc,csts;
+    bool queues_ready;
+} DeviceResetRequest;
+typedef struct {
+    DeviceResetStatus status;
+    uint64_t generation,interrupt_revision,acknowledged_revision;
+    DeviceResetPhase phase;
+    uint32_t cc,csts;
+} DeviceResetReceipt;
+bool device_reset_state_valid(const DeviceResetState *state);
+DeviceResetState device_reset_init(uint32_t owner,uint64_t slot,uint32_t device,
+    uint32_t identity,uint8_t vector,uint64_t interrupt_revision);
+DeviceResetReceipt device_reset_apply(DeviceResetState *state,DeviceResetRequest request);
+DeviceResetReceipt sexos_device_reset(uint64_t slot,DeviceResetAction action,
+    uint64_t expected_generation,bool queues_ready);
+DeviceResetReceipt sexos_device_interrupt_ack(uint64_t slot,uint64_t expected_generation,
+    uint64_t interrupt_revision);
+#endif

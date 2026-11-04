@@ -1,0 +1,35 @@
+#ifndef SEXOS_SHELL_PROOFS_B_INPUT_H
+#define SEXOS_SHELL_PROOFS_B_INPUT_H
+#include "silk_shell_proofs_b_atlas.h"
+typedef struct ShellProofsBInputContext {ShellInputContext input;SilkShellProofsBState *proofs_b;} ShellProofsBInputContext;
+typedef struct ShellProofsBBounds {bool present;int32_t x,y;uint32_t w,h;} ShellProofsBBounds;
+typedef struct ShellProofsBDragTarget {bool present;uint32_t frame;uint64_t surface;int32_t sx,sy;uint32_t sw,sh;int32_t x,y;} ShellProofsBDragTarget;
+typedef struct ShellProofsBId {bool present;uint64_t id;} ShellProofsBId;
+ShellProofsBDragTarget shell_proofs_b_input_drag_target(ShellProofsBInputContext *ctx);
+ShellProofsBBounds shell_proofs_b_input_bounds(ShellProofsBInputContext *ctx,uint64_t surface);
+ShellProofsBFrame shell_proofs_b_input_frame_for_surface(ShellProofsBInputContext *ctx,uint64_t surface);
+ShellProofsBFrame shell_proofs_b_input_first_minimized(ShellProofsBInputContext *ctx);
+ShellProofsBId shell_proofs_b_input_active_surface(ShellProofsBInputContext *ctx,uint32_t frame);
+bool shell_proofs_b_input_focus(ShellProofsBInputContext *ctx,uint64_t surface);
+bool shell_proofs_b_input_action(ShellProofsBInputContext *ctx,uint8_t action);
+bool shell_proofs_b_input_surface_alive(ShellProofsBInputContext *ctx,uint64_t surface);
+bool shell_proofs_b_input_tombstoned(ShellProofsBInputContext *ctx,uint64_t surface);
+bool shell_proofs_b_input_quil_has_focus(ShellProofsBInputContext *ctx);
+void shell_proofs_b_input_hid(ShellProofsBInputContext *ctx,uint64_t event_class,uint64_t arg0,uint64_t arg1);
+void shell_proofs_b_input_cursor(ShellProofsBInputContext *ctx,int32_t x,int32_t y,const char *source);
+void shell_proofs_b_input_transition(ShellProofsBInputContext *ctx,uint8_t tag);
+bool shell_proofs_b_input_zoom_click(ShellProofsBInputContext *ctx,uint32_t frame);
+void shell_proofs_b_input_display_create(ShellProofsBInputContext *ctx,uint64_t surface,int32_t x,int32_t y,uint32_t w,uint32_t h);
+bool shell_proofs_b_input_lifecycle_visible(ShellProofsBInputContext *ctx,uint64_t surface);
+void shell_proofs_b_maybe_run_window_drag_synthetic_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_silk_de_integrated_interaction_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_keyboard_window_synthetic_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_visible_focus_topbar_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_keyboard_safe_close_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_keyboard_gui_broad_action_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_spindle_real_keyboard_focus_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_mesh_keyboard_map_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_frame_light_zoom_synthetic_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_input_negative_proof(ShellProofsBInputContext *ctx);
+void shell_proofs_b_maybe_run_cursor_autodemo(ShellProofsBInputContext *ctx);
+#endif

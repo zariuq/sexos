@@ -1,0 +1,39 @@
+(cesta project/1
+  (compiler clang)
+  (out "build-arm64")
+  (profile arm64-kernel
+    (flags "--target=aarch64-none-elf" "-std=c11" "-O2" "-g0"
+           "-ffreestanding" "-fno-builtin" "-fno-stack-protector"
+           "-fno-pic" "-fno-pie" "-mgeneral-regs-only"
+           "-Wall" "-Wextra" "-Wpedantic" "-Wformat=2" "-Werror")
+    (link "--target=aarch64-none-elf" "-fuse-ld=lld" "-nostdlib" "-static"
+          "-Wl,-T,runtime/arm64/kernel.ld" "-Wl,--build-id=none"))
+  (target arm64-phase2
+    (profile arm64-kernel)
+    (sources "src/arm64_boot_policy.cesta" "src/arm64_platform.cesta"
+             "src/arm64_phase2.cesta"
+             "runtime/arm64/entry.S")
+    (include "generated/arm64/include"))
+  (target arm64-phase3
+    (profile arm64-kernel)
+    (sources "src/arm64_boot_policy.cesta" "src/arm64_phase3_policy.cesta"
+             "src/arm64_platform.cesta" "src/arm64_phase3.cesta"
+             "runtime/arm64/phase3_entry.S" "runtime/arm64/phase3_vectors.S")
+    (include "generated/arm64/include"))
+  (target arm64-phase4
+    (profile arm64-kernel)
+    (sources "src/arm64_boot_policy.cesta" "src/arm64_phase3_policy.cesta"
+             "src/arm64_phase4_policy.cesta" "src/arm64_platform.cesta"
+             "src/arm64_phase3.cesta" "src/arm64_phase4.cesta"
+             "runtime/arm64/phase3_entry.S" "runtime/arm64/phase4_vectors.S")
+    (include "generated/arm64/include"))
+  (target arm64-phase5
+    (profile arm64-kernel)
+    (sources "src/arm64_boot_policy.cesta" "src/arm64_phase3_policy.cesta"
+             "src/arm64_phase4_policy.cesta" "src/arm64_phase5_policy.cesta"
+             "src/arm64_platform.cesta" "src/arm64_phase5.cesta"
+             "runtime/arm64/phase3_entry.S")
+    (source "src/arm64_phase3.cesta" (define "ARM64_PHASE5=1"))
+    (source "src/arm64_phase4.cesta" (define "ARM64_PHASE5=1"))
+    (source "runtime/arm64/phase4_vectors.S" (define "ARM64_PHASE5=1"))
+    (include "generated/arm64/include")))

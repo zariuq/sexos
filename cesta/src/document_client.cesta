@@ -1,0 +1,212 @@
+(cesta native-c/1 compact-c/2
+ (unit
+ (include "sexos_document_client.h")
+ (ownership (check-all)
+  (foreign memset (returns-borrow 0) (obligation "Writes exactly the requested bytes of the destination and retains no reference."))
+  (foreign memcpy (returns-borrow 0) (obligation "Copies exactly the requested non-overlapping bytes and retains no reference."))
+  (foreign sexos_document_hash (obligation "Reads only the bounded document payload and retains no reference."))
+  (foreign sexos_document_decode_reply (obligation "Decodes the reply by value and retains no reference."))
+  (foreign document_snapshot_copy_value (obligation "Returns one coherent validated snapshot by value without retaining a reference.")))
+ (native "
+static void document_clear_window(DocumentClient *state)
+{
+ memset(state->window,0,sizeof state->window);state->issued=0;state->completed=0;
+}
+static void document_clear_content(DocumentClient *state)
+{
+ memset(state->payload.bytes,0,sizeof state->payload.bytes);state->payload.len=0;memset(state->name.bytes,0,sizeof state->name.bytes);
+}
+void document_client_init(DocumentClient *state)
+{*state=(DocumentClient){0};state->phase=DOCUMENT_PHASE_INFO;}
+bool document_client_busy(const DocumentClient *state){return state->busy;}
+bool document_client_loading(const DocumentClient *state){return state->busy&&!state->saving;}
+uint8_t document_client_status(const DocumentClient *state)
+{
+ if(state->fenced)return DOCUMENT_STATUS_UNCERTAIN;
+ if(state->busy)return state->saving?DOCUMENT_STATUS_SAVING:DOCUMENT_STATUS_LOADING;
+ if(state->error)return DOCUMENT_STATUS_ERROR;
+ return state->quiescent?DOCUMENT_STATUS_REOPEN:DOCUMENT_STATUS_READY;
+}
+bool document_client_set_snapshot(DocumentClient *state,DocumentSnapshotRegion snapshot)
+{if(state->busy||state->dead||state->snapshot_present||snapshot.writer||!snapshot.address)return false;state->snapshot=snapshot;state->snapshot_present=true;return true;}
+static bool document_start(DocumentClient *state,uint8_t object,uint64_t revision,bool saving,bool creating,uint8_t phase)
+{
+ if(state->busy||state->fenced||state->dead)return false;
+ document_clear_content(state);state->object=object;state->revision=revision;state->saving=saving;state->creating=creating;
+ state->phase=phase;state->offset=0;document_clear_window(state);state->request_present=false;state->awaiting=false;
+ state->error=0;state->quiescent=false;state->busy=true;state->stall=0;state->total=0;return true;
+}
+bool document_client_load(DocumentClient *state,uint8_t object,uint64_t revision)
+{
+ if(object<2||object>=15)return false;
+ return document_start(state,object,revision,false,false,DOCUMENT_PHASE_INFO);
+}
+bool document_client_save(DocumentClient *state,bool has_object,uint8_t object,const uint8_t name[16],const uint8_t *bytes,size_t len,uint64_t revision)
+{
+ if(len>SEXOS_DOCUMENT_MAX||(!bytes&&len)||!name||(has_object&&(object<2||object>=15)))return false;
+ if(!document_start(state,has_object?object:0,revision,true,!has_object,has_object?DOCUMENT_PHASE_INFO:DOCUMENT_PHASE_CREATE))return false;
+ if(len)memcpy(state->payload.bytes,bytes,len);
+ state->payload.len=len;memcpy(state->name.bytes,name,16);return true;
+}
+bool document_client_delete(DocumentClient *state,uint8_t object,uint64_t revision)
+{
+ if(object<3||object>=15||!state->known_valid[object])return false;
+ uint32_t generation=state->known[object];if(!document_start(state,object,revision,false,false,DOCUMENT_PHASE_DELETE))return false;
+ state->generation=generation;return true;
+}
+bool document_client_cancel(DocumentClient *state)
+{
+ if(state->dead)return false;
+ if(state->busy&&state->phase==DOCUMENT_PHASE_ABORT)return true;
+ if(state->sequence==SEXOS_DOCUMENT_SEQ_MAX)return false;
+ state->request_present=false;state->awaiting=false;document_clear_window(state);state->phase=DOCUMENT_PHASE_ABORT;
+ state->busy=true;state->stall=0;state->total=0;return true;
+}
+void document_client_close(DocumentClient *state)
+{
+ document_clear_content(state);document_clear_window(state);state->busy=false;state->request_present=false;state->awaiting=false;state->snapshot_present=false;state->dead=true;
+}
+static void document_finish(DocumentClient *state,uint8_t outcome,uint32_t error,DocumentClientEvent *event)
+{
+ state->busy=false;state->request_present=false;state->awaiting=false;document_clear_window(state);state->error=error;
+ state->fenced=outcome==DOCUMENT_OUTCOME_UNCERTAIN;if(outcome!=DOCUMENT_OUTCOME_LOADED&&outcome!=DOCUMENT_OUTCOME_SAVED)document_clear_content(state);
+ if(event)*event=(DocumentClientEvent){true,outcome,state->object,state->revision,error};
+}
+static void document_fail(DocumentClient *state,uint32_t error,DocumentClientEvent *event)
+{
+ bool definite=!state->saving&&(state->phase==DOCUMENT_PHASE_INFO||state->phase==DOCUMENT_PHASE_LOAD||state->phase==DOCUMENT_PHASE_DELETE);
+ document_finish(state,definite?DOCUMENT_OUTCOME_FAILED:DOCUMENT_OUTCOME_UNCERTAIN,error,event);
+}
+static void document_pack(const uint8_t *bytes,size_t count,uint64_t *lo,uint64_t *hi)
+{
+ uint8_t raw[16]={0};if(count)memcpy(raw,bytes,count);*lo=0;*hi=0;
+ for(size_t i=0;i<8;i++){*lo|=(uint64_t)raw[i]<<(i*8);*hi|=(uint64_t)raw[i+8]<<(i*8);}
+}
+static void document_pack_payload(const SexosDocumentPayload *payload,size_t offset,size_t count,uint64_t *lo,uint64_t *hi)
+{
+ uint8_t raw[16]={0};for(size_t i=0;i<count;i++)raw[i]=payload->bytes[offset+i];*lo=0;*hi=0;
+ for(size_t i=0;i<8;i++){*lo|=(uint64_t)raw[i]<<(i*8);*hi|=(uint64_t)raw[i+8]<<(i*8);}
+}
+static DocumentClientAction document_data_action(DocumentClient *state,DocumentClientEvent *event)
+{
+ size_t slot=SEXOS_DOCUMENT_WINDOW;uint32_t best=UINT32_MAX;
+ for(size_t i=0;i<SEXOS_DOCUMENT_WINDOW;i++)if(state->window[i].present&&!state->window[i].enqueued&&state->window[i].request.seq<best){slot=i;best=state->window[i].request.seq;}
+ if(slot==SEXOS_DOCUMENT_WINDOW){
+  if(state->issued==state->payload.len)return(DocumentClientAction){0};
+  for(size_t i=0;i<SEXOS_DOCUMENT_WINDOW;i++)if(!state->window[i].present){slot=i;break;}
+  if(slot==SEXOS_DOCUMENT_WINDOW)return(DocumentClientAction){0};
+  if(state->sequence>=SEXOS_DOCUMENT_SEQ_MAX-1){document_finish(state,DOCUMENT_OUTCOME_UNCERTAIN,SEXOS_DOCUMENT_STALE,event);return(DocumentClientAction){0};}
+  state->sequence++;bool reading=state->phase==DOCUMENT_PHASE_READ;size_t left=state->payload.len-state->issued;size_t count=left<(reading?4u:16u)?left:(reading?4u:16u);
+  uint64_t a=count,b=0;if(!reading)document_pack_payload(&state->payload,state->issued,count,&a,&b);
+  state->window[slot]=(DocumentDataRequest){true,false,{state->sequence,reading?SEXOS_DOCUMENT_READ:SEXOS_DOCUMENT_WRITE,state->object,(uint32_t)state->issued,a,b},count};state->issued+=count;
+ }
+ return(DocumentClientAction){true,state->window[slot].request};
+}
+DocumentClientAction document_client_action(DocumentClient *state,DocumentClientEvent *event)
+{
+ if(event)*event=(DocumentClientEvent){0};
+ if(!state->busy)return(DocumentClientAction){0};
+ state->stall++;state->total++;if(state->stall>=SEXOS_DOCUMENT_STALL_LIMIT||state->total>=SEXOS_DOCUMENT_TOTAL_LIMIT){document_finish(state,DOCUMENT_OUTCOME_UNCERTAIN,SEXOS_DOCUMENT_TIMEOUT,event);return(DocumentClientAction){0};}
+ if(state->phase==DOCUMENT_PHASE_READ||state->phase==DOCUMENT_PHASE_WRITE)return document_data_action(state,event);
+ if(state->awaiting)return(DocumentClientAction){0};
+ if(state->request_present)return(DocumentClientAction){true,state->request};
+ uint32_t limit=state->phase==DOCUMENT_PHASE_ABORT?SEXOS_DOCUMENT_SEQ_MAX:SEXOS_DOCUMENT_SEQ_MAX-1;
+ if(state->sequence>=limit){document_finish(state,DOCUMENT_OUTCOME_UNCERTAIN,SEXOS_DOCUMENT_STALE,event);return(DocumentClientAction){0};}
+ state->sequence++;uint8_t kind=0;uint32_t offset=0;uint64_t a=0,b=0;
+ switch(state->phase){
+ case DOCUMENT_PHASE_INFO:kind=SEXOS_DOCUMENT_INFO;break;
+ case DOCUMENT_PHASE_LOAD:kind=SEXOS_DOCUMENT_LOAD;a=state->generation;b=state->snapshot_present?1:0;break;
+ case DOCUMENT_PHASE_NAME:kind=SEXOS_DOCUMENT_NAME;offset=(uint32_t)state->offset;break;
+ case DOCUMENT_PHASE_END:kind=SEXOS_DOCUMENT_END;break;
+ case DOCUMENT_PHASE_ABORT:kind=SEXOS_DOCUMENT_ABORT;break;
+ case DOCUMENT_PHASE_CREATE:kind=SEXOS_DOCUMENT_CREATE;document_pack(state->name.bytes,16,&a,&b);break;
+ case DOCUMENT_PHASE_BEGIN_SAVE:kind=SEXOS_DOCUMENT_BEGIN_SAVE;a=state->generation;b=state->payload.len;break;
+ case DOCUMENT_PHASE_COMMIT:kind=SEXOS_DOCUMENT_COMMIT;a=sexos_document_hash(&state->payload);break;
+ case DOCUMENT_PHASE_DELETE:kind=SEXOS_DOCUMENT_DELETE;a=state->generation;break;
+ default:document_finish(state,DOCUMENT_OUTCOME_UNCERTAIN,SEXOS_DOCUMENT_INVALID,event);return(DocumentClientAction){0};
+ }
+ state->request=(SexosDocumentRequest){state->sequence,kind,state->phase==DOCUMENT_PHASE_ABORT?0:state->object,offset,a,b};state->request_present=true;
+ return(DocumentClientAction){true,state->request};
+}
+bool document_client_sent(DocumentClient *state,uint32_t sequence,bool accepted,bool retryable,DocumentClientEvent *event)
+{
+ if(event)*event=(DocumentClientEvent){0};
+ if(!state->busy)return false;
+ if(state->phase==DOCUMENT_PHASE_READ||state->phase==DOCUMENT_PHASE_WRITE){
+  for(size_t i=0;i<SEXOS_DOCUMENT_WINDOW;i++)if(state->window[i].present&&!state->window[i].enqueued&&state->window[i].request.seq==sequence){
+   if(accepted)state->window[i].enqueued=true;else if(!retryable)document_finish(state,DOCUMENT_OUTCOME_UNCERTAIN,SEXOS_DOCUMENT_DENIED,event);return true;
+  }
+  return false;
+ }
+ if(!state->request_present||state->awaiting||state->request.seq!=sequence)return false;
+ if(accepted)state->awaiting=true;else if(!retryable)document_finish(state,DOCUMENT_OUTCOME_UNCERTAIN,SEXOS_DOCUMENT_DENIED,event);return true;
+}
+static bool document_data_reply(DocumentClient *state,uint64_t value,DocumentClientEvent *event)
+{
+ for(size_t i=0;i<SEXOS_DOCUMENT_WINDOW;i++)if(state->window[i].present&&state->window[i].enqueued){
+  SexosDocumentReply reply=sexos_document_decode_reply(value,state->window[i].request.seq);if(!reply.ok)continue;
+  DocumentDataRequest entry=state->window[i];if(!reply.success){document_fail(state,reply.value,event);return true;}
+  if(state->phase==DOCUMENT_PHASE_READ){
+   if(entry.count<4&&((uint64_t)reply.value>>(entry.count*8))!=0){document_fail(state,SEXOS_DOCUMENT_INVALID,event);return true;}
+   for(size_t k=0;k<entry.count;k++)state->payload.bytes[entry.request.offset+k]=(uint8_t)(reply.value>>(k*8));
+  }else if((size_t)reply.value!=entry.count){document_fail(state,SEXOS_DOCUMENT_INVALID,event);return true;}
+  memset(&state->window[i],0,sizeof state->window[i]);state->completed+=entry.count;state->stall=0;
+  if(state->completed==state->payload.len)state->phase=state->saving?DOCUMENT_PHASE_COMMIT:DOCUMENT_PHASE_END;
+  return true;
+ }
+ return false;
+}
+static bool document_client_load_snapshot(DocumentClient *state,SexosDocumentRequest request,size_t length,DocumentClientEvent *event)
+{
+ DocumentSnapshotCopyResult copy=document_snapshot_copy_value(state->snapshot,state->object,state->generation,request.seq,length);
+ if(!copy.ok){document_finish(state,DOCUMENT_OUTCOME_UNCERTAIN,copy.error?copy.error:SEXOS_DOCUMENT_STALE,event);return false;}
+ state->name=copy.name;state->payload=copy.payload;state->phase=DOCUMENT_PHASE_END;return true;
+}
+bool document_client_reply(DocumentClient *state,uint32_t caller,uint64_t value,DocumentClientEvent *event)
+{
+ if(event)*event=(DocumentClientEvent){0};
+ if(caller!=SEXOS_DOCUMENT_SERVER_PD||!state->busy)return false;
+ if(state->phase==DOCUMENT_PHASE_READ||state->phase==DOCUMENT_PHASE_WRITE)return document_data_reply(state,value,event);
+ if(!state->awaiting||!state->request_present)return false;
+ SexosDocumentReply reply=sexos_document_decode_reply(value,state->request.seq);if(!reply.ok)return false;
+ SexosDocumentRequest request=state->request;state->request_present=false;state->awaiting=false;document_clear_window(state);state->stall=0;
+ if(!reply.success){document_fail(state,reply.value,event);return true;}uint32_t v=reply.value;
+ switch(state->phase){
+ case DOCUMENT_PHASE_INFO:
+  if(state->saving&&!state->creating&&(!state->known_valid[state->object]?state->object!=2:state->known[state->object]!=v)){document_fail(state,SEXOS_DOCUMENT_STALE,event);break;}
+  state->generation=v;state->phase=state->saving?DOCUMENT_PHASE_BEGIN_SAVE:DOCUMENT_PHASE_LOAD;break;
+ case DOCUMENT_PHASE_LOAD:
+  state->known_valid[state->object]=true;state->known[state->object]=state->generation;if(v>SEXOS_DOCUMENT_MAX){document_fail(state,SEXOS_DOCUMENT_INVALID,event);break;}
+  state->payload.len=v;state->offset=0;if(state->snapshot_present)(void)document_client_load_snapshot(state,request,v,event);else state->phase=DOCUMENT_PHASE_NAME;break;
+ case DOCUMENT_PHASE_NAME:
+  for(size_t i=0;i<4;i++)state->name.bytes[state->offset+i]=(uint8_t)(v>>(i*8));
+  state->offset+=4;
+  if(state->offset==16){state->offset=0;state->phase=state->payload.len?DOCUMENT_PHASE_READ:DOCUMENT_PHASE_END;}break;
+ case DOCUMENT_PHASE_END:
+  if(v){document_fail(state,SEXOS_DOCUMENT_INVALID,event);break;}document_finish(state,state->saving?DOCUMENT_OUTCOME_SAVED:DOCUMENT_OUTCOME_LOADED,0,event);break;
+ case DOCUMENT_PHASE_CREATE:
+  if(v<3||v>=15){document_fail(state,SEXOS_DOCUMENT_INVALID,event);break;}state->object=(uint8_t)v;state->phase=DOCUMENT_PHASE_INFO;break;
+ case DOCUMENT_PHASE_BEGIN_SAVE:
+  state->known_valid[state->object]=true;state->known[state->object]=state->generation;if(v){document_fail(state,SEXOS_DOCUMENT_INVALID,event);break;}
+  state->phase=state->payload.len?DOCUMENT_PHASE_WRITE:DOCUMENT_PHASE_COMMIT;break;
+ case DOCUMENT_PHASE_COMMIT:
+  if((size_t)v!=state->payload.len){document_fail(state,SEXOS_DOCUMENT_INVALID,event);break;}state->phase=DOCUMENT_PHASE_END;break;
+ case DOCUMENT_PHASE_DELETE:
+  if(v){document_fail(state,SEXOS_DOCUMENT_INVALID,event);break;}state->known_valid[state->object]=false;document_finish(state,DOCUMENT_OUTCOME_DELETED,0,event);break;
+ case DOCUMENT_PHASE_ABORT:
+  if(v){document_fail(state,SEXOS_DOCUMENT_INVALID,event);break;}state->fenced=false;state->quiescent=true;document_finish(state,DOCUMENT_OUTCOME_CANCELLED,0,event);break;
+ default:(void)request;document_finish(state,DOCUMENT_OUTCOME_UNCERTAIN,SEXOS_DOCUMENT_INVALID,event);break;
+ }
+ return true;
+}
+bool document_client_transport_lost(DocumentClient *state,uint32_t sequence,uint32_t error,DocumentClientEvent *event)
+{
+ if(event)*event=(DocumentClientEvent){0};
+ if(!state->busy)return false;
+ bool matches=false;
+ if(state->phase==DOCUMENT_PHASE_READ||state->phase==DOCUMENT_PHASE_WRITE){for(size_t i=0;i<SEXOS_DOCUMENT_WINDOW;i++)if(state->window[i].present&&state->window[i].enqueued&&state->window[i].request.seq==sequence){matches=true;break;}}
+ else matches=state->awaiting&&state->request_present&&state->request.seq==sequence;
+ if(!matches)return false;
+ document_finish(state,DOCUMENT_OUTCOME_UNCERTAIN,error?error:SEXOS_DOCUMENT_DENIED,event);return true;
+}
+")))

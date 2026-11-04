@@ -6,14 +6,17 @@
   (NetworkDevice (* device))
   (cesta_read_bytes frame)
   (uint64_t budget identity)
-  (bool held submitted)
+  (bool held submitted attempted)
   (NetworkStep step)) TxContext)
     (fn (static bool) tx_frame_fact
       ((TxContext (* c)))
       (return (&& (&& (. (-> c frame) data) (>= (. (-> c frame) len) 14)) (<= (. (-> c frame) len) 1514))))
     (fn (static bool) tx_valid
       ((TxContext (* c)))
-      (return (call tx_frame_fact c)))
+      (return (&& (! (-> c attempted)) (call tx_frame_fact c))))
+    (fn (static bool) tx_permit
+      ((TxContext (* c)))
+      (return (! (-> c attempted))))
     (fn (static bool) tx_submitted
       ((TxContext (* c)))
       (return (-> c submitted)))
@@ -35,6 +38,9 @@
       (return (call tx_owned c)))
     (fn (static bool) tx_submit
       ((TxContext (* c)))
+      (if (-> c attempted)
+        (return false))
+      (= (-> c attempted) true)
       (= (-> c submitted) (call network_device_submit (-> c device) (-> c frame)))
       (return (-> c submitted)))
     (fn (static bool) tx_ready

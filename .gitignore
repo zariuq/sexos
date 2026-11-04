@@ -11,6 +11,7 @@ config.local.json
 # Rust and Build Artifacts
 /target
 Cargo.lock
+!/Cargo.lock
 *.bin
 *.iso
 *.sex
@@ -102,3 +103,12 @@ rust_output/
 # Local patched QEMU checkout (not a tracked submodule)
 tools/qemu/
 *.bak.*
+
+# Local frozen native candidates and full acceptance captures
+/.evidence/
+
+# Declarative proof inventory depends on this host model input.
+!/scripts/tests/fixtures/*.log
+
+# Generated Python bytecode
+__pycache__/

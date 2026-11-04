@@ -1,0 +1,37 @@
+{
+  "pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "sources": [
+    {
+      "path": "servers/sext/src/allocator.rs",
+      "sha256": "7a7432441abb1b996f15ea5980706eabe707a15b5eaa779eb121e67d8dc5431a"
+    },
+    {
+      "path": "servers/sext/src/pager.rs",
+      "sha256": "30de9d6b6f388ee28408b887d103234e0646726df2498e1d3415f8b88212b308"
+    },
+    {
+      "path": "servers/sext/src/workspace.rs",
+      "sha256": "b7cddee760764e2105f4e98247d8bf87ef447737a3243fa2735f0f0721d06aad"
+    },
+    {
+      "path": "servers/sext/src/main.rs",
+      "sha256": "8ad9a4c0576ef3902ee16661566dfff535402fc02cf431fe1ebab94c2c054310"
+    },
+    {
+      "path": "crates/sex-pdx/src/paging.rs",
+      "sha256": "fa1355ba3e51ef3dea00b7626d9ed63eff2793632b027da533889a45acdcb47f"
+    },
+    {
+      "path": "crates/sex-pdx/src/memory_region.rs",
+      "sha256": "98b3aa56ce7b854e464fb10f066c5843062101b5b23c7b412b3fb9a583708f54"
+    },
+    {
+      "path": "crates/sex-pdx/src/app_lifecycle.rs",
+      "sha256": "95b5404b95fe2fa12107f960c022f2544191ab461db9acda2469095decee9e00"
+    },
+    {
+      "path": "crates/sex-pdx/src/lib.rs",
+      "sha256": "fbd6af27d0ef9b4bc94eba7b141b95d23634bb5c957b477db83a934bac99b8f2"
+    }
+  ]
+}

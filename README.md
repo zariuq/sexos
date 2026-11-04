@@ -17,7 +17,7 @@ It is not a Linux distribution, not a drop-in replacement for Linux, and not pro
 - **PKU enforcement** — protection keys accelerate domain boundaries; the authority model still comes from `sex-pdx`.
 - **BOOT_DAG** — static, boot-time capability genesis; immutable once the epoch engine starts.
 - **Deterministic execution model** — state is a function of `(epoch_id, input_stream, capability_graph)`; transitions are snapshot → transform → swap → commit.
-- **User-space servers** — `sext` (demand pager), `silk-shell`, `sexdisplay`, `silkbar`, `sexfiles`, `sexinput`, `sexusb`, `sexnet`, `sexstore`, `linen`, `quil`, and apps such as `sexdrive`, `kaleidoscope`, and `spindle`.
+- **User-space servers** — `silk-shell`, `sexdisplay`, `silkbar`, `sexfiles`, `sexinput`, `sexusb`, `sexnet`, `sexstore`, `linen`, `quil`, and apps such as `sexdrive`, `kaleidoscope`, and `spindle`. `sext` is an active bounded demand pager using capability-backed frames and authenticated fault recovery.
 - **Boot path** — Limine, x86_64 UEFI/BIOS, QEMU; ARM64 port phases 2–6 are in the tree.
 
 The full invariants and server model are in [ARCHITECTURE.md](ARCHITECTURE.md). The generated manual is in [docs/handoff_html/index.html](docs/handoff_html/index.html).
@@ -25,6 +25,16 @@ The full invariants and server model are in [ARCHITECTURE.md](ARCHITECTURE.md). 
 ## Status
 
 **Experimental.** The x86_64 image boots under QEMU and reaches the `silkbar` event loop. The ARM64 port is in progress. Syscall/ABI surfaces are unstable, there is no production security audit, and hardware coverage is narrow.
+
+The architecture defines the required model. The scheduler now tracks task custody through park, wake and stack release. Runtime memory queries resolve fixed boot-granted regions; capability tables seal before task admission, and drivers use bounded DMA backing. The [scheduler and memory report](docs/handoff/SCHEDULER_OWNERSHIP_AND_MEMORY_AUTHORITY_2026_10_28.md) records the implementation and evidence.
+
+The [multi-client sext paging report](docs/handoff/SEXT_MULTI_CLIENT_PAGING_AND_SAFE_RECLAMATION_2026_10_28.md) covers two boot-authorized clients sharing eight frames, independent quotas, authenticated release, safe frame reuse and real read/write fault recovery. Boot still reserves backing and page-table infrastructure. Reclamation supports cooperative release and task-exit cleanup after custody release on the BSP. The [app resources and desktop report](docs/handoff/APP_RESOURCES_AND_DESKTOP_2026_10_29.md) extends cleanup to Quil, Spindle and Kaleidoscope: native Close, five service acknowledgements, surface retirement, private ELF/user-stack detach and Sext zero/reuse. Linen refresh continues handling input and native app content follows its frame. General relaunch beyond the finite BOOT reserve, autonomous eviction, hostile-code isolation, physical SMP scheduling and complete epoch replay remain unfinished. The [architectural truth report](docs/handoff/SEXOS_ARCHITECTURAL_TRUTH_2026_10_28.md) records the wider obligations and the scope of the executable checks.
+
+The [launcher follow-up](docs/handoff/INCARNATION_AUTHORITY_AND_LAUNCHER_2026_10_29.md) adds exact BOOT incarnation checks and readable running/closing/closed states. The [BOOT-reserved relaunch follow-up](docs/handoff/BOOT_RESERVED_RELAUNCH_2026_10_29.md) provisions one fresh Quil successor with immutable activation authority. The [Spindle follow-up](docs/handoff/BOOT_RESERVED_SPINDLE_RELAUNCH_2026_10_29.md) adds a separate reserved successor and four-surface native grid. Terminal identities remain preserved; each launcher row reports exhaustion after its second instance closes. Spindle now saves and restores [incarnation-owned history snapshots](docs/handoff/SPINDLE_HISTORY_AUTHORITY_2026_10_29.md) through fresh owner-checked SexFiles handles and completion receipts. The [durable recovery follow-up](docs/handoff/SPINDLE_DURABLE_RECOVERY_2026_10_29.md) adds a fixed two-bank NVMe journal and explicit BOOT authority to recover saved command data into the reserved successor or a fresh boot. Handles and capabilities remain incarnation-owned.
+
+The [eight-round Spindle desktop follow-up](docs/handoff/SPINDLE_DESKTOP_ROUNDS_2026_10_29.md) adds viewport-aware prompts, cursor editing and scrollback, bounded display delivery, history deadlines with explicit cancellation/retry, and authenticated launcher status. Each round records scoped host and native evidence while preserving the single address space and BOOT-only authority.
+
+The [five-round storage follow-up](docs/handoff/SPINDLE_STORAGE_ROUNDS_2026_10_29.md) replaces Spindle's inline disk waits with correlated jobs, coherent listings, bounded binary diagnostics and explicit cancellation/recovery. The [next-session alpha plan](docs/handoff/ALPHA_DAILY_DRIVER_NEXT_SESSION_2026_10_29.md) prioritizes responsive Quil documents, durable two-object recovery and a sustained native desktop session, with separate lifecycle, networking and hardware release gates.
 
 What works today:
 
@@ -69,7 +79,7 @@ On Apple Silicon macOS, `bash boot_mac.sh` uses TCG emulation and the local ISO.
 
 ## Build from source
 
-Requirements: a Linux build environment (CI uses Ubuntu), Rust nightly with the `x86_64-unknown-none` target, `ripgrep`, `sha256sum`, and QEMU for running. The build is intentionally sealed to one entrypoint:
+Requirements: a Linux build environment (CI uses Ubuntu), Rust nightly with the `x86_64-unknown-none` target, Python 3.9 or newer, `ripgrep`, `sha256sum`, and QEMU for running. The build is intentionally sealed to one entrypoint:
 
 ```bash
 make full
@@ -114,6 +124,8 @@ ARCHITECTURE.md  canonical system invariants
 - [Website source](website/index.html) — live at https://sexos.dev
 - [YouTube playlist](https://youtube.com/playlist?list=PLtv6PF9o7eC59PC5cn49Wia-8ogZ6AxUn)
 - [Handoff notes](docs/handoff/) — implementation history and open lanes
+- [Reliability roadmap and execution report](docs/handoff/SEXOS_RELIABILITY_ROADMAP_2026_10_28.md) — current evidence, fixes, and next steps
+- [Architectural truth report](docs/handoff/SEXOS_ARCHITECTURAL_TRUTH_2026_10_28.md) and [executable obligations](spec/README.md) — source-bound invariants, adversarial regressions, and open proof gaps
 
 ## License
 

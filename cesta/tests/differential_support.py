@@ -2,10 +2,39 @@
 
 import re
 import subprocess
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor,ThreadPoolExecutor
 
 
 def run(args, env=None, **kwargs):
     return subprocess.run([str(a) for a in args], check=True, capture_output=True, env=env, **kwargs)
+
+
+def parallel_map(function, items, jobs=4):
+    """Run independent subprocess-oriented cases concurrently, preserving order."""
+    items = list(items)
+    if jobs <= 1 or len(items) <= 1:
+        return [function(item) for item in items]
+    with ThreadPoolExecutor(max_workers=min(jobs,len(items))) as pool:
+        return list(pool.map(function,items))
+
+
+def _run_command(spec):
+    args,env=spec
+    command=[str(a)for a in args]
+    result=subprocess.run(command,capture_output=True,env=env)
+    if result.returncode:
+        raise RuntimeError((command,result.returncode,result.stdout[-1000:],result.stderr[-3000:]))
+    return result.stdout
+
+
+def run_commands(commands,jobs=4):
+    """Run independent commands in a bounded process pool, preserving order."""
+    commands=[(args,env)for args,env in commands]
+    if jobs<=1 or len(commands)<=1:return [_run_command(command)for command in commands]
+    with ProcessPoolExecutor(max_workers=min(jobs,len(commands)),
+                             mp_context=multiprocessing.get_context("spawn"))as pool:
+        return list(pool.map(_run_command,commands))
 
 
 def pinned_function(source, signature, syscalls):

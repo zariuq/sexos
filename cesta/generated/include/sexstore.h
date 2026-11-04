@@ -69,9 +69,9 @@ DurablePage sexstore_durable_build_page(const KvTable *table, uint32_t seq);
 
 bool sexstore_durable_init(Durable *durable, const KvTable *table);
 
-/*Load the page with the higher sequence (page A on a tie) into the table; invalid records leave their slots alone.*/
+/*Recover the current page by reserved-zero cyclic serial order (page A on a tie). Valid pages must be within one half-cycle; invalid records leave their slots alone.*/
 
-DurableLoad sexstore_durable_load_into_ram(Durable *durable, KvTable *table);
+DurableLoad sexstore_durable_load_into_ram(const Durable *durable, KvTable *table);
 
 /*Write a snapshot to the inactive page and verify it by reading back.*/
 

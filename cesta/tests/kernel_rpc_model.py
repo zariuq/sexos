@@ -98,11 +98,11 @@ def main():
         records[str(capacity)]={'operations':len(events),'expected_sha256':hashlib.sha256(expected).hexdigest()}
         print('RPC kernel/model:',len(events),'operations, capacity',capacity,'all compiler modes agree')
     mutations=[
-        ('kernel_rpc','request->value = f->rdx;','request->value = f->rdx + 1;'),
+        ('kernel_rpc','c->request->value = c->frame->rdx;','c->request->value = c->frame->rdx + 1;'),
         ('kernel_rpc','caller->rpc_next = id;','caller->rpc_next = id + 1;'),
-        ('kernel_rpc','request->peer != peer->id','false'),
-        ('kernel_rpc','request->state != RPC_HEARD','false'),
-        ('kernel_rpc','request->state != RPC_READY','false'),
+        ('kernel_rpc','c->request->peer == c->peer->id','true'),
+        ('kernel_rpc','c->request->state == RPC_HEARD','true'),
+        ('kernel_rpc','c->request->state == RPC_READY','true'),
         ('kernel_rpc','if (opcode == 0) return;','if (false) return;'),
         ('kernel_rpc','.state = RPC_FREE','.state = RPC_HEARD'),
         ('kernel_syscalls','if (kernel_rpc_claim(d, out)) return true;','if (true) return true;'),

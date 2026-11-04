@@ -1,0 +1,30 @@
+(cesta native-c/1 compact-c/2
+ (unit (native "#ifndef KALEIDOSCOPE_QOI_H
+#define KALEIDOSCOPE_QOI_H
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#define KALEIDOSCOPE_QOI_MAX_DIMENSION ((size_t)48)
+#define KALEIDOSCOPE_QOI_MAX_PIXELS ((size_t)2304)
+#define KALEIDOSCOPE_QOI_MAX_INPUT ((size_t)12288)
+#define KALEIDOSCOPE_QOI_PIXELS_PER_TURN ((size_t)128)
+enum {KALEIDOSCOPE_QOI_PENDING=0,KALEIDOSCOPE_QOI_READY=1};
+enum {KALEIDOSCOPE_QOI_OK=0,KALEIDOSCOPE_QOI_INPUT_TOO_LARGE=1,KALEIDOSCOPE_QOI_TRUNCATED=2,
+ KALEIDOSCOPE_QOI_INVALID_HEADER=3,KALEIDOSCOPE_QOI_INPUT_CHANGED=4,
+ KALEIDOSCOPE_QOI_RUN_OVERFLOW=5,KALEIDOSCOPE_QOI_CONSECUTIVE_INDEX=6,
+ KALEIDOSCOPE_QOI_INVALID_END=7,KALEIDOSCOPE_QOI_TRAILING_DATA=8,
+ KALEIDOSCOPE_QOI_CANCELLED=9};
+typedef struct KaleidoscopeQoiSource {uint8_t bytes[KALEIDOSCOPE_QOI_MAX_INPUT];size_t len;} KaleidoscopeQoiSource;
+typedef struct KaleidoscopeQoiPixels {uint32_t values[KALEIDOSCOPE_QOI_MAX_PIXELS];} KaleidoscopeQoiPixels;
+typedef struct KaleidoscopeQoiDecoder {
+ uint8_t header[14];size_t input_len,width,height,cursor,produced;
+ uint32_t pixel,index[64];size_t run_remaining;uint8_t last_index,error;
+ bool last_index_present,ready,started;
+} KaleidoscopeQoiDecoder;
+typedef struct KaleidoscopeQoiStep {uint8_t error,state;} KaleidoscopeQoiStep;
+uint8_t kaleidoscope_qoi_init(const KaleidoscopeQoiSource *source,KaleidoscopeQoiDecoder *decoder);
+KaleidoscopeQoiStep kaleidoscope_qoi_advance(KaleidoscopeQoiDecoder *decoder,
+ const KaleidoscopeQoiSource *source,KaleidoscopeQoiPixels *pixels);
+void kaleidoscope_qoi_cancel(KaleidoscopeQoiDecoder *decoder,KaleidoscopeQoiPixels *pixels);
+#endif
+")))

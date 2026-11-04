@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Actual text/input/Close through all three finite Quil incarnations."""
+import argparse
+import hashlib
+import json
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import time
+from desktop_close_gate import QMP
+from check_desktop_pixels import font_from_source
+from check_quil_ui_pixels import verify
+
+
+def main():
+    p=argparse.ArgumentParser();p.add_argument('--iso',type=pathlib.Path,required=True);p.add_argument('--source-disk',type=pathlib.Path,required=True);p.add_argument('--out',type=pathlib.Path,required=True);p.add_argument('--appearance',action='store_true');p.add_argument('--focus-feedback',action='store_true');p.add_argument('--resolution',choices=['1280x800','1024x768'],default='1280x800');a=p.parse_args()
+    iso=a.iso.resolve(strict=True);src=a.source_disk.resolve(strict=True);out=a.out.resolve();out.mkdir(parents=True,exist_ok=True)
+    if any(out.iterdir()):raise RuntimeError('fresh output required')
+    disk=out/'nvme.img';shutil.copyfile(src,disk);log=out/'serial.log';sock=pathlib.Path('/tmp')/f'sex-quil-chain-{os.getpid()}.sock'
+    cmd=['qemu-system-x86_64','-M','q35','-cpu','max,+pku','-m','512M','-vga','none','-device','VGA,xres='+a.resolution.split('x')[0]+',yres='+a.resolution.split('x')[1],'-device','nec-usb-xhci,id=xhci','-device','usb-tablet,bus=xhci.0','-cdrom',str(iso),'-drive',f'if=none,id=nvm,file={disk},format=raw','-device','nvme,serial=sexos01,drive=nvm','-serial',f'file:{log}','-qmp',f'unix:{sock},server=on,wait=off','-display','none','-no-reboot','-no-shutdown']
+    digest=hashlib.sha256(iso.read_bytes()).hexdigest()
+    (out/'manifest.json').write_text(json.dumps(dict(iso_sha256=digest,input_disk_sha256=hashlib.sha256(src.read_bytes()).hexdigest(),command=cmd),indent=2)+'\n')
+    proc=subprocess.Popen(cmd,stdout=(out/'qemu.log').open('w'),stderr=subprocess.STDOUT)
+    def text():return log.read_text(errors='replace')if log.exists()else''
+    def wait(pattern,start=0,timeout=180):
+        end=time.monotonic()+timeout
+        while time.monotonic()<end:
+            if proc.poll()is not None:raise RuntimeError('guest exited')
+            value=text();m=re.search(pattern,value[start:])
+            if m:return m
+            if re.search(r'KERNEL PANIC|KERNEL PAGE FAULT|DOUBLE FAULT|GP FAULT|panicked at',value):raise RuntimeError('guest fault')
+            time.sleep(.05)
+        raise RuntimeError('timeout: '+pattern)
+    try:
+        end=time.monotonic()+15
+        while not sock.exists():
+            if time.monotonic()>end:raise RuntimeError('QMP unavailable')
+            time.sleep(.05)
+        q=QMP(sock)
+        def key(code,pattern):start=len(text());q.key(code);return wait(pattern,start)
+        if a.resolution=='1024x768':
+            wait(r'SexOS compact 1024x768',timeout=10);q.key('down');q.key('ret')
+        wait(r'\[shell.app.registered.reply\] target=15 .*committed=1')
+        # Keep the actual software cursor away from inspected title/text pixels.
+        pointer_start=len(text())
+        q.cmd('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':30000}},{'type':'abs','data':{'axis':'y','value':30000}}]})
+        wait(r'\[shell.abs.normalize\] raw_x=30000 raw_y=30000 .*reason=(?:ok|duplicate_sample)',pointer_start)
+        from desktop_focus import focus_surface
+        def focus(sid):return focus_surface(sid,text,key)
+        font=font_from_source((pathlib.Path(__file__).resolve().parents[1]/'servers/sexdisplay/src/main.rs').read_text())
+        proof=[];appearance=[];focus_feedback=[]
+        def palette_check(expected,name,start):
+            wait(r'\[launcher.text.row\] index=1 .*status='+re.escape(expected),start)
+            from check_launcher_pixels import verify as launcher_pixels
+            end=time.monotonic()+90;errors=['not painted']
+            while time.monotonic()<end:
+                q.cmd('screendump',{'filename':str(out/(name+'.ppm'))})
+                errors=launcher_pixels(text(),(out/(name+'.ppm')).read_bytes(),font,resolution=tuple(map(int,a.resolution.split('x'))))
+                if not errors:break
+                time.sleep(.15)
+            if errors:raise RuntimeError('reserve label glyphs: '+str(errors))
+        for target,sid,letter in [(9,201,'a'),(16,301,'b'),(18,307,'c')]:
+            if target!=9:
+                offset=len(text());key('grave_accent',r'\[shell.palette.item\] idx=0')
+                key('j',r'\[shell.palette.select\] old=0 new=1')
+                if a.appearance:palette_check('REOPEN / 2 RESERVED LEFT'if target==16 else'REOPEN / LAST RESERVED',f'reserve-ready-{target}',offset)
+                key('ret',rf'\[shell.app.relaunch\] predecessor={9 if target==16 else 16} successor={target} ')
+                wait(rf'\[app.surface.presented\] target={target} surface={sid} .*ok=1',offset)
+            if a.focus_feedback:
+                focus(200)
+                feedback_offset=len(text());feedback_start=time.monotonic();focus(sid)
+                drawn=wait(rf'\[display.focus.drawn\] focus={sid} ordinal=(\d+) kind=(full|strip) tick=(\d+) pixels=unconfirmed',feedback_offset)
+                record=re.search(r'\[display.repaint\] ordinal='+drawn[1]+r' ([^\r\n]+)',text()[feedback_offset:])
+                if not record:raise RuntimeError('focus redraw observation missing')
+                seen=re.search(r'seen=(\d+)',record[1])
+                if not seen or not int(seen[1])&4:raise RuntimeError('focus feedback inherited a later clock-only redraw')
+                from check_disk_persistence import ppm_rgb
+                q.cmd('screendump',{'filename':str(out/f'focus-{target}.ppm')})
+                width,height,pixels=ppm_rgb((out/f'focus-{target}.ppm').read_bytes(),min_width=1,min_height=1)
+                if (width,height)!=tuple(map(int,a.resolution.split('x'))):raise RuntimeError('focus framebuffer resolution differs')
+                if any(pixels[(yy*width+xx)*3:(yy*width+xx)*3+3]!=b'\xcb\xa6\xf7'for yy in range(22,26)for xx in range(155,159)):
+                    raise RuntimeError('focus dot absent immediately after actual redraw')
+                focus_feedback.append(dict(target=target,ordinal=int(drawn[1]),kind=drawn[2],seen=int(seen[1]),seconds=time.monotonic()-feedback_start,pixel_errors=[]))
+            else:focus(sid)
+            offset=len(text());q.cmd('send-key',{'keys':[{'type':'qcode','data':'ctrl'},{'type':'qcode','data':'n'}],'hold-time':80})
+            wait(r'\[quil.new.ok\] bytes=0',offset)
+            key(letter,r'\[quil.document.edit\]')
+            errors=['not painted'];end=time.monotonic()+90
+            while time.monotonic()<end:
+                q.cmd('screendump',{'filename':str(out/f'quil-{target}.ppm')})
+                errors=verify(text(),(out/f'quil-{target}.ppm').read_bytes(),font,letter+'#',target=target,resolution=tuple(map(int,a.resolution.split('x'))))
+                if a.appearance:
+                    from check_native_identity_pixels import verify as identity_pixels
+                    errors+=identity_pixels(text(),(out/f'quil-{target}.ppm').read_bytes(),font,target=target,resolution=tuple(map(int,a.resolution.split('x'))))
+                if not errors:break
+                time.sleep(.15)
+            if errors:raise RuntimeError(f'Quil {target} glyphs: '+str(errors))
+            if a.appearance:
+                offset=len(text());key('grave_accent',r'\[shell.palette.item\] idx=0')
+                expected={9:'RUNNING / 2 REOPENS LEFT',16:'RUNNING / 1 REOPEN LEFT',18:'RUNNING / LAST INSTANCE'}[target]
+                palette_check(expected,f'reserve-active-{target}',offset)
+                key('esc',r'\[command_palette.close\]');focus(sid)
+                appearance.append(dict(target=target,reserve_label=expected,canvas='0x0c1420',title='Quil',indicator='0xcba6f7',pixel_errors=[]))
+            offset=len(text());key('f11',rf'\[shell.app.close.request\] target={target} ')
+            wait(rf'\[sext.app.pool.ready\] target={target} .*ok=1',offset)
+            roles={int(v)for v in re.findall(rf'\[app.service.ack\] target={target} .*role=(\d+) ',text()[offset:])}
+            if roles!={1,2,4,8,16}:raise RuntimeError('missing Quil cleanup role')
+            proof.append(dict(target=target,surface=sid,pixel_errors=errors,roles=sorted(roles),terminal=True))
+        key('grave_accent',r'\[shell.palette.item\] idx=0')
+        wait(r'\[shell.palette.item\] idx=1 .*status=CLOSED / RESERVE EXHAUSTED')
+        result=dict(ok=True,iso_sha256=digest,resolution=a.resolution,incarnations=proof,reserve_exhausted=True,appearance=appearance,focus_feedback=focus_feedback,
+                    scope='actual new-note input, exact glyphs, five-role cleanup and zero/reuse through the three finite BOOT subjects')
+        (out/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
+    except Exception as e:
+        (out/'result.json').write_text(json.dumps(dict(ok=False,error=str(e)))+'\n');raise
+    finally:
+        if proc.poll()is None:
+            proc.terminate()
+            try:proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:proc.kill();proc.wait()
+        sock.unlink(missing_ok=True)
+if __name__=='__main__':main()

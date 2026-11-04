@@ -1,0 +1,69 @@
+PRIVATE PAYLOAD RETIREMENT AND WORKSPACE CUSTODY
+
+BOOT captures each private image and prepares a separate contiguous alias for
+Sext. Alias leaves are created and cleared before any user entry. They remain
+absent while the app is live. Addresses,tables and frame choices are fixed at
+BOOT; runtime retirement neither allocates nor creates a capability.
+
+The current kernel implements the existing lifecycle protocol:
+
+1. A terminal main task retains its kernel metadata and stack. Routing rejects
+   calls/replies to the exited incarnation. No queued or attached task may be
+   retired. The current implementation has one main task and no signal task.
+2. Kernel notices wake the five cleanup services and Sext. Accepted notices
+   remain hints: each service must query its actually held lifecycle grant and
+   supply its exact task-bound ACK. Both full and accepted queues back off
+   sixteen ticks; an unacknowledged notice remains retryable.
+3. Retirement65 requires the actual pager's held RETIRE right, exact target/task,
+   all31 service ACK bits and completed demand-range cleanup. Failure clears
+   every result word. Replaying completed retirement returns the same receipt.
+4. The checked handover preflights both complete manifests. Private and alias
+   addresses/leaves must be disjoint; physical frames agree in order; aliases
+   are writable,NX and absent. No mutation occurs on late validation failure.
+   Every old leaf is cleared and invalidated before the first alias is published.
+5. The terminal inbox,reply slot,reply rights and owned RPC slots are drained;
+   its sealed held-capability table is revoked. Kernel metadata,stacks,identity
+   reservations and monotone request issuers remain allocated. The pager then
+   receives the alias/length/task receipt and owns zeroing/workspace reuse.
+6. Activation66 requires exact retired predecessor custody and its ACK quorum.
+   Old private leaves must actually be absent. The precreated successor's leaves
+   are fully restored and invalidated before ready-queue publication. Repeated
+   activation returns the spent receipt; it cannot rerun a retired incarnation.
+
+The alias timing deliberately strengthens the upstream implementation,which
+maps Sext's RW alias during BOOT. The Cesta profile exposes it only after the
+authorized retirement transition. The return interface and source task/grant
+protocol are preserved. This difference has its own independent handover oracle
+and native page-table tests rather than a Rust-difference allow-list.
+
+The native adapters require serialized BSP execution with relevant user tasks
+stopped and IF masked. The current profile enrolls every Limine AP before user
+entry and parks it permanently under the epoch certificate. Trusted leaf providers cannot mutate manifests
+or fail mid-commit and must complete invalidation. These are explicit contracts,
+separate from ownership-plan admission. AP scheduling, SMP shootdown and whole-machine isolation
+remain additional obligations. Metadata retirement is not rollback of IPC or
+hardware effects.
+
+Checks
+------
+
+tests/app_handover.py compares whole-manifest decisions,all final leaves and
+ordered writes/flushes with an independent model. It includes duplicate and
+cross-alias metadata,late failures,A/D bits,full payload bounds and notification
+backoff across unsigned wrap. GCC/Clang,sanitizers,semantic mutations and actual
+permission-plan admission are separate gates.
+
+tests/kernel_private.py runs the production allocator,loader,page walks,grant
+lookup,hints,ACKs,revocation and retirement on RAM. It checks live/attached
+refusal,full-queue backoff,lost notices,the exact quorum,late alias corruption,
+idempotent receipts,actual holder-key views and subsequent activation.
+
+tests/retire_boot.py runs the normal kernel and real Cesta Sext with controlled
+service ACK probes. Every app payload executes and finishes;both eight-entry
+families activate all successors. It joins all85 ACKs,seventeen revoked/retired
+payloads,seventeen zeroed/reused pools and fourteen CPU launches. Debugger reads
+must find each old private address unmapped. This is mechanism qualification;
+GUI-service cleanup,disk recovery and complete current userland remain separate.
+
+tests/sext_boot.py --kernel additionally joins a candidate kernel with real
+reference userland and Cesta Sext for the existing paired GUI retirement gate.

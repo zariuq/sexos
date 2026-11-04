@@ -1,0 +1,38 @@
+(cesta native-c/1 compact-c/2
+  (unit (native "
+#ifndef SEXOS_SMP_PARK_H
+#define SEXOS_SMP_PARK_H
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+#define SMP_PARK_MAX_CORES 128u
+typedef enum {
+    SMP_PARK_OK,
+    SMP_PARK_INVALID,
+    SMP_PARK_DUPLICATE,
+    SMP_PARK_STALE,
+    SMP_PARK_NOT_READY,
+    SMP_PARK_EXHAUSTED
+} SmpParkStatus;
+typedef struct {
+    uint32_t lapic_id;
+    bool enrolled,bsp,arrived,parked;
+} SmpParkCore;
+typedef struct {
+    SmpParkCore cores[SMP_PARK_MAX_CORES];
+    size_t cpu_count,enrolled_count,arrived_count;
+    uint32_t bsp_lapic_id;
+    uint64_t generation;
+    bool sealed;
+} SmpParkState;
+SmpParkStatus smp_park_init(SmpParkState *state,size_t cpu_count,
+    uint32_t bsp_lapic_id,uint64_t generation);
+SmpParkStatus smp_park_enroll(SmpParkState *state,size_t slot,
+    uint32_t lapic_id,bool bsp);
+SmpParkStatus smp_park_arrive(SmpParkState *state,size_t slot,uint32_t lapic_id);
+SmpParkStatus smp_park_seal(SmpParkState *state);
+bool smp_park_all_quiescent(const SmpParkState *state);
+bool smp_park_can_commit(const SmpParkState *state,uint64_t expected);
+SmpParkStatus smp_park_advance(SmpParkState *state,uint64_t expected,uint64_t next);
+#endif
+")))

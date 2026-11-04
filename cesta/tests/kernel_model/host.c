@@ -11,6 +11,18 @@
 #include "kernel_domains.c"
 #include "kernel_syscalls.c"
 #include "kernel_rpc.c"
+#if SEXOS_KERNEL_CURRENT_PDX
+#include "kernel_task_wait.c"
+#include "kernel_sources.c"
+#include "kernel_pci.c"
+#include "kernel_history.c"
+void kernel_app_activation(Domain *d,TrapFrame *f){(void)d;(void)f;assert(!"activation is outside this transport/region harness");}
+void kernel_app_query(Domain *d,TrapFrame *f,uint64_t n){(void)d;(void)f;(void)n;assert(!"lifecycle is outside this transport/region harness");}
+void kernel_app_retire(Domain *d,TrapFrame *f){(void)d;(void)f;assert(!"retirement is outside this transport/region harness");}
+void kernel_app_poll(void){assert(kernel.app_count==0);}
+void kernel_paging_syscall(Domain *d,TrapFrame *f,uint64_t n){(void)d;(void)f;(void)n;assert(!"paging is outside this transport/region harness");}
+_Noreturn void kernel_idle(void){abort();}
+#endif
 
 enum { HOST_FRAMES = KERNEL_BLOCKS, HOST_MAPPINGS = 8192, CALL_TYPE = 0x600 };
 static uint64_t fresh, virtual_next = UINT64_C(0x400000000000);
@@ -72,7 +84,8 @@ static void initialize(void)
     for (size_t i = 0; i < sizeof genesis_domains / sizeof genesis_domains[0]; ++i) {
         const GenesisDomain *g = &genesis_domains[i];
         uint32_t id = (uint32_t)i + 1;
-        Domain *d = &kernel.domains[id];
+        Domain *d = domain_boot_record(id);
+        assert(d);
         d->id = id;
         d->live = true;
         d->key = g->key;
@@ -82,6 +95,7 @@ static void initialize(void)
         assert(cap_set(d, SELF_RING_SLOT, domain_cap(id)));
     }
     apply_genesis_grants();
+    kernel_seal_genesis();
 }
 
 /* All declared domains and slots, every ring entry, every reply right, every

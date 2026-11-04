@@ -1,0 +1,93 @@
+CURRENT SHELL SURFACES
+
+The complete original 98-function Surfaces partition is translated, with ten
+current activation, Browser and status helpers. Proofs-A/B, Core, current service
+reconciliation and native joins remain separate work.
+No joined Cesta shell or new boot result is established by this archive.
+
+ShellSurfacesContext contains the existing Chrome context by value and borrows
+Surfaces state. Native ownership plans carry the nested reference permissions,
+including frame, model, input, custody and proof state. Real checked Chrome,
+custody and viewport functions supply their component behavior. Native service,
+render and focus-intent adapters remain explicit obligations.
+
+Frame creation shares implementation across the fixed app families while
+preserving each app's tab notification, geometry, diagnostics and custody fence.
+Dead or closing held Quil/Spindle subjects cannot recreate their old frame.
+Activation selection traverses the immutable BOOT rows in order. A failed query
+never skips a reservation. Returned domain/task/surface/state values must match
+the held custody entry, and committed activation is queried again to compare
+its receipt. Descriptive catalog numbers do not grant kernel authority.
+
+The syscall-66 adapter preserves the five-register response. It is a native ABI
+boundary, compiled under GCC and Clang. Hosted tests replace only the syscall
+body of the actual Rust activation wrapper, retaining its validation; they never
+execute this OS syscall on the host. Device/image qualification remains separate.
+
+Registration admits lifecycle metadata before publishing the local frame and
+bounds. The source published a frame even if its lifecycle table was full. The
+independent full-table control reproduces that source result and requires Cesta
+to reject without window effects or metadata changes. Successful source traces
+retain their original observable order. JointSlotAdmission.lean proves general
+length, capacity-consumption and rejection-preservation laws for two slot tables;
+this model is not a whole-C refinement proof.
+
+The shared palette height follows the current 280-pixel declaration. The runtime
+fixture compares the numeric constants selected into its real Rust reference.
+The original Models regression remains a separate source-cohort test; current
+Models/Input reconciliation and complete native joins are still required.
+
+Spindle includes its real bounded command dispatcher, result tables, line/word
+editing, undo, history navigation, autosuggestion, session save/load/switch,
+command-line display and history/command search overlay. These call the real
+checked renderer, not a renderer fixture. Display PDX delivery is still a native
+boundary. Tests compare ordered display calls and command/state observations
+with extracted current Rust bodies, including the original result methods.
+
+The C interfaces use explicit fixed records and bounded spans. No pointer into
+a local temporary is returned. Session copying writes each destination array
+in place rather than copying the entire mutable Surfaces state onto the stack.
+Read-only array parameters carry shared permissions through the Cesta checker.
+Bounds guards reject malformed native lengths and counts before indexed access.
+
+Pane saving corrects an independently reproduced source error: the source
+comment promises the newest 64 scrollback rows but selects the oldest part of
+the retained 1024-row ring. The corrected start subtracts the number being kept,
+not the larger source count. Exact row-number controls include 65 rows and ring
+wraps. BoundedHistoryTransfer proves suffix length, staged transfer and latest
+slot laws, reusing SuffixViewCopy. These are abstract history laws, not C
+refinement. Other source behavior, including short output overwriting only its
+written prefix, remains visible in the differential state controls.
+
+Long numeric byte-slice diagnostics use a fixed 1536-byte record and the actual
+native length-validating writer. The hosted adapter tests never execute the
+activation syscall. A long diagnostic may be split by the kernel's serial line
+buffer; this interface does not promise whole-line atomicity.
+
+Bell and the command palette use their real renderers and selection/execution
+paths. Browser is the eleventh command, selected by the immutable command table;
+labels and reserve hints remain descriptive, never activation authority. Bounded
+owned row labels prevent references into temporary row storage from escaping.
+The actual current Rust launcher text builder supplies the reference behavior.
+
+Palette frame creation admits lifecycle metadata before publishing a frame.
+Opening fails closed if either finite table has no capacity. The source omitted
+palette metadata both from boot and from its frame constructor, so minimization
+could proceed without a lifecycle record. Its original metadata budget also
+omitted the palette: 17 boot records plus 26 later native records exhaust 43
+slots. The Cesta table declares one lazy shell descriptor and derives 44 slots;
+this is metadata capacity, not an additional BOOT grant. Independent controls
+retain every native record and then the palette record, and test full-capacity
+rejection. Observations compare every occupied lifecycle row; spare empty
+padding and the explicit capacity difference are checked separately.
+
+The shared shell_text_delivery component retains one immutable active batch and
+one replaceable latest batch. Full admission preserves the exact active request.
+An atomic Commit waits for a matching display-domain/surface/sequence Applied
+receipt, consumed once. Empty atomic batches still require Begin and Commit;
+legacy empty batches complete only after their Clear admission. Sequence
+exhaustion refuses queueing without changing either batch. Native volatile
+byte/selection erasure and the fixed-BOOT display adapter have hosted controls.
+An Applied receipt attests text state, not rendered pixels or kernel authority.
+Ownership plans check the actual component bodies; wire behavior is compared
+with the current Rust implementation. No whole-C refinement is claimed.

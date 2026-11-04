@@ -1,0 +1,86 @@
+Shell diagnostic helpers and explicit Input bindings
+===================================================
+
+silk_shell_diagnostics_a.source.json pins the current Rust source and each
+translated body. The first 22 of the original partition's 100 entries are
+implemented: keyboard filters, diagnostic coverage markers, silkbar updates,
+Bell notifications, legacy text chunking and the 96-byte shell text sink.
+Another 51 current diagnostic drivers are implemented in silk_shell_proofs_a,
+with their actual global root bindings. Five foundational route/status drivers are implemented
+in silk_shell_proofs_a_routes through an explicit Input context and actual
+Chrome, Surfaces, Bell and PDX adapters. They cover Linen keyboard routing,
+physical Quil focus, Bell app/workflow events and the window-workflow audit.
+Three stateful Bell drivers additionally reuse a checked scoped Bell Models
+ring and the existing Surfaces selection/detail/lane APIs. Six Atlas and
+SilkBar status drivers reuse the checked Atlas, Surfaces and diagnostic
+adapters; the command count is inferred from the command table's declared C
+extent rather than repeated by these drivers. Six bounded interaction drivers
+exercise frame policy, focus and drag rejection, synthetic movement and Quil
+typing through checked Chrome/Input routes. Three Linen/Collar drivers retain
+the local, nonblocking service boundaries. This brings the original partition
+to 96 of 100 entries; four staged frame/lifecycle fixture drivers remain. The separate Proofs-B and Core partitions
+also remain work.
+
+Each new driver borrows the state that actually owns its completion flag. The
+Atlas scene-stub marker therefore borrows Atlas state, rather than a duplicate
+flag in the Proofs-A state. A caller can use a separate state instance without
+changing the canonical root's flags.
+
+Static text is stored once at its exact byte length. One checked helper per
+distinct length borrows that complete array and packs the original register
+chunks. There is no padded text copy. The loops retain their explicit bounds;
+a widened caller footprint and a write through the read-only array are refused.
+General native dynamically sized span contracts remain separate language work.
+
+The driver gate compares actual current Rust bodies, text bytes, ordered calls
+and state changes under disabled, enabled and isolated build flags. It keeps
+the previously qualified admission correction to shell_draw_text: failed chunks
+make its returned success observation false while preserving the attempted
+chunk sequence. Independent controls check this observation from transport
+results. One-shot and byte-packing mutations are tested separately.
+
+Printed diagnostic claims remain source output, not independent evidence of
+networking, pixels or lifecycle behavior. For example, the static source-3
+browser scenario sends text; it does not perform an HTTP fetch. Actual service
+and boot gates must establish those behaviors separately.
+
+The helpers take explicit diagnostic state or a scoped ShellTextSinkContext.
+The text sink borrows diagnostic state for writing and Chrome state for reading.
+silk_shell_input_diagnostics.cesta replaces thirteen legacy global-state peer
+bindings with checked calls through the Input context. The remaining native
+Input bindings still require joining to their real subsystem implementations.
+
+Admission and completion
+------------------------
+
+Register-call status is preserved. A rejected silkbar or display chunk send
+does not report successful admission. Clearing an empty sink succeeds only
+when its clear operation is admitted. A nonempty redraw also requires the
+clear operation and every attempted chunk to be admitted. The input marker is
+emitted only after such a successful redraw. Malformed sink lengths fail
+before accessing bytes or sending display work.
+
+These are deliberate improvements over Rust helpers that ignore send failure.
+They establish admission, not display application or visible rendering. This
+legacy path is not an atomic batch; shell_text_delivery provides the separate
+Begin/Chunks/Commit/Applied protocol. Diagnostic marker names containing
+"proof" are inherited runtime observations, not mathematical proofs. In
+particular, input-negative completion currently depends on three recorded
+coverage flags even though its inherited text names additional conditions.
+
+Qualification
+-------------
+
+make check-silk-shell-diagnostics-a checks pinned successful-send traces,
+independent failure controls and deliberately broken implementations under
+GCC and Clang, optimization and sanitizers. The joined variant exercises the
+thirteen actual Input diagnostic bridges, including separate state contexts.
+make check-silk-shell-diagnostics-a-ownership checks source refusals and admits
+the actual plans in Lean. Native printing and register-call obligations remain
+explicit; admission is not a whole-C refinement proof.
+
+Input's differential now uses the current source cohort, including display
+retry state, dynamic desktop dimensions, successor-app focus and custody-aware
+surface queries. The previous historical checkpoint remains preserved.
+Current Models, remaining diagnostics/Core and actual subsystem joins still
+prevent a current whole-shell parity or boot claim.

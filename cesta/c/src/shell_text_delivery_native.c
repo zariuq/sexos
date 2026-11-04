@@ -1,0 +1,9 @@
+#include "shell_text_delivery.h"
+void shell_text_native_erase(ShellTextBatch *batch)
+{
+ for(size_t i=0;i<sizeof(batch->text.bytes);++i){volatile uint8_t *byte=&batch->text.bytes[i];*byte=0;}
+ volatile uint16_t *start=&batch->selection_start,*end=&batch->selection_end;volatile bool *sent=&batch->selection_sent;
+ *start=0;*end=0;*sent=false;
+}
+
+

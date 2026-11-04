@@ -1,0 +1,7 @@
+#ifndef SEXOS_NETWORK_DNS_JOB_ENGINE_H
+#define SEXOS_NETWORK_DNS_JOB_ENGINE_H
+#include "network_dns_job_machine.h"
+#include "network_engine_transport.h"
+typedef struct NetworkDnsJobEngineContext {NetworkEngineTransport *engine;} NetworkDnsJobEngineContext;
+NetworkDnsJobWire network_dns_job_engine_wire(NetworkDnsJobEngineContext *context);
+#endif

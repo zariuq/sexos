@@ -1,0 +1,16 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (include "network_job_engine.h")
+  (ownership (check-all))
+  (native "
+NetworkJobLink network_job_engine_link_policy(bool pending,bool stopped,NetworkTcpClientState state,bool peer_fin)
+{
+ if(stopped)return NETWORK_JOB_LINK_CLOSED;
+ if(pending||state==NETWORK_TCP_SYN_SENT)return NETWORK_JOB_LINK_OPENING;
+ if(state==NETWORK_TCP_ESTABLISHED||state==NETWORK_TCP_FIN_WAIT1||state==NETWORK_TCP_FIN_WAIT2)return NETWORK_JOB_LINK_OPEN;
+ if(peer_fin&&(state==NETWORK_TCP_CLOSED||state==NETWORK_TCP_CLOSE_WAIT||state==NETWORK_TCP_CLOSING||state==NETWORK_TCP_LAST_ACK||state==NETWORK_TCP_TIME_WAIT))return NETWORK_JOB_LINK_PEER_FIN;
+ return NETWORK_JOB_LINK_CLOSED;
+}
+uint32_t network_job_engine_error_policy(NetworkEngineError error)
+{if(error==NETWORK_ENGINE_OK)return 0;if(error==NETWORK_ENGINE_STOPPED)return NETWORK_JOB_OFFLINE;return NETWORK_JOB_IO;}
+")))

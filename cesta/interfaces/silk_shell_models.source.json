@@ -1,0 +1,355 @@
+{
+  "pin": "c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321",
+  "path": "servers/silk-shell/src/main.rs",
+  "source_sha256": "fb36d2e89eeca1f450b5f8b825bc31bda30c7d50c5aa04f4821b6d52edd8030a",
+  "functions": [
+    {
+      "name": "linen_object_table_init",
+      "sha256": "e379bb71c9eadd400838a8a99abbec01872fe7efae12e6f5112a49fa1b65091d"
+    },
+    {
+      "name": "linen_object_count",
+      "sha256": "7d125808b228ed1bd3faad29135e0e25e5f5b680114ea42fa706e3b838a98bb6"
+    },
+    {
+      "name": "linen_object_by_id",
+      "sha256": "e89e08bca789ea668e7f3d77347eca1601840d8054ba02cd6248dcfaf1cd4b57"
+    },
+    {
+      "name": "linen_object_kind_name",
+      "sha256": "4c263d6bb96fed708234b08b1852740297dc5754637d30b6e766102934e1d151"
+    },
+    {
+      "name": "linen_object_state_name",
+      "sha256": "6864c6f7fe6eea582cbca136cc5df1de09485f4ae0675e6f5a856dd185424cae"
+    },
+    {
+      "name": "linen_selected_object_id",
+      "sha256": "45f7007260d976562932bd4b8b5b1b3963e8c5d3ab2d2e0d653d4c062a9719ab"
+    },
+    {
+      "name": "linen_select_first_valid_object",
+      "sha256": "d2df46dfa22df77800d41f7b44074ce0d450fc0d1050978176c733ffea80df7f"
+    },
+    {
+      "name": "linen_select_next_object",
+      "sha256": "1cb97cb7807d96312439670b358e851762c43cd79c184786b6315c99904bf659"
+    },
+    {
+      "name": "linen_select_prev_object",
+      "sha256": "060e0c111aa156e41d2063f49eaf9782e8a01396216efd018108de67f0994a48"
+    },
+    {
+      "name": "linen_object_detail_open",
+      "sha256": "c4ab721515bd203aea8b31c0ff9cc934943f65c2e26824142f88cd599510ffcd"
+    },
+    {
+      "name": "linen_object_detail_close",
+      "sha256": "7bceec8e7ffb0c220c922e5ca59cb8921c8243fe316065694eabbe024643c0fe"
+    },
+    {
+      "name": "linen_selected_index",
+      "sha256": "b741bd625064274da0c955c09a2087008932373c2562a324b5422f3dc1f02038"
+    },
+    {
+      "name": "linen_kind_color",
+      "sha256": "4c707de2c06fe3571386447638e0561dd5eea4b09e078e6bb113a2df6489dfff"
+    },
+    {
+      "name": "linen_selected_object_accent",
+      "sha256": "003209ce350730d8af0ff6511497c7ebc652f9193dc05806b5375629e7951c9d"
+    },
+    {
+      "name": "linen_render_object_list",
+      "sha256": "8bf2923d0f0e327cb8726fa317dfdae81e9981d9d45b59d00c60edef3d414a96"
+    },
+    {
+      "name": "linen_render_static_ui",
+      "sha256": "dcde082b93cd891b985787bd963ee616357c55056bd5b3bc3bcf23059164cdd4"
+    },
+    {
+      "name": "linen_fetch_remote_snapshot",
+      "sha256": "3f3e55f02097d8d5f0c059e6dcdca4436929159d1cdfa9f07b91f8cab90f6162"
+    },
+    {
+      "name": "linen_paint_surface",
+      "sha256": "e16819fa3132c5b41bda5a7fb7c65e9abc464e78477125563fff8153030bbcaa"
+    },
+    {
+      "name": "linen_paint_surface_fast",
+      "sha256": "8c01b2365b62d0a9880fc5ac1b4b53603e343b7e7133dc537e5d06147240fdbd"
+    },
+    {
+      "name": "quil_buffer_table_init",
+      "sha256": "89e4fb50ed5bb651fd06147b4ac9c307b4b8394e1e3b53a400aeced08fbcc3e9"
+    },
+    {
+      "name": "quil_buffer_count",
+      "sha256": "1174b02cd25fa23800ddedbd1f1ed9ea8aa4c2b83a38f5895281f4dd3b221e22"
+    },
+    {
+      "name": "quil_buffer_by_id",
+      "sha256": "c1bf4f03acd99063ed75a2733e5dd3fab7c4f2166067dea30509ec843f03678d"
+    },
+    {
+      "name": "quil_buffer_kind_name",
+      "sha256": "bb50b094b9bb756e966b36db95808c3ccdb006f68985aa7e9bab1946d64e2c15"
+    },
+    {
+      "name": "quil_buffer_state_name",
+      "sha256": "47bf26c93911a0502959426eee1de98438a8c9ff684b3f669b2b93386aee351e"
+    },
+    {
+      "name": "quil_buffer_kind_color",
+      "sha256": "4b5ca0be5498b9a437063da7aeab3f8cae71139a9e70a1e7f0d47e8bb94b7d1c"
+    },
+    {
+      "name": "quil_render_buffer_list",
+      "sha256": "9b87b57df8e6a931e17393c4555549ef369a53b7bca7112695aa120c16ecc863"
+    },
+    {
+      "name": "linen_quil_seed_coherence_init",
+      "sha256": "7d1918698c2f106d037fe66d657a9163ed960282d6d0a35e83392cc1b8056517"
+    },
+    {
+      "name": "open_linen_object_in_quil",
+      "sha256": "3597fe44c33fd2c7fffa0146795df2857a39455dd5548947f6f83eebfac27d12"
+    },
+    {
+      "name": "collar_check_operation",
+      "sha256": "5a400377ed72582500dc3c414b9948188f6225bac1bb809131703d16b76b81d3"
+    },
+    {
+      "name": "record_collar_audit",
+      "sha256": "8aa0eb7372605bc560752e33dd2886466019036b11f24e6711a89274cd9170e1"
+    },
+    {
+      "name": "collar_init_grants",
+      "sha256": "1071c1013787c607a8b433697ee1548c35e43db01965070e01958316685bd568"
+    },
+    {
+      "name": "collar_grant_count",
+      "sha256": "2eda84f3fde2ee121e9c9fc378a111a207b26483d2f2df3c6f443ff93a560908"
+    },
+    {
+      "name": "collar_grant_at_visible_index",
+      "sha256": "30baaeb3f528b48359cd27099607a03ae5d4ca9348e7e27faf0048230bf9a90c"
+    },
+    {
+      "name": "collar_select_next_grant",
+      "sha256": "394a2a880941fb07bb1b7cac14a40cff39ccd247489ead5af80687c4064293ec"
+    },
+    {
+      "name": "collar_select_prev_grant",
+      "sha256": "9d1a0f89e607c4637fae3e74a12c9a324e9d27984d2c3560d8d6732c946f593f"
+    },
+    {
+      "name": "collar_render_grants_text",
+      "sha256": "9b169fd3c8cfbc4f9dda3f0dde0667ef8af9ccf1d6cca09a9e97102af364d144"
+    },
+    {
+      "name": "collar_emit_selected_grant_detail",
+      "sha256": "39bb2f10d014982a69af526422cf6bc6b2dcb1a2a0bf01be6fc545a1bf7d02d3"
+    },
+    {
+      "name": "collar_auto_grant_from_manifest",
+      "sha256": "77f748ad21e3e4a11e442dd0bdd5eba637bde54e91c4baaed52a8e36ddfa1dda"
+    },
+    {
+      "name": "collar_review_manifest",
+      "sha256": "31f08d5ceabd2d4f114f4e2e50016952b7e0e1f8a224fe101e2d907aabbfe901"
+    },
+    {
+      "name": "mesh_record_fact",
+      "sha256": "65a230adab44cec89ab1358d397883c63f68738d2fb2a4a0228431f468697039"
+    },
+    {
+      "name": "mesh_fact_count",
+      "sha256": "50ff217af03a751298c6f59dadef27d97989086b803dcbc9b50d9eda3d4bbfae"
+    },
+    {
+      "name": "mesh_for_each_fact",
+      "sha256": "a2036c25c4c6fbd07678e5684e47183385dc45d05c6c2b8e6616b7e36b5f8d55"
+    },
+    {
+      "name": "mesh_emit_linen_quil_links",
+      "sha256": "0221b375ea00672962a612f47bda061f7b875b1f5cae9336c568f8f7deb997f2"
+    },
+    {
+      "name": "mesh_fact_row_color",
+      "sha256": "633a24bcb35c946789333aa8d00b70204fbda3cb86746294265a7354021a941b"
+    },
+    {
+      "name": "mesh_is_visible_in_active_scene",
+      "sha256": "ed05a44227a562e3a8185db5fe7f1c069d470056d5c831eec6991d2375dcc0b4"
+    },
+    {
+      "name": "mesh_render_fact_list",
+      "sha256": "ceaa896c42cee40557bdfd0c88c1335f106010798adc2d66fe3a17d6c4a33e47"
+    },
+    {
+      "name": "mesh_render_pd_graph",
+      "sha256": "5cc75a482e86c84fd79307841e797a16a46adcedcd6f9ec58557614f0178d2d0"
+    },
+    {
+      "name": "mesh_visible_fact_count",
+      "sha256": "eaf80b002c5224dbbd2f81bb40f789f0aac3093159c66efde29547b0f48e4d85"
+    },
+    {
+      "name": "mesh_selected_row_highlight",
+      "sha256": "19e0ad2aeacac0bce52dcc3653cde090c4a956203f4f322ea98bc38f466c29e3"
+    },
+    {
+      "name": "mesh_select_next_row",
+      "sha256": "8fe423c58ac224d8f27b61cbfc0af3787af72f61850e1a251a68f9130ef81776"
+    },
+    {
+      "name": "mesh_select_prev_row",
+      "sha256": "b5859417f793db4082f4225f6b5d01d90e76f4272527485fc4b3f29f8c855c5c"
+    },
+    {
+      "name": "mesh_selected_fact_snapshot",
+      "sha256": "468ff344fe9d596e82408bb8bea35910d6085ff5d01b109ebaa6f3b2e1356a5e"
+    },
+    {
+      "name": "mesh_emit_selected_fact_detail_proof",
+      "sha256": "317db6451f76be1a1e30636e139f0ceccebf89b9ddd74859cd3fe01039643206"
+    },
+    {
+      "name": "mesh_focus_linen_at_selected_fact",
+      "sha256": "b9fa211eabea1fecb17576ecac0973a05ec1b2ca8d27729adc0e2b4bb91d90a8"
+    },
+    {
+      "name": "bell_record_event",
+      "sha256": "c882da5d40ff7c527eaa455d6d8712a98a23c7897f297d12137925398a74a00e"
+    },
+    {
+      "name": "bell_ring_count",
+      "sha256": "df7a06148cbeb7cc0d393fc9fb49b5013cd2571fb085c43fedc0807ec6807dd9"
+    },
+    {
+      "name": "bell_for_each_event",
+      "sha256": "dcba5b51716422a3124d12bc5a50a1d4afdc692f9bb48dec25a17a56d1ae2ccb"
+    },
+    {
+      "name": "bell_emit_object_link_event",
+      "sha256": "0a9dbb01aa4d52a3a369c28bde92cbfa2a08fdc6b224dbdf14e921eab340848f"
+    },
+    {
+      "name": "app_surface_registry_validate",
+      "sha256": "7d0f37ac5d9a3d6a0e30997b420c8b6f6482fd4bca4711505333843fb60082a2"
+    },
+    {
+      "name": "app_surface_spec",
+      "sha256": "f43bbd15455c082bf642a736d5d1e1aa69b4bc4c111b566d7e3abef68caae4f5"
+    },
+    {
+      "name": "app_surface_spec_by_frame",
+      "sha256": "c5de1ff69c1a1bad3b14b091476c453450041075e4315c778f9a6d850ee56141"
+    },
+    {
+      "name": "get_preset_name",
+      "sha256": "d59bb60a87f1e14557f4eb51468ff8f9c266411afbab40537cd9a8a3221317e3"
+    },
+    {
+      "name": "pack_u32_pair",
+      "sha256": "badf96a07f23d767d7411f5f45cac316be2adb40ad56184ee2410cbcbd777716"
+    },
+    {
+      "name": "push_token_preset",
+      "sha256": "35bd74a2607ff6637281382b568e9d99d443093804cb0c315c4b685a53a7fe64"
+    },
+    {
+      "name": "resolve_scene_render_tokens",
+      "sha256": "3a164ee1b2af66648ee8eea29984f5ac8034f90d7f16d3df58704d19a048cc5d"
+    },
+    {
+      "name": "send_scene_render_tokens",
+      "sha256": "dab2f8c511a50dd7311a61f2a08a7e42df7554a153a8fdd29330494e50d4f283"
+    },
+    {
+      "name": "pack_scene_settings_blob",
+      "sha256": "6a4a6b59a77ae5a38211934a633bb9bd5fef7054d99f96b13af913151e400cb2"
+    },
+    {
+      "name": "unpack_scene_settings_blob",
+      "sha256": "653d770f7a5d349f24ac698d68a7c5c3b628ced2b3377cec7418620541876dc5"
+    },
+    {
+      "name": "store_reply_is_status",
+      "sha256": "81269d5bfb999e0911a5e717ef97445f0fcbc9cbbfddead042a4e5cd841efd5d"
+    },
+    {
+      "name": "store_reply_status",
+      "sha256": "aac60f80f279a312471582e06313b310b44fa04a6ada45242a35e8ecc12754d2"
+    },
+    {
+      "name": "store_reply_is_value",
+      "sha256": "fff1c1b45f8c70bb6112deb55cbbcb7f0ed4a5f8da3a16bc9d016ce27a524f72"
+    },
+    {
+      "name": "handle_sexstore_get_reply",
+      "sha256": "86e5189e4646ada080c89f508164c8a8e5e26c6dd61ee34d86166749345b0c68"
+    },
+    {
+      "name": "boot_load_scene_settings",
+      "sha256": "7bf25c8bdd536926de1113b1ae17fb7c20b8dccd9f8d85fd09d8aa72ddb71ec5"
+    },
+    {
+      "name": "cycle_scene_render_token_preset",
+      "sha256": "7d9f8d8c880bee09ba2e08823dbc6f8ae32758e236d99f17cfef7d20c0af6cca"
+    },
+    {
+      "name": "cycle_prev_scene_render_token_preset",
+      "sha256": "f269f2644783fd34eca40440bc881e0288a45caca5796a6b4cde07a83ba475ef"
+    },
+    {
+      "name": "apply_custom_tint_bundle",
+      "sha256": "fce85db3cc0195b75682a38bdb5de5a055853aa93bb4046fcf63c536e6b5caf3"
+    },
+    {
+      "name": "cycle_custom_tint",
+      "sha256": "2648dad603fa467ead3e1ebaebedb7194132d04de5c53a7c1ccfaf2478a95c98"
+    },
+    {
+      "name": "handle_scene_settings_cmd",
+      "sha256": "521d885de13b3e40c4b240fe4b3c04f158eaa54a433422bc0ac0fc85594dc0c8"
+    },
+    {
+      "name": "shell_view_mode",
+      "sha256": "9119075af30cf27fea8a6ee4406573c1ce4ea1981db26f190cca6831c8443d57"
+    },
+    {
+      "name": "linen_queue_text",
+      "sha256": "3e8f1d53f16ffc6a571efffc7844f26c4a506f340265224f4bf17154200d28f6"
+    },
+    {
+      "name": "linen_queue_open",
+      "sha256": "4213f416dba28331453e399f2c246be4bdfbe9d9edd02c74c6705c4d965d4126"
+    },
+    {
+      "name": "linen_async_poll",
+      "sha256": "3b4fa2beea1c8228a93a70cae76ced0572bab70d86deddb03f10eaa43540673c"
+    },
+    {
+      "name": "linen_async_reply",
+      "sha256": "f3f34a915344996b556b820151585a889353716f988ead93d6f0f7410a9685da"
+    },
+    {
+      "name": "workspace_refresh_receive",
+      "sha256": "c775e90e3900a6a184105d12390006c521bafcf1c8a99c4301da67ae310790c8"
+    },
+    {
+      "name": "workspace_refresh_poll",
+      "sha256": "3170254c262b2926ceedc0faf2965fb7e292800105938f5fb8a57ab789408efe"
+    }
+  ],
+  "library": {
+    "path": "servers/silk-shell/src/lib.rs",
+    "sha256": "22cd4d000b47a4bde5f980d6fc0e142a237fee819b0fc2593266b329e677d7ac"
+  },
+  "scope": "83 current Models function bodies, two workspace helpers, actual root bindings and real Linen client/render/outbox. Current Core dispatch and joined shell boot remain pending.",
+  "named_deviations": [
+    "Static fallback gaps are spaces; original NUL assertion is retained in the composed renderer gate."
+  ]
+}

@@ -1,0 +1,241 @@
+// SPDX-License-Identifier: GPL-3.0-only
+//! The BOOT app incarnation catalog: one table every component reads instead
+//! of hand-wiring each incarnation. It describes what BOOT already grants; it
+//! is data, never authority. Each service still holds and checks its own
+//! BOOT capabilities. Before sealing, the kernel audits this table against
+//! its actual objects and held grants.
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum App { Quil, Spindle, Browser }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Incarnation {
+    pub app: App,
+    /// Ordinal within the app: 0 is the boot incarnation, then successors.
+    pub ordinal: u8,
+    /// Domain and main task (equal for every BOOT app incarnation).
+    pub target: u32,
+    /// The app's own content surface.
+    pub surface: u64,
+    /// Shell's frame surface for the app, when distinct from `surface`.
+    pub shell_surface: Option<u64>,
+    /// Shell's lifecycle capability slot for this incarnation.
+    pub lifecycle_slot: usize,
+    /// Shell's close route slot.
+    pub close_slot: u64,
+    /// Shell's activation slot that brings this incarnation up (successors).
+    pub activation_slot: Option<usize>,
+    /// Shell's route for view notices and document controls to this app.
+    pub route_slot: u64,
+    /// Further content surfaces the app owns inside its frame (viewports).
+    pub children: &'static [u64],
+}
+
+impl Incarnation {
+    /// The Shell frame that holds this incarnation's content.
+    pub const fn frame(&self) -> u64 {
+        match self.shell_surface { Some(frame) => frame, None => self.surface }
+    }
+}
+
+const fn quil(ordinal: u8, target: u32, surface: u64, shell_surface: Option<u64>, lifecycle_slot: usize, close_slot: u64, activation_slot: Option<usize>, route_slot: u64) -> Incarnation {
+    Incarnation { app: App::Quil, ordinal, target, surface, shell_surface, lifecycle_slot, close_slot, activation_slot, route_slot, children: &[] }
+}
+
+/// Every BOOT-reserved app incarnation, in activation order per app.
+pub const INCARNATIONS: [Incarnation; 28] = [
+    quil(0, 9, 156, Some(201), 38, 41, None, 11),
+    Incarnation { app: App::Spindle, ordinal: 0, target: 12, surface: 154, shell_surface: Some(153), lifecycle_slot: 39, close_slot: 42, activation_slot: None, route_slot: 14, children: &[160, 161, 162] },
+    // Browser's document notices share its BOOT close route.
+    Incarnation { app: App::Browser, ordinal: 0, target: 15, surface: 300, shell_surface: None, lifecycle_slot: 40, close_slot: 43, activation_slot: None, route_slot: 43, children: &[] },
+    quil(1, 16, 301, None, 45, 46, Some(44), 47),
+    Incarnation { app: App::Spindle, ordinal: 1, target: 17, surface: 302, shell_surface: Some(306), lifecycle_slot: 50, close_slot: 51, activation_slot: Some(49), route_slot: 52, children: &[303, 304, 305] },
+    quil(2, 18, 307, None, 54, 56, Some(55), 57),
+    quil(3, 19, 308, None, 110, 111, Some(112), 113),
+    quil(4, 20, 309, None, 114, 115, Some(116), 117),
+    quil(5, 21, 310, None, 118, 119, Some(120), 121),
+    quil(6, 22, 311, None, 122, 123, Some(124), 125),
+    quil(7, 23, 312, None, 126, 127, Some(128), 129),
+    Incarnation { app: App::Spindle, ordinal: 2, target: 24, surface: 313, shell_surface: Some(314), lifecycle_slot: 130, close_slot: 131, activation_slot: Some(132), route_slot: 133, children: &[315, 316, 317] },
+    Incarnation { app: App::Spindle, ordinal: 3, target: 25, surface: 318, shell_surface: Some(319), lifecycle_slot: 134, close_slot: 135, activation_slot: Some(136), route_slot: 137, children: &[320, 321, 322] },
+    Incarnation { app: App::Spindle, ordinal: 4, target: 26, surface: 323, shell_surface: Some(324), lifecycle_slot: 138, close_slot: 139, activation_slot: Some(140), route_slot: 141, children: &[325, 326, 327] },
+    Incarnation { app: App::Spindle, ordinal: 5, target: 27, surface: 328, shell_surface: Some(329), lifecycle_slot: 142, close_slot: 143, activation_slot: Some(144), route_slot: 145, children: &[330, 331, 332] },
+    Incarnation { app: App::Spindle, ordinal: 6, target: 28, surface: 333, shell_surface: Some(334), lifecycle_slot: 146, close_slot: 147, activation_slot: Some(148), route_slot: 149, children: &[335, 336, 337] },
+    Incarnation { app: App::Spindle, ordinal: 7, target: 29, surface: 338, shell_surface: Some(339), lifecycle_slot: 150, close_slot: 151, activation_slot: Some(152), route_slot: 153, children: &[340, 341, 342] },
+    Incarnation { app: App::Browser, ordinal: 1, target: 30, surface: 343, shell_surface: None, lifecycle_slot: 154, close_slot: 155, activation_slot: Some(156), route_slot: 157, children: &[] },
+    Incarnation { app: App::Browser, ordinal: 2, target: 31, surface: 344, shell_surface: None, lifecycle_slot: 158, close_slot: 159, activation_slot: Some(160), route_slot: 161, children: &[] },
+    quil(8, 32, 345, None, 162, 163, Some(164), 165),
+    quil(9, 33, 346, None, 166, 167, Some(168), 169),
+    quil(10, 34, 347, None, 170, 171, Some(172), 173),
+    quil(11, 35, 348, None, 174, 175, Some(176), 177),
+    quil(12, 36, 349, None, 178, 179, Some(180), 181),
+    quil(13, 37, 350, None, 182, 183, Some(184), 185),
+    quil(14, 38, 351, None, 186, 187, Some(188), 189),
+    quil(15, 39, 352, None, 190, 191, Some(192), 193),
+    Incarnation { app: App::Spindle, ordinal: 8, target: 40, surface: 353, shell_surface: Some(354), lifecycle_slot: 194, close_slot: 195, activation_slot: Some(196), route_slot: 197, children: &[355, 356, 357] },
+];
+
+/// Compile-time storage sizing; descriptive catalog data never grants authority.
+pub const COUNT: usize = INCARNATIONS.len();
+/// Display's presentation receipt mask has one bit per reserved incarnation.
+pub const PRESENTATION_BITS: usize = u64::BITS as usize;
+const _: () = assert!(COUNT <= PRESENTATION_BITS);
+pub const fn count(app: App) -> usize {
+    let mut total = 0; let mut i = 0;
+    while i < COUNT { if INCARNATIONS[i].app as u8 == app as u8 { total += 1; } i += 1; }
+    total
+}
+pub const LIFECYCLE_SLOTS: [usize; COUNT] = {
+    let mut out = [0; COUNT]; let mut i = 0;
+    while i < COUNT { out[i] = INCARNATIONS[i].lifecycle_slot; i += 1; }
+    out
+};
+
+pub fn by_target(target: u32) -> Option<&'static Incarnation> {
+    INCARNATIONS.iter().find(|i| i.target == target)
+}
+
+/// The incarnation whose exact catalog surface pair this is.
+pub fn by_surface(target: u32, surface: u64) -> Option<&'static Incarnation> {
+    INCARNATIONS.iter().find(|i| i.target == target && i.surface == surface)
+}
+
+pub fn is_document_app(target: u32) -> bool {
+    by_target(target).is_some_and(|i| i.app == App::Quil)
+}
+
+/// Document-view holders in Shell's fixed delivery order: every Quil
+/// incarnation by ordinal, then Browser.
+pub fn document_views() -> impl Iterator<Item = &'static Incarnation> {
+    INCARNATIONS.iter().filter(|i| i.app == App::Quil).chain(INCARNATIONS.iter().filter(|i| i.app == App::Browser))
+}
+pub fn document_view_index(target: u32) -> Option<usize> {
+    document_views().position(|i| i.target == target)
+}
+pub fn document_view_frame(frame: u64) -> Option<(usize, &'static Incarnation)> {
+    document_views().enumerate().find(|(_, i)| i.frame() == frame)
+}
+/// Spindle incarnations by ordinal.
+pub fn spindle_views() -> impl Iterator<Item = &'static Incarnation> {
+    INCARNATIONS.iter().filter(|i| i.app == App::Spindle)
+}
+
+/// Whether `sid` is content of the incarnation with this exact catalog pair.
+pub fn is_content(target: u32, surface: u64, sid: u64) -> bool {
+    by_surface(target, surface).is_some_and(|i| i.surface == sid || i.children.contains(&sid))
+}
+
+/// One bit per incarnation (its catalog index) for an owner's content
+/// surface; 0 for anything else. Const so the per-pixel compositor pays no
+/// runtime scan.
+pub const fn native_pixel_bit(owner: u32, sid: u64) -> u64 {
+    let mut index = 0;
+    while index < INCARNATIONS.len() {
+        let i = &INCARNATIONS[index];
+        if i.target == owner {
+            if i.surface == sid { return 1 << index; }
+            let mut c = 0;
+            while c < i.children.len() {
+                if i.children[c] == sid { return 1 << index; }
+                c += 1;
+            }
+            return 0;
+        }
+        index += 1;
+    }
+    0
+}
+
+/// The app an exact incarnation domain belongs to (const for table setup).
+pub const fn app_of(target: u32) -> Option<App> {
+    let mut index = 0;
+    while index < INCARNATIONS.len() {
+        if INCARNATIONS[index].target == target { return Some(INCARNATIONS[index].app); }
+        index += 1;
+    }
+    None
+}
+pub const fn is_quil(target: u32) -> bool { matches!(app_of(target), Some(App::Quil)) }
+pub const fn is_spindle(target: u32) -> bool { matches!(app_of(target), Some(App::Spindle)) }
+pub const fn is_browser(target: u32) -> bool { matches!(app_of(target), Some(App::Browser)) }
+/// Whether this incarnation's content sits inside a separate Shell frame.
+pub const fn has_shell_frame(target: u32) -> bool {
+    let mut index = 0;
+    while index < INCARNATIONS.len() {
+        if INCARNATIONS[index].target == target { return INCARNATIONS[index].shell_surface.is_some(); }
+        index += 1;
+    }
+    false
+}
+
+/// Every incarnation domain, for the kernel's BOOT plan.
+pub const TARGETS: [u32; INCARNATIONS.len()] = {
+    let mut out = [0; INCARNATIONS.len()];
+    let mut i = 0;
+    while i < INCARNATIONS.len() { out[i] = INCARNATIONS[i].target; i += 1; }
+    out
+};
+/// Every (domain, content surface) pair, for the kernel's resource catalog.
+pub const CONTENT: [(u32, u64); INCARNATIONS.len()] = {
+    let mut out = [(0, 0); INCARNATIONS.len()];
+    let mut i = 0;
+    while i < INCARNATIONS.len() { out[i] = (INCARNATIONS[i].target, INCARNATIONS[i].surface); i += 1; }
+    out
+};
+/// The boot (ordinal 0) incarnation of an app.
+pub fn boot_incarnation(app: App) -> &'static Incarnation {
+    INCARNATIONS.iter().find(|i| i.app == app && i.ordinal == 0).expect("catalog app without a boot incarnation")
+}
+/// The incarnation this one succeeds (same app, previous ordinal).
+pub fn predecessor(i: &Incarnation) -> Option<&'static Incarnation> {
+    let ordinal = i.ordinal.checked_sub(1)?;
+    INCARNATIONS.iter().find(|p| p.app == i.app && p.ordinal == ordinal)
+}
+/// Quil incarnation targets in ordinal order (document buffer clients).
+pub const QUIL_COUNT: usize = count(App::Quil);
+pub const QUIL_TARGETS: [u32; QUIL_COUNT] = {
+    let mut out = [0; QUIL_COUNT]; let mut i = 0; let mut q = 0;
+    while i < COUNT {
+        if matches!(INCARNATIONS[i].app, App::Quil) { out[q] = INCARNATIONS[i].target; q += 1; }
+        i += 1;
+    }
+    out
+};
+
+/// Positional service/storage budgets follow the same immutable participant set.
+pub const SPINDLE_COUNT: usize = count(App::Spindle);
+pub const DOCUMENT_COUNT: usize = count(App::Quil) + count(App::Browser);
+pub const SPINDLE_TARGETS: [u32; SPINDLE_COUNT] = {
+    let mut out=[0;SPINDLE_COUNT];let mut i=0;let mut n=0;
+    while i<COUNT {if matches!(INCARNATIONS[i].app,App::Spindle){out[n]=INCARNATIONS[i].target;n+=1;}i+=1;}out
+};
+pub const DOCUMENT_TARGETS: [u32; DOCUMENT_COUNT] = {
+    let mut out=[0;DOCUMENT_COUNT];let mut n=0;let mut family=0;
+    while family<2 {let mut i=0;while i<COUNT {
+        let selected=if family==0{matches!(INCARNATIONS[i].app,App::Quil)}else{matches!(INCARNATIONS[i].app,App::Browser)};
+        if selected{out[n]=INCARNATIONS[i].target;n+=1;}i+=1;
+    }family+=1;}out
+};
+/// Content panes of one catalogued Spindle. This describes association only.
+pub const fn spindle_grid(target:u32)->Option<[u64;4]>{
+    let mut i=0;while i<COUNT {let row=&INCARNATIONS[i];
+        if row.target==target&&matches!(row.app,App::Spindle)&&row.children.len()==3 {
+            return Some([row.surface,row.children[0],row.children[1],row.children[2]]);
+        }i+=1;
+    }None
+}
+
+/// Every app frame/content/pane association used by bounded desktop delivery.
+/// Frames precede distinct content/panes. This inventory carries no authority.
+pub const APP_SURFACE_COUNT:usize={
+ let mut n=0;let mut i=0;while i<COUNT{let row=&INCARNATIONS[i];n+=1+if row.frame()!=row.surface{1}else{0};n+=row.children.len();i+=1;}n
+};
+pub const APP_SURFACES:[u64;APP_SURFACE_COUNT]={
+ let mut out=[0;APP_SURFACE_COUNT];let mut i=0;let mut n=0;
+ while i<COUNT{out[n]=INCARNATIONS[i].frame();n+=1;i+=1;}
+ i=0;while i<COUNT{let row=&INCARNATIONS[i];if row.frame()!=row.surface{out[n]=row.surface;n+=1;}let mut child=0;while child<row.children.len(){out[n]=row.children[child];n+=1;child+=1;}i+=1;}
+ out
+};
+const _:()={
+ let mut i=0;while i<APP_SURFACE_COUNT{assert!(APP_SURFACES[i]!=0&&APP_SURFACES[i]!=200);let mut j=0;while j<i{assert!(APP_SURFACES[i]!=APP_SURFACES[j]);j+=1;}i+=1;}
+};

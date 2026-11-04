@@ -1,0 +1,7 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "path": "servers/sexnet/src/jobs.rs",
+  "sha256": "a0ae4992630a56f67ebd6514cc447d95dac785aa23518738b85b650e318e72d6",
+  "abi_path": "crates/sex-pdx/src/network_job.rs",
+  "abi_sha256": "d613d849a9df5cf193c4ce02e42ad934e8440e9002b924497f766cd124770671"
+}

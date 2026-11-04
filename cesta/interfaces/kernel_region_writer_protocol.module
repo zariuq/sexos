@@ -1,0 +1,32 @@
+Module KernelRegionWriter {
+  Theory Protocols() {
+    Empty Equations {
+      (kernel_region_writer_run) == (Protocol "cesta-protocol/1"
+        (Context KernelRegionWriterContext)
+        (Hooks
+          (Hook snapshot kernel_region_writer_snapshot prepare
+            (Requires) (Uses) (Proves snapshotted))
+          (Hook transform kernel_region_writer_transform prepare
+            (Requires snapshotted) (Uses) (Proves transformed))
+          (Hook swap kernel_region_writer_swap prepare
+            (Requires snapshotted transformed) (Uses) (Proves swapped))
+          (Hook commit kernel_region_writer_commit effect
+            (Requires snapshotted transformed swapped) (Uses) (Proves)
+            (Invalidates snapshotted transformed swapped)))
+        (Resources)
+        (Entry (Facts) (Owns))
+        (Body
+          (Call snapshot
+            (Call transform
+              (Call swap
+                (Call commit (Return done) (Return engine_failure))
+                (Return engine_failure))
+              (Return engine_failure))
+            (Return declined)))
+        (Checks
+          (Fact snapshotted kernel_region_writer_is_snapshotted)
+          (Fact transformed kernel_region_writer_is_transformed)
+          (Fact swapped kernel_region_writer_is_swapped)));
+    }
+  }
+}

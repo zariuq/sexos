@@ -1,0 +1,32 @@
+(cesta native-c/1 compact-c/2
+ (unit (native "#ifndef SEXOS_DOCUMENT_JOURNAL_H
+#define SEXOS_DOCUMENT_JOURNAL_H
+#include \"sexos_document_protocol.h\"
+#define DOCUMENT_JOURNAL_CAPACITY UINT64_C(65536)
+#define DOCUMENT_JOURNAL_STRIDE UINT64_C(32768)
+#define DOCUMENT_JOURNAL_PAYLOAD UINT64_C(512)
+#define DOCUMENT_JOURNAL_IO_CHUNK ((size_t)4096)
+enum {DOCUMENT_JOURNAL_PENDING=0,DOCUMENT_JOURNAL_DONE=1,DOCUMENT_JOURNAL_ERROR=2};
+typedef struct DocumentJournalReceipt {uint8_t bank;uint64_t generation;size_t len;uint64_t hash;} DocumentJournalReceipt;
+typedef struct DocumentJournalCandidate {bool present;DocumentJournalReceipt receipt;} DocumentJournalCandidate;
+typedef struct DocumentJournalBlock {uint8_t bytes[DOCUMENT_JOURNAL_IO_CHUNK];size_t len;} DocumentJournalBlock;
+typedef struct DocumentJournalProgress {uint8_t status;bool journal;DocumentJournalReceipt receipt;size_t len;uint32_t error;} DocumentJournalProgress;
+typedef struct DocumentJournalLoad {
+ uint8_t object,phase,bank;uint32_t identity;size_t offset,legacy_len;uint64_t sum;
+ DocumentJournalCandidate candidate,valid[2],chosen;
+} DocumentJournalLoad;
+typedef struct DocumentJournalSave {
+ uint8_t phase,object,bank;uint32_t identity;size_t offset;uint64_t sum;
+ DocumentJournalCandidate candidate,old[2],next;
+} DocumentJournalSave;
+void document_journal_load_init(DocumentJournalLoad *state,uint8_t object,uint32_t identity,bool journal);
+DocumentJournalProgress document_journal_load_step(DocumentJournalLoad *state,SexosDocumentPayload *output);
+void document_journal_save_init(DocumentJournalSave *state,uint8_t object,uint32_t identity);
+DocumentJournalProgress document_journal_save_step(DocumentJournalSave *state,const SexosDocumentPayload *input);
+bool document_journal_io_read(uint8_t object,uint64_t offset,DocumentJournalBlock *block,uint32_t *error);
+bool document_journal_io_write(uint8_t object,uint64_t offset,const DocumentJournalBlock *block,uint32_t *error);
+bool document_journal_io_sync(uint8_t object,uint32_t *error);
+")
+ (var void (* (function memset (void (* destination)) (int value) (size_t count))))
+ (native "#endif
+")))

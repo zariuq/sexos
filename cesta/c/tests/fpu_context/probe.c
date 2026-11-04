@@ -1,0 +1,32 @@
+#include "sexos_client.h"
+#if !defined(FPU_PROBE_ID)
+#define FPU_PROBE_ID 1
+
+#endif
+
+void fpu_probe_main(void)
+{
+#if FPU_PROBE_ID == 1
+ static const uint64_t expected[2] __attribute__((aligned(16)))={UINT64_C(0x1122334455667788),UINT64_C(0x99aabbccddeeff00)};
+ const uint32_t expected_mxcsr=UINT32_C(0x3f80);
+#else
+ static const uint64_t expected[2] __attribute__((aligned(16)))={UINT64_C(0xfedcba9876543210),UINT64_C(0x0123456789abcdef)};
+ const uint32_t expected_mxcsr=UINT32_C(0x5f80);
+#endif
+ uint64_t observed[2] __attribute__((aligned(16)))={0};
+ __asm__ volatile("movdqu (%0), %%xmm15"::"r"(expected):"xmm15","memory");
+ __asm__ volatile("ldmxcsr %0"::"m"(expected_mxcsr):"memory");
+ for(uint32_t turn=0;turn<256;turn++){
+  sexos_yield();
+  uint32_t mxcsr=0;__asm__ volatile("movdqu %%xmm15, (%0)"::"r"(observed):"memory");
+  __asm__ volatile("stmxcsr %0":"=m"(mxcsr)::"memory");
+  if(observed[0]!=expected[0]||observed[1]!=expected[1]||mxcsr!=expected_mxcsr){
+   sexos_line("[fpu.context.fail] probe=%u turn=%u lo=%#llx hi=%#llx mxcsr=%#x",(unsigned)FPU_PROBE_ID,(unsigned)turn,(unsigned long long)observed[0],(unsigned long long)observed[1],(unsigned)mxcsr);
+   sexos_fail();
+  }
+ }
+ sexos_line("[fpu.context.done] probe=%u turns=256 xmm=1 mxcsr=1",(unsigned)FPU_PROBE_ID);
+ for(;;)sexos_yield();
+}
+
+

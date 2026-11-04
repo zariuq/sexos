@@ -1,0 +1,128 @@
+#![allow(dead_code,static_mut_refs)]
+extern crate alloc;extern crate self as spin;extern crate self as sex_pdx;
+#[macro_export]macro_rules! serial_record{($($a:tt)*)=>{{let _=format_args!($($a)*);}};}
+pub const SPINDLE_HISTORY_BASE_LBA:u64=1808;pub const SPINDLE_HISTORY_SECTORS:u64=18;
+#[path="../crates/sex-pdx/src/app_catalog.rs"]pub mod app_catalog;
+#[path="../crates/sex-pdx/src/history_recovery.rs"]pub mod history_recovery;
+#[path="../servers/sexfiles/src/history_journal.rs"]pub mod history_journal;
+struct Volatile;impl history_journal::Store for Volatile{fn save(&mut self,_:u32,_:&[u8])->Result<(),u32>{Ok(())}fn recover(&mut self,_:u32,_:&mut[u8;4096])->Result<usize,u32>{Err(spindle_history::MISSING)}}
+pub const DISKFS_V2_MAX_READ:usize=6;pub const ERR_SERVICE_NOT_READY:u64=u64::MAX-1;
+pub struct RwLock<T>(std::sync::RwLock<T>);impl<T> RwLock<T>{pub const fn new(v:T)->Self{Self(std::sync::RwLock::new(v))}pub fn read(&self)->std::sync::RwLockReadGuard<'_,T>{self.0.read().unwrap()}pub fn write(&self)->std::sync::RwLockWriteGuard<'_,T>{self.0.write().unwrap()}}
+mod backends{pub use crate::ramfs;include!(concat!(env!("APP_RESOURCE_TEST_DIR"),"/backend_trait.rs"));}
+#[path="../crates/sex-pdx/src/spindle_history.rs"]pub mod spindle_history;
+#[path="../servers/sexfiles/src/messages.rs"]mod messages;
+#[path="../servers/sexfiles/src/backends/ramfs.rs"]pub mod ramfs;
+#[path="../servers/sexfiles/src/spindle_history.rs"]mod service;
+const CMD_MAX:usize=256;
+include!(concat!(env!("APP_RESOURCE_TEST_DIR"),"/history.rs"));
+#[path="../apps/spindle/src/history_persistence.rs"]mod client;
+#[path="../crates/sex-pdx/src/app_lifecycle.rs"]pub mod lifecycle_protocol;
+pub mod app_lifecycle{
+ pub const LIVE:u64=5;pub use crate::lifecycle_protocol::CatalogInfo as Catalog;
+ thread_local!{pub static BAD:std::cell::Cell<u8>=const{std::cell::Cell::new(0)};}
+ pub fn catalog(slot:usize)->Result<Catalog,u64>{let row=crate::app_catalog::spindle_views().find(|row|row.lifecycle_slot==slot).ok_or(1u64)?;let(pd,surface)=(row.target,row.surface);let bad=BAD.get();if bad==7{return Err(1)}Ok(Catalog{target_pd:if bad==1{pd+1}else{pd},task_id:if bad==2{0}else if bad==6{pd*10}else{pd},surface_id:if bad==3{surface+1}else{surface},coordinator_pd:if bad==4{7}else{3}})}
+ pub fn info(_:usize)->Result<(),u64>{if BAD.get()==8{Ok(())}else{Err(if BAD.get()==5{2}else{LIVE})}}
+}
+use spindle_history as w;use backends::FsBackend;use client::{Client,Event,Outcome};use ramfs::RamFs;use service::Service;
+fn rpc_store(s:&mut Service,fs:&RamFs,owner:u32,r:w::Request,store:&mut impl history_journal::Store)->u64{if let Some(v)=s.handle(fs,owner,true,r.header(),r.a,r.b,store){return v}let mut out=None;s.poll(|pd,v|{if pd==owner{out=Some(v);0}else{1}});out.expect("receipt")}
+fn rpc(s:&mut Service,fs:&RamFs,owner:u32,r:w::Request)->u64{rpc_store(s,fs,owner,r,&mut Volatile)}
+fn req(seq:u32,kind:u8,a:u64,b:u64)->w::Request{w::Request{seq,kind,a,b}}
+fn drive(c:&mut Client,h:&mut History,s:&mut Service,fs:&RamFs,owner:u32)->Vec<Event>{let mut events=Vec::new();for _ in 0..20000{let mut r=None;if let Some(e)=c.step(h,|v|{r=Some(v);Ok(())}){events.push(e)}if let Some(r)=r{let v=rpc(s,fs,owner,r);if let Some(e)=c.receive(v,h){events.push(e)}}if !c.busy(){return events}}panic!("did not quiesce")}
+fn saved(fs:&RamFs,name:&[u8],owner:u32)->Vec<u8>{let h=fs.open(name,0,0,owner).unwrap();let len=fs.stat(h,owner).unwrap().0;let mut out=vec![0;len as usize];fs.read(h,0,&mut out,owner).unwrap();fs.close(h,owner).unwrap();out}
+#[test]fn own_receipts_roundtrip_ring_order_and_fresh_nonzero_handles(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"echo first");h.push(b"echo newest");let mut c=Client::new();c.init(17);c.save();let e=drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(e[0].outcome,Outcome::Saved);assert_ne!(e[0].handle,0);let old=e[0].handle;
+ h.clear();c.load(&h);let e=drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(e[0].outcome,Outcome::Loaded);assert_ne!(e[0].handle,old);assert_eq!(h.get(0),Some(&b"echo newest"[..]));assert_eq!(h.get(1),Some(&b"echo first"[..]));assert_eq!(e[0].hash,w::hash(&saved(&fs,b"spindle-history-17",17)));}
+#[test]fn predecessor_data_and_handles_never_authorize_successor(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"predecessor private");let mut c=Client::new();c.init(12);c.save();let e=drive(&mut c,&mut h,&mut s,&fs,12);assert!(fs.open(b"spindle-history-12",0,0,17).is_err());assert!(fs.read(e[0].handle as u64,0,&mut[0;4],17).is_err());
+ let mut fresh=Client::new();fresh.init(17);let mut h=History::new();fresh.load(&h);assert_eq!(drive(&mut fresh,&mut h,&mut s,&fs,17)[0].outcome,Outcome::Missing);assert_eq!(h.total,0);h.push(b"successor private");fresh.save();assert_eq!(drive(&mut fresh,&mut h,&mut s,&fs,17)[0].outcome,Outcome::Saved);assert!(fs.open(b"spindle-history-17",0,0,12).is_err());}
+#[test]fn unpublished_save_and_retirement_preserve_old_snapshot(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"old");let mut c=Client::new();c.init(17);c.save();drive(&mut c,&mut h,&mut s,&fs,17);let old=saved(&fs,b"spindle-history-17",17);
+ let handle=w::decode_reply(rpc(&mut s,&fs,17,req(100,w::OPEN_SAVE,0,0)),100).unwrap().unwrap();rpc(&mut s,&fs,17,req(101,w::WRITE,w::io(handle,0,4),0x12345678));let mut observed=vec![0;old.len()];fs.read(handle as u64,0,&mut observed,17).unwrap();assert_eq!(observed,old);s.retire(17);assert_eq!(fs.retire_subject(17),(1,0));assert!(fs.stat(handle as u64,17).is_err());assert_eq!(saved(&fs,b"spindle-history-17",17),old);assert_eq!(w::decode_reply(rpc(&mut s,&fs,17,req(102,w::OPEN_SAVE,0,0)),102),Some(Err(w::DENIED)));}
+#[test]fn duplicate_open_and_close_replay_receipt_without_reexecution(){let fs=RamFs::new();let mut s=Service::new();let open=req(1,w::OPEN_SAVE,0,0);let v=rpc(&mut s,&fs,17,open);assert_eq!(rpc(&mut s,&fs,17,open),v);let handle=w::decode_reply(v,1).unwrap().unwrap();let close=req(2,w::CLOSE,w::io(handle,0,0),0);let v=rpc(&mut s,&fs,17,close);assert_eq!(rpc(&mut s,&fs,17,close),v);assert_eq!(w::decode_reply(rpc(&mut s,&fs,17,open),1),Some(Err(w::STALE)));}
+#[test]fn pending_receipt_survives_full_slot_other_client_and_duplicate(){let fs=RamFs::new();let mut s=Service::new();let r=req(1,w::OPEN_SAVE,0,0);assert!(s.handle(&fs,17,true,r.header(),0,0,&mut Volatile).is_none());let mut first=0;s.poll(|pd,v|{assert_eq!(pd,17);first=v;1});assert!(s.pending());assert!(s.handle(&fs,17,true,r.header(),0,0,&mut Volatile).is_none());let other=rpc(&mut s,&fs,12,r);assert_ne!(w::decode_reply(other,1).unwrap().unwrap(),0);s.poll(|pd,v|{assert_eq!(pd,17);assert_eq!(v,first);0});assert!(!s.pending());s.retire(17);assert!(!s.pending());}
+#[test]fn wrong_handle_owner_bounds_and_corrupt_commit_have_no_publication(){let fs=RamFs::new();let mut s=Service::new();let handle=w::decode_reply(rpc(&mut s,&fs,17,req(1,w::OPEN_SAVE,0,0)),1).unwrap().unwrap();for(seq,kind,a,b,err)in[(2,w::WRITE,w::io(handle+1,0,4),0,w::DENIED),(3,w::WRITE,w::io(handle,4095,4),0,w::INVALID),(4,w::WRITE,w::io(handle,0,1),256,w::INVALID),(5,w::COMMIT,w::io(handle,0,0),0,w::CORRUPT)]{assert_eq!(w::decode_reply(rpc(&mut s,&fs,17,req(seq,kind,a,b)),seq),Some(Err(err)));}}
+#[test]fn malformed_snapshot_cannot_mutate_live_history(){let fs=RamFs::new();let handle=fs.open(b"spindle-history-17",messages::RAMFS_O_CREATE,0,17).unwrap();fs.replace_owned(handle,b"invalid history payload!",17).unwrap();fs.close(handle,17).unwrap();let mut s=Service::new();let mut h=History::new();h.push(b"retain local");let mut c=Client::new();c.init(17);c.load(&h);let e=drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(e[0].outcome,Outcome::Failed);assert_eq!(h.get(0),Some(&b"retain local"[..]));assert!(!c.busy());}
+#[test]fn newer_local_input_prevents_stale_load_swap(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"saved");let mut c=Client::new();c.init(17);c.save();drive(&mut c,&mut h,&mut s,&fs,17);c.load(&h);h.push(b"newer input");let e=drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(e[0].outcome,Outcome::Conflict);assert_eq!(h.get(0),Some(&b"newer input"[..]));}
+#[test]fn exact_retry_and_wrong_sequence_never_advance_client(){let mut c=Client::new();c.init(17);let mut h=History::new();c.load(&h);let mut first=None;c.step(&h,|r|{first=Some(r);Err(ERR_SERVICE_NOT_READY)});c.step(&h,|r|{assert_eq!(Some(r),first);Ok(())});let r=first.unwrap();assert!(c.receive(w::reply(r.seq+1,Ok(222)),&mut h).is_none());assert!(c.busy());assert!(c.receive(222,&mut h).is_none());assert_eq!(c.receive(w::reply(r.seq,Err(w::MISSING)),&mut h).unwrap().outcome,Outcome::Missing);}
+#[test]fn save_completion_requires_commit_and_close_receipts(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"acknowledged");let mut c=Client::new();c.init(17);c.save();loop{let mut req=None;assert!(c.step(&h,|r|{req=Some(r);Ok(())}).is_none());let r=req.unwrap();let v=rpc(&mut s,&fs,17,r);if r.kind==w::CLOSE{assert!(c.busy());assert_eq!(c.receive(v,&mut h).unwrap().outcome,Outcome::Saved);break}assert!(c.receive(v,&mut h).is_none());}}
+#[test]fn shorter_and_empty_saves_replace_all_trailing_bytes(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(&[b'x';256]);let mut c=Client::new();c.init(17);c.save();drive(&mut c,&mut h,&mut s,&fs,17);h.clear();c.save();drive(&mut c,&mut h,&mut s,&fs,17);let b=saved(&fs,b"spindle-history-17",17);assert_eq!(b.len(),w::HEADER);assert_eq!(w::validate(&b,17),Ok(0));}
+#[test]fn bounded_codec_keeps_newest_complete_entries_and_rejects_corruption(){let mut h=History::new();for i in 0..128{let mut a=[b'a';256];a[0]=b'A'+(i%26)as u8;h.push(&a);}let mut b=[0;w::MAX];let(len,count)=client::encode(&h,17,&mut b).unwrap();assert_eq!(count,15);assert_eq!(w::validate(&b[..len],17),Ok(15));assert!(w::validate(&b[..len],12).is_err());for pos in[0,4,8,10,12,16,24,len-1]{let mut bad=b;bad[pos]^=1;assert!(w::validate(&bad[..len],17).is_err());}}
+#[test]fn read_payload_high_bits_are_data_not_errors(){let value=w::reply(7,Ok(0xFFFF_FFFF));assert_eq!(w::decode_reply(value,7),Some(Ok(u32::MAX)));assert_eq!(w::decode_reply(value,8),None);assert!(w::Request::decode(1<<40,0,0).is_none());}
+#[test]fn lifecycle_observer_denies_wrong_catalog_and_nonlive_status(){assert!(service::live(17));assert!(!service::live(16));for bad in 1..=5{app_lifecycle::BAD.set(bad);assert!(!service::live(17));}app_lifecycle::BAD.set(0);}
+
+#[test]fn atomic_replace_rejects_wrong_owner_and_overflow_without_changing_file(){let fs=RamFs::new();let h=fs.open(b"private",messages::RAMFS_O_CREATE,0,17).unwrap();fs.write(h,0,b"keep",17).unwrap();assert!(fs.replace_owned(h,b"bad",12).is_err());assert!(fs.replace_owned(h,b"bad",0).is_err());assert!(fs.replace_owned(h,&[0;4097],17).is_err());let mut b=[0;4];fs.read(h,0,&mut b,17).unwrap();assert_eq!(&b,b"keep");}
+#[test]fn edits_during_save_coalesce_into_a_later_complete_snapshot(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"first");let mut c=Client::new();c.init(17);c.save();let mut request=None;c.step(&h,|r|{request=Some(r);Ok(())});let r=request.unwrap();let v=rpc(&mut s,&fs,17,r);c.receive(v,&mut h);h.push(b"latest");c.mark_dirty();let events=drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(events.iter().filter(|e|e.outcome==Outcome::Saved).count(),2);h.clear();c.load(&h);drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(h.get(0),Some(&b"latest"[..]));}
+#[test]fn permanent_transport_denial_never_becomes_a_save_receipt(){let mut c=Client::new();c.init(17);let h=History::new();c.save();assert_eq!(c.step(&h,|_|Err(1)).unwrap().outcome,Outcome::Failed);assert!(!c.busy());assert!(!c.save());}
+
+#[test]fn failed_durable_commit_preserves_ram_and_cannot_be_reported_saved(){
+ struct Fail{calls:usize}impl history_journal::Store for Fail{fn save(&mut self,_:u32,_:&[u8])->Result<(),u32>{self.calls+=1;Err(7)}fn recover(&mut self,_:u32,_:&mut[u8;4096])->Result<usize,u32>{Err(w::MISSING)}}
+ let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"keep durable predecessor");let mut c=Client::new();c.init(17);c.save();drive(&mut c,&mut h,&mut s,&fs,17);let old=saved(&fs,b"spindle-history-17",17);
+ h.push(b"must not publish");c.save();let mut store=Fail{calls:0};let mut failed=false;
+ for _ in 0..10000{let mut request=None;if let Some(e)=c.step(&h,|r|{request=Some(r);Ok(())}){assert_ne!(e.outcome,Outcome::Saved);failed|=e.outcome==Outcome::Failed;}
+  if let Some(r)=request{let v=rpc_store(&mut s,&fs,17,r,&mut store);if r.kind==w::COMMIT{assert_eq!(rpc_store(&mut s,&fs,17,r,&mut store),v);assert_eq!(store.calls,1);}
+   if let Some(e)=c.receive(v,&mut h){assert_ne!(e.outcome,Outcome::Saved);failed|=e.outcome==Outcome::Failed;}}
+  if !c.busy(){break}
+ }assert!(failed);assert_eq!(store.calls,1);assert_eq!(saved(&fs,b"spindle-history-17",17),old);
+}
+#[test]fn recovered_data_acquires_fresh_current_owner_handle_and_validates_before_publish(){
+ struct Recover(Vec<u8>);impl history_journal::Store for Recover{fn save(&mut self,_:u32,_:&[u8])->Result<(),u32>{Ok(())}fn recover(&mut self,_:u32,out:&mut[u8;4096])->Result<usize,u32>{out[..self.0.len()].copy_from_slice(&self.0);Ok(self.0.len())}}
+ let fs=RamFs::new();let mut h=History::new();h.push(b"recovered command");let mut bytes=[0;4096];let(n,_)=client::encode(&h,17,&mut bytes).unwrap();let mut store=Recover(bytes[..n].to_vec());let mut s=Service::new();
+ let handle=w::decode_reply(rpc_store(&mut s,&fs,17,req(1,w::OPEN_LOAD,0,0),&mut store),1).unwrap().unwrap();assert_ne!(handle,0);assert!(fs.stat(handle as u64,12).is_err());assert_eq!(saved(&fs,b"spindle-history-17",17),store.0);
+ let freshfs=RamFs::new();let mut fresh=Service::new();store.0[4]=12;assert_eq!(w::decode_reply(rpc_store(&mut fresh,&freshfs,17,req(1,w::OPEN_LOAD,0,0),&mut store),1),Some(Err(w::CORRUPT)));assert!(freshfs.open(b"spindle-history-17",0,0,17).is_err());
+}
+
+#[test]fn frozen_clock_and_full_admission_have_bounded_uncertain_outcome(){for admitted in [false,true]{let mut c=Client::new();c.init(17);let mut h=History::new();h.push(b"retain RAM");c.save();let mut old=None;let mut event=None;for _ in 0..=client::STALL_TURNS{event=c.step_at(&h,0,|r|{old=Some(r);if admitted{Ok(())}else{Err(ERR_SERVICE_NOT_READY)}});if event.is_some(){break}}assert_eq!(event.unwrap().outcome,Outcome::Uncertain);assert!(!c.busy());assert!(c.blocked());assert!(!c.save());assert!(!c.load(&h));c.mark_dirty();assert!(!c.busy());assert!(c.receive(w::reply(old.unwrap().seq,Ok(999)),&mut h).is_none());assert_eq!(h.get(0),Some(&b"retain RAM"[..]));}}
+#[test]fn wrong_receipts_do_not_extend_deadline_and_clock_regression_fails_closed(){let mut c=Client::new();c.init(17);let mut h=History::new();c.load(&h);c.step_at(&h,50,|_|Ok(()));assert!(c.receive(w::reply(2,Ok(1)),&mut h).is_none());assert_eq!(c.step_at(&h,50+client::TICK_BUDGET,|_|panic!()).unwrap().outcome,Outcome::Uncertain);let mut c=Client::new();c.init(17);c.load(&h);c.step_at(&h,50,|_|Ok(()));assert_eq!(c.step_at(&h,49,|_|panic!()).unwrap().outcome,Outcome::Uncertain);}
+#[test]fn lost_commit_receipt_is_uncertain_even_when_data_is_durable(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"possibly committed");let mut c=Client::new();c.init(17);c.save();loop{let mut r=None;c.step_at(&h,0,|v|{r=Some(v);Ok(())});let r=r.unwrap();let v=rpc(&mut s,&fs,17,r);if r.kind==w::COMMIT{assert_eq!(w::validate(&saved(&fs,b"spindle-history-17",17),17),Ok(1));let e=c.step_at(&h,client::TICK_BUDGET,|_|panic!()).unwrap();assert_eq!(e.outcome,Outcome::Uncertain);assert!(c.receive(v,&mut h).is_none());break}assert!(c.receive(v,&mut h).is_none());}}
+
+#[test]fn fresh_own_abort_supersedes_pending_open_without_transferring_handles(){let fs=RamFs::new();let mut s=Service::new();let open=req(1,w::OPEN_SAVE,0,0);s.handle(&fs,17,true,open.header(),0,0,&mut Volatile);let mut lost=0;s.poll(|_,v|{lost=v;1});let handle=w::decode_reply(lost,1).unwrap().unwrap();let other=w::decode_reply(rpc(&mut s,&fs,12,open),1).unwrap().unwrap();let abort=req(2,w::ABORT,0,0);let v=rpc(&mut s,&fs,17,abort);assert_eq!(w::decode_reply(v,2),Some(Ok(0)));assert!(fs.stat(handle as u64,17).is_err());assert!(fs.stat(other as u64,12).is_ok());assert_eq!(rpc(&mut s,&fs,17,abort),v);let new=w::decode_reply(rpc(&mut s,&fs,17,req(3,w::OPEN_SAVE,0,0)),3).unwrap().unwrap();assert_ne!(handle,new);assert_eq!(w::decode_reply(rpc(&mut s,&fs,17,abort),2),Some(Err(w::STALE)));assert!(fs.stat(new as u64,17).is_ok());}
+#[test]fn abort_rejects_handle_payload_wrong_subject_and_dead_incarnation(){let fs=RamFs::new();let mut s=Service::new();let h=w::decode_reply(rpc(&mut s,&fs,17,req(1,w::OPEN_SAVE,0,0)),1).unwrap().unwrap();assert_eq!(w::decode_reply(rpc(&mut s,&fs,17,req(2,w::ABORT,h as u64,0)),2),Some(Err(w::INVALID)));assert!(fs.stat(h as u64,17).is_ok());assert_eq!(w::decode_reply(rpc(&mut s,&fs,16,req(3,w::ABORT,0,0)),3),Some(Err(w::DENIED)));s.retire(17);assert_eq!(w::decode_reply(rpc(&mut s,&fs,17,req(4,w::ABORT,0,0)),4),Some(Err(w::DENIED)));}
+#[test]fn cancelling_unknown_open_quarantines_old_reply_and_requires_abort_receipt(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"local");let mut c=Client::new();c.init(17);c.save();let mut open=None;c.step(&h,|r|{open=Some(r);Ok(())});let lost=rpc(&mut s,&fs,17,open.unwrap());c.step_at(&h,client::TICK_BUDGET,|_|panic!());assert!(c.cancel());assert!(c.busy());assert!(!c.load(&h));assert!(c.receive(lost,&mut h).is_none());let e=drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(e[0].outcome,Outcome::Aborted);assert!(!c.blocked());assert!(c.save());assert_eq!(drive(&mut c,&mut h,&mut s,&fs,17)[0].outcome,Outcome::Saved);}
+#[test]fn abort_after_lost_commit_is_quiescence_not_rollback(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"already durable");let mut c=Client::new();c.init(17);c.save();let (lost,handle)=loop{let mut r=None;c.step(&h,|v|{r=Some(v);Ok(())});let r=r.unwrap();let v=rpc(&mut s,&fs,17,r);if r.kind==w::COMMIT{break (v,r.a as u32)}c.receive(v,&mut h);};let mut before=vec![0;fs.stat(handle as u64,17).unwrap().0 as usize];fs.read(handle as u64,0,&mut before,17).unwrap();assert!(c.cancel());assert!(c.receive(lost,&mut h).is_none());assert_eq!(drive(&mut c,&mut h,&mut s,&fs,17)[0].outcome,Outcome::Aborted);assert_eq!(saved(&fs,b"spindle-history-17",17),before);}
+
+#[test]fn retry_requires_quiescence_then_reencodes_latest_ram_with_a_fresh_lease(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"old");let mut c=Client::new();c.init(17);assert!(!c.retry(&h));c.save();let mut r=None;c.step(&h,|v|{r=Some(v);Ok(())});let lost=rpc(&mut s,&fs,17,r.unwrap());let old=w::decode_reply(lost,r.unwrap().seq).unwrap().unwrap();c.step_at(&h,client::TICK_BUDGET,|_|panic!());assert_eq!(c.status(),client::Status::NeedsRetry);assert!(!c.retry(&h));assert!(c.cancel());assert_eq!(c.status(),client::Status::Cancelling);assert!(!c.save());assert!(!c.retry(&h));drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(c.status(),client::Status::RetryReady);h.push(b"newest RAM");assert!(c.retry(&h));let e=drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(e[0].outcome,Outcome::Saved);assert_ne!(e[0].handle,old);h.clear();c.load(&h);drive(&mut c,&mut h,&mut s,&fs,17);assert_eq!(h.get(0),Some(&b"newest RAM"[..]));assert!(!c.retry(&h));}
+#[test]fn load_retry_uses_current_revision_and_never_replays_late_old_data(){let fs=RamFs::new();let mut s=Service::new();let mut h=History::new();h.push(b"saved");let mut c=Client::new();c.init(17);c.save();drive(&mut c,&mut h,&mut s,&fs,17);c.load(&h);let mut r=None;c.step(&h,|v|{r=Some(v);Ok(())});let lost=rpc(&mut s,&fs,17,r.unwrap());c.cancel();drive(&mut c,&mut h,&mut s,&fs,17);h.push(b"new local");assert!(c.retry(&h));assert!(c.receive(lost,&mut h).is_none());assert_eq!(drive(&mut c,&mut h,&mut s,&fs,17)[0].outcome,Outcome::Loaded);assert_eq!(h.get(0),Some(&b"saved"[..]));}
+
+#[test]fn catalog_task_namespace_is_independent_of_domain(){app_lifecycle::BAD.set(6);assert!(service::live(12));assert!(service::live(17));app_lifecycle::BAD.set(0);}
+
+
+#[test]fn decimal_private_names_preserve_existing_names_without_truncation_or_collisions(){
+ let mut seen=std::collections::HashSet::new();
+ for target in [0,1,9,10,11,12,17,18,99,100,101,255,256,999,1000,99999999,100000000,u32::MAX]{
+  let(name,len)=service::private_name(target);assert_eq!(&name[..len],format!("spindle-history-{target}").as_bytes());
+  assert!(name[len..].iter().all(|byte|*byte==0));assert!(seen.insert(name[..len].to_vec()));
+ }
+ for row in app_catalog::spindle_views(){let(name,len)=service::private_name(row.target);assert!(len<=messages::RAMFS_MAX_NAME);assert!(name[..len].is_ascii());}
+}
+
+#[test]fn every_catalog_subject_keeps_own_pending_full_reply_and_retirement_fence(){
+ let fs=RamFs::new();let mut s=Service::new();let open=req(1,w::OPEN_SAVE,0,0);
+ for &target in &app_catalog::SPINDLE_TARGETS{assert!(s.handle(&fs,target,true,open.header(),0,0,&mut Volatile).is_none());}
+ let mut seen=Vec::new();let mut receipts=std::collections::BTreeMap::new();
+ for _ in 0..app_catalog::SPINDLE_COUNT.div_ceil(2){let mut attempts=0;s.poll(|pd,value|{
+  attempts+=1;seen.push(pd);let handle=w::decode_reply(value,1).unwrap().unwrap();assert_ne!(handle,0);
+  let(name,len)=service::private_name(pd);let probe=fs.open(&name[..len],0,0,pd).unwrap();assert_eq!(probe,handle as u64);
+  if let Some(previous)=receipts.insert(pd,value){assert_eq!(previous,value);}1
+ });assert!(attempts<=2);}
+ for &target in &app_catalog::SPINDLE_TARGETS{assert!(seen.contains(&target));assert!(s.handle(&fs,target,true,open.header(),0,0,&mut Volatile).is_none());}
+ let retired=app_catalog::SPINDLE_TARGETS[0];s.retire(retired);
+ for _ in 0..app_catalog::SPINDLE_COUNT.div_ceil(2){let mut attempts=0;s.poll(|pd,value|{attempts+=1;assert_ne!(pd,retired);assert_eq!(receipts[&pd],value);0});assert!(attempts<=2);}
+ assert!(!s.pending());
+ let denied=s.handle(&fs,retired,true,req(2,w::OPEN_SAVE,0,0).header(),0,0,&mut Volatile).unwrap();assert_eq!(w::decode_reply(denied,2),Some(Err(w::DENIED)));
+ for &target in app_catalog::SPINDLE_TARGETS.iter().skip(1){
+  let handle=w::decode_reply(receipts[&target],1).unwrap().unwrap();assert!(fs.stat(handle as u64,target).is_ok());
+  assert_eq!(w::decode_reply(rpc(&mut s,&fs,target,req(2,w::ABORT,0,0)),2),Some(Ok(0)));assert!(fs.stat(handle as u64,target).is_err());
+ }
+}
+
+#[test]fn only_catalog_spindle_subjects_admit_names_and_held_live_catalog_tasks(){
+ let fs=RamFs::new();let mut s=Service::new();let open=req(1,w::OPEN_SAVE,0,0);
+ for target in [0,9,15,16,18,99,u32::MAX]{
+  assert!(!service::live(target));let(name,len)=service::private_name(target);
+  assert_eq!(s.handle(&fs,target,true,open.header(),0,0,&mut Volatile),Some(w::reply(1,Err(w::DENIED))));assert!(fs.open(&name[..len],0,0,target).is_err());
+ }
+ for &target in &app_catalog::SPINDLE_TARGETS{
+  app_lifecycle::BAD.set(6);assert!(service::live(target)); // held task IDs may differ from PD IDs
+  for bad in [1,2,3,4,5,7,8]{app_lifecycle::BAD.set(bad);assert!(!service::live(target));}
+  app_lifecycle::BAD.set(0);assert!(service::live(target));
+  assert_eq!(s.handle(&fs,target,false,open.header(),0,0,&mut Volatile),Some(w::reply(1,Err(w::DENIED))));
+ }
+ app_lifecycle::BAD.set(0);assert!(!s.pending());
+}

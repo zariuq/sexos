@@ -7,6 +7,14 @@
 
 #include "silkbar_model.h"
 
+#include "silk_shell_custody.h"
+
+#include "silk_shell_app_state.h"
+
+#include "shell_text_delivery.h"
+
+#include "shell_linen_runtime.h"
+
 #include "format_bytes.h"
 
 #include "packed_words.h"
@@ -636,6 +644,11 @@ size_t strlen(const char *s);
 
 #endif
 
+#if !defined(SEXOS_FRAME_LIGHT_ZOOM_SYNTHETIC_PROOF)
+#define SEXOS_FRAME_LIGHT_ZOOM_SYNTHETIC_PROOF 0
+
+#endif
+
 #if !defined(SEXOS_WEBSTUB_LOCALDOC_TEXT_PROOF)
 #define SEXOS_WEBSTUB_LOCALDOC_TEXT_PROOF 0
 
@@ -922,7 +935,7 @@ size_t strlen(const char *s);
 
 #define SEXUSB_SYNTHETIC_SLOT2_ENABLED ((SEXUSB_SYNTHETIC_SLOT2) != 0)
 
-#define ENABLE_FRAME_LIGHT_ZOOM_SYNTHETIC_PROOF 0
+#define ENABLE_FRAME_LIGHT_ZOOM_SYNTHETIC_PROOF (((SEXOS_FRAME_LIGHT_ZOOM_SYNTHETIC_PROOF) != 0))
 
 #define SHELL_USB_MOUSE_RECEIVE_UNPARK_PROOF_V1 1
 
@@ -995,6 +1008,12 @@ size_t strlen(const char *s);
 #define OP_RAMFS_OPEN UINT64_C(0x30)
 
 #define OP_AUTODEMO_TICK UINT64_C(0x2A0)
+
+#define OP_DISPLAY_READY UINT64_C(0x101)
+
+#define DISPLAY_READY_VERSION UINT64_C(1)
+
+#define SHELL_STARTUP_INBOX_CAPACITY ((size_t)256)
 
 #define SHELL_INTERACTION_STAGE_POINTER ((uint8_t)(1u << 0))
 
@@ -1128,7 +1147,7 @@ size_t strlen(const char *s);
 
 #define BELL_RING_CAP ((size_t)16)
 
-#define LIFECYCLE_MAX_SURFACES ((size_t)32)
+#define LIFECYCLE_MAX_SURFACES ((size_t)SHELL_LIFECYCLE_CAPACITY)
 
 #define PRESET_COUNT ((size_t)4)
 
@@ -1444,7 +1463,7 @@ size_t strlen(const char *s);
 
 #define COMMAND_PALETTE_BOOT_W UINT32_C(480)
 
-#define COMMAND_PALETTE_BOOT_H UINT32_C(240)
+#define COMMAND_PALETTE_BOOT_H UINT32_C(280)
 
 #define PALETTE_LIST_HEADER_H UINT32_C(28)
 
@@ -2133,7 +2152,7 @@ typedef struct SpindleSessionState {
 SpindleSessionState;
 
 typedef enum Command {
-  CMD_FOCUS_SPINDLE = 0, CMD_FOCUS_QUIL = 1, CMD_FOCUS_LINEN = 2, CMD_FOCUS_ATLAS = 3, CMD_FOCUS_BELL = 4, CMD_FOCUS_COLLAR = 5, CMD_FOCUS_MESH = 6, CMD_RESTORE_MINIMIZED = 7, CMD_ZOOM_TOGGLE = 8, CMD_MINIMIZE_FOCUSED = 9
+  CMD_FOCUS_SPINDLE = 0, CMD_FOCUS_QUIL = 1, CMD_FOCUS_LINEN = 2, CMD_FOCUS_ATLAS = 3, CMD_FOCUS_BELL = 4, CMD_FOCUS_COLLAR = 5, CMD_FOCUS_MESH = 6, CMD_RESTORE_MINIMIZED = 7, CMD_ZOOM_TOGGLE = 8, CMD_MINIMIZE_FOCUSED = 9, CMD_FOCUS_BROWSER = 10
 }
 Command;
 
@@ -2195,7 +2214,6 @@ typedef struct SilkShellModelsState {
   bool LINEN_REMOTE_FETCHED;
   bool LINEN_REMOTE_REAL;
   uint8_t LINEN_UI_SELECTED;
-  uint32_t linen_sync_reply__LINEN_SYNC_NONREPLY_BUDGET;
   QuilBuffer QUIL_BUFFERS[QUIL_MAX_BUFFERS];
   CollarGrant COLLAR_GRANTS[COLLAR_GRANT_CAP];
   uint64_t COLLAR_GRANT_GENERATION;
@@ -2441,6 +2459,22 @@ typedef struct SilkShellAtlasState {
 }
 SilkShellAtlasState;
 
+typedef struct ShellLauncherFocus {
+  bool present;
+  uint32_t target;
+  uint32_t task;
+  uint64_t frame;
+  uint8_t action;
+  uint8_t from;
+  uint8_t to;
+  uint64_t expected_focus;
+  bool requested;
+  uint32_t turns;
+  uint64_t start;
+  uint64_t last;
+}
+ShellLauncherFocus;
+
 typedef struct SilkShellSurfacesState {
   uint32_t ensure_linen_frame__LINEN_CREATE_BUDGET;
   uint32_t ensure_linen_frame__LINEN_NOSLOT_BUDGET;
@@ -2488,6 +2522,8 @@ typedef struct SilkShellSurfacesState {
   YarnSession YARN;
   SpindleSessionState SPINDLE_SESSIONS[SPINDLE_SESSION_COUNT];
   size_t SPINDLE_ACTIVE_SESSION;
+  ShellTextOutbox PALETTE_TEXT;
+  ShellLauncherFocus LAUNCHER_FOCUS;
   bool COMMAND_PALETTE_OPEN;
   uint8_t COMMAND_PALETTE_SELECTED;
   bool open_spindle_in_active_scene__SESSION_INIT_DONE;
@@ -2505,6 +2541,10 @@ typedef struct SilkShellSurfacesState {
 SilkShellSurfacesState;
 
 typedef struct SilkShellInputState {
+  bool APP_MODIFIER_LEFT_SHIFT;
+  bool APP_MODIFIER_RIGHT_SHIFT;
+  bool APP_MODIFIER_LEFT_CONTROL;
+  bool APP_MODIFIER_RIGHT_CONTROL;
   int32_t POINTER_X;
   int32_t POINTER_Y;
   uint8_t POINTER_BUTTONS;
@@ -2810,6 +2850,11 @@ SilkShellProofsBState;
 
 typedef struct SilkShellCoreState {
   SexosListener pdx_listener;
+  SexosMessage startup_messages[SHELL_STARTUP_INBOX_CAPACITY];
+  bool startup_present[SHELL_STARTUP_INBOX_CAPACITY];
+  size_t startup_head;
+  size_t startup_len;
+  bool startup_ready;
   uint32_t _start__FRAME_LIGHT_MODEL_BUDGET;
   uint32_t _start__FRAME_TAB_MODEL_BUDGET;
   uint32_t _start__FRAME_TOPBAR_MODEL_BUDGET;
@@ -2849,6 +2894,7 @@ typedef struct SilkShellCoreState {
 SilkShellCoreState;
 
 typedef struct SilkShellState {
+  ShellChromeApps apps;
   SilkShellModelsState models;
   SilkShellChromeState chrome;
   SilkShellAtlasState atlas;
@@ -2857,6 +2903,7 @@ typedef struct SilkShellState {
   SilkShellProofsAState proofs_a;
   SilkShellProofsBState proofs_b;
   SilkShellCoreState core;
+  ShellLinenRuntime linen;
 }
 SilkShellState;
 
@@ -2888,11 +2935,17 @@ extern const ChromeTemplate SILK_CHROME_TEMPLATE_DEFAULT;
 
 extern const uint32_t ATLAS_ACCENT_COLORS[5];
 
-extern const CommandDef COMMAND_LIST[10];
+extern const CommandDef COMMAND_LIST[11];
 
 /*Core initialization, entrypoint, and serial formatting helpers.*/
 
 void silk_shell_state_init(SilkShellState *s);
+
+bool desktop_shortcut(uint8_t code, uint64_t value);
+
+bool quil_has_focus(void);
+
+bool spindle_has_focus(void);
 
 void silk_shell_main(void);
 
@@ -3249,10 +3302,6 @@ uint32_t linen_selected_object_accent(void);
 void linen_render_object_list(void);
 
 void linen_render_static_ui(void);
-
-uint64_t linen_sync_reply(void);
-
-uint8_t sanitize_ascii(uint8_t b);
 
 void linen_fetch_remote_snapshot(void);
 

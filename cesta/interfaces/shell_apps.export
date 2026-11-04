@@ -1,0 +1,5 @@
+(cesta-export/1 (header SEXOS_SHELL_APP_ROWS_H) (profile c11)
+  (table-rows "shell_apps.data" Apps (macro SEXOS_SHELL_APP_ROWS)
+    (columns app ordinal target surface shell_surface lifecycle_slot close_slot has_activation activation_slot route_slot child_count child0 child1 child2))
+  (table-rows "shell_apps.data" BootLifecycle (macro SEXOS_SHELL_BOOT_LIFECYCLE_ROWS) (columns surface state))
+  (table-rows "shell_apps.data" ShellLifecycle (macro SEXOS_SHELL_LAZY_LIFECYCLE_ROWS) (columns surface state)))

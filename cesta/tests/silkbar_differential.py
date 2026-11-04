@@ -241,7 +241,7 @@ def main():
     compared = 0
     reference_traces = {}
     for variant in VARIANTS:
-        defines = [f"-D{name}" for name in variant]
+        defines = ["-DSEXOS_SILKBAR_DISPLAY_READY=0", "-DSEXOS_SILKBAR_BELL_REPLY_CALLER=1", *(f"-D{name}" for name in variant)]
         objects = []
         for compiler in ("gcc", "clang"):
             group = []
@@ -294,7 +294,7 @@ def main():
         assert original.count(old_text) == 1, old_text
         mutant = work / f"silkbar-mutant-{number}.cesta"
         mutant.write_text(original.replace(old_text, new_text))
-        run([cesta, "cc", "--cc", "gcc", "-std=c11", "-O2", *include, "-c", mutant, "-o", work / "mutant.o"])
+        run([cesta, "cc", "--cc", "gcc", "-std=c11", "-O2", "-DSEXOS_SILKBAR_DISPLAY_READY=0", "-DSEXOS_SILKBAR_BELL_REPLY_CALLER=1", *include, "-c", mutant, "-o", work / "mutant.o"])
         detected = False
         for index, case in enumerate(scenarios(args.cases)):
             c_scenario = "{%dull, %d, %d, %d, %d, %d}" % (case["seed"], case["limit"], case["display"],

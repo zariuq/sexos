@@ -1,0 +1,41 @@
+
+#ifndef SEXOS_NETWORK_TCP_CLIENT_H
+#define SEXOS_NETWORK_TCP_CLIENT_H
+#include "network_engine_tcp_packet.h"
+enum { NETWORK_TCP_BUFFER_BYTES=4096,NETWORK_TCP_TURN_BYTES=256,NETWORK_TCP_RETRY_LIMIT=5 };
+#define NETWORK_TCP_RETRY_TICKS UINT64_C(1000)
+typedef enum NetworkTcpClientState {
+    NETWORK_TCP_CLOSED=0,NETWORK_TCP_SYN_SENT=1,NETWORK_TCP_ESTABLISHED=2,
+    NETWORK_TCP_FIN_WAIT1=3,NETWORK_TCP_FIN_WAIT2=4,NETWORK_TCP_CLOSE_WAIT=5,
+    NETWORK_TCP_CLOSING=6,NETWORK_TCP_LAST_ACK=7,NETWORK_TCP_TIME_WAIT=8,NETWORK_TCP_FAILED=9
+} NetworkTcpClientState;
+typedef enum NetworkTcpClientError {
+    NETWORK_TCP_CLIENT_OK=0,NETWORK_TCP_CLIENT_CONFIG=1,NETWORK_TCP_CLIENT_MAC=2,
+    NETWORK_TCP_CLIENT_CLOCK=3,NETWORK_TCP_CLIENT_TICKET=4,NETWORK_TCP_CLIENT_STATE=5,
+    NETWORK_TCP_CLIENT_CAPACITY=6,NETWORK_TCP_CLIENT_PROTOCOL=7,NETWORK_TCP_CLIENT_TIMEOUT=8
+} NetworkTcpClientError;
+typedef struct NetworkTcpClientCount { bool ok; size_t count; NetworkTcpClientError error; } NetworkTcpClientCount;
+typedef struct NetworkTcpClientReceive { bool ok; size_t count; NetworkTcpClientError error; uint8_t bytes[NETWORK_TCP_TURN_BYTES]; } NetworkTcpClientReceive;
+typedef struct NetworkTcpClientOutput { bool present; NetworkEngineFrame frame; } NetworkTcpClientOutput;
+typedef struct NetworkTcpClientSnapshot {
+    NetworkTcpClientState state; NetworkTcpClientError error; uint32_t ticket,snd_una,snd_nxt,rcv_nxt;
+    size_t queued,received; bool finish_requested,peer_fin,pending,immediate; unsigned retries; uint64_t last,retransmit_at;
+} NetworkTcpClientSnapshot;
+typedef struct NetworkTcpClient {
+    NetworkTcpClientState state; NetworkTcpClientError error; NetConfig config; NetworkEngineMac local_mac,peer_mac;
+    uint32_t ticket,local_ip,remote_ip; uint16_t local_port,remote_port; uint32_t snd_una,snd_nxt,rcv_nxt;
+    uint8_t send[NETWORK_TCP_BUFFER_BYTES],receive[NETWORK_TCP_BUFFER_BYTES]; size_t send_len,receive_len;
+    bool finish_requested,peer_fin,pending_present,pending_sent,pending_fin,immediate_present;
+    NetworkEngineFrame pending,immediate; uint32_t pending_end; size_t pending_payload; uint64_t retransmit_at,last; unsigned retries;
+} NetworkTcpClient;
+void network_tcp_client_init(NetworkTcpClient *client);
+NetworkTcpClientError network_tcp_client_begin(NetworkTcpClient *client,NetConfig config,NetworkEngineMac local_mac,NetworkEngineMac peer_mac,uint32_t ticket,bool tls,uint64_t seed,uint64_t now);
+NetworkTcpClientCount network_tcp_client_send(NetworkTcpClient *client,const NetworkEnginePayload *payload);
+NetworkTcpClientReceive network_tcp_client_receive(NetworkTcpClient *client,size_t maximum);
+bool network_tcp_client_finish(NetworkTcpClient *client);
+void network_tcp_client_abort(NetworkTcpClient *client);
+bool network_tcp_client_ingest(NetworkTcpClient *client,const NetworkEngineFrame *frame,uint64_t now);
+NetworkTcpClientOutput network_tcp_client_advance(NetworkTcpClient *client,uint64_t now);
+size_t network_tcp_client_queued(const NetworkTcpClient *client);
+NetworkTcpClientSnapshot network_tcp_client_snapshot(const NetworkTcpClient *client);
+#endif

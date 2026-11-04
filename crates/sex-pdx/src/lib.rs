@@ -6,6 +6,32 @@
 
 #![no_std]
 
+pub mod pagefault;
+pub mod app_catalog;
+pub mod browser_sources;
+pub mod uiir;
+pub mod display_ready;
+pub mod shell_ready;
+pub mod memory_region;
+pub mod dma_pool;
+pub mod paging;
+pub mod app_lifecycle;
+pub mod network_job;
+pub mod network_dns;
+pub mod entropy_source;
+pub mod clock_source;
+pub mod certificate_time;
+pub mod trust_source;
+pub mod trust_policy;
+pub use sex_trust_config as trust_config;
+pub mod entropy_seed;
+pub mod spindle_history;
+pub mod spindle_probe;
+pub mod spindle_view;
+pub mod spindle_status;
+pub mod history_recovery;
+pub use memory_region::MemoryRegionInfo;
+
 /// Opaque protection domain identifier. All inter-domain references use this type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DomainId(pub u32);
@@ -28,6 +54,21 @@ pub enum AuthLayer {
 
 /// Userland serial writer — calls kernel raw_print (syscall 0, opcode 69).
 pub struct SerialWriter;
+
+mod serial_record_buffer;
+
+/// A complete bounded line uses one raw-print invocation. On the current BSP
+/// syscall entry masks interrupts, so timer diagnostics cannot split its fields.
+pub fn write_serial_record(arguments: core::fmt::Arguments<'_>) {
+    serial_record_buffer::emit(arguments, |line| {
+        let _ = core::fmt::Write::write_str(&mut SerialWriter, line);
+    });
+}
+
+#[macro_export]
+macro_rules! serial_record {
+    ($($arg:tt)*) => { $crate::write_serial_record(core::format_args!($($arg)*)) };
+}
 
 impl core::fmt::Write for SerialWriter {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
@@ -55,7 +96,8 @@ pub struct PdxMessage {
     pub arg1:      u64,
     pub arg2:      u64,
     pub caller_pd: u32,
-    _pad:          u32,
+    /// Kernel-stamped actual scheduled sender; zero for explicit kernel/IRQ messages.
+    pub caller_task: u32,
 }
 
 #[repr(C)]
@@ -145,6 +187,7 @@ pub const EV_KEY: u64 = 1;
 pub const EV_REL: u64 = 2;
 pub const EV_ABS: u64 = 3;
 pub const EV_BTN: u64 = 4;
+pub const EV_WHEEL: u64 = app_scroll::CLASS;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -159,6 +202,7 @@ pub struct ShellEvent {
 ///   arg2=EV_REL (2): arg0=dx(i32),   arg1=dy(i32)   (relative delta)
 ///   arg2=EV_ABS (3): arg0=abs_x,   arg1=abs_y  (mouse position, absolute)
 ///   arg2=EV_BTN (4): arg0=button,  arg1=1(dn)/0(up)
+///   arg2=EV_WHEEL (5): arg0=canonical signed i8 vertical steps, arg1=0
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum InputEvent {
     KeyDown(u8),
@@ -231,12 +275,14 @@ pub enum MessageType {
 
 pub struct PdxEvent; // Stub
 
-/// Spin-receive from a specific capability slot.
+/// Receive from a capability slot. Self-inbox waits retain wake events across
+/// scheduler ownership transfers; other slot kinds remain cooperative polls.
 pub fn pdx_listen_raw(slot: u64) -> PdxMessage {
     static mut PDX_LISTEN_WRAPPER_BUDGET: u32 = 8;
     loop {
         let type_id: u64;
         let caller_pd: u64;
+        let caller_task: u64;
         let arg0: u64;
         let arg1: u64;
         let arg2: u64;
@@ -244,7 +290,7 @@ pub fn pdx_listen_raw(slot: u64) -> PdxMessage {
             core::arch::asm!(
                 "syscall",
                 in("rax") 28u64,
-                in("rdi") slot,
+                inlateout("rdi") slot => caller_task,
                 lateout("rax") type_id,    // 0 = EMPTY, non-zero = valid
                 lateout("rsi") caller_pd,
                 lateout("rdx") arg0,
@@ -255,7 +301,7 @@ pub fn pdx_listen_raw(slot: u64) -> PdxMessage {
             );
         }
         if type_id == 0 {
-            sys_yield();
+            if slot == 0 { sys_wait_self(); } else { sys_yield(); }
             continue;
         }
         unsafe {
@@ -273,7 +319,7 @@ pub fn pdx_listen_raw(slot: u64) -> PdxMessage {
             arg1,
             arg2,
             caller_pd: caller_pd as u32,
-            _pad: 0,
+            caller_task: u32::try_from(caller_task).unwrap_or(0),
         };
     }
 }
@@ -282,6 +328,7 @@ pub fn pdx_listen_raw(slot: u64) -> PdxMessage {
 pub fn pdx_try_listen_raw(slot: u64) -> Option<PdxMessage> {
     let type_id: u64;
     let caller_pd: u64;
+    let caller_task: u64;
     let arg0: u64;
     let arg1: u64;
     let arg2: u64;
@@ -289,7 +336,7 @@ pub fn pdx_try_listen_raw(slot: u64) -> Option<PdxMessage> {
         core::arch::asm!(
             "syscall",
             in("rax") 28u64,
-            in("rdi") slot,
+            inlateout("rdi") slot => caller_task,
             lateout("rax") type_id,
             lateout("rsi") caller_pd,
             lateout("rdx") arg0,
@@ -311,7 +358,7 @@ pub fn pdx_try_listen_raw(slot: u64) -> Option<PdxMessage> {
             arg1,
             arg2,
             caller_pd: caller_pd as u32,
-            _pad: 0,
+            caller_task: u32::try_from(caller_task).unwrap_or(0),
         })
     }
 }
@@ -352,6 +399,32 @@ pub fn sys_yield() {
             out("r11") _,
         );
     }
+}
+
+/// Wait for this domain's own inbox/reply activity without consuming a message.
+/// There is no target-domain argument and no authority to wake another task.
+/// Spurious/coalesced wakes are allowed: callers recheck their actual input.
+pub fn sys_wait_self() {
+    unsafe {
+        core::arch::asm!(
+            "syscall",
+            inlateout("rax") 53u64 => _,
+            in("rdi") 0u64,
+            out("rcx") _,
+            out("r11") _,
+        );
+    }
+}
+
+/// Pause this BOOT-created main task until inbox/reply activity or a bounded
+/// nominal timer delay (1..=64 ticks). Wakes can be spurious/coalesced; callers
+/// recheck their own inputs. No target task, new grant or delivery receipt.
+pub fn sys_wait_self_ticks(ticks:u64)->Result<(),u64>{
+    let result:u64;
+    unsafe{core::arch::asm!("syscall",inlateout("rax")70u64=>result,
+        in("rdi")ticks,in("rsi")0u64,in("rdx")0u64,in("r10")0u64,in("r8")0u64,
+        out("rcx")_,out("r11")_);}
+    if result==0{Ok(())}else{Err(result)}
 }
 
 pub const SYSCALL_GET_TICKS: u64 = 34;
@@ -414,6 +487,263 @@ pub const SLOT_BLOCK:   u64 = 15; // sexdrive block/DMA service (sexfiles→sexd
 pub const SLOT_BUF_LEND: u64 = 17; // kernel-allocated MemLend buffer cap (sexfiles→sexdrive, Phase A)
 pub const SLOT_NET:     u64 = 18; // sexnet network manager route
 pub const SLOT_NIC:     u64 = 19; // e1000e NIC hardware capability (sexnet driver)
+pub const SLOT_DMA_REGION: u64 = 32;
+pub const SLOT_FRAME_REGION: u64 = 33;
+pub const SLOT_BLOCK_BUFFER: u64 = 17;
+
+/// Change only explicitly BOOT-sanctioned command bits on the held device.
+/// A hardware error may follow a partial mutation: inspect with set=clear=0;
+/// never silently retry a failed mutation.
+pub fn device_command(slot:u64,set:u64,clear:u64)->Result<pci_command::Reply,u64> {
+    let(status,before,after,changed,reserved):(u64,u64,u64,u64,u64);
+    unsafe { core::arch::asm!("syscall",
+        inlateout("rax") pci_command::SYS_COMMAND=>status,in("rdi")slot,
+        inlateout("rsi")set=>before,inlateout("rdx")clear=>after,
+        inlateout("r10")0u64=>changed,inlateout("r8")0u64=>reserved,
+        out("rcx")_,out("r11")_,options(nostack)); }
+    if status!=0 {
+        if before|after|changed|reserved!=0{return Err(pci_command::IO)}
+        return Err(status)
+    }
+    if before>u16::MAX as u64||after>u16::MAX as u64||changed>1||reserved!=0{return Err(pci_command::IO)}
+    Ok(pci_command::Reply{before:before as u16,after:after as u16,changed:changed!=0})
+}
+
+/// Read metadata from this subject's exact held BOOT device-command lease.
+pub fn device_identity(slot:u64)->Result<pci_command::Identity,u64> {
+    let(status,vendor,product,reserved0,reserved1):(u64,u64,u64,u64,u64);
+    unsafe { core::arch::asm!("syscall",
+        inlateout("rax") pci_command::SYS_IDENTITY=>status,in("rdi")slot,
+        inlateout("rsi")0u64=>vendor,inlateout("rdx")0u64=>product,
+        inlateout("r10")0u64=>reserved0,inlateout("r8")0u64=>reserved1,
+        out("rcx")_,out("r11")_,options(nostack)); }
+    if status!=0 {
+        if vendor|product|reserved0|reserved1!=0{return Err(pci_command::IO)}
+        return Err(status)
+    }
+    if vendor>u16::MAX as u64||product>u16::MAX as u64||reserved0|reserved1!=0{return Err(pci_command::IO)}
+    Ok(pci_command::Identity{vendor:vendor as u16,product:product as u16})
+}
+
+/// Checked immutable BOOT data through this subject's held NIC lease.
+pub fn device_network_config(slot:u64)->Result<network_config::Config,u64>{
+    let(status,a,b,c,d):(u64,u64,u64,u64,u64);
+    unsafe{core::arch::asm!("syscall",
+        inlateout("rax")network_config::SYS_CONFIG=>status,in("rdi")slot,
+        inlateout("rsi")0u64=>a,inlateout("rdx")0u64=>b,
+        inlateout("r10")0u64=>c,inlateout("r8")0u64=>d,
+        out("rcx")_,out("r11")_,options(nostack));}
+    if status!=0{return Err(if a|b|c|d!=0{pci_command::IO}else{status});}
+    network_config::Config::from_words([a,b,c,d]).ok_or(pci_command::IO)
+}
+
+/// Invoke only this subject's typed BOOT seed-source grant. All output words
+/// are decoded; a failed or malformed result cannot become seed material.
+fn entropy_registers(slot:u64,kind:u64)->[u64;5]{
+    let(status,a,b,c,d):(u64,u64,u64,u64,u64);
+    unsafe{core::arch::asm!("syscall",
+        inlateout("rax")entropy_source::SYS=>status,in("rdi")slot,
+        inlateout("rsi")kind=>a,inlateout("rdx")0u64=>b,
+        inlateout("r10")0u64=>c,inlateout("r8")0u64=>d,
+        out("rcx")_,out("r11")_,options(nostack));}
+    [status,a,b,c,d]
+}
+pub fn entropy_info(slot:u64)->Result<entropy_source::Info,u64>{
+    entropy_source::Info::decode(entropy_registers(slot,entropy_source::INFO))
+}
+pub fn entropy_word(slot:u64)->Result<entropy_source::Word,u64>{
+    entropy_source::Word::decode(entropy_registers(slot,entropy_source::READ))
+}
+
+fn clock_registers(slot:u64,kind:u64)->[u64;5]{
+    let(status,a,b,c,d):(u64,u64,u64,u64,u64);
+    unsafe{core::arch::asm!("syscall",inlateout("rax")clock_source::SYS=>status,
+        in("rdi")slot,inlateout("rsi")kind=>a,inlateout("rdx")0u64=>b,
+        inlateout("r10")0u64=>c,inlateout("r8")0u64=>d,
+        out("rcx")_,out("r11")_,options(nostack));}
+    [status,a,b,c,d]
+}
+pub fn clock_info(slot:u64)->Result<clock_source::Info,u64>{clock_source::Info::decode(clock_registers(slot,clock_source::INFO))}
+pub fn clock_snapshot(slot:u64)->Result<clock_source::Snapshot,u64>{clock_source::Snapshot::decode(clock_registers(slot,clock_source::READ))}
+
+/// Inspect only this exact subject's held immutable BOOT trust-policy source.
+pub fn trust_info(slot:u64)->Result<trust_source::Info,u64>{
+    let(status,a,b,c,d):(u64,u64,u64,u64,u64);
+    unsafe{core::arch::asm!("syscall",inlateout("rax")trust_source::SYS=>status,
+        in("rdi")slot,inlateout("rsi")trust_source::INFO=>a,inlateout("rdx")0u64=>b,
+        inlateout("r10")0u64=>c,inlateout("r8")0u64=>d,
+        out("rcx")_,out("r11")_,options(nostack));}
+    trust_source::Info::decode([status,a,b,c,d])
+}
+
+/// Inspect a boot paging capability without allocating or mapping anything.
+pub fn paging_info(slot: u64) -> Result<paging::PagingInfo, u64> {
+    let (status, base, length, target, rights): (u64, u64, u64, u64, u64);
+    unsafe { core::arch::asm!("syscall",
+        inlateout("rax") paging::SYS_PAGING_INFO => status, in("rdi") slot,
+        lateout("rsi") base, lateout("rdx") length, lateout("r10") target,
+        lateout("r8") rights, out("rcx") _, out("r11") _, options(nostack)); }
+    if status != paging::PAGING_OK { return Err(status); }
+    Ok(paging::PagingInfo { base, length,
+        target_pd: u32::try_from(target).map_err(|_| paging::ERR_PAGING_INVALID)?,
+        rights: u8::try_from(rights).map_err(|_| paging::ERR_PAGING_INVALID)? })
+}
+
+pub fn paging_query(mapping_slot: u64, token: u64) -> Result<paging::FaultQuery, u64> {
+    let (status, page, error, target, rights): (u64, u64, u64, u64, u64);
+    unsafe { core::arch::asm!("syscall",
+        inlateout("rax") paging::SYS_PAGING_QUERY => status, in("rdi") mapping_slot,
+        inlateout("rsi") token => page, lateout("rdx") error,
+        lateout("r10") target, lateout("r8") rights,
+        out("rcx") _, out("r11") _, options(nostack)); }
+    if status != paging::PAGING_OK { return Err(status); }
+    Ok(paging::FaultQuery { page_va: page, error_code: error,
+        target_pd: u32::try_from(target).map_err(|_| paging::ERR_PAGING_INVALID)?,
+        allowed_rights: u8::try_from(rights).map_err(|_| paging::ERR_PAGING_INVALID)? })
+}
+
+/// RETRY retains custody of the same frame; only exact arguments may be retried.
+pub fn paging_commit(mapping_slot: u64, pool_slot: u64, frame_index: u64, token: u64, rights: u8) -> u64 {
+    let status: u64;
+    unsafe { core::arch::asm!("syscall",
+        inlateout("rax") paging::SYS_PAGING_COMMIT => status,
+        in("rdi") mapping_slot, inlateout("rsi") pool_slot => _, inlateout("rdx") frame_index => _,
+        inlateout("r10") token => _, inlateout("r8") rights as u64 => _,
+        out("rcx") _, out("r11") _, options(nostack)); }
+    status
+}
+
+pub fn paging_reject(mapping_slot: u64, token: u64) -> u64 {
+    let status: u64;
+    unsafe { core::arch::asm!("syscall",
+        inlateout("rax") paging::SYS_PAGING_REJECT => status,
+        in("rdi") mapping_slot, inlateout("rsi") token => _,
+        lateout("rdx") _, lateout("r10") _, lateout("r8") _,
+        out("rcx") _, out("r11") _, options(nostack)); }
+    status
+}
+
+/// Free backing only after OK: the exact old leaf and its BSP TLB entry are gone.
+pub fn paging_reclaim(mapping_slot: u64, pool_slot: u64, frame_index: u64, token: u64) -> u64 {
+    let status: u64;
+    unsafe { core::arch::asm!("syscall",
+        inlateout("rax") paging::SYS_PAGING_RECLAIM => status,
+        in("rdi") mapping_slot, inlateout("rsi") pool_slot => _,
+        inlateout("rdx") frame_index => _, inlateout("r10") token => _,
+        lateout("r8") _, out("rcx") _, out("r11") _, options(nostack)); }
+    status
+}
+
+/// Permanently close one boot paging range after its main task has exited and
+/// released CPU/stack custody. OK covers every target-owned leaf, even an
+/// uncertain earlier commit. Apply cleanup to local target ownership once.
+pub fn paging_cleanup(mapping_slot: u64, pool_slot: u64) -> Result<paging::CleanupResult, u64> {
+    let (status, frame_bitmap, task_id): (u64, u64, u64);
+    unsafe { core::arch::asm!("syscall",
+        inlateout("rax") paging::SYS_PAGING_CLEANUP => status,
+        in("rdi") mapping_slot, inlateout("rsi") pool_slot => frame_bitmap,
+        lateout("rdx") task_id, lateout("r10") _, lateout("r8") _,
+        out("rcx") _, out("r11") _, options(nostack)); }
+    if status != paging::PAGING_OK { return Err(status); }
+    Ok(paging::CleanupResult { frame_bitmap, task_id })
+}
+
+/// Finish only the invoking task. The kernel releases its CPU custody before
+/// authorizing cleanup; this call grants no authority over another task.
+pub fn task_finish(reason: u64) -> ! {
+    unsafe { core::arch::asm!("syscall",
+        inlateout("rax") paging::SYS_TASK_FINISH => _, in("rdi") reason,
+        out("rcx") _, out("r11") _, options(nostack)); }
+    // Defensive fallback if a broken kernel unexpectedly returns.
+    loop { sys_yield(); }
+}
+
+pub const SYS_MEMORY_REGION_VIEW: u64 = 54;
+pub const SYS_MEMORY_REGION_INFO: u64 = 55;
+
+/// Query immutable boot authority. No frames, mappings or capabilities are created.
+pub fn memory_region_info(slot: u64) -> Result<MemoryRegionInfo, u64> {
+    let (status, length, rights, peer, region_id): (u64, u64, u64, u64, u64);
+    unsafe {
+        core::arch::asm!("syscall",
+            inlateout("rax") SYS_MEMORY_REGION_INFO => status, in("rdi") slot,
+            lateout("rsi") length, lateout("rdx") rights,
+            lateout("r10") peer, lateout("r8") region_id,
+            out("rcx") _, out("r11") _, options(nostack));
+    }
+    if status != 0 { return Err(status); }
+    Ok(MemoryRegionInfo { region_id: region_id as u32, length, rights: rights as u8,
+        peer_pd: if peer == 0 { None } else { Some(peer as u32) } })
+}
+
+pub fn memory_region_view(slot: u64, offset: u64, length: u64, rights: u8) -> Result<memory_region::RegionView, u64> {
+    let (status, virtual_address, view_length, physical, region_id): (u64, u64, u64, u64, u64);
+    unsafe {
+        core::arch::asm!("syscall",
+            inlateout("rax") SYS_MEMORY_REGION_VIEW => status, in("rdi") slot,
+            inlateout("rsi") offset => virtual_address,
+            inlateout("rdx") length => view_length,
+            inlateout("r10") rights as u64 => physical, lateout("r8") region_id,
+            out("rcx") _, out("r11") _, options(nostack));
+    }
+    if status != 0 { return Err(status); }
+    Ok(memory_region::RegionView { region_id: region_id as u32, virtual_address,
+        length: view_length, dma_address: if physical == 0 { None } else { Some(physical) } })
+}
+
+pub fn memory_region_full_view(slot: u64, rights: u8) -> Result<memory_region::RegionView, u64> {
+    let info = memory_region_info(slot)?;
+    memory_region_view(slot, 0, info.length, rights)
+}
+
+/// Resolve only this protection domain's immutable BOOT frame Region. The
+/// descriptor adds bounds and ownership discipline; it creates no authority.
+/// Memory-region authority belongs to the PD and is shared by its tasks.
+pub fn display_frame_backing(layout: display_frames::Layout) -> Result<display_frames::FrameBacking, u64> {
+    let info = memory_region_info(display_frames::SLOT)?;
+    let rights = memory_region::QUERY_VIEW | memory_region::READ | memory_region::WRITE;
+    let view = memory_region_view(display_frames::SLOT, 0, layout.total_bytes(), rights)?;
+    // Only the current subject's checked held-capability results reach here.
+    unsafe { display_frames::FrameBacking::from_resolved(layout, info, view) }
+}
+
+/// Resolve only the caller's existing BOOT document Region capability. Numeric
+/// subject/slot parameters cannot create a view or upgrade its rights.
+pub fn document_snapshot_view(subject: u32, writer: bool) -> Result<document_snapshot::Region, u32> {
+    let index = app_catalog::QUIL_TARGETS.iter().position(|target| *target == subject).ok_or(document::DENIED)?;
+    let slot = if writer { document_buffer::PROVIDER_SLOTS[index] } else { document_buffer::CLIENT_SLOT };
+    let rights = memory_region::QUERY_VIEW | memory_region::READ | if writer { memory_region::WRITE } else { 0 };
+    let info = memory_region_info(slot).map_err(|_| document::DENIED)?;
+    let view = memory_region_view(slot, 0, document_buffer::BYTES, rights).map_err(|_| document::DENIED)?;
+    // Only immutable current-domain syscall results reach this constructor.
+    unsafe { document_snapshot::Region::from_resolved(info, view, subject, writer) }
+}
+
+/// Resolve this domain's BOOT UiIR ring and cursor views and check each is the
+/// exact stream region, with the exact peer and rights for `producer`'s role.
+/// Numeric slots cannot create or upgrade a view.
+fn uiir_views(producer: bool, peer: u32) -> Result<(u64, u64), u64> {
+    use memory_region::{QUERY_VIEW, READ, WRITE};
+    let (ring_rights, cursor_rights) = if producer { (QUERY_VIEW | READ | WRITE, QUERY_VIEW | READ) } else { (QUERY_VIEW | READ, QUERY_VIEW | READ | WRITE) };
+    let mut out = [0u64; 2];
+    for (index, (slot, region, rights, bytes)) in [(uiir::RING_SLOT, uiir::RING_REGION_ID, ring_rights, uiir::RING_BYTES),
+        (uiir::CURSOR_SLOT, uiir::CURSOR_REGION_ID, cursor_rights, uiir::CURSOR_BYTES)].into_iter().enumerate() {
+        let info = memory_region_info(slot)?;
+        if info.region_id != region || info.peer_pd != Some(peer) || info.rights != rights || info.length != bytes as u64 { return Err(ERR_CAP_INVALID); }
+        let view = memory_region_view(slot, 0, bytes as u64, rights)?;
+        if view.region_id != region || view.length != bytes as u64 { return Err(ERR_CAP_INVALID); }
+        out[index] = view.virtual_address;
+    }
+    Ok((out[0], out[1]))
+}
+pub fn uiir_producer(peer: u32) -> Result<uiir::Producer, u64> {
+    let (ring, cursor) = uiir_views(true, peer)?;
+    Ok(unsafe { uiir::Producer::attach(ring as *mut u8, cursor as *const u8) })
+}
+pub fn uiir_consumer(peer: u32) -> Result<uiir::Consumer, u64> {
+    let (ring, cursor) = uiir_views(false, peer)?;
+    Ok(unsafe { uiir::Consumer::attach(ring as *const u8, cursor as *mut u8) })
+}
 
 // ── MemLend buffer cap ABI (SEXBLOCK_BUFFER_LEND_CAP_IMPLEMENT_PHASE_A_V1) ──
 pub const SYS_MAP_PCI_BAR: u64 = 43;
@@ -614,6 +944,15 @@ pub fn diskfs_v2_payload(reply: u64) -> [u8; DISKFS_V2_MAX_READ] {
     out
 }
 
+/// Two crash-consistent private-history banks, each header + 8 payload sectors.
+pub const SPINDLE_HISTORY_BASE_LBA:u64=1808;
+pub const SPINDLE_HISTORY_SECTORS:u64=18;
+const _:()={
+ let regions=[(DISKFS_V4_POOL_BASE_LBA,DISKFS_V4_POOL_SECTORS),(DISKFS_V4_INDIRECT_BASE_LBA,DISKFS_V4_INDIRECT_SECTORS),(DISKFS_LEGACY_SLOTS_START_LBA,DISKFS_LEGACY_SLOTS_SECTORS),(DISKFS_MANIFEST_LBA,DISKFS_MANIFEST_SECTORS),(SEXDRIVE_AP3_WRITE_PROOF_LBA,SEXDRIVE_AP3_WRITE_PROOF_SECTORS),(SEXDRIVE_AP4_MULTI_BASE_LBA,SEXDRIVE_AP4_MULTI_SECTORS),(SEXDRIVE_AP5A_PERSIST_BASE_LBA,SEXDRIVE_AP5A_PERSIST_SECTORS),(SEXDRIVE_AP6_NEG_MISMATCH_LBA,SEXDRIVE_AP6_NEG_MISMATCH_SECTORS)];
+ let mut i=0;while i<regions.len(){assert!(!ranges_overlap(SPINDLE_HISTORY_BASE_LBA,SPINDLE_HISTORY_SECTORS,regions[i].0,regions[i].1));i+=1;}
+ assert!(SPINDLE_HISTORY_BASE_LBA>=128&&SPINDLE_HISTORY_BASE_LBA+SPINDLE_HISTORY_SECTORS<=2020);
+};
+
 // SexFS v0 allowed write envelope (apps/sexdrive write_guard_allows) — not
 // itself a reservation, the outer bound DiskFS's pool must stay inside.
 pub const SEXFS_V0_META_START_LBA: u64 = 0;
@@ -728,3 +1067,24 @@ pub fn pdx_spawn_pd(elf_addr: u64, elf_len: u64) -> Result<DomainId, u64> {
         Err(status)
     }
 }
+
+pub mod document;
+pub mod document_buffer;
+pub mod document_snapshot;
+pub mod pci_command;
+pub mod network_config;
+
+pub mod desktop_style;
+pub mod document_view;
+
+pub mod display_boot;
+pub mod display_frames;
+
+pub mod text_batch;
+pub mod text_selection;
+pub mod text_encoding;
+pub mod clipboard;
+pub mod clipboard_client;
+pub mod app_key;
+pub mod app_scroll;
+pub mod bitmap_batch;

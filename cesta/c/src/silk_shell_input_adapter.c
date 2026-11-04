@@ -1,0 +1,98 @@
+/*Binding the checked input context to the shell state and the remaining native subsystem interfaces.*/
+#include "silk_shell_input.h"
+bool desktop_shortcut(uint8_t code,uint64_t value);
+bool quil_has_focus(void);
+bool spindle_has_focus(void);
+static ShellInputContext input_context(void) {
+    return (ShellInputContext){.shell={.input=&SILK_SHELL_STATE.input,.chrome=&SILK_SHELL_STATE.chrome,
+        .models=&SILK_SHELL_STATE.models,.apps=&SILK_SHELL_STATE.apps,.proofs_a=&SILK_SHELL_STATE.proofs_a},
+        .atlas=&SILK_SHELL_STATE.atlas,.surfaces=&SILK_SHELL_STATE.surfaces};
+}
+static void input_binding(const ShellInputContext *ctx) {
+    if(ctx && ctx->shell.input==&SILK_SHELL_STATE.input && ctx->shell.chrome==&SILK_SHELL_STATE.chrome &&
+       ctx->atlas==&SILK_SHELL_STATE.atlas && ctx->surfaces==&SILK_SHELL_STATE.surfaces &&
+       ctx->shell.proofs_a==&SILK_SHELL_STATE.proofs_a && ctx->shell.models==&SILK_SHELL_STATE.models &&
+       ctx->shell.apps==&SILK_SHELL_STATE.apps) return;
+    sexos_fail(); for(;;){}
+}
+bool shell_input_peer_access_handle_keyboard_action(ShellInputContext *ctx, uint8_t action) {input_binding(ctx); return access_handle_keyboard_action(action);}
+const char *shell_input_peer_action_name(ShellInputContext *ctx, uint8_t action) {input_binding(ctx); return action_name(action);}
+bool shell_input_peer_active_surface_for_frame(ShellInputContext *ctx, uint32_t frame_id, uint64_t *out_surface_id) {input_binding(ctx); return active_surface_for_frame(frame_id,out_surface_id);}
+bool shell_input_peer_apply_resize_geometry(ShellInputContext *ctx, int32_t dx, int32_t dy) {input_binding(ctx); return apply_resize_geometry(dx,dy);}
+bool shell_input_peer_atlas_pointer_drag_begin_at(ShellInputContext *ctx, int32_t px, int32_t py) {input_binding(ctx); return atlas_pointer_drag_begin_at(px,py);}
+bool shell_input_peer_atlas_pointer_drop_at(ShellInputContext *ctx, int32_t px, int32_t py) {input_binding(ctx); return atlas_pointer_drop_at(px,py);}
+void shell_input_peer_atlas_toggle(ShellInputContext *ctx) {input_binding(ctx); atlas_toggle();}
+void shell_input_peer_bell_close_detail(ShellInputContext *ctx) {input_binding(ctx); bell_close_detail();}
+bool shell_input_peer_bell_cycle_lane(ShellInputContext *ctx) {input_binding(ctx); return bell_cycle_lane();}
+void shell_input_peer_bell_emit_selected_event_detail_proof(ShellInputContext *ctx) {input_binding(ctx); bell_emit_selected_event_detail_proof();}
+void shell_input_peer_bell_select_next_row(ShellInputContext *ctx) {input_binding(ctx); bell_select_next_row();}
+void shell_input_peer_bell_select_prev_row(ShellInputContext *ctx) {input_binding(ctx); bell_select_prev_row();}
+void shell_input_peer_clear_hover_if_wrong_scene(ShellInputContext *ctx) {input_binding(ctx); clear_hover_if_wrong_scene();}
+void shell_input_peer_clear_resize_if_dead(ShellInputContext *ctx) {input_binding(ctx); clear_resize_if_dead();}
+HitTarget shell_input_peer_click_hit_test_and_focus(ShellInputContext *ctx, int32_t px, int32_t py, uint8_t buttons_val, bool *out_silkbar_handled) {input_binding(ctx); return click_hit_test_and_focus(px,py,buttons_val,out_silkbar_handled);}
+bool shell_input_peer_collar_emit_selected_grant_detail(ShellInputContext *ctx) {input_binding(ctx); return collar_emit_selected_grant_detail();}
+void shell_input_peer_collar_select_next_grant(ShellInputContext *ctx) {input_binding(ctx); collar_select_next_grant();}
+void shell_input_peer_collar_select_prev_grant(ShellInputContext *ctx) {input_binding(ctx); collar_select_prev_grant();}
+bool shell_input_peer_drag_move_focused(ShellInputContext *ctx, int32_t dx, int32_t dy) {input_binding(ctx); return drag_move_focused(dx,dy);}
+bool shell_input_peer_first_minimized_frame_id(ShellInputContext *ctx, uint32_t *out_frame_id) {input_binding(ctx); return first_minimized_frame_id(out_frame_id);}
+bool shell_input_peer_frame_for_surface(ShellInputContext *ctx, uint64_t surface_id, uint32_t *out_frame_id) {input_binding(ctx); return frame_for_surface(surface_id,out_frame_id);}
+bool shell_input_peer_handle_atlas_keyboard(ShellInputContext *ctx, uint8_t scancode) {input_binding(ctx); return handle_atlas_keyboard(scancode);}
+const char *shell_input_peer_hit_target_label(ShellInputContext *ctx, HitTarget target, bool silkbar_handled, uint64_t *out_id) {input_binding(ctx); return hit_target_label(target,silkbar_handled,out_id);}
+bool shell_input_peer_lifecycle_state(ShellInputContext *ctx, uint64_t sid, uint8_t *out_state) {input_binding(ctx); return lifecycle_state(sid,out_state);}
+void shell_input_peer_linen_render_object_list(ShellInputContext *ctx) {input_binding(ctx); linen_render_object_list();}
+void shell_input_peer_linen_select_next_object(ShellInputContext *ctx) {input_binding(ctx); linen_select_next_object();}
+void shell_input_peer_linen_select_prev_object(ShellInputContext *ctx) {input_binding(ctx); linen_select_prev_object();}
+uint64_t shell_input_peer_linen_selected_object_id(ShellInputContext *ctx) {input_binding(ctx); return linen_selected_object_id();}
+bool shell_input_peer_mesh_is_visible_in_active_scene(ShellInputContext *ctx) {input_binding(ctx); return mesh_is_visible_in_active_scene();}
+void shell_input_peer_mesh_select_next_row(ShellInputContext *ctx) {input_binding(ctx); mesh_select_next_row();}
+void shell_input_peer_mesh_select_prev_row(ShellInputContext *ctx) {input_binding(ctx); mesh_select_prev_row();}
+bool shell_input_peer_mesh_selected_fact_snapshot(ShellInputContext *ctx, MeshFact *out) {input_binding(ctx); return mesh_selected_fact_snapshot(out);}
+uint8_t shell_input_peer_mesh_visible_fact_count(ShellInputContext *ctx) {input_binding(ctx); return mesh_visible_fact_count();}
+bool shell_input_peer_open_linen_object_in_quil(ShellInputContext *ctx, uint64_t object_id) {input_binding(ctx); return open_linen_object_in_quil(object_id);}
+bool shell_input_peer_palette_execute_selected(ShellInputContext *ctx) {input_binding(ctx); return palette_execute_selected();}
+void shell_input_peer_palette_select_next(ShellInputContext *ctx) {input_binding(ctx); palette_select_next();}
+void shell_input_peer_palette_select_prev(ShellInputContext *ctx) {input_binding(ctx); palette_select_prev();}
+bool shell_input_peer_resize_accumulate_delta(ShellInputContext *ctx, int32_t dx, int32_t dy) {input_binding(ctx); return resize_accumulate_delta(dx,dy);}
+bool shell_input_peer_restore_minimized_frame(ShellInputContext *ctx, uint32_t frame_id) {input_binding(ctx); return restore_minimized_frame(frame_id);}
+bool shell_input_peer_scancode_to_action(ShellInputContext *ctx, uint8_t scancode, uint8_t *out_action) {input_binding(ctx); return scancode_to_action(scancode,out_action);}
+void shell_input_peer_silk_drag_end_mark(ShellInputContext *ctx, uint64_t surface_id) {input_binding(ctx); silk_drag_end_mark(surface_id);}
+bool shell_input_peer_surface_generation(ShellInputContext *ctx, uint64_t sid, uint64_t *out_gen) {input_binding(ctx); return surface_generation(sid,out_gen);}
+bool shell_input_peer_surface_in_active_scene(ShellInputContext *ctx, uint64_t sid) {input_binding(ctx); return surface_in_active_scene(sid);}
+bool shell_input_peer_surface_is_lifecycle_focusable(ShellInputContext *ctx, uint64_t sid) {input_binding(ctx); return surface_is_lifecycle_focusable(sid);}
+bool shell_input_peer_toggle_bell(ShellInputContext *ctx) {input_binding(ctx); return toggle_bell();}
+bool shell_input_peer_toggle_collar(ShellInputContext *ctx) {input_binding(ctx); return toggle_collar();}
+bool shell_input_peer_toggle_command_palette(ShellInputContext *ctx) {input_binding(ctx); return toggle_command_palette();}
+bool shell_input_peer_toggle_linen(ShellInputContext *ctx) {input_binding(ctx); return toggle_linen();}
+bool shell_input_peer_toggle_mesh(ShellInputContext *ctx) {input_binding(ctx); return toggle_mesh();}
+bool shell_input_peer_toggle_quil(ShellInputContext *ctx) {input_binding(ctx); return toggle_quil();}
+bool shell_input_peer_toggle_spindle(ShellInputContext *ctx) {input_binding(ctx); return toggle_spindle();}
+bool shell_input_peer_try_set_focus(ShellInputContext *ctx, uint64_t sid) {input_binding(ctx); return try_set_focus(sid);}
+bool shell_input_peer_try_snap_on_drag_release(ShellInputContext *ctx, uint64_t surface_id, int32_t px, int32_t py) {input_binding(ctx); return try_snap_on_drag_release(surface_id,px,py);}
+void shell_input_peer_try_transition(ShellInputContext *ctx, InteractionState next) {input_binding(ctx); try_transition(next);}
+void input_trace_shell_summary(void) {ShellInputContext ctx=input_context(); shell_input_input_trace_shell_summary(&ctx);}
+void flush_pending_cursor_send(void) {ShellInputContext ctx=input_context(); shell_input_flush_pending_cursor_send(&ctx);}
+void send_cursor_checked(int32_t x, int32_t y, const char *source) {ShellInputContext ctx=input_context(); shell_input_send_cursor_checked(&ctx ,x,y,source);}
+void apply_rel_pointer(int32_t dx_raw, int32_t dy_raw, int32_t *out_x, int32_t *out_y) {ShellInputContext ctx=input_context(); shell_input_apply_rel_pointer(&ctx ,dx_raw,dy_raw,out_x,out_y);}
+int32_t normalize_abs_coord(int32_t raw, int32_t screen_dim) {ShellInputContext ctx=input_context(); return shell_input_normalize_abs_coord(&ctx ,raw,screen_dim);}
+void process_abs_tablet(int32_t raw_x, int32_t raw_y) {ShellInputContext ctx=input_context(); shell_input_process_abs_tablet(&ctx ,raw_x,raw_y);}
+void handle_hid_event(uint64_t event_class, uint64_t arg0, uint64_t arg1) {ShellInputContext ctx=input_context(); shell_input_handle_hid_event(&ctx ,event_class,arg0,arg1);}
+void clamp_surface_size(int32_t x, int32_t y, uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h) {ShellInputContext ctx=input_context(); shell_input_clamp_surface_size(&ctx ,x,y,w,h,out_w,out_h);}
+void emit_snapshot(void) {ShellInputContext ctx=input_context(); shell_input_emit_snapshot(&ctx);}
+bool get_surface_bounds(uint64_t sid, int32_t *out_x, int32_t *out_y, uint32_t *out_w, uint32_t *out_h) {ShellInputContext ctx=input_context(); return shell_input_get_surface_bounds(&ctx ,sid,out_x,out_y,out_w,out_h);}
+bool point_in_surface(int32_t px, int32_t py, uint64_t sid) {ShellInputContext ctx=input_context(); return shell_input_point_in_surface(&ctx ,px,py,sid);}
+bool surface_is_alive(uint64_t sid) {ShellInputContext ctx=input_context(); return shell_input_surface_is_alive(&ctx ,sid);}
+void record_tombstone_event(uint64_t sid, uint8_t old_state, uint8_t new_state, uint8_t reason) {ShellInputContext ctx=input_context(); shell_input_record_tombstone_event(&ctx ,sid,old_state,new_state,reason);}
+bool is_tombstoned(uint64_t sid) {ShellInputContext ctx=input_context(); return shell_input_is_tombstoned(&ctx ,sid);}
+void clear_focus_if_dead(void) {ShellInputContext ctx=input_context(); shell_input_clear_focus_if_dead(&ctx);}
+void clear_drag_if_dead(void) {ShellInputContext ctx=input_context(); shell_input_clear_drag_if_dead(&ctx);}
+void clear_hover_if_dead(void) {ShellInputContext ctx=input_context(); shell_input_clear_hover_if_dead(&ctx);}
+void clear_drag_if_wrong_scene(void) {ShellInputContext ctx=input_context(); shell_input_clear_drag_if_wrong_scene(&ctx);}
+void shell_input_send_snapshot(const SexosWindowDescriptor *snapshot,size_t count) {
+    if(count>16 || (!snapshot && count)){sexos_fail();for(;;){}}
+    /* This legacy address word does not grant the receiver memory authority. */
+    (void)sexos_pdx_call(SLOT_DISPLAY,OP_DISPLAY_SET_SNAPSHOT,(uint64_t)(uintptr_t)snapshot,count,0);
+}
+bool shell_input_peer_desktop_shortcut(ShellInputContext *ctx, uint8_t code,uint64_t value) {input_binding(ctx);return desktop_shortcut(code,value);}
+bool shell_input_peer_surface_is_lifecycle_live(ShellInputContext *ctx, uint64_t sid) {input_binding(ctx);return surface_is_lifecycle_live(sid);}
+
+

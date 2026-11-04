@@ -1,0 +1,23 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "functions": [
+    {"name":"maybe_run_command_palette_status_proof","flag":"SEXOS_COMMAND_PALETTE_STATUS_PROOF","source_sha256":"d1d1c0f48bbc9dfe47c68af2b9efd40631638fa8d3a3c406a5aa6b082ad58d1e"},
+    {"name":"maybe_run_command_palette_linen_status_proof","flag":"SEXOS_COMMAND_PALETTE_LINEN_STATUS_PROOF","source_sha256":"06e7e524a05af3661bc358a23ffcc34f234fdcdde09237370432e725c826d14f"},
+    {"name":"maybe_run_quil_status_unblock_proof","flag":"SEXOS_QUIL_STATUS_UNBLOCK_PROOF","source_sha256":"7b059a2835187c0014b4f4e5d89eee1c4d6aeec4c7bb6c52d372ee04bbf4c3f8"},
+    {"name":"maybe_run_command_palette_daily_proof","flag":"SEXOS_COMMAND_PALETTE_DAILY_PROOF","source_sha256":"a7ffbb366898950d324f4b1506bf1b1682b3c2d71cee1c9722b48c584c988c03"},
+    {"name":"maybe_run_app_launcher_proof","flag":"SEXOS_APP_LAUNCHER_PROOF","source_sha256":"aca0a09ad354dd567d8f3cfc711f7f8627c6d08318606487473fb6a0277f98bd"},
+    {"name":"maybe_run_app_launcher_help_proof","flag":"SEXOS_APP_LAUNCHER_HELP_PROOF","source_sha256":"5e593b9a99f9e6e064eb6a1013f7660863f6156e9d60dd60a4298ad23dd73b9d"},
+    {"name":"maybe_run_linen_search_filter_proof","flag":"SEXOS_LINEN_SEARCH_FILTER_PROOF","source_sha256":"5e9973b8f5a6574d8621bbec56c4ee745841caccad09ddaf61a6558a350fb660"},
+    {"name":"maybe_run_bell_filter_proof","flag":"SEXOS_BELL_FILTER_PROOF","source_sha256":"ef907ce7ff53e1b708830c4dd6108044daac1bbffe42d8ee35c55c318932f0de"},
+    {"name":"maybe_run_atlas_preview_proof","flag":"SEXOS_ATLAS_PREVIEW_PROOF","owner":"atlas","source_sha256":"f1f38bb988382b7e9c61f9ade7ced2eb0ced5f7700718237bfecb4694217d964"},
+    {"name":"maybe_run_atlas_phase_a_state_model_proof","flag":"SEXOS_ATLAS_PHASE_A_STATE_MODEL_PROOF","owner":"atlas","source_sha256":"0a06ee50c676ecaecf66b2de69b2fc1f99f5a21a555ad0eebfa36f3bdcdc12de"},
+    {"name":"maybe_run_atlas_phase_b_snapshot_proof","flag":"SEXOS_ATLAS_PHASE_B_SNAPSHOT_PROOF","owner":"atlas","source_sha256":"33a1139616860fd46226de20a12d7ae74744ed7e3ac707d6a6a949692e49cade"},
+    {"name":"maybe_run_atlas_phase_c_render_stub_proof","flag":"SEXOS_ATLAS_PHASE_C_RENDER_STUB_PROOF","owner":"atlas","source_sha256":"bbbe20d4775ec154a9e299c0d5150ef5334b0bf4a1b58d45f51b3020828c89db"},
+    {"name":"maybe_run_atlas_phase_d_frame_preview_stub_proof","flag":"SEXOS_ATLAS_PHASE_D_FRAME_PREVIEW_STUB_PROOF","owner":"atlas","source_sha256":"97b818f16eb2efbf77a75a6df7290b02f1be094f28eb35edbfb6a1058fe5792b"},
+    {"name":"maybe_run_app_registry_readonly_proof","flag":"SEXOS_APP_REGISTRY_READONLY_PROOF","source_sha256":"cd191ae0ff9a59fb7ff0fb8e4350dc0435467c2fae7f32fe1f40193180f296f6"},
+    {"name":"maybe_run_app_registry_filter_sort_proof","flag":"SEXOS_APP_REGISTRY_FILTER_SORT_PROOF","source_sha256":"2fa3cc15704a8b23bfe82d455d182d7de34cb689ef578ae34d8e94a04940e625"},
+    {"name":"maybe_run_app_registry_launch_intent_proof","flag":"SEXOS_APP_REGISTRY_LAUNCH_INTENT_PROOF","source_sha256":"8faa0e2f570eba05fbcf47e6c90198d8d5583f2744ef10af800cc834f17d6052"},
+    {"name":"maybe_run_app_launcher_multi_exec_proof","flag":"SEXOS_APP_LAUNCHER_MULTI_EXEC_PROOF","source_sha256":"8c787130f71a46b364a0c2356eb4b00586f1bb6fbd5483b4565a229797086581"},
+    {"name":"maybe_run_palette_rejects_app_open_batch_proof","flag":"SEXOS_PALETTE_REJECTS_APP_OPEN_PROOF","source_sha256":"03884fd94b6b1c73c133a27a90d5b05de09325a6c651f3bc5f6b45a8f386556e"}
+  ]
+}

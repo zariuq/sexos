@@ -148,6 +148,7 @@ static ScriptMsg msg_queue[64];
 static size_t msg_count = 0;
 static size_t msg_index = 0;
 static uint32_t yield_count = 0;
+static RegionWriterState writer_state = {true, 4, 11, 2, 11, 1, 0};
 
 static void dma_hash_mix(uint64_t v)
 {
@@ -700,6 +701,46 @@ uint64_t sexos_map_mem_lend(uint64_t cap_slot)
     return (uint64_t)(uintptr_t)lend_buf;
 }
 
+MemoryRegionReply sexos_memory_region_info(uint64_t slot)
+{
+    if (slot != SLOT_BUF_LEND) return (MemoryRegionReply){.status=UINT64_MAX};
+    return (MemoryRegionReply){0,4096,REGION_QUERY|REGION_READ|REGION_WRITE,writer_state.home,4};
+}
+
+MemoryRegionReply sexos_memory_region_view(uint64_t slot,uint64_t offset,uint64_t length,uint64_t rights)
+{
+    printf("SYSCALL|map_mem_lend|slot=%llu\n", (unsigned long long)slot);
+    if (slot != SLOT_BUF_LEND || offset > 4096 || length > 4096-offset ||
+        (rights & ~(REGION_QUERY|REGION_READ|REGION_WRITE)))
+        return (MemoryRegionReply){.status=UINT64_MAX};
+    if (cfg_memlend_fail_once) { cfg_memlend_fail_once=false; return (MemoryRegionReply){.status=UINT64_MAX}; }
+    return (MemoryRegionReply){0,(uint64_t)(uintptr_t)(lend_buf+offset),length,0,4};
+}
+
+RegionWriterReceipt sexos_region_writer_query(uint64_t slot)
+{
+    if (slot != SLOT_BUF_LEND) return (RegionWriterReceipt){.status=REGION_WRITER_INVALID};
+    return (RegionWriterReceipt){REGION_WRITER_OK,writer_state.revision,writer_state.current,
+        writer_state.job,writer_state.peer};
+}
+
+RegionWriterReceipt sexos_region_writer_change(uint64_t slot,RegionWriterAction action,
+                                                uint64_t expected,uint64_t job)
+{
+    if (slot != SLOT_BUF_LEND || expected != writer_state.revision || !job)
+        return (RegionWriterReceipt){.status=REGION_WRITER_STALE,.revision=writer_state.revision,
+            .current=writer_state.current,.job=writer_state.job,.peer=writer_state.peer};
+    if (action == REGION_WRITER_CLAIM && writer_state.current == writer_state.home && writer_state.job == job)
+        writer_state.current=writer_state.peer;
+    else if (action == REGION_WRITER_RELEASE && writer_state.current == writer_state.peer && writer_state.job == job) {
+        writer_state.current=writer_state.home;writer_state.job=0;
+    } else return (RegionWriterReceipt){.status=REGION_WRITER_BUSY,.revision=writer_state.revision,
+        .current=writer_state.current,.job=writer_state.job,.peer=writer_state.peer};
+    ++writer_state.revision;
+    return (RegionWriterReceipt){REGION_WRITER_OK,writer_state.revision,writer_state.current,
+        writer_state.job,writer_state.peer};
+}
+
 uint64_t sexos_set_state(uint64_t state)
 {
     printf("SYSCALL|set_state|state=%llu\n", (unsigned long long)state);
@@ -770,6 +811,11 @@ SexosMessage sexos_listen_once(uint64_t slot)
         exit(0);
     }
     ScriptMsg *m = &msg_queue[msg_index++];
+    if ((m->type_id == BLOCK_READ || m->type_id == BLOCK_WRITE) && m->arg2 == SLOT_BUF_LEND) {
+        writer_state.home=m->caller_pd;writer_state.current=m->caller_pd;
+        writer_state.peer=2;writer_state.job=m->type_id==BLOCK_READ?msg_index:0;
+        writer_state.revision=msg_index*4+1;
+    }
     if (m->fill_lend) {
         for (size_t i = 0; i < 512; ++i) {
             lend_buf[i] = (uint8_t)((i & 0xFFu) ^ m->lend_seed);
@@ -1342,7 +1388,8 @@ def main():
         # Export authored Cesta source to C
         authored_c = tmpdir / "sexdrive_authored.c"
         exported = run_cmd([str(cesta_bin), "export-c", str(cesta_src), "--"]).stdout
-        authored_c.write_text(exported)
+        frozen = run_cmd([str(cesta_bin), "export-c", str(cesta_src), "--", "-DSEXOS_SEXDRIVE_CURRENT_DURABILITY=0"]).stdout
+        authored_c.write_text(frozen)
         if exported_c.exists() and exported_c.read_text().strip() != exported.strip():
             raise AssertionError("c/src/sexdrive.c is out of date with src/sexdrive.cesta")
 
@@ -1352,7 +1399,8 @@ def main():
             str(HERE / "generated/runtime/format_bytes.c"),
             str(HERE / "generated/runtime/packed_words.c"),
         ]
-        inc_flags = ["-I", str(HERE / "generated/include"), "-DSEXOS_HOST=1"]
+        inc_flags = ["-I", str(HERE / "generated/include"), "-DSEXOS_HOST=1",
+                     "-DSEXOS_SEXDRIVE_CURRENT_DURABILITY=0"]
 
         total_lines = 0
         for vname, flags in variants:

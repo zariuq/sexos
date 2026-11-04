@@ -5,6 +5,8 @@
 
 #include "sexos_mmio.h"
 
+#include "sexos_network_config.h"
+
 #include "network_result.h"
 
 #define NET_HTTP_BODY_CAPACITY 256u
@@ -78,6 +80,8 @@ typedef struct NetworkDevice {
 NetworkDevice;
 
 bool network_device_open(NetworkDevice *device);
+
+bool network_device_open_current(NetworkDevice *device, NetConfig *config);
 
 bool network_device_submit(NetworkDevice *device, cesta_read_bytes frame);
 

@@ -143,6 +143,8 @@
       (call cpu_invlpg va)
       (return true))
 
+    (native "uint64_t page_leaf_address(uint64_t va)\n{\n    uint64_t *table=root_table();\n    for (unsigned level=3;level>0;--level) {\n        uint64_t entry=table[table_index(va,level)];\n        if (!(entry&PTE_PRESENT) || (entry&PTE_HUGE)) return 0;\n        table=table_at(entry);\n    }\n    return (uint64_t)(uintptr_t)&table[table_index(va,0)];\n}\n")
+
     (comment "The entry that maps va, a large page's entry included.")
     (fn bool read_pte ((uint64_t va) (uint64_t (* pte)))
       (var uint64_t (* table) (call root_table))

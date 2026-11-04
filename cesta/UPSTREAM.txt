@@ -1,0 +1,158 @@
+UPSTREAM INTEGRATION
+
+Required source
+---------------
+
+The source integration target is c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321.
+It contains 214 commits after the
+historical differential reference, 4a040a86. The current build specification
+contains sixteen userland image programs, including the sext pager.
+
+The Sext Cesta executable now implements the current allocator/pager, service
+loop, native interfaces and retired-workspace behavior. Its core and service
+permission plans are admitted; differential, real-memory, native-adapter and
+paired current-Rust-kernel checks qualify their declared scopes (SEXT.txt).
+This is the first port reconciled to this source cohort. Older component
+builds remain historical until their current behavior is separately qualified.
+
+The latest delta makes Browser startup retain its held task identity, checks
+incoming network requests against that actual task and improves Spindle text
+in narrow tiles. The current Rust reference includes these changes. Historical
+Cesta Browser, network and display ports still require their own reconciliation.
+The next delta also binds Browser output to its held identity. It is incorporated
+in source; the previous device/image qualification retains its exact cohort.
+The Atlas bodies remain unchanged and its component gate now follows the newer
+catalog. Shell custody and the lifecycle/frame slice of Chrome also follow
+this source (CHROME.txt). Newer Browser reserves, captured input custody and
+private Display scene/frame publication are retained in the Rust tree. They
+still require corresponding kernel/service Cesta reconciliation and new boots.
+The next Display delta coalesces update batches before frame publication; it
+is also retained in source, without relabeling previous image evidence.
+
+Source incorporation and Cesta behavior qualification are separate. Existing
+differential tests still name their historical reference explicitly. Passing
+them does not establish parity with the updated source. Retain that evidence
+while adding current-reference tests; do not conceal changes in an oracle
+allow-list or silently relabel an old qualification.
+
+Integration policy
+------------------
+
+Incorporate upstream edits. Retain an alternative when its behavior is an
+improvement within the same architecture and independent checks establish
+the difference. Preserve GLOBAL_VAS addressing, BOOT-only capability genesis,
+typed PDX authority and explicit hardware enforcement boundaries. An address,
+domain number or task number is not itself a grant.
+
+Addressability, authority and enforcement remain distinct: GLOBAL_VAS names
+memory, typed PDX decides access, and PKU enforces the sanctioned boundary.
+Keep the freestanding, non-POSIX service model. Preserve revision identity
+through snapshot, transform, swap and commit as that engine is implemented.
+Language choice does not substitute for this discipline: the Cesta port must
+preserve explicit memory custody, authority and hardware protection across
+separate server binaries as well as within checked functions.
+
+The corrected bounded-history ordering in sexstore remains useful: upstream
+has not changed that component's source. Its current ABI and shared-library
+dependencies nevertheless require review. Other alternatives, including the
+correlated RPC service and stricter kernel enforcement profile, need explicit
+comparison with the updated contracts before being counted as integrated.
+
+Dependency order
+----------------
+
+1. PDX message and reply contracts. Upstream now returns caller_task in RDI
+   and stores it in the message's former padding word. Preserve authentic
+   sender identity, zero invalid outputs, reserve reply authority before
+   enqueue, and consume it only after successful publication. A domain-level
+   reply credit and a request-correlated completion have different scopes;
+   tests must cover both without dropping unrelated pending replies.
+   The sexos-kernel-current development profile now implements stamped tasks,
+   pre-publication obligations with rollback, and non-overwriting replies.
+   Its independent transport gate is separate from the historical Lean trace;
+   current BOOT/paging/wake adapters have separate construction, RAM and CPU
+   qualifications. Current-image paging, desktop and retirement joins have
+   separate checks; the all-Cesta userland join remains open (KERNEL.txt).
+   The Cesta kernel now checks selectors at their register width before
+   capability/domain lookup. Its host controls require upper-bit aliases to
+   leave queued calls, reply rights, pending results and init arguments intact.
+
+2. BOOT grants and sext paging. Reconcile the actual current grant graph,
+   preallocated frame/mapping leases and terminal-incarnation revocation.
+   Upstream assigns sext domain 14; the historical Cesta kernel reserves key
+   14 for shared storage. Replace that assumption with the reviewed per-holder
+   mapping discipline before using the new image with the Cesta kernel.
+   Per-holder BOOT constructors and current region queries are implemented and
+   separately qualified (REGIONS.txt); the current grant graph and bounded MMIO views are installed. Current enforcement masks already make key14 private.
+   The current profile now supports the one-based1..1024 slot contract,
+   including paging slots34..37, and logical user-domain IDs1..1023 through
+   sparse BOOT records. The historical profile keeps its32-entry table.
+   Authority remains independent of whether PKU enforces a particular build.
+   Sext runs against both current kernels in separately qualified paging and
+   retirement fixtures. The Cesta kernel constructs paging grants and implements
+   fault/wait/cleanup adapters; complete current-userland qualification remains
+   open. The GUI retirement join uses actual reference cleanup services, while
+   the complete successor-chain CPU join uses controlled service probes.
+
+3. Shell and display. Eight of the eighteen ported input functions changed.
+   Include display-admission retries, current desktop dimensions and live app
+   incarnations. Keep the existing complete models/input tests while updating
+   the implementation units and replacing scripted peers with joined units.
+
+4. Other userland and shared crates. Follow the current build specification,
+   including document, clipboard, network, HTTP, TLS, trust and time interfaces.
+   A controlled network profile is not qualification of all current services.
+
+5. Current-source qualification. Run independent authority/protocol controls,
+   Rust comparisons on preserved behavior, GCC/Clang and sanitizer builds,
+   readable-C export identity and paired device-present boots. Evaluate
+   intended improvements with their own correctness oracle.
+
+Upstream now includes its first BOOT-granted UiIR stream with committed-epoch
+visibility. The whole snapshot -> transform -> swap -> commit architecture
+still requires an execution implementation. Fault/pager metadata transactions alone do not
+provide whole-system rollback. Published IPC and hardware effects need an
+explicit commit/recovery discipline; scheduler progress needs its own evidence.
+
+Certificates, caches and interrupted work
+---------------------------------------
+
+A cached policy result must retain the caller's actual domain/task identity,
+the exact grant identity and validity stamp (including generation where defined),
+requested resource/rights, and every state identity or revision on which the
+conclusion depends. Revocation, reuse or relevant mutation must
+invalidate the corresponding conclusion. A generation field's presence alone
+does not establish that lookup or revocation checks it. The authoritative PDX
+invocation must still validate held authority before an effect; an estimate or
+probabilistic belief cannot authorize that effect.
+
+Carry distinct outcomes for incomplete, retryable, exhausted and quiescent
+work. Failure to obtain a published scheduler head is not by itself a proof of
+quiescence. Preserve residual work and wake obligations across interruption.
+
+For each representation change, state the preserved observation: permissions,
+protocol order, values, effects, cost bounds or another declared property. Admit the
+actual plans and keep independent execution/memory/boot controls. Agreement
+with a checker's own transition rules is not automatically a theorem about the
+intended external property. Readable-C binary identity is a separate guarantee.
+
+Current reply bookkeeping uses the indexed64-bit registry domain counters.
+Exhaustion refuses before enqueue; every accepted call keeps a consumable right.
+A failed enqueue returns exactly its reservation. Fault-notice publication uses
+the same admission rule and cancels prepared metadata on refusal. Repeated
+completion and frame reuse keep their separate exact transaction identities.
+The current BOOT also checks actual captured tasks and held lifecycle, close,
+route, self and activation grants against the catalog before any user entry.
+The expanded catalog now includes eight finite Quil and eight finite Spindle incarnations, seventeen app
+entries and twenty-nine domain records. Sext's lifecycle lookup and pending
+arrays share the catalog-derived bound; the tail must not retain a literal
+six-entry limit. Typed entropy, clock and trust source grants are described in
+SOURCES.txt. PCI command/configuration is implemented with separate component/CPU gates
+(PCI.txt). The held history roster/query and paired NVMe history recovery join
+are implemented (HISTORY.txt). Retirement/workspace and CPU activation
+are implemented with their own qualification scopes (RETIREMENT.txt).
+
+The subsequent Display source delta retains typed completion custody, canonical
+text commit publication and covered-damage settlement. It is incorporated in
+source. Older Cesta Display/Browser behavior and image evidence are not silently
+relabeled as implementing that delta.

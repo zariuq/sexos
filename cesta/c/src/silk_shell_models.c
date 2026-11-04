@@ -1,4 +1,5 @@
 #include "silk_shell.h"
+#include "silk_shell_models_root.h"
 /*Application manifests, canvas operations and shell object models.*/
 const uint8_t SPINDLE_SYNTH_SEQ[6] = {
   0x1E, 0x30, 0x2E, 0x0E, 0x20, 0x1C
@@ -125,29 +126,6 @@ const ChromeTemplate SILK_CHROME_TEMPLATE_DEFAULT = {
 };
 const uint32_t ATLAS_ACCENT_COLORS[5] = {
   0x00000000, 0x00805020, 0x00205080, 0x00804050, 0x00807000
-};
-const CommandDef COMMAND_LIST[10] = {
-  {
-    .command = CMD_FOCUS_SPINDLE,.name = "Open Spindle"
-  }, {
-    .command = CMD_FOCUS_QUIL,.name = "Open Quil"
-  }, {
-    .command = CMD_FOCUS_LINEN,.name = "Open Linen"
-  }, {
-    .command = CMD_FOCUS_ATLAS,.name = "Open Atlas"
-  }, {
-    .command = CMD_FOCUS_BELL,.name = "Open Bell"
-  }, {
-    .command = CMD_FOCUS_COLLAR,.name = "Open Collar"
-  }, {
-    .command = CMD_FOCUS_MESH,.name = "Open Mesh"
-  }, {
-    .command = CMD_RESTORE_MINIMIZED,.name = "Restore Minimized"
-  }, {
-    .command = CMD_ZOOM_TOGGLE,.name = "Zoom Toggle"
-  }, {
-    .command = CMD_MINIMIZE_FOCUSED,.name = "Minimize Focused"
-  }
 };
 bool app_capability_bits_validate(uint8_t bits, AppCapabilityBits *out) {
   if ((bits & (uint8_t) ~APP_CAP_KNOWN) != 0) return false;
@@ -408,9 +386,6 @@ uint32_t linen_selected_object_accent(void) {
   }
   return LINEN_LIST_HEADER_COLOR;
 }
-uint8_t sanitize_ascii(uint8_t byte) {
-  return byte >= 0x20 && byte <= 0x7e ? byte : (uint8_t) '?';
-}
 void quil_buffer_table_init(void) {
   for (size_t i = 0; i < sizeof QUIL_SEED_BUFFERS / sizeof QUIL_SEED_BUFFERS[0]; ++i) {
     if (i < QUIL_MAX_BUFFERS) {
@@ -553,86 +528,6 @@ void record_collar_audit(uint8_t operation, uint64_t object_id, uint64_t subject
   sexos_line("[collar.audit.write] event_id=%llu op=%u object=%llu subject=%llu decision=%u grant=%llu reason=%llu", (unsigned long long) event_id, (unsigned) operation, (unsigned long long) object_id, (unsigned long long) subject_id, (unsigned) decision, (unsigned long long) grant_ref, (unsigned long long) reason);
   if (COLLAR_ENFORCE_PROOF_ENABLED) sexos_line("[collar.audit] event_id=%llu op=%u object=%llu subject=%llu decision=%u grant=%llu reason=%llu", (unsigned long long) event_id, (unsigned) operation, (unsigned long long) object_id, (unsigned long long) subject_id, (unsigned) decision, (unsigned long long) grant_ref, (unsigned long long) reason);
 }
-uint8_t collar_check_operation(uint8_t operation, uint64_t object_id, uint64_t buffer_id) {
-  uint64_t caller = SILK_SHELL_STATE.chrome.FOCUSED_SURFACE_ID;
-  sexos_line("[collar.policy.check] op=%u object_id=%llu buffer_id=%llu caller_sid=%llu", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) buffer_id, (unsigned long long) caller);
-  bool object_required = operation == COLLAR_OP_OPEN_OBJECT || operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER || operation == COLLAR_OP_RENAME_OBJECT || operation == COLLAR_OP_ARCHIVE_OBJECT;
-  if (object_required && object_id != 0 && !linen_object_by_id(object_id, NULL)) {
-    sexos_line("[collar.gate.reject] reason=missing_object op=%u object_id=%llu", (unsigned) operation, (unsigned long long) object_id);
-    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY_MISSING_OBJECT, 0, 1);
-    return COLLAR_DECISION_DENY_MISSING_OBJECT;
-  }
-  if (operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER && buffer_id != 0 && !quil_buffer_by_id(buffer_id, NULL)) {
-    sexos_line("[collar.gate.reject] reason=missing_buffer op=%u buffer_id=%llu", (unsigned) operation, (unsigned long long) buffer_id);
-    record_collar_audit(operation, buffer_id, caller, COLLAR_DECISION_DENY_MISSING_BUFFER, 0, 2);
-    return COLLAR_DECISION_DENY_MISSING_BUFFER;
-  }
-  bool system_capability = operation == COLLAR_OP_ACCESS_BELL || operation == COLLAR_OP_ACCESS_SEXFILES;
-  if (operation == COLLAR_OP_OPEN_OBJECT || operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER || system_capability) {
-    if (system_capability) {
-      if (caller == SURFACE_ID_SPINDLE || caller == SURFACE_ID_LINEN || caller == SURFACE_ID_QUIL || caller == SURFACE_ID_MESH || caller == SURFACE_ID_COLLAR || caller == SURFACE_ID_BELL_PLACEHOLDER) {
-        sexos_line("[collar.policy.allow] op=%u object=%llu caller=%llu grant=0 reason=core_app", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller);
-        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_ALLOW, 0, 8);
-        return COLLAR_DECISION_ALLOW;
-      }
-      if (caller < 300) {
-        sexos_line("[collar.gate.reject] reason=unknown_app op=%u caller=%llu", (unsigned) operation, (unsigned long long) caller);
-        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 7);
-        if (COLLAR_ENFORCE_PROOF_ENABLED) sexos_line("[collar.enforce.deny] op=%u caller=%llu target=%llu reason=unknown_app", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id);
-        return COLLAR_DECISION_DENY;
-      }
-    }
-    for (size_t i = 0; i < COLLAR_GRANT_CAP; ++i) {
-      const CollarGrant *grant = &SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
-      if (!grant->present || grant->state != COLLAR_GRANT_ACTIVE || grant->subject_id != caller || grant->object_id != object_id || (grant->operation_mask & UINT64_C(1) << operation) == 0) continue;
-      sexos_line("[collar.grant.match] grant_id=%llu subject=%llu object=%llu op=%u", (unsigned long long) grant->grant_id, (unsigned long long) grant->subject_id, (unsigned long long) grant->object_id, (unsigned) operation);
-      sexos_line("[collar.policy.allow] op=%u object=%llu caller=%llu grant=%llu", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller, (unsigned long long) grant->grant_id);
-      record_collar_audit(operation, object_id, caller, COLLAR_DECISION_ALLOW, grant->grant_id, 0);
-      if (system_capability && COLLAR_ENFORCE_PROOF_ENABLED) sexos_line("[collar.enforce.allow] op=%u caller=%llu target=%llu grant=%llu", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id, (unsigned long long) grant->grant_id);
-      return COLLAR_DECISION_ALLOW;
-    }
-    sexos_line("[collar.grant.reject] reason=no_grant op=%u object=%llu caller=%llu", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller);
-    sexos_line("[collar.policy.deny] op=%u object=%llu caller=%llu reason=no_grant", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller);
-    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 3);
-    if (system_capability && COLLAR_ENFORCE_PROOF_ENABLED) sexos_line("[collar.enforce.deny] op=%u caller=%llu target=%llu reason=missing_cap", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id);
-    return COLLAR_DECISION_DENY;
-  }
-  if (operation == COLLAR_OP_SAVE_BUFFER || operation == COLLAR_OP_BUILD_TARGET || operation == COLLAR_OP_RUN_TARGET) {
-    sexos_line("[collar.gate.reject] reason=stop_first op=%u", (unsigned) operation);
-    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_BLOCKED_STOP_FIRST, 0, 4);
-    return COLLAR_DECISION_BLOCKED_STOP_FIRST;
-  }
-  if (operation == COLLAR_OP_RENAME_OBJECT || operation == COLLAR_OP_ARCHIVE_OBJECT) {
-    sexos_line("[collar.gate.needs_grant] op=%u", (unsigned) operation);
-    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_NEEDS_GRANT_LATER, 0, 5);
-    return COLLAR_DECISION_NEEDS_GRANT_LATER;
-  }
-  sexos_line("[collar.gate.reject] reason=always_deny op=%u", (unsigned) operation);
-  record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 6);
-  if (COLLAR_ENFORCE_PROOF_ENABLED) sexos_line("[collar.enforce.deny] op=%u caller=%llu target=%llu reason=dangerous_cap", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id);
-  return COLLAR_DECISION_DENY;
-}
-void collar_init_grants(void) {
-  SilkShellModelsState *state = &SILK_SHELL_STATE.models;
-  uint64_t count = 0;
-  for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) {
-    const LinenObject *object = &state->LINEN_OBJECTS[i];
-    if (!object->present) continue;
-    uint64_t subjects[2] = {
-      SURFACE_ID_LINEN, SURFACE_ID_MESH
-    };
-    for (size_t j = 0; j < 2; ++j) {
-      uint64_t generation = state->COLLAR_GRANT_GENERATION ++;
-      size_t index = ((size_t) generation - 1) % COLLAR_GRANT_CAP;
-      state->COLLAR_GRANTS[index] = (CollarGrant) {
-        .present = true,.grant_id = generation,.subject_id = subjects[j],.object_id = object->object_id,.operation_mask = UINT64_C(1) << COLLAR_OP_LINK_OBJECT_TO_BUFFER,.generation = generation,.state = COLLAR_GRANT_ACTIVE,
-      };
-      sexos_line("[collar.grant.auto] grant_id=%llu subject=%llu object=%llu op=LinkObjectToBuffer", (unsigned long long) generation, (unsigned long long) subjects[j], (unsigned long long) object->object_id);
-      ++count;
-    }
-  }
-  sexos_line("[collar.grant.init] count=%llu generation=%llu", (unsigned long long) count, (unsigned long long) state->COLLAR_GRANT_GENERATION);
-}
 uint8_t collar_grant_count(void) {
   uint8_t count = 0;
   for (size_t i = 0; i < COLLAR_GRANT_CAP; ++i) {
@@ -709,41 +604,6 @@ void collar_select_prev_grant(void) {
   SILK_SHELL_STATE.models.COLLAR_SELECTED_GRANT_IDX = previous;
   sexos_line("[collar.grant.nav] old=%u new=%u count=%u", (unsigned) old, (unsigned) previous, (unsigned) count);
   collar_render_grants_text();
-}
-void collar_render_grants_text(void) {
-  uint8_t buffer[120];
-  memset(buffer, ' ', sizeof buffer);
-  uint8_t total = collar_grant_count();
-  memcpy(buffer, "COLLAR GRANTS", 13);
-  buffer[14] = (uint8_t)('0' + total / 10 % 10);
-  buffer[15] = (uint8_t)('0' + total % 10);
-  size_t row = 0;
-  uint8_t visible = 0;
-  for (size_t i = 0; i < COLLAR_GRANT_CAP && row < 5; ++i) {
-    const CollarGrant *grant = &SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
-    if (!grant->present || grant->state != COLLAR_GRANT_ACTIVE) continue;
-    size_t base = (row + 1) * 20;
-    buffer[base] = visible == SILK_SHELL_STATE.models.COLLAR_SELECTED_GRANT_IDX ? '>' : ' ';
-    buffer[base + 1] = 'G';
-    buffer[base + 2] = (uint8_t)('0' + grant->grant_id / 10 % 10);
-    buffer[base + 3] = (uint8_t)('0' + grant->grant_id % 10);
-    buffer[base + 5] = 'S';
-    buffer[base + 6] = (uint8_t)('0' + grant->subject_id / 100 % 10);
-    buffer[base + 7] = (uint8_t)('0' + grant->subject_id / 10 % 10);
-    buffer[base + 8] = (uint8_t)('0' + grant->subject_id % 10);
-    buffer[base + 10] = 'O';
-    buffer[base + 11] = (uint8_t)('0' + grant->object_id / 10 % 10);
-    buffer[base + 12] = (uint8_t)('0' + grant->object_id % 10);
-    buffer[base + 14] = 'A';
-    ++row;
-    ++visible;
-  }(void) sexos_pdx_call(SLOT_DISPLAY, OP_TEXT_CLEAR, SURFACE_ID_COLLAR, 0, 0);
-  bool accepted = shell_draw_text(SURFACE_ID_COLLAR, buffer, sizeof buffer, UINT64_C(0x00E8FFFF), NULL);
-  uint32_t *budget = &SILK_SHELL_STATE.models.collar_render_grants_text__COLLAR_GRANTS_TEXT_BUDGET;
-  if (*budget != 0) {
-    --*budget;
-    sexos_line("[collar.grants.render.ok] grants=%u ok=%u", (unsigned) total, (unsigned) accepted);
-  }
 }
 bool collar_emit_selected_grant_detail(void) {
   uint8_t index = SILK_SHELL_STATE.models.COLLAR_SELECTED_GRANT_IDX;
@@ -1222,238 +1082,144 @@ void handle_scene_settings_cmd(uint64_t command, uint64_t value, uint64_t flags)
 uint8_t shell_view_mode(void) {
   return SILK_SHELL_STATE.chrome.ATLAS_MODE_ENABLED ? SHELL_VIEW_ATLAS : SHELL_VIEW_DESKTOP;
 }
-static bool model_valid_utf8(const uint8_t *bytes, size_t length) {
-  size_t index = 0;
-  while (index < length) {
-    uint8_t first = bytes[index ++];
-    if (first < 0x80) continue;
-    size_t continuation;
-    if (first >= 0xc2 && first <= 0xdf) continuation = 1;
-    else if (first >= 0xe0 && first <= 0xef) continuation = 2;
-    else if (first >= 0xf0 && first <= 0xf4) continuation = 3;
-    else return false;
-    if (continuation > length - index) return false;
-    uint8_t second = bytes[index];
-    if ((first == 0xe0 && second < 0xa0) || (first == 0xed && second >= 0xa0) || (first == 0xf0 && second < 0x90) || (first == 0xf4 && second >= 0x90)) return false;
-    for (size_t i = 0; i < continuation; ++i) if ((bytes[index ++] & 0xc0) != 0x80) return false;
+uint8_t collar_check_operation(uint8_t operation, uint64_t object_id, uint64_t buffer_id) {
+  uint64_t caller = SILK_SHELL_STATE.chrome.FOCUSED_SURFACE_ID;
+  sexos_line("[collar.policy.check] op=%u object_id=%llu buffer_id=%llu caller_sid=%llu", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) buffer_id, (unsigned long long) caller);
+  bool object_required = operation == COLLAR_OP_OPEN_OBJECT || operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER || operation == COLLAR_OP_RENAME_OBJECT || operation == COLLAR_OP_ARCHIVE_OBJECT;
+  if (object_required && object_id != 0 && !linen_object_by_id(object_id, NULL)) {
+    sexos_line("[collar.gate.reject] reason=missing_object op=%u object_id=%llu", (unsigned) operation, (unsigned long long) object_id);
+    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY_MISSING_OBJECT, 0, 1);
+    return COLLAR_DECISION_DENY_MISSING_OBJECT;
   }
-  return true;
-}
-static uint64_t model_little_endian_word(const uint8_t *bytes) {
-  uint64_t word = 0;
-  for (size_t i = 0; i < 8; ++i) word |= (uint64_t) bytes[i] << i * 8;
-  return word;
-}
-static void model_linen_row(const LinenObject *object, bool selected) {
-  write_str("[linen.object_list.row] id=");
-  write_u64_dec(object->object_id);
-  write_str(" kind=");
-  write_str(linen_object_kind_name(object->kind));
-  write_str(" state=");
-  write_str(linen_object_state_name(object->state));
-  write_str(" name=");
-  if (object->name_len != 0) {
-    if (model_valid_utf8(object->name, object->name_len)) write_bytes(object->name, object->name_len);
-    else write_str("[bad_utf8]");
-  } else {
-    write_str(object->display_name);
+  if (operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER && buffer_id != 0 && !quil_buffer_by_id(buffer_id, NULL)) {
+    sexos_line("[collar.gate.reject] reason=missing_buffer op=%u buffer_id=%llu", (unsigned) operation, (unsigned long long) buffer_id);
+    record_collar_audit(operation, buffer_id, caller, COLLAR_DECISION_DENY_MISSING_BUFFER, 0, 2);
+    return COLLAR_DECISION_DENY_MISSING_BUFFER;
   }
-  write_str(" selected=");
-  write_bool_str(selected);
-  write_str("\n");
-}
-void linen_render_object_list(void) {
-  uint32_t width = SILK_SHELL_STATE.input.SURFACE_200_W;
-  uint32_t height = SILK_SHELL_STATE.input.SURFACE_200_H;
-  if (width == 0 || height == 0) return;
-  sexos_line("[linen.object_list.render] w=%u h=%u", (unsigned) width, (unsigned) height);
-  uint64_t selected_id = SILK_SHELL_STATE.models.SELECTED_LINEN_OBJECT_ID;
-  uint32_t header = linen_selected_object_accent();
-  sexos_line("[linen.selection_visual.header] object_id=%llu color=0x%08x", (unsigned long long) selected_id, (unsigned) header);
-  (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_LINEN, 0, (uint64_t) header << 32 | (uint64_t) LINEN_LIST_HEADER_H << 16 | width);
-  size_t count = linen_object_count();
-  uint32_t background_height = (uint32_t) LINEN_LIST_ACCENT_BARS * (LINEN_LIST_ROW_H + LINEN_LIST_ROW_GAP) - LINEN_LIST_ROW_GAP;
-  (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_LINEN, (uint64_t) LINEN_LIST_HEADER_H << 32, UINT64_C(1) << 56 | (uint64_t) LINEN_LIST_BG_COLOR << 32 | (uint64_t) background_height << 16 | width);
-  sexos_line("[linen.bg_rect] y=%u h=%u", (unsigned) LINEN_LIST_HEADER_H, (unsigned) background_height);
-  uint8_t rows = 0;
-  bool selection_visible = false;
-  uint32_t selected_y = 0;
-  for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) {
-    const LinenObject *object = &SILK_SHELL_STATE.models.LINEN_OBJECTS[i];
-    if (!object->present) continue;
-    if (rows >= LINEN_LIST_MAX_ROWS) {
-      sexos_line("[linen.object_list.skip] id=%llu reason=max_rows", (unsigned long long) object->object_id);
-      continue;
-    }
-    if (object->name_len > sizeof object->name) {
-      sexos_fail();
-      return;
-    }
-    bool selected = object->object_id == selected_id;
-    model_linen_row(object, selected);
-    uint32_t y = LINEN_LIST_HEADER_H + (uint32_t) rows * (LINEN_LIST_ROW_H + LINEN_LIST_ROW_GAP);
-    if (selected) {
-      selection_visible = true;
-      selected_y = y;
-    }
-    if (rows < LINEN_LIST_ACCENT_BARS) {
-      uint64_t rectangle = ((uint64_t) rows + 3) & 7;
-      uint32_t color = selected ? header : linen_kind_color(object->kind);
-      (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_LINEN, (uint64_t) y << 32, rectangle << 56 | (uint64_t) color << 32 | (uint64_t) LINEN_LIST_ROW_H << 16 | LINEN_ACCENT_BAR_W);
-      sexos_line("[linen.row_visual.accent] index=%llu id=%llu kind=%s color=0x%08x selected=%s", (unsigned long long) rectangle, (unsigned long long) object->object_id, linen_object_kind_name(object->kind), (unsigned) color, selected ? "true" : "false");
-    } else {
-      sexos_line("[linen.row_visual.skip] id=%llu reason=accent_budget", (unsigned long long) object->object_id);
-    }
-    ++rows;
-  }
-  if (selection_visible) {
-    (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_LINEN, (uint64_t) selected_y << 32, UINT64_C(2) << 56 | (uint64_t) header << 32 | (uint64_t) LINEN_LIST_ROW_H << 16 | width);
-    sexos_line("[linen.row_visual.selected] y=%u color=0x%08x", (unsigned) selected_y, (unsigned) header);
-  } else {
-    sexos_line("[linen.row.reject] id=%llu reason=not_found_in_visible_rows", (unsigned long long) selected_id);
-  }
-  sexos_line("[linen.object_select.current] id=%llu", (unsigned long long) SILK_SHELL_STATE.models.SELECTED_LINEN_OBJECT_ID);
-  sexos_line("[linen.object_list.done] count=%zu rows=%u", count, (unsigned) rows);
-}
-void linen_render_static_ui(void) {
-  uint32_t width = SILK_SHELL_STATE.input.SURFACE_200_W;
-  uint32_t height = SILK_SHELL_STATE.input.SURFACE_200_H;
-  if (width == 0 || height == 0) return;
-  size_t selected = SILK_SHELL_STATE.models.LINEN_UI_SELECTED;
-  if (selected >= LINEN_UI_ROW_COUNT) selected = LINEN_UI_ROW_COUNT - 1;
-  uint32_t header = LINEN_UI_ROW_COLORS[selected];
-  (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_LINEN, 0, (uint64_t) header << 32 | (uint64_t) LINEN_LIST_HEADER_H << 16 | width);
-  uint32_t background_height = (uint32_t) LINEN_LIST_ACCENT_BARS * (LINEN_LIST_ROW_H + LINEN_LIST_ROW_GAP) - LINEN_LIST_ROW_GAP;
-  (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_LINEN, (uint64_t) LINEN_LIST_HEADER_H << 32, UINT64_C(1) << 56 | (uint64_t) LINEN_LIST_BG_COLOR << 32 | (uint64_t) background_height << 16 | width);
-  uint32_t selected_y = LINEN_LIST_HEADER_H + (uint32_t) selected * (LINEN_LIST_ROW_H + LINEN_LIST_ROW_GAP);
-  (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_LINEN, (uint64_t) selected_y << 32, UINT64_C(2) << 56 | (uint64_t) header << 32 | (uint64_t) LINEN_LIST_ROW_H << 16 | width);
-  const uint8_t labels[5][9] = {
-    "PROJECTS", "SEX MICR", "HANDOUTS", "HANDOFFS", "QUIL DFT"
-  };
-  for (size_t i = 0; i < LINEN_UI_ROW_COUNT; ++i) {
-    uint32_t y = LINEN_LIST_HEADER_H + (uint32_t) i * (LINEN_LIST_ROW_H + LINEN_LIST_ROW_GAP);
-    uint64_t rectangle = ((uint64_t) i + 3) & 7;
-    uint32_t color = i == selected ? header : LINEN_UI_ROW_COLORS[i];
-    (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_LINEN, (uint64_t) y << 32, rectangle << 56 | (uint64_t) color << 32 | (uint64_t) LINEN_LIST_ROW_H << 16 | LINEN_ACCENT_BAR_W);
-  }(void) sexos_pdx_call(SLOT_DISPLAY, 0xFA, SURFACE_ID_LINEN, 0, 0);
-  const uint8_t title[8] = {
-    'L', 'I', 'N', 'E', 'N', 0, 0, 0
-  };
-  (void) sexos_pdx_call(SLOT_DISPLAY, 0xFB, SURFACE_ID_LINEN, model_little_endian_word(title), UINT64_C(5) << 8 | UINT64_C(0x00F0F8FF) << 32);
-  for (size_t i = 0; i < LINEN_UI_ROW_COUNT; ++i) {
-    (void) sexos_pdx_call(SLOT_DISPLAY, 0xFB, SURFACE_ID_LINEN, model_little_endian_word(labels[i]), (uint64_t)((i + 1) * 20) | UINT64_C(8) << 8 | UINT64_C(0x00B8CCE0) << 32);
-  }
-  sexos_line("[linen.ui.render] rows=%zu selected=%zu", LINEN_UI_ROW_COUNT, selected);
-}
-uint64_t linen_sync_reply(void) {
-  for (;;) {
-    SexosMessage message = sexos_listen(&SILK_SHELL_STATE.core.pdx_listener, 0);
-    if (message.type_id == 1) return message.arg0;
-    if (message.type_id == OP_HID_EVENT) {
-      handle_hid_event(message.arg2, message.arg0, message.arg1);
-      continue;
-    }
-    if (model_take_budget(&SILK_SHELL_STATE.models.linen_sync_reply__LINEN_SYNC_NONREPLY_BUDGET)) sexos_line("[silk-shell.linen_sync.nonreply] type=0x%llx caller=%u", (unsigned long long) message.type_id, (unsigned) message.caller_pd);
-    sexos_reply(message.caller_pd, 0);
-  }
-}
-void linen_fetch_remote_snapshot(void) {
-  SilkShellModelsState *state = &SILK_SHELL_STATE.models;
-  sexos_line("[linen.remote.snapshot.begin]");
-  for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) state->LINEN_OBJECTS[i].present = false;
-  state->SELECTED_LINEN_OBJECT_ID = 0;
-  size_t written = 0;
-  for (uint64_t slot = 0; slot < 16 && written < LINEN_MAX_OBJECTS; ++slot) {
-    (void) sexos_pdx_call(SLOT_LINEN, OP_LINEN_GET_PUBLIC_SNAPSHOT, slot, 0, 0);
-    uint64_t packed = linen_sync_reply();
-    if (packed == 0) continue;
-    uint64_t id = packed & UINT64_C(0xffffffff);
-    uint8_t kind = (uint8_t)(packed >> 32);
-    size_t name_length = (uint8_t)(packed >> 40);
-    if (name_length > 24) name_length = 24;
-    uint8_t name[24] = {
-      0
-    };
-    uint8_t fetched = 0;
-    bool accepted = true;
-    for (uint64_t offset = 0; offset < name_length; offset += 8) {
-      (void) sexos_pdx_call(SLOT_LINEN, OP_LINEN_GET_PUBLIC_NAME, id, offset, 8);
-      uint64_t chunk = linen_sync_reply();
-      if (chunk == 0) break;
-      if ((chunk & UINT64_C(1) << 63) != 0) {
-        int64_t error = -(int64_t) ~chunk - 1;
-        sexos_line("[linen.remote.name.err] id=%llu err=%lld", (unsigned long long) id, (long long) error);
-        accepted = false;
-        break;
+  bool system_capability = operation == COLLAR_OP_ACCESS_BELL || operation == COLLAR_OP_ACCESS_SEXFILES;
+  if (operation == COLLAR_OP_OPEN_OBJECT || operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER || system_capability) {
+    if (system_capability) {
+      if (caller == SURFACE_ID_SPINDLE || caller == SURFACE_ID_LINEN || caller == SURFACE_ID_QUIL || caller == SURFACE_ID_MESH || caller == SURFACE_ID_COLLAR || caller == SURFACE_ID_BELL_PLACEHOLDER) {
+        sexos_line("[collar.policy.allow] op=%u object=%llu caller=%llu grant=0 reason=core_app", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller);
+        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_ALLOW, 0, 8);
+        return COLLAR_DECISION_ALLOW;
       }
-      size_t take = name_length - (size_t) offset;
-      if (take > 8) take = 8;
-      for (size_t i = 0; i < take; ++i) name[(size_t) offset + i] = sanitize_ascii((uint8_t)(chunk >> i * 8));
-      fetched = (uint8_t)(offset + take);
+      if (caller < 300) {
+        sexos_line("[collar.gate.reject] reason=unknown_app op=%u caller=%llu", (unsigned) operation, (unsigned long long) caller);
+        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 7);
+        if (COLLAR_ENFORCE_PROOF_ENABLED) sexos_line("[collar.enforce.deny] op=%u caller=%llu target=%llu reason=unknown_app", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id);
+        return COLLAR_DECISION_DENY;
+      }
     }
-    if (accepted && fetched != 0) sexos_line("[linen.remote.name.ok] id=%llu len=%u", (unsigned long long) id, (unsigned) fetched);
-    LinenObject object = {
-      .present = true,.object_id = id,.kind = kind == 1 ? LINEN_OBJ_KIND_PROJECT : LINEN_OBJ_KIND_DOCUMENT,.state = LINEN_OBJ_STATE_SAVED,.display_name = "[linen.remote]",.name_len = fetched,.disk_path = (uint8_t)(packed >> 48),
+    bool explicit_denial=false;
+    if(!system_capability){
+      for(size_t i=0;i<COLLAR_GRANT_CAP;++i){const CollarGrant *g=&SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
+        if(g->present && g->subject_id==caller && g->object_id==object_id && (g->operation_mask&(UINT64_C(1)<<operation)) && g->state!=COLLAR_GRANT_ACTIVE){explicit_denial=true;break;}}
+      if(explicit_denial){record_collar_audit(operation,object_id,caller,COLLAR_DECISION_DENY,0,9);return COLLAR_DECISION_DENY;}
+    }
+    for (size_t i = 0; i < COLLAR_GRANT_CAP; ++i) {
+      const CollarGrant *grant = &SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
+      if(!grant->present || grant->state!=COLLAR_GRANT_ACTIVE || grant->subject_id!=caller)continue;
+      if(grant->object_id!=object_id){
+        bool workspace=false;
+        if(!system_capability && grant->object_id==UINT64_MAX){
+          for(size_t j=0;j<LINEN_MAX_OBJECTS;++j){const LinenObject *o=&SILK_SHELL_STATE.models.LINEN_OBJECTS[j];
+            if(o->present && shell_workspace_allows(caller,operation,object_id,o->object_id,o->disk_path,SILK_SHELL_STATE.models.LINEN_REMOTE_REAL,true,explicit_denial)){workspace=true;break;}}
+        }
+        if(!workspace)continue;
+        sexos_line("[collar.workspace.allow] subject=%llu object=%llu grant=%llu published=1 kernel_caps_minted=0",(unsigned long long)caller,(unsigned long long)object_id,(unsigned long long)grant->grant_id);
+      }
+      if((grant->operation_mask&(UINT64_C(1)<<operation))==0)continue;
+      sexos_line("[collar.grant.match] grant_id=%llu subject=%llu object=%llu op=%u", (unsigned long long) grant->grant_id, (unsigned long long) grant->subject_id, (unsigned long long) grant->object_id, (unsigned) operation);
+      sexos_line("[collar.policy.allow] op=%u object=%llu caller=%llu grant=%llu", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller, (unsigned long long) grant->grant_id);
+      record_collar_audit(operation, object_id, caller, COLLAR_DECISION_ALLOW, grant->grant_id, 0);
+      if (system_capability && COLLAR_ENFORCE_PROOF_ENABLED) sexos_line("[collar.enforce.allow] op=%u caller=%llu target=%llu grant=%llu", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id, (unsigned long long) grant->grant_id);
+      return COLLAR_DECISION_ALLOW;
+    }
+    sexos_line("[collar.grant.reject] reason=no_grant op=%u object=%llu caller=%llu", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller);
+    sexos_line("[collar.policy.deny] op=%u object=%llu caller=%llu reason=no_grant", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller);
+    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 3);
+    if (system_capability && COLLAR_ENFORCE_PROOF_ENABLED) sexos_line("[collar.enforce.deny] op=%u caller=%llu target=%llu reason=missing_cap", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id);
+    return COLLAR_DECISION_DENY;
+  }
+  if (operation == COLLAR_OP_SAVE_BUFFER || operation == COLLAR_OP_BUILD_TARGET || operation == COLLAR_OP_RUN_TARGET) {
+    sexos_line("[collar.gate.reject] reason=stop_first op=%u", (unsigned) operation);
+    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_BLOCKED_STOP_FIRST, 0, 4);
+    return COLLAR_DECISION_BLOCKED_STOP_FIRST;
+  }
+  if (operation == COLLAR_OP_RENAME_OBJECT || operation == COLLAR_OP_ARCHIVE_OBJECT) {
+    sexos_line("[collar.gate.needs_grant] op=%u", (unsigned) operation);
+    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_NEEDS_GRANT_LATER, 0, 5);
+    return COLLAR_DECISION_NEEDS_GRANT_LATER;
+  }
+  sexos_line("[collar.gate.reject] reason=always_deny op=%u", (unsigned) operation);
+  record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 6);
+  if (COLLAR_ENFORCE_PROOF_ENABLED) sexos_line("[collar.enforce.deny] op=%u caller=%llu target=%llu reason=dangerous_cap", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id);
+  return COLLAR_DECISION_DENY;
+}
+void collar_init_grants(void) {
+  SilkShellModelsState *state = &SILK_SHELL_STATE.models;
+  uint64_t count = 0;
+  for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) {
+    const LinenObject *object = &state->LINEN_OBJECTS[i];
+    if (!object->present) continue;
+    uint64_t subjects[2] = {
+      SURFACE_ID_LINEN, SURFACE_ID_MESH
     };
-    memcpy(object.name, name, sizeof name);
-    state->LINEN_OBJECTS[written ++] = object;
-    sexos_line("[linen.remote.entry] slot=%llu id=%llu kind=%u name_len=%u", (unsigned long long) slot, (unsigned long long) id, (unsigned) kind, (unsigned) fetched);
-  }
-  sexos_line("[linen.remote.snapshot.ok] count=%zu", written);
-  state->LINEN_REMOTE_REAL = written > 0;
-  if (written == 0) {
-    for (size_t i = 0; i < sizeof LINEN_SEED_OBJECTS / sizeof LINEN_SEED_OBJECTS[0] && i < LINEN_MAX_OBJECTS; ++i) state->LINEN_OBJECTS[i] = LINEN_SEED_OBJECTS[i];
-    sexos_line("[linen.remote.snapshot.fallback] reason=empty_session seeds=%zu", sizeof LINEN_SEED_OBJECTS / sizeof LINEN_SEED_OBJECTS[0]);
-  }
-  linen_select_first_valid_object();
-}
-void linen_paint_surface(void) {
-  if (!SILK_SHELL_STATE.models.LINEN_REMOTE_FETCHED || !SILK_SHELL_STATE.models.LINEN_REMOTE_REAL) {
-    SILK_SHELL_STATE.models.LINEN_REMOTE_FETCHED = true;
-    linen_fetch_remote_snapshot();
-  }
-  if (linen_object_count() == 0) linen_render_static_ui();
-  else linen_render_object_list();
-}
-void linen_paint_surface_fast(void) {
-  bool fetched = SILK_SHELL_STATE.models.LINEN_REMOTE_FETCHED;
-  size_t count = linen_object_count();
-  sexos_line("[linen.fast_paint] sid=200 objects=%zu ok=1 reason=%s", count, fetched ? "remote_ready" : "seeds_only");
-  if (count == 0) linen_render_static_ui();
-  else linen_render_object_list();
-}
-void quil_render_buffer_list(void) {
-  uint32_t width = SILK_SHELL_STATE.input.SURFACE_201_W;
-  uint32_t height = SILK_SHELL_STATE.input.SURFACE_201_H;
-  if (width == 0 || height == 0) return;
-  sexos_line("[quil.buffer_list.render] w=%u h=%u", (unsigned) width, (unsigned) height);
-  (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_QUIL, 0, (uint64_t) QUIL_LIST_HEADER_COLOR << 32 | (uint64_t) QUIL_LIST_HEADER_H << 16 | width);
-  size_t count = quil_buffer_count();
-  uint32_t background_height = (uint32_t) QUIL_LIST_ACCENT_BARS * (QUIL_LIST_ROW_H + QUIL_LIST_ROW_GAP) - QUIL_LIST_ROW_GAP;
-  (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_QUIL, (uint64_t) QUIL_LIST_HEADER_H << 32, UINT64_C(1) << 56 | (uint64_t) QUIL_LIST_BG_COLOR << 32 | (uint64_t) background_height << 16 | width);
-  sexos_line("[quil.bg_rect] y=%u h=%u", (unsigned) QUIL_LIST_HEADER_H, (unsigned) background_height);
-  sexos_line("[quil.row.reject] reason=no_selection_model");
-  uint8_t rows = 0;
-  for (size_t i = 0; i < QUIL_MAX_BUFFERS; ++i) {
-    const QuilBuffer *buffer = &SILK_SHELL_STATE.models.QUIL_BUFFERS[i];
-    if (!buffer->present) continue;
-    if (rows >= QUIL_LIST_MAX_ROWS) {
-      sexos_line("[quil.buffer_list.skip] id=%llu reason=max_rows", (unsigned long long) buffer->buffer_id);
-      continue;
+    for (size_t j = 0; j < 2; ++j) {
+      uint64_t generation = state->COLLAR_GRANT_GENERATION ++;
+      size_t index = ((size_t) generation - 1) % COLLAR_GRANT_CAP;
+      state->COLLAR_GRANTS[index] = (CollarGrant) {
+        .present = true,.grant_id = generation,.subject_id = subjects[j],.object_id = object->object_id,.operation_mask = UINT64_C(1) << COLLAR_OP_LINK_OBJECT_TO_BUFFER,.generation = generation,.state = COLLAR_GRANT_ACTIVE,
+      };
+      sexos_line("[collar.grant.auto] grant_id=%llu subject=%llu object=%llu op=LinkObjectToBuffer", (unsigned long long) generation, (unsigned long long) subjects[j], (unsigned long long) object->object_id);
+      ++count;
     }
-    sexos_line("[quil.buffer_list.row] buffer_id=%llu kind=%s state=%s linen_ref=%llu surface_id=%llu name=%s", (unsigned long long) buffer->buffer_id, quil_buffer_kind_name(buffer->kind), quil_buffer_state_name(buffer->state), (unsigned long long) buffer->linen_object_ref, (unsigned long long) buffer->linked_surface_id, buffer->display_name);
-    if (rows < QUIL_LIST_ACCENT_BARS) {
-      uint64_t rectangle = ((uint64_t) rows + 3) & 7;
-      uint32_t y = QUIL_LIST_HEADER_H + (uint32_t) rows * (QUIL_LIST_ROW_H + QUIL_LIST_ROW_GAP);
-      uint32_t color = quil_buffer_kind_color(buffer->kind);
-      (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_QUIL, (uint64_t) y << 32, rectangle << 56 | (uint64_t) color << 32 | (uint64_t) QUIL_LIST_ROW_H << 16 | QUIL_ACCENT_BAR_W);
-      sexos_line("[quil.row_visual.accent] index=%llu id=%llu kind=%s color=0x%08x", (unsigned long long) rectangle, (unsigned long long) buffer->buffer_id, quil_buffer_kind_name(buffer->kind), (unsigned) color);
-    } else {
-      sexos_line("[quil.row_visual.skip] id=%llu reason=accent_budget", (unsigned long long) buffer->buffer_id);
-    }
-    ++rows;
   }
-  sexos_line("[quil.buffer_list.done] count=%zu rows=%u", count, (unsigned) rows);
+  if(state->COLLAR_GRANT_GENERATION!=UINT64_MAX){
+    uint64_t generation=state->COLLAR_GRANT_GENERATION;size_t index=((size_t)generation-1)%COLLAR_GRANT_CAP;
+    if(state->COLLAR_GRANTS[index].present){sexos_fail();for(;;){}}
+    state->COLLAR_GRANT_GENERATION=generation+1;
+    state->COLLAR_GRANTS[index]=(CollarGrant){.present=true,.grant_id=generation,.subject_id=SURFACE_ID_LINEN,.object_id=UINT64_MAX,.operation_mask=(UINT64_C(1)<<COLLAR_OP_OPEN_OBJECT)|(UINT64_C(1)<<COLLAR_OP_LINK_OBJECT_TO_BUFFER),.generation=generation,.state=COLLAR_GRANT_ACTIVE};
+    ++count;sexos_line("[collar.workspace.seed] subject=200 grant=%llu storage_boot_edge=1 kernel_caps_minted=0 revocable=1",(unsigned long long)generation);
+  }
+  sexos_line("[collar.grant.init] count=%llu generation=%llu", (unsigned long long) count, (unsigned long long) state->COLLAR_GRANT_GENERATION);
+}
+void collar_render_grants_text(void) {
+  uint8_t buffer[120];
+  memset(buffer, ' ', sizeof buffer);
+  uint8_t total = collar_grant_count();
+  memcpy(buffer, "COLLAR GRANTS", 13);
+  buffer[14] = (uint8_t)('0' + total / 10 % 10);
+  buffer[15] = (uint8_t)('0' + total % 10);
+  size_t row = 0;
+  uint8_t visible = 0;
+  for (size_t i = 0; i < COLLAR_GRANT_CAP && row < 5; ++i) {
+    const CollarGrant *grant = &SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
+    if (!grant->present || grant->state != COLLAR_GRANT_ACTIVE) continue;
+    size_t base = (row + 1) * 20;
+    buffer[base] = visible == SILK_SHELL_STATE.models.COLLAR_SELECTED_GRANT_IDX ? '>' : ' ';
+    buffer[base + 1] = 'G';
+    buffer[base + 2] = (uint8_t)('0' + grant->grant_id / 10 % 10);
+    buffer[base + 3] = (uint8_t)('0' + grant->grant_id % 10);
+    buffer[base + 5] = 'S';
+    buffer[base + 6] = (uint8_t)('0' + grant->subject_id / 100 % 10);
+    buffer[base + 7] = (uint8_t)('0' + grant->subject_id / 10 % 10);
+    buffer[base + 8] = (uint8_t)('0' + grant->subject_id % 10);
+    buffer[base + 10] = 'O';
+    buffer[base + 11] = (uint8_t)('0' + grant->object_id / 10 % 10);
+    buffer[base + 12] = (uint8_t)('0' + grant->object_id % 10);
+    if(grant->object_id==UINT64_MAX){buffer[base+10]='W';buffer[base+11]='S';buffer[base+12]=' ';}
+    buffer[base + 14] = 'A';
+    ++row;
+    ++visible;
+  }(void) sexos_pdx_call(SLOT_DISPLAY, OP_TEXT_CLEAR, SURFACE_ID_COLLAR, 0, 0);
+  bool accepted = shell_draw_text(SURFACE_ID_COLLAR, buffer, sizeof buffer, UINT64_C(0x00E8FFFF), NULL);
+  uint32_t *budget = &SILK_SHELL_STATE.models.collar_render_grants_text__COLLAR_GRANTS_TEXT_BUDGET;
+  if (*budget != 0) {
+    --*budget;
+    sexos_line("[collar.grants.render.ok] grants=%u ok=%u", (unsigned) total, (unsigned) accepted);
+  }
 }
 bool open_linen_object_in_quil(uint64_t object_id) {
   sexos_line("[linen.quil.open.request] id=%llu", (unsigned long long) object_id);
@@ -1462,6 +1228,7 @@ bool open_linen_object_in_quil(uint64_t object_id) {
     sexos_line("[linen.quil.open.reject.missing] id=%llu", (unsigned long long) object_id);
     return false;
   }
+  if(object.disk_path!=0 && object.disk_path<3){sexos_line("[linen.quil.open.reject.workspace] object=%llu disk_path=%u protected=1",(unsigned long long)object_id,(unsigned)object.disk_path);return false;}
   if (object.grant_ref == 0) sexos_line("[linen.quil.open.no_grant] id=%llu kind=%u", (unsigned long long) object_id, (unsigned) object.kind);
   uint8_t capability = collar_check_operation(COLLAR_OP_ACCESS_SEXFILES, SILK_SHELL_STATE.chrome.FOCUSED_SURFACE_ID, 0);
   if (capability != COLLAR_DECISION_ALLOW) {
@@ -1536,4 +1303,37 @@ bool open_linen_object_in_quil(uint64_t object_id) {
   bell_emit_object_link_event(object_id, linked_id);
   quil_render_buffer_list();
   return true;
+}
+void quil_render_buffer_list(void) {
+  uint32_t width = SILK_SHELL_STATE.input.SURFACE_201_W;
+  uint32_t height = SILK_SHELL_STATE.input.SURFACE_201_H;
+  if (width == 0 || height == 0) return;
+  sexos_line("[quil.buffer_list.render] w=%u h=%u", (unsigned) width, (unsigned) height);
+  (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_QUIL, 0, (uint64_t) QUIL_LIST_HEADER_COLOR << 32 | (uint64_t) QUIL_LIST_HEADER_H << 16 | width);
+  size_t count = quil_buffer_count();
+  uint32_t background_height = (uint32_t) QUIL_LIST_ACCENT_BARS * (QUIL_LIST_ROW_H + QUIL_LIST_ROW_GAP) - QUIL_LIST_ROW_GAP;
+  (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_QUIL, (uint64_t) QUIL_LIST_HEADER_H << 32, UINT64_C(1) << 56 | (uint64_t) QUIL_LIST_BG_COLOR << 32 | (uint64_t) background_height << 16 | width);
+  sexos_line("[quil.bg_rect] y=%u h=%u", (unsigned) QUIL_LIST_HEADER_H, (unsigned) background_height);
+  sexos_line("[quil.row.reject] reason=no_selection_model");
+  uint8_t rows = 0;
+  for (size_t i = 0; i < QUIL_MAX_BUFFERS; ++i) {
+    const QuilBuffer *buffer = &SILK_SHELL_STATE.models.QUIL_BUFFERS[i];
+    if (!buffer->present) continue;
+    if (rows >= QUIL_LIST_MAX_ROWS) {
+      sexos_line("[quil.buffer_list.skip] id=%llu reason=max_rows", (unsigned long long) buffer->buffer_id);
+      continue;
+    }
+    sexos_line("[quil.buffer_list.row] buffer_id=%llu kind=%s state=%s linen_ref=%llu surface_id=%llu name=%s", (unsigned long long) buffer->buffer_id, quil_buffer_kind_name(buffer->kind), quil_buffer_state_name(buffer->state), (unsigned long long) buffer->linen_object_ref, (unsigned long long) buffer->linked_surface_id, buffer->display_name);
+    if (rows < QUIL_LIST_ACCENT_BARS) {
+      uint64_t rectangle = ((uint64_t) rows + 3) & 7;
+      uint32_t y = QUIL_LIST_HEADER_H + (uint32_t) rows * (QUIL_LIST_ROW_H + QUIL_LIST_ROW_GAP);
+      uint32_t color = quil_buffer_kind_color(buffer->kind);
+      (void) sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_QUIL, (uint64_t) y << 32, rectangle << 56 | (uint64_t) color << 32 | (uint64_t) QUIL_LIST_ROW_H << 16 | QUIL_ACCENT_BAR_W);
+      sexos_line("[quil.row_visual.accent] index=%llu id=%llu kind=%s color=0x%08x", (unsigned long long) rectangle, (unsigned long long) buffer->buffer_id, quil_buffer_kind_name(buffer->kind), (unsigned) color);
+    } else {
+      sexos_line("[quil.row_visual.skip] id=%llu reason=accent_budget", (unsigned long long) buffer->buffer_id);
+    }
+    ++rows;
+  }
+  sexos_line("[quil.buffer_list.done] count=%zu rows=%u", count, (unsigned) rows);
 }

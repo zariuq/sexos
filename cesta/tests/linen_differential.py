@@ -87,6 +87,7 @@ VARIANTS = [
 # SexFiles for Linen: the server part of the shared provider (see
 # differential_support). Mix 2 is quiet while a storage reply is awaited.
 PROVIDER = PROVIDER_PRELUDE + r'''
+#include "sexos_rpc.h"
 static uint64_t handles, generation;
 /* SexFiles still running its startup proofs (heavy faults, balanced mix): it never answers the native persist call. */
 static bool busy;
@@ -259,6 +260,11 @@ static void server_start(void) {
     }
     for (int i = 0; i < 128; ++i) disk[i] = (uint8_t)(0xB6 ^ i ^ 0x2D);
     busy = scenario.faults == 2 && scenario.mix == 0;
+}
+uint64_t sexos_rpc_register(void) { return 0; }
+SexosRequest sexos_receive_request(bool correlated) { (void)correlated; return (SexosRequest){0}; }
+uint64_t sexos_answer_request(const SexosRequest *request, uint64_t value) {
+    return sexos_reply(request->message.caller_pd, value);
 }
 '''
 
@@ -440,6 +446,10 @@ def main():
     include = ["-I", HERE / "generated/include"]
     runtime = [HERE / "runtime/client_runtime.c", HERE / "runtime/server_runtime.c",
                *sorted((HERE / "generated/runtime").glob("*.c"))]
+    for unit in ("linen_capture", "linen_capture_service"):
+        generated = work / (unit + ".c")
+        run([cesta, "export-c", "--std=c11", "-o", generated, HERE / ("src/" + unit + ".cesta"), "--", *include])
+        runtime.append(generated)
     sanitizers = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
     warnings = ["-Wall", "-Wextra", "-Wpedantic", "-Wformat=2", "-Werror"]
     plain_provider = work / "provider-plain.o"
@@ -506,7 +516,7 @@ def main():
         ("(var size_t max_len (?: (< arg2 8) arg2 8))", "(var size_t max_len (?: (< arg2 8) arg2 7))", ()),
         ("(= ([] meta 23) name_len)", "(= ([] meta 22) name_len)", ()),
         ("(for (var uint64_t w 0) (< w 128) (++ w)", "(for (var uint64_t w 0) (< w 127) (++ w)", ("LINEN_SEXOBJECT_NATIVE_PERSIST_PROOF",)),
-        ("(if (!= (. msg type_id) 0) (call linen_defer_stash l (& msg)))", "(cast void 0)", ()),
+        ("(if (!= (. msg type_id) 0) (call linen_defer_stash l (& request)))", "(cast void 0)", ()),
         ("(= (. (-> slot object) generation) 1)", "(= (. (-> slot object) generation) 2)", ("SEXOS_LINEN_SEXFILES_METADATA_PROOF",)),
         ("(for (var uint32_t i 0) (< i 5000000) (++ i) (call sexos_spin_loop_hint))",
          "(for (var uint32_t i 0) (< i 4999999) (++ i) (call sexos_spin_loop_hint))", ()),

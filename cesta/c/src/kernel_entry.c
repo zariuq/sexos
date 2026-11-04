@@ -6,7 +6,12 @@
 #define MSR_SFMASK 0xC0000084u
 /*SYSCALL clears IF, TF, DF and AC: system calls run with interrupts off, and a user-set AC cannot lift SMAP for the kernel.*/
 #define SYSCALL_FLAG_MASK UINT64_C(0x40700)
+#define CR0_MP (UINT64_C(1) << 1)
+#define CR0_EM (UINT64_C(1) << 2)
+#define CR0_TS (UINT64_C(1) << 3)
 #define CR0_WP (UINT64_C(1) << 16)
+#define CR4_OSFXSR (UINT64_C(1) << 9)
+#define CR4_OSXMMEXCPT (UINT64_C(1) << 10)
 #define CR4_OSXSAVE (UINT64_C(1) << 18)
 #define CR4_SMEP (UINT64_C(1) << 20)
 #define CR4_SMAP (UINT64_C(1) << 21)
@@ -75,6 +80,12 @@ static void features_init(void) {
     ebx = r[1];
     ecx = r[2];
   }
+  if (SEXOS_KERNEL_CURRENT_FPU) {
+    uint32_t edx1 = 0;
+    cpu_cpuid(1, 0, r);
+    edx1 = r[3];
+    if ((edx1 & (1u << 24 | (1u << 25 | 1u << 26))) != (1u << 24 | (1u << 25 | 1u << 26))) kernel_halt("FXSAVE, SSE and SSE2 required for user contexts");
+  }
   kernel.smep = (ebx & 1u << 7) != 0;
   kernel.smap = (ebx & 1u << 20) != 0;
   kernel.pku = (ecx & 1u << 3) != 0;
@@ -83,8 +94,9 @@ static void features_init(void) {
   if (kernel.smep) cr4 |= CR4_SMEP;
   if (kernel.smap) cr4 |= CR4_SMAP;
   if (kernel.pku) cr4 |= CR4_PKE;
+  if (SEXOS_KERNEL_CURRENT_FPU) cr4 |= CR4_OSFXSR | CR4_OSXMMEXCPT;
   cpu_write_cr4(cr4);
-  cpu_write_cr0(cpu_read_cr0() | CR0_WP);
+  cpu_write_cr0(SEXOS_KERNEL_CURRENT_FPU ? (cpu_read_cr0() | (CR0_MP | CR0_WP)) & ~(CR0_EM | CR0_TS) : cpu_read_cr0() | CR0_WP);
   kernel_smap_enabled = kernel.smap ? 1 : 0;
   cpu_wrpkru(0);
   klog("PKU: Protection Keys enabled in CR4.\n");
@@ -99,12 +111,19 @@ _Noreturn void kernel_halt(const char *reason) {
     cpu_hlt();
   }
 }
-/*A user fault stops its domain and nothing else; the reference halts the whole kernel on a protection fault or a key violation.*/
+/*The current profile forwards eligible user data faults to the held pager; all other user faults terminate their domain. The frozen Rust reference halted the whole kernel on a protection fault or key violation.*/
 static TrapFrame *fault_user(TrapFrame *frame) {
   uint64_t address = frame->vector == 14 ? cpu_read_cr2() : 0;
+  Domain *faulted = domain_get(kernel.current);
+  if (SEXOS_KERNEL_CURRENT_PDX && frame->vector == 14) klog("[paging.fault.trap] pd=%u addr=%#llx rip=%#llx error=%#llx eligible=%u\n", kernel.current, (unsigned long long) address, (unsigned long long) frame->rip, (unsigned long long) frame->error, (unsigned) pager_fault_eligible(address, frame->error, frame->cs));
+  if (SEXOS_KERNEL_CURRENT_PDX && (faulted != NULL && (frame->vector == 14 && kernel_pager_forward(faulted, frame, address)))) return kernel_dispatch_blocked();
   klog("fault.kill pd=%u vector=%llu err=%#llx rip=%#llx addr=%#llx\n", kernel.current, (unsigned long long) frame->vector, (unsigned long long) frame->error, (unsigned long long) frame->rip, (unsigned long long) address);
   Domain *d = domain_get(kernel.current);
-  if (d != NULL) d->task_state = TASK_EXITED;
+  if (d != NULL) {
+    d->task_state = TASK_EXITED;
+    if (!kernel_region_writer_recover_dead(d)) kernel_halt("dead writer recovery invariant");
+    if (!kernel_device_reset_owner_dead(d)) kernel_halt("dead device reset custody invariant");
+  }
   kernel.current = 0;
   uint32_t next = run_pop();
   if (next != 0) return switch_to(next);
@@ -114,8 +133,18 @@ TrapFrame *kernel_trap(TrapFrame *frame) {
   if (kernel.pku) cpu_wrpkru(0);
   uint64_t vector = frame->vector;
   bool from_user = (frame->cs & 3) == 3;
+  if (SEXOS_KERNEL_CURRENT_PDX && from_user) {
+    Domain *owner = domain_get(kernel.current);
+    if (owner != NULL) owner->frame = frame;
+#if SEXOS_KERNEL_CURRENT_FPU
+kernel_fpu_save_current();
+
+#endif
+  }
+  if (SEXOS_KERNEL_CURRENT_PDX) kernel_task_poll();
   if (vector == TIMER_VECTOR) {
     kernel.ticks += 1;
+    if (SEXOS_KERNEL_CURRENT_PDX) kernel_task_poll();
     lapic_eoi();
     if (!kernel.scheduler_running) return frame;
     if (from_user) return schedule_tick(frame);
@@ -138,11 +167,16 @@ TrapFrame *kernel_trap(TrapFrame *frame) {
     kernel_halt("kernel-mode exception");
   }
 /*A routed device interrupt: the owning domain hears a hardware-interrupt message, which listen reports with type 0xFF as the reference does.*/
+  if (kernel.vector_revision[vector] == UINT64_MAX) kernel_halt("device interrupt revision exhausted");
+  kernel.vector_revision[vector] += 1;
   uint32_t owner = kernel.vector_owner[vector];
   Domain *d = domain_get(owner);
-  if (d != NULL) domain_enqueue(d, (RingEntry) {
-    .type_id = 0xFF,.caller = 1
-  });
+  if (d != NULL) {
+    uint64_t generation = kernel.device_reset.present && (kernel.device_reset.vector == vector && kernel.device_reset.owner == owner) ? kernel.device_reset.generation : vector == 0x22 ? 1ULL : 0ULL;
+    domain_enqueue(d, (RingEntry) {
+      .type_id = 0xFF,.caller = 1,.arg0 = vector,.arg1 = kernel.vector_revision[vector],.arg2 = generation
+    });
+  }
   lapic_eoi();
   return resume_frame(frame);
 }
@@ -165,6 +199,12 @@ void kernel_main(void) {
   } else klog("X86Hal: WARNING - RSDP not found, skipping APIC/Timer.\n");
   keyboard_init();
   domains_boot();
+#if SEXOS_KERNEL_CURRENT_SMP
+if (!kernel_smp_park_boot()) kernel_halt("SMP park/quiescence failed");
+
+#endif
+  if (SEXOS_KERNEL_CURRENT_PDX) kernel_current_boot_audit();
+  if (SEXOS_KERNEL_BOOT_AUDIT) kernel_idle();
   cpu_cli();
   kernel.scheduler_running = true;
   uint32_t next = run_pop();

@@ -1,4 +1,8 @@
 #include "sexfiles.h"
+#if !defined(SEXOS_SEXFILES_CURRENT_DOCUMENT)
+#define SEXOS_SEXFILES_CURRENT_DOCUMENT 1
+
+#endif
 /*SexFiles server: message defer ring, SexObject header adapter, RamFS backend, DiskFS V4 bridge, VFS dispatch, and trampoline entry (servers/sexfiles/src/{pdx,sexobject,backends/ramfs,vfs,trampoline,main}.rs).*/
 /*Build-time proof flags and cfg gates (servers/sexfiles/src/trampoline.rs & build.rs).*/
 #if defined(SEXFILES_RAMFS_PROOF)
@@ -238,6 +242,7 @@ void sexfiles_state_init(SexfilesState *s) {
   s->diskfs_state.next_tx_id = 1;
   s->diskfs_state.next_checkpoint_generation = 1;
   s->diskfs_next_object_id = 1;
+  s->diskfs_writer_job_next = 1;
 }
 bool sexfiles_take_budget(uint32_t *budget) {
   if (*budget > 0) {
@@ -247,17 +252,17 @@ bool sexfiles_take_budget(uint32_t *budget) {
   return false;
 }
 /*SEXFILES_DEFER_V1: defer ring for client messages arriving during diskfs_block_call (servers/sexfiles/src/pdx.rs).*/
-bool defer_stash(uint64_t type_id, uint32_t caller_pd, uint64_t a0, uint64_t a1, uint64_t a2) {
+bool defer_stash(SexosRequest request) {
   if (sexfiles_state.defer_len >= DEFER_CAP) {
-    sexos_line("[sexfiles.defer.drop] type=%#llx caller=%u reason=stash_full", (unsigned long long) type_id, (unsigned) caller_pd);
+    sexos_line("[sexfiles.defer.drop] type=%#llx caller=%u reason=stash_full", (unsigned long long) request.message.type_id, (unsigned) request.message.caller_pd);
     return false;
   }
   size_t i = sexfiles_state.defer_len;
   sexfiles_state.defer_ring[i] = (DeferEntry) {
-    .type_id = type_id,.caller_pd = caller_pd,.a0 = a0,.a1 = a1,.a2 = a2
+    .request = request
   };
   sexfiles_state.defer_len = i + 1;
-  sexos_line("[sexfiles.defer.stash] type=%#llx caller=%u depth=%zu", (unsigned long long) type_id, (unsigned) caller_pd, i + 1);
+  sexos_line("[sexfiles.defer.stash] type=%#llx caller=%u depth=%zu", (unsigned long long) request.message.type_id, (unsigned) request.message.caller_pd, i + 1);
   return true;
 }
 bool defer_pop(DeferEntry *out) {
@@ -266,7 +271,7 @@ bool defer_pop(DeferEntry *out) {
   size_t n = sexfiles_state.defer_len;
   for (size_t i = 1; i < n; ++i) sexfiles_state.defer_ring[i - 1] = sexfiles_state.defer_ring[i];
   sexfiles_state.defer_len = n - 1;
-  sexos_line("[sexfiles.defer.replay] type=%#llx caller=%u depth=%zu", (unsigned long long) m.type_id, (unsigned) m.caller_pd, n - 1);
+  sexos_line("[sexfiles.defer.replay] type=%#llx caller=%u depth=%zu", (unsigned long long) m.request.message.type_id, (unsigned) m.request.message.caller_pd, n - 1);
   *out = m;
   return true;
 }
@@ -564,7 +569,10 @@ uint64_t diskfs_bridge_get_buf_va(void) {
     }
     return va;
   }
-  uint64_t new_va = sexos_grant_mem_lend(SEXOS_SLOT_block, 4096, SEXOS_SLOT_buf_lend);
+  MemoryRegionReply info = sexos_memory_region_info(SEXOS_SLOT_buf_lend);
+  if (info.status != 0 || (info.value0 < 4096 || info.value2 == 0)) return UINT64_MAX;
+  MemoryRegionReply view = sexos_memory_region_view(SEXOS_SLOT_buf_lend, 0, 4096, REGION_QUERY | (REGION_READ | REGION_WRITE));
+  uint64_t new_va = view.status == 0 ? view.value0 : UINT64_MAX;
   if (new_va != 0 && new_va != UINT64_MAX) {
     sexfiles_state.diskfs_bridge_buf_va = new_va;
     sexos_line("[sexfiles.bridge.diskfs.buf.ready] buf_va=%#llx", (unsigned long long) new_va);
@@ -706,12 +714,21 @@ static bool v4_indirect_write(size_t i, uint64_t buf_va, const V4Extent *extents
 }
 static bool v4_zero_block(uint64_t start_lba, uint64_t buf_va, uint64_t *out_err) {
   volatile uint8_t *p = (volatile uint8_t *)(uintptr_t) buf_va;
-  for (size_t k = 0; k < 512; ++k) p[k] = 0;
-  for (uint64_t s = 0; s < DISKFS_V4_BLOCK_SECTORS; ++s) {
-    uint64_t status = diskfs_block_write((start_lba + s) * 512, 512, SEXOS_SLOT_buf_lend);
+  if (SEXOS_SEXFILES_CURRENT_DOCUMENT) {
+    for (size_t k = 0; k < DISKFS_V4_BLOCK_BYTES; ++k) p[k] = 0;
+    uint64_t status = diskfs_block_write(start_lba * 512, DISKFS_V4_BLOCK_BYTES, SEXOS_SLOT_buf_lend);
     if (status != 0) {
       *out_err = status;
       return false;
+    }
+  } else {
+    for (size_t k = 0; k < 512; ++k) p[k] = 0;
+    for (uint64_t s = 0; s < DISKFS_V4_BLOCK_SECTORS; ++s) {
+      uint64_t status = diskfs_block_write((start_lba + s) * 512, 512, SEXOS_SLOT_buf_lend);
+      if (status != 0) {
+        *out_err = status;
+        return false;
+      }
     }
   }
   return true;
@@ -1456,6 +1473,120 @@ static uint64_t handle_diskfs_rename(uint64_t path_id, uint64_t name_lo, uint64_
   sexos_line("[sexfiles.diskfs.v4.rename.ok] slot=%zu", i);
   return 0;
 }
+#if SEXOS_SEXFILES_CURRENT_DOCUMENT
+
+static bool document_quil_target(uint32_t caller)
+{
+ static const uint32_t targets[16]={9,16,18,19,20,21,22,23,32,33,34,35,36,37,38,39};
+ for(size_t i=0;i<16;i++)if(targets[i]==caller)return true;
+ return false;
+}
+static bool document_v4_entry(uint8_t object,V4Entry *entry,uint64_t *buffer,uint32_t *error)
+{
+ if(object<2||object>=DISKFS_SLOTS){*error=SEXOS_DOCUMENT_DENIED;return false;}
+ uint64_t va=diskfs_bridge_get_buf_va();if(!va||va==UINT64_MAX){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t native_error=0;
+ if(!v4_ensure(va,&native_error)){*error=SEXOS_DOCUMENT_IO;return false;}
+ if(!v4_get(object,entry,&native_error)){*error=SEXOS_DOCUMENT_STALE;return false;}*buffer=va;return true;
+}
+bool document_backend_identity(uint8_t object,uint32_t *generation,uint32_t *error)
+{
+ V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;(void)va;*generation=((uint32_t)object+1u)<<16|entry.gen;return true;
+}
+bool document_backend_name(uint8_t object,DocumentName *name,uint32_t *error)
+{
+ V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;(void)va;for(size_t i=0;i<16;i++)name->bytes[i]=entry.name[i];return true;
+}
+bool document_backend_create(const DocumentName *name,bool fresh_only,uint8_t *object,uint32_t *generation,uint32_t *error)
+{
+ (void)fresh_only;uint64_t va=diskfs_bridge_get_buf_va();if(!va||va==UINT64_MAX){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t native_error=0;if(!v4_ensure(va,&native_error)){*error=SEXOS_DOCUMENT_IO;return false;}
+ uint64_t lo=0,hi=0;for(size_t i=0;i<8;i++){lo|=(uint64_t)name->bytes[i]<<(i*8);hi|=(uint64_t)name->bytes[i+8]<<(i*8);}uint64_t value=handle_diskfs_create(lo,hi,va);
+ if(value==(uint64_t)ERR_EXISTS){*error=SEXOS_DOCUMENT_EXISTS;return false;}if(value<3||value>=15){*error=SEXOS_DOCUMENT_IO;return false;}*object=(uint8_t)value;return document_backend_identity(*object,generation,error);
+}
+bool document_backend_delete(uint8_t object,uint32_t *error)
+{
+ V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;(void)entry;uint64_t value=handle_diskfs_delete(object,va);if(!value)return true;
+ *error=value==(uint64_t)ERR_PERM_DENIED?SEXOS_DOCUMENT_DENIED:value==(uint64_t)ERR_NOT_FOUND?SEXOS_DOCUMENT_STALE:value==(uint64_t)ERR_FULL?SEXOS_DOCUMENT_BUSY:SEXOS_DOCUMENT_IO;return false;
+}
+static void document_growth_cancel(DocumentBackendJob *job)
+{
+ if(!job->growth.active)return;
+ if(document_growth_cancel_releases(&job->growth)&&job->growth.count>job->growth.original)
+  v4_free_pool_only(sexfiles_state.v4_bitmap,job->growth_extents+job->growth.original,job->growth.count-job->growth.original);
+ v4_cache_invalidate(job->object);document_growth_abort(&job->growth);
+}
+static bool document_growth_begin(DocumentBackendJob *job,uint8_t object,uint32_t *error)
+{
+ V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;
+ if(entry.size_bytes==DOCUMENT_JOURNAL_CAPACITY){job->growth.active=false;return true;}
+ if(entry.size_bytes>DOCUMENT_JOURNAL_CAPACITY){*error=SEXOS_DOCUMENT_INVALID;return false;}
+ size_t count=v4_cache_get(object,va,job->growth_extents),original=count;uint64_t capacity=0;
+ for(size_t i=0;i<count;i++)capacity+=(uint64_t)job->growth_extents[i].sector_count*512;
+ if(capacity>DOCUMENT_JOURNAL_CAPACITY){*error=SEXOS_DOCUMENT_INVALID;return false;}
+ if(capacity<DOCUMENT_JOURNAL_CAPACITY){
+  uint64_t more=(DOCUMENT_JOURNAL_CAPACITY-capacity+DISKFS_V4_BLOCK_BYTES-1)/DISKFS_V4_BLOCK_BYTES;size_t next=0;int64_t allocation=0;
+  if(!v4_allocate(sexfiles_state.v4_bitmap,more,job->growth_extents,count,&next,&allocation)){*error=SEXOS_DOCUMENT_BUSY;return false;}count=next;
+ }
+ uint16_t sector_count[DOCUMENT_GROWTH_MAX_EXTENTS]={0};for(size_t i=0;i<count;i++)sector_count[i]=job->growth_extents[i].sector_count;
+ if(!document_growth_init(&job->growth,original,count)){if(count>original)v4_free_pool_only(sexfiles_state.v4_bitmap,job->growth_extents+original,count-original);*error=SEXOS_DOCUMENT_INVALID;return false;}
+ for(size_t i=0;i<count;i++)if(!document_growth_set_extent(&job->growth,i,sector_count[i])){if(count>original)v4_free_pool_only(sexfiles_state.v4_bitmap,job->growth_extents+original,count-original);*error=SEXOS_DOCUMENT_INVALID;return false;}
+ job->growth_buffer=va;job->growth_entry=entry;return true;
+}
+static uint8_t document_growth_step(DocumentBackendJob *job,uint32_t *error)
+{
+ uint64_t native_error=0;DocumentGrowthAction action=document_growth_current(&job->growth);
+ if(!document_growth_begin_action(&job->growth,action)){*error=SEXOS_DOCUMENT_STALE;document_growth_cancel(job);return DOCUMENT_BACKEND_ERROR;}
+ switch(action){
+  case DOCUMENT_GROWTH_ZERO:{V4Extent extent=job->growth_extents[job->growth.extent];
+   if(!v4_zero_block((uint64_t)extent.start_lba+job->growth.sector,job->growth_buffer,&native_error)){goto io_error;}break;}
+  case DOCUMENT_GROWTH_ZERO_BARRIER:if(diskfs_block_sync()!=0)goto io_error;break;
+  case DOCUMENT_GROWTH_DESCRIPTOR:
+   if(!v4_indirect_write(job->object,job->growth_buffer,job->growth_extents,job->growth.count,&native_error)){goto io_error;}break;
+  case DOCUMENT_GROWTH_DESCRIPTOR_BARRIER:if(diskfs_block_sync()!=0)goto io_error;break;
+  case DOCUMENT_GROWTH_PUBLISH:
+   v4_cache_put(job->object,job->growth_extents,job->growth.count);job->growth_entry.size_bytes=(uint32_t)DOCUMENT_JOURNAL_CAPACITY;
+   sexfiles_state.v4_table[job->object]=job->growth_entry;if(!v4_persist(job->growth_buffer,&native_error))goto io_error;break;
+  case DOCUMENT_GROWTH_PUBLISH_BARRIER:if(diskfs_block_sync()!=0)goto io_error;break;
+  default:*error=SEXOS_DOCUMENT_STALE;document_growth_cancel(job);return DOCUMENT_BACKEND_ERROR;
+ }
+ if(!document_growth_finish_action(&job->growth,action)){*error=SEXOS_DOCUMENT_STALE;document_growth_cancel(job);return DOCUMENT_BACKEND_ERROR;}
+ return job->growth.active?DOCUMENT_BACKEND_PENDING:DOCUMENT_BACKEND_DONE;
+io_error:*error=SEXOS_DOCUMENT_IO;document_growth_cancel(job);return DOCUMENT_BACKEND_ERROR;
+}
+bool document_journal_io_read(uint8_t object,uint64_t offset,DocumentJournalBlock *block,uint32_t *error)
+{
+ V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;if(block->len>DOCUMENT_JOURNAL_IO_CHUNK||offset>entry.size_bytes||block->len>(size_t)((uint64_t)entry.size_bytes-offset)){*error=SEXOS_DOCUMENT_INVALID;return false;}
+ size_t done=0;while(done<block->len){DiskManifestEntryV1 piece;uint64_t relative=0,native_error=0;if(!v4_resolve_offset(object,offset+done,va,&piece,&relative,&native_error)){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t available=(uint64_t)piece.len_bytes-relative;size_t count=block->len-done;if(count>available)count=(size_t)available;if(!count){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t got=0;if(!diskfs_read_object_entry(piece,relative,block->bytes+done,count,va,&got,&native_error)||got!=count){*error=SEXOS_DOCUMENT_IO;return false;}done+=count;}return true;
+}
+bool document_journal_io_write(uint8_t object,uint64_t offset,const DocumentJournalBlock *block,uint32_t *error)
+{
+ V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;if(block->len>DOCUMENT_JOURNAL_IO_CHUNK||offset>entry.size_bytes||block->len>(size_t)((uint64_t)entry.size_bytes-offset)){*error=SEXOS_DOCUMENT_INVALID;return false;}
+ size_t done=0;while(done<block->len){DiskManifestEntryV1 piece;uint64_t relative=0,native_error=0;if(!v4_resolve_offset(object,offset+done,va,&piece,&relative,&native_error)){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t available=(uint64_t)piece.len_bytes-relative;size_t count=block->len-done;if(count>available)count=(size_t)available;if(!count){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t written=0;if(!diskfs_write_object_entry(piece,relative,block->bytes+done,count,va,&written,&native_error)||written!=count){*error=SEXOS_DOCUMENT_IO;return false;}done+=count;}return true;
+}
+bool document_journal_io_sync(uint8_t object,uint32_t *error)
+{(void)object;if(diskfs_block_sync()==0)return true;*error=SEXOS_DOCUMENT_IO;return false;}
+uint8_t document_backend_load_step(uint32_t caller,uint8_t object,SexosDocumentPayload *payload,DocumentName *name,uint32_t *error)
+{
+ uint32_t identity=0;if(!document_backend_identity(object,&identity,error))return DOCUMENT_BACKEND_ERROR;DocumentBackendJob *job=&sexfiles_state.document_job;
+ if(!job->active){V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return DOCUMENT_BACKEND_ERROR;job->active=true;job->loading=true;job->caller=caller;job->object=object;job->identity=identity;document_journal_load_init(&job->load,object,identity,entry.size_bytes==DOCUMENT_JOURNAL_CAPACITY);}
+ if(!job->loading||job->caller!=caller||job->object!=object||job->identity!=identity){*error=SEXOS_DOCUMENT_BUSY;return DOCUMENT_BACKEND_ERROR;}DocumentJournalProgress progress=document_journal_load_step(&job->load,payload);if(progress.status==DOCUMENT_JOURNAL_PENDING)return DOCUMENT_BACKEND_PENDING;if(progress.status==DOCUMENT_JOURNAL_ERROR){*error=progress.error;return DOCUMENT_BACKEND_ERROR;}if(!document_backend_name(object,name,error))return DOCUMENT_BACKEND_ERROR;return DOCUMENT_BACKEND_DONE;
+}
+uint8_t document_backend_save_step(uint32_t caller,uint8_t object,const SexosDocumentPayload *payload,uint32_t *error)
+{
+ uint32_t identity=0;if(!document_backend_identity(object,&identity,error))return DOCUMENT_BACKEND_ERROR;DocumentBackendJob *job=&sexfiles_state.document_job;
+ if(!job->active){job->active=true;job->loading=false;job->caller=caller;job->object=object;job->identity=identity;document_journal_save_init(&job->save,object,identity);if(!document_growth_begin(job,object,error)){memset(job,0,sizeof *job);return DOCUMENT_BACKEND_ERROR;}}
+ if(job->loading||job->caller!=caller||job->object!=object||job->identity!=identity){*error=SEXOS_DOCUMENT_BUSY;return DOCUMENT_BACKEND_ERROR;}
+ if(job->growth.active){uint8_t status=document_growth_step(job,error);return status==DOCUMENT_BACKEND_DONE?DOCUMENT_BACKEND_PENDING:status;}
+ DocumentJournalProgress progress=document_journal_save_step(&job->save,payload);if(progress.status==DOCUMENT_JOURNAL_PENDING)return DOCUMENT_BACKEND_PENDING;if(progress.status==DOCUMENT_JOURNAL_ERROR){*error=progress.error;return DOCUMENT_BACKEND_ERROR;}return DOCUMENT_BACKEND_DONE;
+}
+void document_backend_cancel_work(uint32_t caller)
+{DocumentBackendJob *job=&sexfiles_state.document_job;if(job->active&&job->caller==caller){document_growth_cancel(job);memset(job,0,sizeof *job);}}
+bool document_backend_publish_load(uint32_t caller,SexosDocumentRequest request,uint32_t generation,const SexosDocumentPayload *payload,const DocumentName *name,uint32_t *error)
+{DocumentSnapshotRegion region;if(!document_snapshot_resolve(caller,true,&region)){*error=SEXOS_DOCUMENT_DENIED;return false;}return document_snapshot_publish(&region,request,generation,name,payload,error);}
+bool document_backend_clear_load(uint32_t caller,uint32_t *error)
+{if(!document_quil_target(caller))return true;DocumentSnapshotRegion region;if(!document_snapshot_resolve(caller,true,&region)){*error=SEXOS_DOCUMENT_DENIED;return false;}return document_snapshot_clear(&region,error);}
+
+
+#endif
 static size_t vfs_unpack_name(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint8_t *out_name) {
   write_le64(out_name + 0, arg0);
   write_le64(out_name + 8, arg1);
@@ -1660,106 +1791,135 @@ static inline bool tramp_hot_log(void) {
   return sexfiles_take_budget(&sexfiles_state.trampoline_hot_log_budget);
 }
 static void trampoline_main(void) {
-  sexos_line("[sexfiles.trampoline.enter] ok=1");
-  sexos_line("[sexfiles.trampoline.before_register] slot=1 ok=1");
-  if (RAMFS_PROOF_ENABLED) run_all_proofs();
-  if (DISKFS_OBJECT_TABLE_PROOF_ENABLED) run_diskfs_object_table_proofs();
-  if (SEXFILES_JOURNAL_PROOF_ENABLED) run_sexfiles_journal_proofs();
-  if (SEXFILES_REPLAY_PROOF_ENABLED) run_sexfiles_replay_proofs();
-  if (SEXFILES_CAP_RECORD_PROOF_ENABLED) run_sexfiles_cap_record_proofs();
-  if (LINEN_SEXFILES_METADATA_PROOF_ENABLED) run_linen_sexfiles_metadata_proofs();
-  if (SEXFILES_FAULT_INJECTION_PROOF_ENABLED) run_sexfiles_fault_injection_proofs();
-  if (SEXFILES_REAL_BLOCK_PROOF_ENABLED) run_sexfiles_real_block_proofs();
-  if (SEXFILES_REBOOT_PROOF_ENABLED) run_sexfiles_reboot_proofs();
-  if (SEXFILES_EXTENT_PROOF_ENABLED) run_sexfiles_extent_proofs();
-  if (SEXFILES_CHECKPOINT_PROOF_ENABLED) run_sexfiles_checkpoint_proofs();
-  if (DISKFS_100_AP4_WRITE_PROOF_ENABLED) {
-    run_diskfs100_ap4_write_proof();
-    return;
-  }
-  if (DISKFS_100_AP4_READ_PROOF_ENABLED) {
-    run_diskfs100_ap4_read_proof();
-    if (DISKFS_100_AP5_NEG_READ_NO_WRITE_ENABLED) run_diskfs100_ap5_neg_read_no_write();
-    return;
-  }
-  if (DISKFS_100_AP5_NEG_MISMATCH_ENABLED) {
-    run_diskfs100_ap5_neg_mismatch();
-    return;
-  }
-  if (DISKFS_100_AP5_NEG_MISSING_IMAGE_ENABLED) {
-    run_diskfs100_ap5_neg_missing_image();
-    return;
-  }
-  if (DISKFS_100_AP5_NEG_FLUSH_SKIP_ENABLED) {
-    run_diskfs100_ap5_neg_flush_skip();
-    return;
-  }
-  if (DISKFS_100_AP6_FLUSH_FSYNC_ENABLED) {
-    run_diskfs100_ap6_flush_fsync();
-    return;
-  }
-  if (DISKFS_NEGATIVE_BOUNDS_AUTH_PROOF_ENABLED) {
-    run_diskfs_negative_bounds_auth_proof();
-    return;
-  }
-  if (DISKFS_BRIDGE_STRICT_PROOF_ENABLED) {
-    run_diskfs_bridge_strict_proof_v1();
-    return;
-  }
-  if (DISKFS_100_AP2_PROOF_ENABLED) {
-    run_diskfs100_ap2_proof();
-    return;
-  }
-  if (DISKFS_100_AP3_PROOF_ENABLED) {
-    run_diskfs_multi_object_proofs();
-    return;
-  }
-  if (DISKFS_MULTI_OBJECT_PROOF_ENABLED) {
-    if (SEXFILES_ROUTE_AUDIT_ONLY_ENABLED) sexos_line("[sexfiles.disk.multi.skip] reason=route_audit");
-    else run_diskfs_multi_object_proofs();
-  }
-  if (SEXOBJECT_VIEW_PROOF_ENABLED) run_sexobject_view_proof();
-  if (LINEN_DISK_OBJECT_PROOF_ENABLED) run_linen_disk_object_proof();
-  if (SEXFS_V0_SUPERBLOCK_FORMAT_MOUNT_PROOF_ENABLED) run_sexfs_v0_superblock_format_mount_proofs();
-  if (SEXOBJECT_TABLE_PERSIST_PROOF_ENABLED) run_sexobject_table_persist_proofs();
-  if (SEXOBJECT_TABLE_EXTENT_ALLOC_PROOF_ENABLED) run_sexobject_table_extent_alloc_proofs();
-  if (SEXOBJECT_EXTENT_WRITE_FULL_BLOCK_PROOF_ENABLED) run_sexobject_extent_write_full_block_proofs();
-  if (SEXOBJECT_WRITE_READ_PERSIST_PROOF_ENABLED) run_sexobject_write_read_persist_proofs();
-  if (SEXOBJECT_MULTI_OBJECT_PROOF_ENABLED) run_sexobject_multi_object_proofs();
-  sexos_line("[sexfiles.ready]");
-  sexos_line("[sexfiles.init.ready] slot=1 ok=1");
-  sexos_line("[sexfiles.trampoline.loop.enter] ok=1");
-  while (1) {
-    if (sexfiles_state.tramp_listen_budget > 0) {
-      sexfiles_state.tramp_listen_budget -= 1;
-      if (tramp_hot_log()) sexos_line("[sexfiles.trampoline.listen.enter]");
+  {
+    sexos_line("[sexfiles.trampoline.enter] ok=1");
+    sexos_line("[sexfiles.trampoline.before_register] slot=1 ok=1");
+    if (RAMFS_PROOF_ENABLED) run_all_proofs();
+    if (DISKFS_OBJECT_TABLE_PROOF_ENABLED) run_diskfs_object_table_proofs();
+    if (SEXFILES_JOURNAL_PROOF_ENABLED) run_sexfiles_journal_proofs();
+    if (SEXFILES_REPLAY_PROOF_ENABLED) run_sexfiles_replay_proofs();
+    if (SEXFILES_CAP_RECORD_PROOF_ENABLED) run_sexfiles_cap_record_proofs();
+    if (LINEN_SEXFILES_METADATA_PROOF_ENABLED) run_linen_sexfiles_metadata_proofs();
+    if (SEXFILES_FAULT_INJECTION_PROOF_ENABLED) run_sexfiles_fault_injection_proofs();
+    if (SEXFILES_REAL_BLOCK_PROOF_ENABLED) run_sexfiles_real_block_proofs();
+    if (SEXFILES_REBOOT_PROOF_ENABLED) run_sexfiles_reboot_proofs();
+    if (SEXFILES_EXTENT_PROOF_ENABLED) run_sexfiles_extent_proofs();
+    if (SEXFILES_CHECKPOINT_PROOF_ENABLED) run_sexfiles_checkpoint_proofs();
+    if (DISKFS_100_AP4_WRITE_PROOF_ENABLED) {
+      run_diskfs100_ap4_write_proof();
+      return;
     }
-    DeferEntry d;
-    uint64_t type_id = 0;
-    uint32_t caller = 0;
-    uint64_t arg0 = 0;
-    uint64_t arg1 = 0;
-    uint64_t arg2 = 0;
-    if (defer_pop(&d)) {
-      type_id = d.type_id;
-      caller = d.caller_pd;
-      arg0 = d.a0;
-      arg1 = d.a1;
-      arg2 = d.a2;
-    } else {
-      SexosMessage m = sexos_listen(&sexfiles_state.listener, 0);
-      type_id = m.type_id;
-      caller = m.caller_pd;
-      arg0 = m.arg0;
-      arg1 = m.arg1;
-      arg2 = m.arg2;
+    if (DISKFS_100_AP4_READ_PROOF_ENABLED) {
+      run_diskfs100_ap4_read_proof();
+      if (DISKFS_100_AP5_NEG_READ_NO_WRITE_ENABLED) run_diskfs100_ap5_neg_read_no_write();
+      return;
     }
-    if (tramp_hot_log()) sexos_line("[sexfiles.trampoline.after_listen] type=%#llx caller=%u a0=%#llx a1=%#llx", (unsigned long long) type_id, (unsigned) caller, (unsigned long long) arg0, (unsigned long long) arg1);
-    if (tramp_hot_log()) sexos_line("[sexfiles.route.recv] type=%#llx caller=%u a0=%#llx a1=%#llx", (unsigned long long) type_id, (unsigned) caller, (unsigned long long) arg0, (unsigned long long) arg1);
-    uint64_t reply = handle_vfs_message(type_id, arg0, arg1, arg2, caller);
-    if (type_id != 0) {
-      if (type_id == OP_DISKFS_READ) sexos_line("[sexfiles.bridge.diskfs.read.reply.sent] caller=%u value=%#llx", (unsigned) caller, (unsigned long long) reply);
-      (void) sexos_reply(caller, reply);
+    if (DISKFS_100_AP5_NEG_MISMATCH_ENABLED) {
+      run_diskfs100_ap5_neg_mismatch();
+      return;
+    }
+    if (DISKFS_100_AP5_NEG_MISSING_IMAGE_ENABLED) {
+      run_diskfs100_ap5_neg_missing_image();
+      return;
+    }
+    if (DISKFS_100_AP5_NEG_FLUSH_SKIP_ENABLED) {
+      run_diskfs100_ap5_neg_flush_skip();
+      return;
+    }
+    if (DISKFS_100_AP6_FLUSH_FSYNC_ENABLED) {
+      run_diskfs100_ap6_flush_fsync();
+      return;
+    }
+    if (DISKFS_NEGATIVE_BOUNDS_AUTH_PROOF_ENABLED) {
+      run_diskfs_negative_bounds_auth_proof();
+      return;
+    }
+    if (DISKFS_BRIDGE_STRICT_PROOF_ENABLED) {
+      run_diskfs_bridge_strict_proof_v1();
+      return;
+    }
+    if (DISKFS_100_AP2_PROOF_ENABLED) {
+      run_diskfs100_ap2_proof();
+      return;
+    }
+    if (DISKFS_100_AP3_PROOF_ENABLED) {
+      run_diskfs_multi_object_proofs();
+      return;
+    }
+    if (DISKFS_MULTI_OBJECT_PROOF_ENABLED) {
+      if (SEXFILES_ROUTE_AUDIT_ONLY_ENABLED) sexos_line("[sexfiles.disk.multi.skip] reason=route_audit");
+      else run_diskfs_multi_object_proofs();
+    }
+    if (SEXOBJECT_VIEW_PROOF_ENABLED) run_sexobject_view_proof();
+    if (LINEN_DISK_OBJECT_PROOF_ENABLED) run_linen_disk_object_proof();
+    if (SEXFS_V0_SUPERBLOCK_FORMAT_MOUNT_PROOF_ENABLED) run_sexfs_v0_superblock_format_mount_proofs();
+    if (SEXOBJECT_TABLE_PERSIST_PROOF_ENABLED) run_sexobject_table_persist_proofs();
+    if (SEXOBJECT_TABLE_EXTENT_ALLOC_PROOF_ENABLED) run_sexobject_table_extent_alloc_proofs();
+    if (SEXOBJECT_EXTENT_WRITE_FULL_BLOCK_PROOF_ENABLED) run_sexobject_extent_write_full_block_proofs();
+    if (SEXOBJECT_WRITE_READ_PERSIST_PROOF_ENABLED) run_sexobject_write_read_persist_proofs();
+    if (SEXOBJECT_MULTI_OBJECT_PROOF_ENABLED) run_sexobject_multi_object_proofs();
+    sexos_line("[sexfiles.ready]");
+    sexos_line("[sexfiles.init.ready] slot=1 ok=1");
+    sexos_line("[sexfiles.trampoline.loop.enter] ok=1");
+#if SEXOS_SEXFILES_CURRENT_DOCUMENT
+if (sexos_rpc_register() != 1) {
+  sexos_line("[sexfiles.document.unavailable] reason=correlated_kernel_required");
+  sexos_fail();
+}
+document_service_transport_init(&sexfiles_state.documents, true);
+
+#endif
+    while (1) {
+#if SEXOS_SEXFILES_CURRENT_DOCUMENT
+document_service_transport_progress(&sexfiles_state.documents);
+
+(void) document_service_transport_poll(&sexfiles_state.documents);
+
+#endif
+      if (sexfiles_state.tramp_listen_budget > 0) {
+        sexfiles_state.tramp_listen_budget -= 1;
+        if (tramp_hot_log()) sexos_line("[sexfiles.trampoline.listen.enter]");
+      }
+      DeferEntry d;
+      SexosRequest request = (SexosRequest) {
+        .id = 0
+      };
+      if (defer_pop(&d)) request = d.request;
+      else
+#if SEXOS_SEXFILES_CURRENT_DOCUMENT
+{
+  request = sexos_rpc_listen_once(0);
+  if (request.message.type_id == 0) {
+    sexos_yield();
+    continue;
+  }
+}
+#else
+request.message = sexos_listen(&sexfiles_state.listener, 0);
+
+#endif
+      uint64_t type_id = request.message.type_id;
+      uint32_t caller = request.message.caller_pd;
+      uint64_t arg0 = request.message.arg0;
+      uint64_t arg1 = request.message.arg1;
+      uint64_t arg2 = request.message.arg2;
+      if (tramp_hot_log()) sexos_line("[sexfiles.trampoline.after_listen] type=%#llx caller=%u a0=%#llx a1=%#llx", (unsigned long long) type_id, (unsigned) caller, (unsigned long long) arg0, (unsigned long long) arg1);
+      if (tramp_hot_log()) sexos_line("[sexfiles.route.recv] type=%#llx caller=%u a0=%#llx a1=%#llx", (unsigned long long) type_id, (unsigned) caller, (unsigned long long) arg0, (unsigned long long) arg1);
+#if SEXOS_SEXFILES_CURRENT_DOCUMENT
+if (document_service_transport_prepare(&sexfiles_state.documents, &request, true)) continue;
+
+#endif
+      uint64_t reply = handle_vfs_message(type_id, arg0, arg1, arg2, caller);
+      if (type_id != 0) {
+        if (type_id == OP_DISKFS_READ) sexos_line("[sexfiles.bridge.diskfs.read.reply.sent] caller=%u value=%#llx", (unsigned) caller, (unsigned long long) reply);
+#if SEXOS_SEXFILES_CURRENT_DOCUMENT
+(void) sexos_answer_request(&request, reply);
+
+#else
+(void) sexos_reply(caller, reply);
+
+#endif
+      }
     }
   }
 }

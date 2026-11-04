@@ -3,3 +3,5 @@
 /c/build/
 __pycache__/
 *.pyc
+/build-arm64/
+/c-arm64/build-arm64/

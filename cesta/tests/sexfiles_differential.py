@@ -29,6 +29,7 @@ import argparse
 import os
 from pathlib import Path
 import random
+import re
 import shutil
 
 from differential_support import (
@@ -179,6 +180,45 @@ uint64_t sexos_map_mem_lend(uint64_t cap_slot) {
     uint64_t ret = (cap_slot == 17) ? MEM_LEND_VA : UINT64_MAX;
     printf("P %" PRIu64 " -> %#" PRIx64 "\n", cap_slot, ret);
     return ret;
+}
+
+static RegionWriterState writer_state = {true, 4, 11, 2, 11, 1, 0};
+
+MemoryRegionReply sexos_memory_region_info(uint64_t slot) {
+    if (slot != 17) return (MemoryRegionReply){.status=UINT64_MAX};
+    return (MemoryRegionReply){0,4096,REGION_QUERY|REGION_READ|REGION_WRITE,2,4};
+}
+
+MemoryRegionReply sexos_memory_region_view(uint64_t slot,uint64_t offset,uint64_t length,uint64_t rights) {
+    flush_spins();
+    uint64_t ret = (scenario.faults == 2 && scenario.mix == 2 && chance(50)) ? UINT64_MAX : MEM_LEND_VA;
+    printf("G %" PRIu64 " %" PRIu64 " %" PRIu64 " -> %#" PRIx64 "\n", UINT64_C(15), length, slot, ret);
+    if (slot != 17 || offset || length != 4096 ||
+        rights != (REGION_QUERY|REGION_READ|REGION_WRITE) || ret == UINT64_MAX)
+        return (MemoryRegionReply){.status=UINT64_MAX};
+    return (MemoryRegionReply){0,ret,length,0,4};
+}
+
+RegionWriterReceipt sexos_region_writer_query(uint64_t slot) {
+    if (slot != 17) return (RegionWriterReceipt){.status=REGION_WRITER_INVALID};
+    return (RegionWriterReceipt){REGION_WRITER_OK,writer_state.revision,writer_state.current,
+        writer_state.job,writer_state.peer};
+}
+
+RegionWriterReceipt sexos_region_writer_change(uint64_t slot,RegionWriterAction action,
+                                                uint64_t expected,uint64_t job) {
+    if (slot != 17 || expected != writer_state.revision || !job)
+        return (RegionWriterReceipt){.status=REGION_WRITER_STALE,.revision=writer_state.revision,
+            .current=writer_state.current,.job=writer_state.job,.peer=writer_state.peer};
+    if (action == REGION_WRITER_OFFER && writer_state.current == writer_state.home && !writer_state.job)
+        writer_state.job=job;
+    else if (action == REGION_WRITER_CANCEL && writer_state.current == writer_state.home && writer_state.job == job)
+        writer_state.job=0;
+    else return (RegionWriterReceipt){.status=REGION_WRITER_BUSY,.revision=writer_state.revision,
+        .current=writer_state.current,.job=writer_state.job,.peer=writer_state.peer};
+    ++writer_state.revision;
+    return (RegionWriterReceipt){REGION_WRITER_OK,writer_state.revision,writer_state.current,
+        writer_state.job,writer_state.peer};
 }
 
 static uint64_t fnv1a(const char *s) {
@@ -734,7 +774,9 @@ def main():
     for compiler in ("gcc", "clang"):
         shared_objs[compiler] = []
         for unit in ("sexfiles_diskfs", "sexfiles_proof"):
-            assert "(cpp-if" not in (HERE / "src" / f"{unit}.cesta").read_text()
+            conditions = set(re.findall(r'\(cpp-if "([^"]+)"',
+                                        (HERE / "src" / f"{unit}.cesta").read_text()))
+            assert conditions <= {"SEXOS_SEXFILES_CURRENT_DOCUMENT"}, conditions
             obj = work / f"{unit}-{compiler}-shared.o"
             run(
                 [
@@ -747,6 +789,7 @@ def main():
                     *warnings,
                     *sanitizers,
                     *include,
+                    "-DSEXOS_SEXFILES_CURRENT_DOCUMENT=0",
                     "-c",
                     HERE / "src" / f"{unit}.cesta",
                     "-o",
@@ -766,6 +809,7 @@ def main():
                 "-std=c11",
                 "-O2",
                 *warnings,
+                "-DSEXOS_SEXFILES_CURRENT_DOCUMENT=0",
                 *defines,
                 *sanitizers,
                 *include,
@@ -909,6 +953,7 @@ def main():
                 "gcc",
                 "-std=c11",
                 "-O2",
+                "-DSEXOS_SEXFILES_CURRENT_DOCUMENT=0",
                 *c_defines,
                 *sanitizers,
                 *include,

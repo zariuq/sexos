@@ -1,0 +1,15 @@
+#include "network_dns_job_machine.h"
+
+void network_dns_job_machine_maintain_records(NetworkDnsJobMachine *m,uint64_t now,void *context,NetworkDnsJobLive live)
+{
+ if(now<m->records_clock){for(size_t i=0;i<NETWORK_DNS_JOB_SLOTS;i++)m->records[i].present=false;m->candidate_present=false;return;}m->records_clock=now;
+ if(m->candidate_present&&(now<m->candidate.observed_tick||now>=m->candidate.expires_tick))m->candidate_present=false;
+ for(size_t i=0;i<NETWORK_DNS_JOB_SLOTS;i++){
+  if(m->records[i].present&&(now<m->records[i].value.observed_tick||now>=m->records[i].value.expires_tick))m->records[i].present=false;
+  bool candidate_here=m->candidate_present&&m->cached[i].present&&network_job_identity_equal(m->cached[i].owner,m->candidate.owner);
+  bool present=m->records[i].present||candidate_here;NetworkJobIdentity owner=m->records[i].present?m->records[i].value.owner:m->candidate.owner;
+  if(present&&(!live||!live(context,owner))){m->records[i].present=false;if(candidate_here)m->candidate_present=false;}
+ }
+}
+
+

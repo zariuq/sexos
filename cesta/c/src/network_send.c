@@ -3,7 +3,7 @@ typedef struct TxContext {
   NetworkDevice *device;
   cesta_read_bytes frame;
   uint64_t budget, identity;
-  bool held, submitted;
+  bool held, submitted, attempted;
   NetworkStep step;
 }
 TxContext;
@@ -11,7 +11,10 @@ static bool tx_frame_fact(TxContext *c) {
   return c->frame.data && c->frame.len >= 14 && c->frame.len <= 1514;
 }
 static bool tx_valid(TxContext *c) {
-  return tx_frame_fact(c);
+  return !c->attempted && tx_frame_fact(c);
+}
+static bool tx_permit(TxContext *c) {
+  return !c->attempted;
 }
 static bool tx_submitted(TxContext *c) {
   return c->submitted;
@@ -32,6 +35,8 @@ static bool tx_acquire(TxContext *c) {
   return tx_owned(c);
 }
 static bool tx_submit(TxContext *c) {
+  if (c->attempted) return false;
+  c->attempted = true;
   c->submitted = network_device_submit(c->device, c->frame);
   return c->submitted;
 }
@@ -62,7 +67,7 @@ static void tx_transfer(TxContext *c) {
 #define network_tx_run_CHECKED 1
 #define network_tx_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()
 
-/* Generated from cesta-protocol/1. Declare the context and native hooks first. */
+/* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
 
 #ifdef CESTA_PROTOCOL_network_tx_run_DEFINED
 #error "duplicate protocol definition"
@@ -92,6 +97,7 @@ static void tx_transfer(TxContext *c) {
     defined(tx_release) || \
     defined(tx_transfer) || \
     defined(tx_frame_fact) || \
+    defined(tx_permit) || \
     defined(tx_submitted) || \
     defined(tx_complete) || \
     defined(tx_binding) || \
@@ -234,6 +240,12 @@ network_tx_run(TxContext *ctx)
     }
 #endif
 #if network_tx_run_CHECKED
+    if (!tx_permit(ctx)) {
+        network_tx_run_CHECK_FAILURE(ctx, "fact", "effect_permit", 1);
+        for (;;) {}
+    }
+#endif
+#if network_tx_run_CHECKED
     if (!tx_binding(ctx)) {
         network_tx_run_CHECK_FAILURE(ctx, "fact", "binding", 1);
         for (;;) {}
@@ -311,6 +323,12 @@ network_tx_run(TxContext *ctx)
 #if network_tx_run_CHECKED
                 if (tx_owned(ctx)) {
                     network_tx_run_CHECK_FAILURE(ctx, "own", "frame", 0);
+                    for (;;) {}
+                }
+#endif
+#if network_tx_run_CHECKED
+                if (!tx_complete(ctx)) {
+                    network_tx_run_CHECK_FAILURE(ctx, "fact", "complete", 1);
                     for (;;) {}
                 }
 #endif
@@ -400,12 +418,6 @@ network_tx_run(TxContext *ctx)
                 }
 #endif
 #if network_tx_run_CHECKED
-                if (!tx_frame_fact(ctx)) {
-                    network_tx_run_CHECK_FAILURE(ctx, "fact", "valid_frame", 1);
-                    for (;;) {}
-                }
-#endif
-#if network_tx_run_CHECKED
                 if (!tx_submitted(ctx)) {
                     network_tx_run_CHECK_FAILURE(ctx, "fact", "submitted", 1);
                     for (;;) {}
@@ -422,12 +434,6 @@ network_tx_run(TxContext *ctx)
 #if network_tx_run_CHECKED
             if (!tx_binding(ctx)) {
                 network_tx_run_CHECK_FAILURE(ctx, "fact", "binding", 1);
-                for (;;) {}
-            }
-#endif
-#if network_tx_run_CHECKED
-            if (!tx_frame_fact(ctx)) {
-                network_tx_run_CHECK_FAILURE(ctx, "fact", "valid_frame", 1);
                 for (;;) {}
             }
 #endif

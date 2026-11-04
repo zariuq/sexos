@@ -74,3 +74,8 @@ void sexos_spin_loop_hint(void)
 {
     __asm__ volatile ("pause");
 }
+
+void sexos_spin_loop_count(uint64_t count)
+{
+    while (count--) __asm__ volatile ("pause");
+}

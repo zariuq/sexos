@@ -1,0 +1,33 @@
+
+#ifndef SEXOS_NETWORK_ENGINE_TRANSPORT_H
+#define SEXOS_NETWORK_ENGINE_TRANSPORT_H
+#include "network_engine_dns.h"
+#include "network_tcp_client.h"
+#include "network_tcp_listener.h"
+typedef struct NetworkEngineTransport {
+    NetworkEngineDns base; NetworkTcpClient client; NetworkTcpListener listener;
+    bool client_pending,client_tls,prefer_listener; uint32_t client_ticket;
+} NetworkEngineTransport;
+typedef struct NetworkEngineTransportSnapshot {
+    NetworkEngineDnsSnapshot base; NetworkTcpClientSnapshot client; NetworkTcpListenerSnapshot listener;
+    bool client_pending,client_tls,prefer_listener; uint32_t client_ticket;
+} NetworkEngineTransportSnapshot;
+NetworkEngineError network_engine_transport_init(NetworkEngineTransport *engine,NetConfig config,NetworkEngineMac mac,uint64_t now);
+NetworkEngineError network_engine_transport_submit(NetworkEngineTransport *engine,const NetworkEngineFrame *frame);
+NetworkEngineFrameResult network_engine_transport_take_frame(NetworkEngineTransport *engine);
+bool network_engine_transport_can_receive(const NetworkEngineTransport *engine);
+bool network_engine_transport_has_frame(const NetworkEngineTransport *engine);
+NetworkEngineError network_engine_transport_begin_client(NetworkEngineTransport *engine,uint32_t ticket,bool tls);
+NetworkTcpClientCount network_engine_transport_client_send(NetworkEngineTransport *engine,const NetworkEnginePayload *payload);
+NetworkTcpClientReceive network_engine_transport_client_receive(NetworkEngineTransport *engine,size_t maximum);
+NetworkTcpClientState network_engine_transport_client_state(const NetworkEngineTransport *engine);
+size_t network_engine_transport_client_queued(const NetworkEngineTransport *engine);
+void network_engine_transport_client_finish(NetworkEngineTransport *engine);
+void network_engine_transport_client_abort(NetworkEngineTransport *engine);
+NetworkEngineError network_engine_transport_begin_dns(NetworkEngineTransport *engine,uint32_t ticket);
+NetworkEngineDnsResult network_engine_transport_dns_receive(NetworkEngineTransport *engine);
+void network_engine_transport_dns_abort(NetworkEngineTransport *engine);
+void network_engine_transport_advance(NetworkEngineTransport *engine,uint64_t now);
+void network_engine_transport_stop(NetworkEngineTransport *engine,NetworkEngineError reason);
+NetworkEngineTransportSnapshot network_engine_transport_snapshot(const NetworkEngineTransport *engine);
+#endif

@@ -1,0 +1,6 @@
+(cesta-export/1 (header SEXOS_KERNEL_CURRENT_H) (profile c11)
+  (table-enum "kernel_current.data" Domains (enum CurrentDomainId) (prefix CURRENT_PD_) (id id) (name name))
+  (table-rows "kernel_current.data" Domains (macro SEXOS_CURRENT_DOMAIN_ROWS) (columns id name module log_name key layout active))
+  (table-rows "kernel_current.data" Routes (macro SEXOS_CURRENT_ROUTE_ROWS) (columns holder slot target label))
+  (table-rows "kernel_current.data" Apps (macro SEXOS_CURRENT_APP_ROWS) (columns target ordinal surface shell_surface lifecycle_slot close_slot activation_slot predecessor logical route_slot))
+  (table-rows "kernel_current.data" Sources (macro SEXOS_CURRENT_SOURCE_ROWS) (columns holder slot kind consumer)))

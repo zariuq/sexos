@@ -1,0 +1,367 @@
+#include "sexos_kernel.h"
+
+typedef struct KernelRegionWriterContext {
+    BootBacking *backing;
+    Domain *subject;
+    const Cap *capability;
+    RegionWriterState before,after;
+    uint64_t slot,expected_revision,job,epoch;
+    uint32_t other;
+    RegionWriterAction action;
+    bool internal,notify,snapshotted,transformed,swapped;
+} KernelRegionWriterContext;
+static bool region_writer_state_equal(RegionWriterState a,RegionWriterState b)
+{
+    return a.present==b.present && a.region_id==b.region_id && a.home==b.home &&
+        a.peer==b.peer && a.current==b.current && a.revision==b.revision && a.job==b.job;
+}
+static BootBacking *kernel_region_writer_backing(uint32_t region)
+{
+    for(uint32_t i=0;i<kernel.boot_backing_count;++i)
+        if(kernel.boot_backings[i].region_id==region)return &kernel.boot_backings[i];
+    return NULL;
+}
+bool kernel_region_writer_expected_write(uint32_t region,uint32_t holder,bool granted)
+{
+    BootBacking *backing=kernel_region_writer_backing(region);
+    return backing && region_writer_valid(&backing->writer) ? backing->writer.current==holder : granted;
+}
+static BootRegionAlias *kernel_region_writer_alias(BootBacking *backing,uint32_t holder)
+{
+    for(uint8_t i=0;i<backing->alias_count;++i)
+        if(backing->aliases[i].holder==holder)return &backing->aliases[i];
+    return NULL;
+}
+static uint64_t kernel_region_writer_expected(const BootBacking *backing,
+                                               const BootRegionAlias *alias,
+                                               uint64_t offset,bool writable)
+{
+    return (backing->physical+offset)|PTE_PRESENT|PTE_USER|PTE_NO_EXECUTE|
+        ((uint64_t)alias->key<<PTE_KEY_SHIFT)|(writable?PTE_WRITABLE:0);
+}
+static bool kernel_region_writer_mappings(const BootBacking *backing,uint32_t writer)
+{
+    if(!backing || backing->alias_count!=2 || !backing->length ||
+       backing->length%KERNEL_PAGE_SIZE || backing->reserved<backing->length)return false;
+    for(uint8_t index=0;index<2;++index){
+        const BootRegionAlias *alias=&backing->aliases[index];
+        Domain *holder=domain_get(alias->holder);
+        if(!holder || !alias->holder || !alias->virtual_base || alias->key!=holder->key ||
+           !alias->key || alias->key>=16 || !alias->writer_eligible)return false;
+        for(uint64_t offset=0;offset<backing->length;offset+=KERNEL_PAGE_SIZE){
+            uint64_t actual=0;
+            if(!read_pte(alias->virtual_base+offset,&actual) ||
+               (actual&~UINT64_C(0x60))!=kernel_region_writer_expected(backing,alias,offset,alias->holder==writer))
+                return false;
+        }
+    }
+    return true;
+}
+static bool kernel_region_writer_current(const KernelRegionWriterContext *context)
+{
+    if(!context->subject || !context->capability || !context->backing)return false;
+    Domain *other=domain_get(context->other);
+    bool authority=context->internal ?
+        context->action==REGION_WRITER_RECOVER && context->subject->id==context->before.home &&
+        context->before.current==context->other && other &&
+        (other->task_state==TASK_EXITED || other->task_state==TASK_DORMANT) :
+        kernel_current_task(context->subject)!=0;
+    if(!context->snapshotted ||
+       !authority || context->capability!=cap_get(context->subject,context->slot) ||
+       context->capability->kind!=CAP_REGION ||
+       context->capability->region.grant.region_id!=context->before.region_id ||
+       !context->capability->region.grant.has_peer ||
+       context->capability->region.grant.peer_pd!=context->other ||
+       !(context->capability->region.grant.rights&REGION_WRITE) ||
+       context->backing!=kernel_region_writer_backing(context->before.region_id) ||
+       !region_writer_state_equal(context->backing->writer,context->before) ||
+       !region_writer_valid(&context->before) || !region_writer_valid(&context->after) ||
+       !kernel_epoch_current(context->epoch))return false;
+    if(context->notify && (!other || !other->reply_rights[context->subject->id] ||
+       context->subject->reply_ready || context->subject->task_state==TASK_EXITED ||
+       context->subject->task_state==TASK_DORMANT))return false;
+    return kernel_region_writer_mappings(context->backing,context->before.current);
+}
+static bool kernel_region_writer_is_snapshotted(KernelRegionWriterContext *context)
+{
+    return kernel_region_writer_current(context);
+}
+static bool kernel_region_writer_is_transformed(KernelRegionWriterContext *context)
+{
+    return context->transformed && kernel_region_writer_current(context);
+}
+static bool kernel_region_writer_is_swapped(KernelRegionWriterContext *context)
+{
+    return context->swapped && context->transformed && kernel_region_writer_current(context);
+}
+static bool kernel_region_writer_snapshot(KernelRegionWriterContext *context)
+{
+    context->epoch=kernel.epoch;context->snapshotted=true;
+    return kernel_region_writer_current(context);
+}
+static bool kernel_region_writer_transform(KernelRegionWriterContext *context)
+{
+    if(!kernel_region_writer_current(context))return false;
+    context->transformed=true;return true;
+}
+static bool kernel_region_writer_swap(KernelRegionWriterContext *context)
+{
+    if(!kernel_region_writer_is_transformed(context))return false;
+    context->swapped=true;return true;
+}
+static bool kernel_region_writer_commit(KernelRegionWriterContext *context)
+{
+    if(!kernel_region_writer_is_swapped(context))return false;
+    BootRegionAlias *source=kernel_region_writer_alias(context->backing,context->before.current);
+    BootRegionAlias *target=kernel_region_writer_alias(context->backing,context->after.current);
+    if(!source || !target)return false;
+    if(context->before.current!=context->after.current){
+        for(uint64_t offset=0;offset<context->backing->length;offset+=KERNEL_PAGE_SIZE){
+            uint64_t source_address=source->virtual_base+offset,target_address=target->virtual_base+offset;
+            uint64_t *source_leaf=(uint64_t *)(uintptr_t)page_leaf_address(source_address);
+            uint64_t *target_leaf=(uint64_t *)(uintptr_t)page_leaf_address(target_address);
+            if(!source_leaf || !target_leaf)return false;
+            *source_leaf&=~PTE_WRITABLE;*target_leaf|=PTE_WRITABLE;
+            cpu_invlpg(source_address);cpu_invlpg(target_address);
+        }
+    }
+    context->backing->writer=context->after;
+    if(context->notify){
+        Domain *dead=domain_get(context->other);
+        context->subject->reply_caller=dead->id;context->subject->reply_task=dead->task_id;
+        context->subject->reply_ready=true;context->subject->reply_value=ERR_SERVICE_NOT_READY;
+        --dead->reply_rights[context->subject->id];kernel_task_wake(context->subject);
+    }
+    kernel_epoch_record_writer(context->epoch,context->subject->id,context->other,
+        context->before.region_id,context->after.revision,context->job,
+        context->backing->length/KERNEL_PAGE_SIZE,source->key,target->key,(uint8_t)context->action);
+    klog("[region.writer.epoch] action=%u subject=%u peer=%u region=%u current=%u revision=%llu job=%llu epoch=%llu\n",
+        (unsigned)context->action,context->subject->id,context->other,context->before.region_id,
+        context->after.current,(unsigned long long)context->after.revision,
+        (unsigned long long)context->after.job,(unsigned long long)kernel.epoch);
+    context->snapshotted=context->transformed=context->swapped=false;
+    return true;
+}
+#define kernel_region_writer_run_CHECKED 1
+#define kernel_region_writer_run_CHECK_FAILURE(ctx,kind,id,expected) kernel_halt("region writer epoch invariant")
+
+/* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
+
+#ifdef CESTA_PROTOCOL_kernel_region_writer_run_DEFINED
+#error "duplicate protocol definition"
+#endif
+#define CESTA_PROTOCOL_kernel_region_writer_run_DEFINED
+
+#if defined(kernel_region_writer_run) || \
+    defined(KernelRegionWriterContext) || \
+    defined(ctx) || \
+    defined(cesta_remaining) || \
+    defined(kernel_region_writer_run_outcome) || \
+    defined(kernel_region_writer_run_declined) || \
+    defined(kernel_region_writer_run_answered) || \
+    defined(kernel_region_writer_run_done) || \
+    defined(kernel_region_writer_run_raised) || \
+    defined(kernel_region_writer_run_suspended) || \
+    defined(kernel_region_writer_run_resource_failure) || \
+    defined(kernel_region_writer_run_engine_failure) || \
+    defined(kernel_region_writer_snapshot) || \
+    defined(kernel_region_writer_transform) || \
+    defined(kernel_region_writer_swap) || \
+    defined(kernel_region_writer_commit) || \
+    defined(kernel_region_writer_is_snapshotted) || \
+    defined(kernel_region_writer_is_transformed) || \
+    defined(kernel_region_writer_is_swapped) || \
+    defined(kernel_region_writer_run_decline_reason) || \
+    defined(kernel_region_writer_run_decline_count) || \
+    defined(kernel_region_writer_run_counters) || \
+    defined(kernel_region_writer_run_count_decline) || \
+    defined(kernel_region_writer_run_counts) || \
+    defined(kernel_region_writer_run_reason) || \
+    defined(kernel_region_writer_run_COUNTED) || \
+    defined(kernel_region_writer_run_declined_after_kernel_region_writer_snapshot_false)
+#error "protocol identifier conflicts with a macro"
+#endif
+
+#ifndef kernel_region_writer_run_CHECKED
+#define kernel_region_writer_run_CHECKED 0
+#endif
+#ifdef kernel_region_writer_run_COUNT_DECLINE
+#define kernel_region_writer_run_COUNTED 1
+#else
+#define kernel_region_writer_run_COUNTED 0
+#define kernel_region_writer_run_COUNT_DECLINE(ctx, reason) ((void)0)
+#endif
+#if kernel_region_writer_run_CHECKED
+#ifndef kernel_region_writer_run_CHECK_FAILURE
+#include <stdio.h>
+#include <stdlib.h>
+#define kernel_region_writer_run_CHECK_FAILURE(ctx, kind, id, expected) \
+    (fprintf(stderr, "protocol kernel_region_writer_run: %s %s must be %s\n", \
+             kind, id, (expected) ? "true" : "false"), abort())
+#endif
+#endif
+#include <stdint.h>
+
+typedef enum kernel_region_writer_run_decline_reason {
+    kernel_region_writer_run_declined_after_kernel_region_writer_snapshot_false,
+    kernel_region_writer_run_decline_count
+} kernel_region_writer_run_decline_reason;
+
+typedef struct kernel_region_writer_run_counters {
+    uint64_t declines[kernel_region_writer_run_decline_count ? kernel_region_writer_run_decline_count : 1];
+} kernel_region_writer_run_counters;
+
+#if kernel_region_writer_run_COUNTED
+static inline void
+kernel_region_writer_run_count_decline(kernel_region_writer_run_counters *kernel_region_writer_run_counts, kernel_region_writer_run_decline_reason kernel_region_writer_run_reason)
+{
+    if (kernel_region_writer_run_counts && (unsigned)kernel_region_writer_run_reason < (unsigned)kernel_region_writer_run_decline_count &&
+        kernel_region_writer_run_counts->declines[kernel_region_writer_run_reason] != UINT64_MAX)
+        ++kernel_region_writer_run_counts->declines[kernel_region_writer_run_reason];
+}
+#endif
+
+typedef enum kernel_region_writer_run_outcome {
+    kernel_region_writer_run_declined,
+    kernel_region_writer_run_answered,
+    kernel_region_writer_run_done,
+    kernel_region_writer_run_raised,
+    kernel_region_writer_run_suspended,
+    kernel_region_writer_run_resource_failure,
+    kernel_region_writer_run_engine_failure
+} kernel_region_writer_run_outcome;
+
+static inline kernel_region_writer_run_outcome
+kernel_region_writer_run(KernelRegionWriterContext *ctx)
+{
+    (void)ctx;
+    if (!kernel_region_writer_snapshot(ctx)) {
+        kernel_region_writer_run_COUNT_DECLINE(ctx, kernel_region_writer_run_declined_after_kernel_region_writer_snapshot_false);
+        return kernel_region_writer_run_declined;
+    }
+#if kernel_region_writer_run_CHECKED
+    if (!kernel_region_writer_is_snapshotted(ctx)) {
+        kernel_region_writer_run_CHECK_FAILURE(ctx, "fact", "snapshotted", 1);
+        for (;;) {}
+    }
+#endif
+    if (!kernel_region_writer_transform(ctx)) {
+        return kernel_region_writer_run_engine_failure;
+    }
+#if kernel_region_writer_run_CHECKED
+    if (!kernel_region_writer_is_snapshotted(ctx)) {
+        kernel_region_writer_run_CHECK_FAILURE(ctx, "fact", "snapshotted", 1);
+        for (;;) {}
+    }
+#endif
+#if kernel_region_writer_run_CHECKED
+    if (!kernel_region_writer_is_transformed(ctx)) {
+        kernel_region_writer_run_CHECK_FAILURE(ctx, "fact", "transformed", 1);
+        for (;;) {}
+    }
+#endif
+    if (!kernel_region_writer_swap(ctx)) {
+        return kernel_region_writer_run_engine_failure;
+    }
+#if kernel_region_writer_run_CHECKED
+    if (!kernel_region_writer_is_snapshotted(ctx)) {
+        kernel_region_writer_run_CHECK_FAILURE(ctx, "fact", "snapshotted", 1);
+        for (;;) {}
+    }
+#endif
+#if kernel_region_writer_run_CHECKED
+    if (!kernel_region_writer_is_transformed(ctx)) {
+        kernel_region_writer_run_CHECK_FAILURE(ctx, "fact", "transformed", 1);
+        for (;;) {}
+    }
+#endif
+#if kernel_region_writer_run_CHECKED
+    if (!kernel_region_writer_is_swapped(ctx)) {
+        kernel_region_writer_run_CHECK_FAILURE(ctx, "fact", "swapped", 1);
+        for (;;) {}
+    }
+#endif
+    if (kernel_region_writer_commit(ctx)) {
+        return kernel_region_writer_run_done;
+    }
+    return kernel_region_writer_run_engine_failure;
+}
+
+static void kernel_region_writer_reply(TrapFrame *frame,RegionWriterStatus status,RegionWriterState state)
+{
+    frame->rax=status;frame->rsi=state.revision;frame->rdx=state.current;
+    frame->r10=state.job;frame->r8=state.peer;
+}
+void kernel_region_writer_syscall(Domain *domain,TrapFrame *frame)
+{
+    RegionWriterState absent={0};
+    if(!kernel_current_task(domain) || frame->r8){
+        kernel_region_writer_reply(frame,REGION_WRITER_INVALID,absent);return;
+    }
+    const Cap *capability=cap_get(domain,frame->rdi);
+    if(!capability || capability->kind!=CAP_REGION || !capability->region.grant.has_peer ||
+       !(capability->region.grant.rights&REGION_WRITE)){
+        kernel_region_writer_reply(frame,REGION_WRITER_INVALID,absent);return;
+    }
+    BootBacking *backing=kernel_region_writer_backing(capability->region.grant.region_id);
+    if(!backing || !kernel_region_writer_mappings(backing,backing->writer.current)){
+        kernel_region_writer_reply(frame,REGION_WRITER_INVALID,absent);return;
+    }
+    if(!frame->rsi && !frame->rdx && !frame->r10){
+        RegionWriterResult result=region_writer_query(backing->writer,domain->id);
+        kernel_region_writer_reply(frame,result.status,result.state);return;
+    }
+    RegionWriterResult result=region_writer_change(backing->writer,domain->id,
+        (RegionWriterAction)frame->rsi,frame->rdx,frame->r10);
+    if(!result.status && frame->rsi==REGION_WRITER_RECOVER){
+        Domain *peer=domain_get(backing->writer.peer);
+        if(!peer || (peer->task_state!=TASK_EXITED && peer->task_state!=TASK_DORMANT))
+            result.status=REGION_WRITER_DENIED;
+    }
+    if(result.status){kernel_region_writer_reply(frame,result.status,result.state);return;}
+    if(!kernel_epoch_current(kernel.epoch)){
+        kernel_region_writer_reply(frame,REGION_WRITER_EXHAUSTED,backing->writer);return;
+    }
+    uint32_t other=domain->id==backing->writer.home?backing->writer.peer:backing->writer.home;
+    KernelRegionWriterContext context={.backing=backing,.subject=domain,.capability=capability,
+        .before=backing->writer,.after=result.state,.slot=frame->rdi,.expected_revision=frame->rdx,
+        .job=frame->r10,.other=other,.action=(RegionWriterAction)frame->rsi};
+    if(kernel_region_writer_run(&context)!=kernel_region_writer_run_done){
+        kernel_region_writer_reply(frame,REGION_WRITER_DENIED,backing->writer);return;
+    }
+    kernel_region_writer_reply(frame,REGION_WRITER_OK,backing->writer);
+}
+
+bool kernel_region_writer_recover_dead(Domain *dead)
+{
+    if(!SEXOS_KERNEL_CURRENT_PDX || !dead)return true;
+    BootBacking *held=NULL;
+    for(uint32_t i=0;i<kernel.boot_backing_count;++i){
+        BootBacking *candidate=&kernel.boot_backings[i];
+        if(region_writer_valid(&candidate->writer) && candidate->writer.current==dead->id){
+            if(held)return false;
+            held=candidate;
+        }
+    }
+    if(!held)return true;
+    Domain *home=domain_get(held->writer.home);const Cap *capability=NULL;uint64_t slot=0;
+    if(!home || home->task_state==TASK_EXITED || home->task_state==TASK_DORMANT)return false;
+    for(uint64_t i=1;i<KERNEL_CAP_SLOTS;++i){
+        const Cap *candidate=cap_get(home,i);
+        if(candidate && candidate->kind==CAP_REGION && candidate->region.grant.region_id==held->region_id){
+            capability=candidate;slot=i;break;
+        }
+    }
+    if(!capability || capability->region.grant.has_dma || !held->writer.job ||
+       !kernel_region_writer_mappings(held,dead->id))return false;
+    RegionWriterResult result=region_writer_change(held->writer,home->id,REGION_WRITER_RECOVER,
+        held->writer.revision,held->writer.job);
+    if(result.status || !kernel_epoch_current(kernel.epoch))return false;
+    KernelRegionWriterContext context={.backing=held,.subject=home,.capability=capability,
+        .before=held->writer,.after=result.state,.slot=slot,.expected_revision=held->writer.revision,
+        .job=held->writer.job,.other=dead->id,.action=REGION_WRITER_RECOVER,.internal=true,
+        .notify=dead->reply_rights[home->id]!=0};
+    return kernel_region_writer_run(&context)==kernel_region_writer_run_done;
+}
+
+

@@ -21,6 +21,8 @@
       (if (|| (== cap NULL) (!= (-> cap kind) CAP_DOMAIN)) (return))
       (var Domain (* peer) (call domain_get (-> cap target)))
       (if (== peer NULL) (return))
+      (var uint32_t task (?: SEXOS_KERNEL_CURRENT_PDX (call kernel_current_task caller) 0))
+      (if (&& SEXOS_KERNEL_CURRENT_PDX (== task 0)) (return))
       (if (! (-> peer rpc_enabled))
         (block (= (-> f rax) NO_ADDRESS) (return)))
       (= (-> f rax) ERR_SERVICE_NOT_READY)
@@ -33,7 +35,7 @@
       (var uint64_t id (+ (-> caller rpc_next) 1))
       (var RingEntry message (compound RingEntry
         (= (. type_id) opcode) (= (. caller) (-> caller id))
-        (= (. sender) (-> caller id)) (= (. request_id) id)
+        (= (. sender) (-> caller id)) (= (. caller_task) (?: SEXOS_KERNEL_CURRENT_PDX task 0)) (= (. request_id) id)
         (= (. arg0) (-> f rdx)) (= (. arg1) (-> f r10)) (= (. arg2) (-> f r8))))
       (if (! (call domain_enqueue peer message)) (return))
       (= (* vacant) (compound RpcSlot (= (. id) id) (= (. peer) (-> peer id)) (= (. state) RPC_QUEUED)))
@@ -50,27 +52,20 @@
       (= (-> request state) RPC_HEARD)
       (return true))
 
+    (comment "A heard request is a certificate invalidated by completion. Polling copies the value before consuming the ready slot; publication uses that copy rather than a stale slot reference.")
+    (native "\ntypedef struct KernelReplyContext {\n    Domain *peer, *caller;\n    TrapFrame *frame;\n    RpcSlot *request;\n    uint64_t id;\n} KernelReplyContext;\nstatic bool kernel_reply_is_heard(KernelReplyContext *c) {\n    return c->request && c->request->id == c->id &&\n        c->request->peer == c->peer->id && c->request->state == RPC_HEARD;\n}\nstatic bool kernel_reply_is_ready(KernelReplyContext *c) {\n    return c->request && c->request->id == c->id &&\n        c->request->peer == c->peer->id && c->request->state == RPC_READY;\n}\nstatic bool kernel_reply_inspect(KernelReplyContext *c) {\n    if (c->frame->rdi >= KERNEL_MAX_DOMAINS) return false;\n    c->caller = domain_get((uint32_t)c->frame->rdi);\n    if (!c->caller) return false;\n    c->id = c->frame->rsi;\n    c->request = rpc_find(c->caller, c->id);\n    return kernel_reply_is_heard(c);\n}\nstatic bool kernel_reply_complete(KernelReplyContext *c) {\n    if (!kernel_reply_is_heard(c)) return false;\n    c->request->value = c->frame->rdx;\n    c->request->state = RPC_READY;\n    if (SEXOS_KERNEL_CURRENT_PDX) kernel_task_wake(c->caller);\n    return true;\n}\nstatic bool kernel_reply_publish(KernelReplyContext *c) {\n    if (!kernel_reply_is_ready(c)) return false;\n    c->frame->rax = 0;\n    return true;\n}\ntypedef struct KernelPollContext {\n    Domain *caller;\n    TrapFrame *frame;\n    RpcSlot *request;\n    uint64_t id, value;\n    bool copied;\n} KernelPollContext;\nstatic bool kernel_poll_is_ready(KernelPollContext *c) {\n    return c->request && c->request->id == c->id && c->request->state == RPC_READY;\n}\nstatic bool kernel_poll_is_copied(KernelPollContext *c) { return c->copied; }\nstatic bool kernel_poll_inspect(KernelPollContext *c) {\n    c->id = c->frame->rdi;\n    c->request = rpc_find(c->caller, c->id);\n    if (!c->request) return false;\n    c->frame->rax = ERR_SERVICE_NOT_READY;\n    return kernel_poll_is_ready(c);\n}\nstatic bool kernel_poll_consume(KernelPollContext *c) {\n    if (!kernel_poll_is_ready(c)) return false;\n    c->value = c->request->value;\n    *c->request = (RpcSlot){ .state = RPC_FREE };\n    c->copied = true;\n    return true;\n}\nstatic bool kernel_poll_publish(KernelPollContext *c) {\n    if (!c->copied) return false;\n    c->frame->rsi = c->value;\n    c->frame->rax = 0;\n    return true;\n}\n#define kernel_reply_run_CHECKED 1\n#define kernel_poll_run_CHECKED 1\n#define kernel_reply_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt(\"reply protocol invariant\")\n#define kernel_poll_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt(\"poll protocol invariant\")\n")
+    (use-protocols "../interfaces/kernel_reply_protocol.module" Protocols)
+    (use-protocols "../interfaces/kernel_poll_protocol.module" Protocols)
     (fn (static void) rpc_poll ((Domain (* caller)) (TrapFrame (* f)))
-      (var RpcSlot (* request) (call rpc_find caller (-> f rdi)))
       (= (-> f rsi) 0)
       (= (-> f rax) ERR_CAP_INVALID)
-      (if (== request NULL) (return))
-      (if (!= (-> request state) RPC_READY)
-        (block (= (-> f rax) ERR_SERVICE_NOT_READY) (return)))
-      (= (-> f rsi) (-> request value))
-      (= (* request) (compound RpcSlot (= (. state) RPC_FREE)))
-      (= (-> f rax) 0))
+      (var KernelPollContext context (compound KernelPollContext (= (. caller) caller) (= (. frame) f)))
+      (cast void (call kernel_poll_run (& context))))
 
     (fn (static void) rpc_reply ((Domain (* peer)) (TrapFrame (* f)))
-      (var Domain (* caller) (call domain_get (cast uint32_t (-> f rdi))))
       (= (-> f rax) ERR_CAP_INVALID)
-      (if (== caller NULL) (return))
-      (var RpcSlot (* request) (call rpc_find caller (-> f rsi)))
-      (if (|| (== request NULL) (|| (!= (-> request peer) (-> peer id))
-                                  (!= (-> request state) RPC_HEARD))) (return))
-      (= (-> request value) (-> f rdx))
-      (= (-> request state) RPC_READY)
-      (= (-> f rax) 0))
+      (var KernelReplyContext context (compound KernelReplyContext (= (. peer) peer) (= (. frame) f)))
+      (cast void (call kernel_reply_run (& context))))
 
     (fn void kernel_rpc_syscall ((Domain (* d)) (TrapFrame (* f)) (uint64_t number))
       (switch number
@@ -81,12 +76,13 @@
           (case SEXOS_RPC_poll (call rpc_poll d f)) break
           (case SEXOS_RPC_listen
             (block
-              (var RingEntry message (call kernel_listen_message d (cast uint32_t (-> f rdi))))
+              (var RingEntry message (call kernel_listen_message d (-> f rdi)))
               (= (-> f rax) (. message type_id))
               (= (-> f rsi) (. message caller))
               (= (-> f rdx) (. message arg0))
               (= (-> f r10) (. message arg1))
               (= (-> f r8) (. message arg2))
+              (if SEXOS_KERNEL_CURRENT_PDX (= (-> f rdi) (. message caller_task)))
               (= (-> f r9) (. message request_id)))) break
           (case SEXOS_RPC_reply (call rpc_reply d f)) break
           (case SEXOS_RPC_cancel

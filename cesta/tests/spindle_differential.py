@@ -283,6 +283,23 @@ static uint64_t storage_reply(void) {
 }
 
 static const char *const SCRIPT_CMDS[] = {
+#ifdef SEXOS_SPINDLE_CALC_CURRENT_GATE
+    "calc x = 2",
+    "calc x",
+    "calc ans",
+    "calc 255 in hex",
+    "calc missing",
+#endif
+#ifdef SEXOS_SPINDLE_CALC_GATE
+    "calc 0.1",
+    "calc ans-0.05",
+    "calc 1/3",
+    "calc ans",
+    "calc 1/0",
+    "sextime 0",
+    "sextime 1356048000",
+    "sextime nope",
+#endif
     "help",
     "mkdoc notes",
     "mkdoc notes",
@@ -577,6 +594,12 @@ def rust_reference(source):
         ("#[global_allocator]\nstatic ALLOCATOR: DummyAllocator = DummyAllocator;\n", ""),
         ("#[panic_handler]\nfn panic(_info: &core::panic::PanicInfo) -> ! {\n    loop {}\n}\n", ""),
         ('#[no_mangle]\npub extern "C" fn _start() -> ! {', "fn spindle_start() -> ! {"),
+        ("Limitations: no shift, no visual cursor indicator.", "Limitations: no visual cursor indicator."),
+        ("[spindle.help.section] name=basics commands=6", "[spindle.help.section] name=basics commands=8"),
+        ('            sb.push(b"  echo <msg>   print message");',
+         '            sb.push(b"  echo <msg>   print message");\n            sb.push(b"  sextime <n>  Unix seconds as SexTime/UTC/Long Count");\n            sb.push(b"  calc <expr>  exact decimal + - * / % ( ), ans");'),
+        ('            serial_println!("[spindle.help.command] name=echo ok=1");',
+         '            serial_println!("[spindle.help.command] name=echo ok=1");\n            serial_println!("[spindle.help.command] name=sextime ok=1");\n            serial_println!("[spindle.help.command] name=calc ok=1");'),
     ):
         assert source.count(old) == 1, old
         source = source.replace(old, new)
@@ -618,6 +641,9 @@ def main():
         re.findall(r"cfg!\((\w+)\)", main_rs)
     )
     c_gates = set(re.findall(r'cpp-if "defined\((\w+)\)"', translation))
+    current_selectors = {"SEXOS_SPINDLE_CURRENT"}
+    assert current_selectors <= c_gates
+    c_gates -= current_selectors
     assert rust_gates == c_gates == set(ENV_FLAGS), (
         rust_gates ^ c_gates,
         c_gates ^ set(ENV_FLAGS),
@@ -786,6 +812,8 @@ mod sex_graphics {
         harnesses = []
         for compiler in ("gcc", "clang"):
             obj = work / f"spindle-{compiler}-{tag}.o"
+            calc_obj = work / f"spindle-calc-{compiler}-{tag}.o"
+            sextime_obj = work / f"spindle-sextime-{compiler}-{tag}.o"
             run(
                 [
                     cesta,
@@ -804,6 +832,30 @@ mod sex_graphics {
                     obj,
                 ]
             )
+            run(
+                [
+                    cesta,"cc","--cc",compiler,"-std=c11","-O2",*warnings,
+                    *sanitizers,*include,"-c",HERE/"src/spindle_sextime.cesta",
+                    "-o",sextime_obj,
+                ]
+            )
+            run(
+                [
+                    cesta,
+                    "cc",
+                    "--cc",
+                    compiler,
+                    "-std=c11",
+                    "-O2",
+                    *warnings,
+                    *sanitizers,
+                    *include,
+                    "-c",
+                    HERE / "src/spindle_calc.cesta",
+                    "-o",
+                    calc_obj,
+                ]
+            )
             harness = work / f"harness-{compiler}-{tag}"
             run(
                 [
@@ -816,6 +868,8 @@ mod sex_graphics {
                     work / "provider.c",
                     work / "main.c",
                     obj,
+                    calc_obj,
+                    sextime_obj,
                     *runtime,
                     "-o",
                     harness,
@@ -842,6 +896,21 @@ mod sex_graphics {
         print(f"spindle: variant {tag} equal", flush=True)
     assert not unreached, f"no scenario reached {sorted(unreached)}"
 
+    calc_mutant_obj=work/"spindle-calc-mutant.o"
+    run([
+        cesta,"cc","--cc","gcc","-std=c11","-O2",*include,"-c",
+        HERE/"src/spindle_calc.cesta","-o",calc_mutant_obj,
+    ])
+    sextime_mutant_obj=work/"spindle-sextime-mutant.o"
+    run([
+        cesta,"cc","--cc","gcc","-std=c11","-O2",*include,"-c",
+        HERE/"src/spindle_sextime.cesta","-o",sextime_mutant_obj,
+    ])
+    complete_obj=work/"spindle-complete.o"
+    run([
+        cesta,"cc","--cc","gcc","-std=c11","-O2",*include,"-c",
+        HERE/"src/spindle_complete.cesta","-o",complete_obj,
+    ])
     for number, (old_text, new_text, variant) in enumerate(mutations):
         assert translation.count(old_text) == 1, old_text
         mutant = work / f"spindle-mutant-{number}.cesta"
@@ -872,6 +941,8 @@ mod sex_graphics {
                 work / "provider.c",
                 work / "main.c",
                 work / "mutant.o",
+                calc_mutant_obj,
+                sextime_mutant_obj,
                 *runtime,
                 "-o",
                 work / "mutant-harness",
@@ -882,6 +953,45 @@ mod sex_graphics {
             for index, case in enumerate(cases)
         ):
             raise SystemExit(f"mutation not detected: {old_text} -> {new_text}")
+
+    calc_spindle_obj=work/"spindle-calc-gate.o"
+    run([
+        cesta,"cc","--cc","gcc","-std=c11","-O2",*include,"-c",
+        HERE/"src/spindle.cesta","-o",calc_spindle_obj,
+    ])
+    calc_harness=work/"calc-integration-harness"
+    run([
+        "gcc","-std=c11","-O2","-DSEXOS_HOST","-DSEXOS_SPINDLE_CALC_GATE",
+        *include,work/"provider.c",work/"main.c",calc_spindle_obj,calc_mutant_obj,sextime_mutant_obj,
+        *runtime,"-o",calc_harness,
+    ])
+    calc_trace=run([calc_harness,*cases[0]]).stdout
+    assert b"[spindle.calc] expr_bytes=3 result== 0.1 ok=1" in calc_trace
+    assert b"[spindle.calc] expr_bytes=8 result== 0.05 ok=1" in calc_trace
+    assert b"[spindle.calc] expr_bytes=3 result== 0.333333333 ok=1" in calc_trace
+    assert b"[spindle.calc] expr_bytes=3 result=~ 0.333333333 ok=1" in calc_trace
+    assert b"[spindle.calc] expr_bytes=3 error=DivideByZero ok=0" in calc_trace
+    assert b"[spindle.sextime] SexTime -1356048000 s | UTC 1970-01-01T00:00:00Z | Long Count 12.17.16.7.5 (GMT 584283) ok=1" in calc_trace
+    assert b"[spindle.sextime] SexTime 0 s | UTC 2012-12-21T00:00:00Z | Long Count 13.0.0.0.0 (GMT 584283) ok=1" in calc_trace
+    assert b"[spindle.sextime] ok=0 reason=usage" in calc_trace
+    current_spindle_obj=work/"spindle-calc-current-gate.o"
+    run([
+        cesta,"cc","--cc","gcc","-std=c11","-O2","-DSEXOS_SPINDLE_CURRENT=1",*include,"-c",
+        HERE/"src/spindle.cesta","-o",current_spindle_obj,
+    ])
+    current_harness=work/"calc-current-integration-harness"
+    run([
+        "gcc","-std=c11","-O2","-DSEXOS_HOST","-DSEXOS_SPINDLE_CALC_CURRENT_GATE",
+        *include,work/"provider.c",work/"main.c",current_spindle_obj,calc_mutant_obj,
+        complete_obj,sextime_mutant_obj,*runtime,"-o",current_harness,
+    ])
+    current_trace=run([current_harness,*cases[0]]).stdout
+    assert b"[spindle.calc] expr_bytes=5 result== 2 ok=1" in current_trace
+    assert b"[spindle.calc] expr_bytes=1 result== 2 ok=1" in current_trace
+    assert b"[spindle.calc] expr_bytes=3 result== 2 ok=1" in current_trace
+    assert b"[spindle.calc] expr_bytes=10 result== 0xff ok=1" in current_trace
+    assert b"[spindle.calc] expr_bytes=7 error=Unknown ok=0" in current_trace
+    assert b"[spindle.complete] matches=5 added=0 len=1" in current_trace
     print(
         f"spindle: Cesta translation equals the Rust app on {compared} trace lines "
         f"({args.cases} scenarios x {len(variants)} build variants, GCC and Clang, "

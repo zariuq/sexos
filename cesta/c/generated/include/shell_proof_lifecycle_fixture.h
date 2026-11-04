@@ -1,0 +1,17 @@
+#ifndef SEXOS_SHELL_PROOF_LIFECYCLE_FIXTURE_H
+#define SEXOS_SHELL_PROOF_LIFECYCLE_FIXTURE_H
+#include "silk_shell_chrome.h"
+typedef struct ShellProofFixtureRect {int32_t x,y;uint32_t w,h;} ShellProofFixtureRect;
+typedef struct ShellProofFixtureFrame {bool present;uint32_t frame;uint8_t tabs,active,scene;uint32_t flags;ShellProofFixtureRect rect;} ShellProofFixtureFrame;
+bool shell_proof_fixture_surface_supported(uint64_t surface);
+bool shell_proof_fixture_surface_alive(const ShellChromeContext *ctx,uint64_t surface);
+void shell_proof_fixture_clear_tombstones(ShellChromeContext *ctx,uint64_t surface);
+bool shell_proof_fixture_clear(ShellChromeContext *ctx,uint64_t surface);
+bool shell_proof_fixture_prepare_single(ShellChromeContext *ctx,uint64_t surface,uint32_t frame,ShellProofFixtureRect rect);
+bool shell_proof_fixture_prepare_pair(ShellChromeContext *ctx,uint64_t first,uint64_t second,uint32_t frame,ShellProofFixtureRect first_rect,ShellProofFixtureRect second_rect);
+ShellProofFixtureFrame shell_proof_fixture_frame(const ShellChromeContext *ctx,uint64_t surface);
+bool shell_proof_fixture_frame_visible(const ShellChromeContext *ctx,uint32_t frame);
+bool shell_proof_fixture_scene_has_minimized(const ShellChromeContext *ctx);
+bool shell_proof_fixture_mark_dead(ShellChromeContext *ctx,uint64_t surface);
+bool shell_proof_fixture_remove_tab(ShellChromeContext *ctx,uint64_t surface,bool *frame_destroyed);
+#endif

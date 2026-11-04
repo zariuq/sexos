@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "byte_order": "little",
+  "slots": 16,
+  "name_capacity": 24,
+  "header": [["version", 2], ["length", 2], ["revision", 8], ["occupancy", 2]],
+  "row": [["id", 8], ["kind", 1], ["disk", 1], ["name_length", 1], ["name", "name_length"]],
+  "read_payload_bytes": 7,
+  "opcodes": {"begin": 704, "read": 705, "end": 706},
+  "reserved_object_ids": [0, 18446744073709551615]
+}

@@ -13,10 +13,79 @@
            "-Wall" "-Wextra" "-Wpedantic" "-Wformat=2" "-Werror")
     (link "-nostdlib" "-static" "-Wl,-T,runtime/kernel/kernel.ld" "-Wl,--build-id=none"
           "-Wl,-z,max-page-size=0x1000"))
+  (profile userland-f64
+    (flags "-std=c11" "-O2" "-g0" "-ffreestanding" "-fno-builtin"
+           "-fPIE" "-fno-stack-protector" "-mno-red-zone" "-msse2" "-mfpmath=sse"
+           "-Wall" "-Wextra" "-Wpedantic" "-Wformat=2" "-Werror")
+    (link "-nostdlib" "-static-pie" "-Wl,-e,_start" "-Wl,--build-id=none"))
   (target kaleidoscope
-    (profile userland)
-    (sources "src/kaleidoscope.cesta" "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+    (profile userland-f64)
+    (sources "src/kaleidoscope.cesta" "src/kaleidoscope_body.cesta"
+             "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
+             "src/kaleidoscope_regex_match.cesta" "src/kaleidoscope_script_core.cesta"
+             "src/kaleidoscope_html.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c"
              "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_KALEIDOSCOPE_CURRENT=1"))
+  (target kaleidoscope-navigation
+    (profile userland)
+    (kind archive)
+    (sources "src/kaleidoscope_navigation.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-regex
+    (profile userland)
+    (kind archive)
+    (sources "src/kaleidoscope_regex.cesta" "src/kaleidoscope_regex_match.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-script-lexer
+    (profile userland-f64)
+    (kind archive)
+    (sources "src/kaleidoscope_script_lexer.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-script-core
+    (profile userland-f64)
+    (kind archive)
+    (sources "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
+             "src/kaleidoscope_regex_match.cesta" "src/kaleidoscope_script_core.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-html
+    (profile userland-f64)
+    (kind archive)
+    (sources "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
+             "src/kaleidoscope_regex_match.cesta" "src/kaleidoscope_script_core.cesta"
+             "src/kaleidoscope_html.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-qoi
+    (profile userland)
+    (kind archive)
+    (sources "src/kaleidoscope_qoi.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-bitmap
+    (profile userland)
+    (kind archive)
+    (sources "src/kaleidoscope_bitmap.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-presentation
+    (profile userland)
+    (kind archive)
+    (sources "src/kaleidoscope_presentation.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-asset-view
+    (profile userland)
+    (kind archive)
+    (sources "src/kaleidoscope_asset_view.cesta" "src/kaleidoscope_asset_view_render.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-png
+    (profile userland)
+    (kind archive)
+    (sources "src/kaleidoscope_png.cesta")
+    (include "generated/include"))
+  (target kaleidoscope-asset-pipeline
+    (profile userland)
+    (kind archive)
+    (sources "src/kaleidoscope_qoi.cesta" "src/kaleidoscope_png.cesta"
+             "src/kaleidoscope_asset_pipeline.cesta")
     (include "generated/include"))
   (target silkbar
     (profile userland)
@@ -41,11 +110,16 @@
     (define "SEXOS_MAIN=sexstore_main"))
   (target sexdisplay
     (profile userland)
-    (sources "src/sexdisplay.cesta" "src/silkbar_model.cesta"
+    (sources "src/sexdisplay.cesta" "src/sexdisplay_bitmap.cesta" "src/silkbar_model.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
              "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=sexdisplay_main"))
+  (target sexdisplay-bitmap
+    (profile userland)
+    (kind archive)
+    (sources "src/sexdisplay_bitmap.cesta")
+    (include "generated/include"))
   (target sexbell
     (profile userland)
     (sources "src/sexbell.cesta"
@@ -55,25 +129,61 @@
     (define "SEXOS_MAIN=sexbell_main"))
   (target linen
     (profile userland)
-    (sources "src/linen.cesta"
+    (sources "src/linen.cesta" "src/linen_capture.cesta" "src/linen_capture_service.cesta" "src/rpc_runtime.cesta" "src/rpc_wait.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
-             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+             "runtime/server_traps_x86_64.c" "runtime/rpc_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=linen_main"))
   (target quil
     (profile userland)
-    (sources "src/quil.cesta"
+    (sources "src/quil.cesta" "src/quil_autosave.cesta" "src/document_protocol.cesta" "src/document_client.cesta"
+             "src/document_client_transport.cesta" "src/document_snapshot.cesta" "src/rpc_runtime.cesta" "src/rpc_wait.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
-             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+             "runtime/server_traps_x86_64.c" "runtime/rpc_traps_x86_64.c" "runtime/region_writer_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=quil_main" "sexfiles_quil_persistence_proof"))
+  (target quil-autosave
+    (profile userland)
+    (sources "src/quil_autosave.cesta")
+    (include "generated/include")
+    (kind archive))
+  (target document-protocol
+    (profile userland)
+    (sources "src/document_protocol.cesta" "src/document_client.cesta" "src/document_client_transport.cesta" "src/document_service.cesta" "src/document_journal.cesta" "src/document_growth.cesta" "src/document_service_transport.cesta" "src/document_snapshot.cesta")
+    (include "generated/include")
+    (kind archive))
+  (target document-protocol-probe
+    (profile userland)
+    (sources "src/document_protocol_probe.cesta" "src/document_protocol.cesta" "src/document_client.cesta"
+             "src/document_client_transport.cesta" "src/document_snapshot.cesta" "src/rpc_wait.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c" "runtime/rpc_traps_x86_64.c"
+             "runtime/region_writer_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=document_protocol_probe_main" "SEXOS_PDX_SENDER_TASK=1"))
+  (target document-protocol-probe-save
+    (profile userland)
+    (sources "src/document_protocol_probe.cesta" "src/document_protocol.cesta" "src/document_client.cesta"
+             "src/document_client_transport.cesta" "src/document_snapshot.cesta" "src/rpc_wait.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c" "runtime/rpc_traps_x86_64.c"
+             "runtime/region_writer_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=document_protocol_probe_main" "SEXOS_PDX_SENDER_TASK=1" "DOCUMENT_PROTOCOL_PROBE_MODE=1"))
+  (target document-protocol-probe-recover
+    (profile userland)
+    (sources "src/document_protocol_probe.cesta" "src/document_protocol.cesta" "src/document_client.cesta"
+             "src/document_client_transport.cesta" "src/document_snapshot.cesta" "src/rpc_wait.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c" "runtime/rpc_traps_x86_64.c"
+             "runtime/region_writer_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=document_protocol_probe_main" "SEXOS_PDX_SENDER_TASK=1" "DOCUMENT_PROTOCOL_PROBE_MODE=2"))
   (target spindle
     (profile userland)
-    (sources "src/spindle.cesta" "src/sex_graphics.cesta"
+    (sources "src/spindle.cesta" "src/spindle_calc.cesta" "src/spindle_complete.cesta" "src/spindle_sextime.cesta" "src/sex_graphics.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
              "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
-    (define "SEXOS_MAIN=spindle_main"))
+    (define "SEXOS_MAIN=spindle_main" "SEXOS_SPINDLE_CURRENT=1"))
   (target purple-scanout
     (profile userland)
     (sources "src/purple_scanout.cesta"
@@ -84,18 +194,33 @@
   (target sexfiles
     (profile userland)
     (sources "src/sexfiles.cesta" "src/sexfiles_diskfs.cesta" "src/sexfiles_proof.cesta"
+             "src/document_protocol.cesta" "src/document_service.cesta" "src/document_service_transport.cesta"
+             "src/document_journal.cesta" "src/document_growth.cesta" "src/document_snapshot.cesta" "src/rpc_runtime.cesta" "src/rpc_wait.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
-             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+             "runtime/server_traps_x86_64.c" "runtime/rpc_traps_x86_64.c" "runtime/region_writer_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=sexfiles_main"))
   (target sexdrive
     (profile userland)
-    (sources "src/sexdrive.cesta"
+    (sources "src/sexdrive.cesta" "src/dma_lease.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
              "runtime/server_traps_x86_64.c" "runtime/mmio_traps_x86_64.c"
+             "runtime/region_writer_traps_x86_64.c" "runtime/device_reset_traps_x86_64.c"
              "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
-    (define "SEXOS_MAIN=sexdrive_main"))
+    (define "SEXOS_MAIN=sexdrive_main" "SEXOS_CURRENT_REGION_WRITER=1"
+            "SEXOS_NVME_INTERRUPT_MODE=1"))
+  (target sexdrive-dma-quarantine-probe
+    (profile userland)
+    (sources "src/sexdrive.cesta" "src/dma_lease.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/mmio_traps_x86_64.c"
+             "runtime/region_writer_traps_x86_64.c" "runtime/device_reset_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=sexdrive_main" "SEXOS_CURRENT_REGION_WRITER=1"
+            "SEXOS_DMA_QUARANTINE_PROBE=1" "SEXOS_NVME_INTERRUPT_MODE=1"))
   (target sexusb
     (profile userland)
     (sources "src/sexusb.cesta"
@@ -106,7 +231,8 @@
     (define "SEXOS_MAIN=sexusb_main"))
   (target sexnet
     (profile userland)
-    (sources "src/sexnet.cesta"
+    (sources "src/sexnet.cesta" "src/network_job_abi.cesta" "src/network_job_wire.cesta" "src/network_job_machine.cesta" "src/network_dns_job_abi.cesta" "src/network_dns_job_wire.cesta" "src/network_dns_job_machine.cesta" "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_tcp_packet.cesta" "src/network_tcp_client.cesta" "src/network_tcp_listener.cesta" "src/network_engine_neighbor.cesta" "src/network_dns_codec.cesta" "src/network_engine_dns.cesta" "src/network_engine_transport.cesta" "src/network_job_engine_policy.cesta" "src/network_job_engine_adapter.cesta" "src/network_dns_job_engine_adapter.cesta" "src/network_service_native.cesta" "src/network_service_core.cesta"
+             "src/network_dns_job_liveness.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
              "runtime/server_traps_x86_64.c" "runtime/mmio_traps_x86_64.c"
              "runtime/start_x86_64.S" "generated/runtime/*.c")
@@ -120,25 +246,451 @@
              "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=network_browser_main"))
+  (target network-protocol-probe
+    (profile userland)
+    (sources "src/network_protocol_probe.cesta" "src/network_job_abi.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c" "runtime/rpc_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=network_protocol_probe_main"))
+  (target network-dns-protocol-probe
+    (profile userland)
+    (sources "src/network_dns_protocol_probe.cesta" "src/network_job_abi.cesta" "src/network_dns_job_abi.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c" "runtime/rpc_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=network_dns_protocol_probe_main"))
   (target sexnet-network
     (profile userland)
-    (sources "src/network_service.cesta" "src/network_observation.cesta" "src/network_device.cesta" "src/network_send.cesta" "src/network_tcp.cesta"
+    (sources "src/network_service.cesta" "src/network_job_abi.cesta" "src/network_job_wire.cesta" "src/network_job_machine.cesta" "src/network_dns_job_abi.cesta" "src/network_dns_job_wire.cesta" "src/network_dns_job_machine.cesta" "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_tcp_packet.cesta" "src/network_tcp_client.cesta" "src/network_tcp_listener.cesta" "src/network_engine_neighbor.cesta" "src/network_dns_codec.cesta" "src/network_engine_dns.cesta" "src/network_engine_transport.cesta" "src/network_job_engine_policy.cesta" "src/network_job_engine_adapter.cesta" "src/network_dns_job_engine_adapter.cesta" "src/network_service_native.cesta" "src/network_service_core.cesta" "src/network_observation.cesta" "src/network_device.cesta" "src/network_send.cesta" "src/network_tcp.cesta"
+             "src/network_service_current.cesta"
+             "src/network_device_current.cesta"
+             "src/network_dns_job_liveness.cesta"
              "src/network_http.cesta" "src/rpc_runtime.cesta" "src/rpc_wait.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
              "runtime/server_traps_x86_64.c" "runtime/rpc_traps_x86_64.c" "runtime/mmio_traps_x86_64.c"
              "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
-    (define "SEXOS_MAIN=network_service_main"))
+    (define "SEXOS_MAIN=network_service_current_main"))
+  (target network-job-abi
+    (profile userland)
+    (kind archive)
+    (sources "src/network_job_abi.cesta")
+    (include "generated/include"))
+  (target network-job-machine
+    (profile userland)
+    (kind archive)
+    (sources "src/network_job_abi.cesta" "src/network_job_wire.cesta" "src/network_job_machine.cesta")
+    (include "generated/include"))
+  (target network-dns-job-machine
+    (profile userland)
+    (kind archive)
+    (sources "src/network_job_abi.cesta" "src/network_job_wire.cesta" "src/network_job_machine.cesta" "src/network_dns_codec.cesta" "src/network_dns_job_abi.cesta" "src/network_dns_job_wire.cesta" "src/network_dns_job_machine.cesta" "src/network_dns_job_liveness.cesta")
+    (include "generated/include"))
+  (target network-engine-frame
+    (profile userland)
+    (kind archive)
+    (sources "src/network_config.cesta" "src/network_engine_frame.cesta")
+    (include "generated/include"))
+  (target network-dns-codec
+    (profile userland)
+    (kind archive)
+    (sources "src/network_dns_codec.cesta")
+    (include "generated/include"))
+  (target network-engine-packet
+    (profile userland)
+    (kind archive)
+    (sources "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta")
+    (include "generated/include"))
+  (target network-engine-neighbor
+    (profile userland)
+    (kind archive)
+    (sources "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_neighbor.cesta")
+    (include "generated/include"))
+  (target network-engine-dns
+    (profile userland)
+    (kind archive)
+    (sources "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_neighbor.cesta" "src/network_dns_codec.cesta" "src/network_engine_dns.cesta")
+    (include "generated/include"))
+  (target network-engine-tcp-packet
+    (profile userland)
+    (kind archive)
+    (sources "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_tcp_packet.cesta")
+    (include "generated/include"))
+  (target network-tcp-client
+    (profile userland)
+    (kind archive)
+    (sources "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_tcp_packet.cesta" "src/network_tcp_client.cesta")
+    (include "generated/include"))
+  (target network-engine-transport
+    (profile userland)
+    (kind archive)
+    (sources "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_tcp_packet.cesta" "src/network_tcp_client.cesta" "src/network_tcp_listener.cesta" "src/network_engine_neighbor.cesta" "src/network_dns_codec.cesta" "src/network_engine_dns.cesta" "src/network_engine_transport.cesta")
+    (include "generated/include"))
+  (target network-job-engine
+    (profile userland)
+    (kind archive)
+    (sources "src/network_job_abi.cesta" "src/network_job_wire.cesta" "src/network_job_machine.cesta" "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_tcp_packet.cesta" "src/network_tcp_client.cesta" "src/network_tcp_listener.cesta" "src/network_engine_neighbor.cesta" "src/network_dns_codec.cesta" "src/network_engine_dns.cesta" "src/network_engine_transport.cesta" "src/network_job_engine_policy.cesta" "src/network_job_engine_adapter.cesta")
+    (include "generated/include"))
+  (target network-dns-job-engine
+    (profile userland)
+    (kind archive)
+    (sources "src/network_job_abi.cesta" "src/network_job_wire.cesta" "src/network_job_machine.cesta" "src/network_dns_codec.cesta" "src/network_dns_job_abi.cesta" "src/network_dns_job_wire.cesta" "src/network_dns_job_machine.cesta" "src/network_dns_job_liveness.cesta" "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_neighbor.cesta" "src/network_engine_dns.cesta" "src/network_engine_transport.cesta" "src/network_engine_tcp_packet.cesta" "src/network_tcp_client.cesta" "src/network_tcp_listener.cesta" "src/network_dns_job_engine_adapter.cesta")
+    (include "generated/include"))
+  (target network-tcp-listener
+    (profile userland)
+    (kind archive)
+    (sources "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_tcp_packet.cesta" "src/network_tcp_listener.cesta")
+    (include "generated/include"))
+  (target network-service-core
+    (profile userland)
+    (kind archive)
+    (sources "src/network_job_abi.cesta" "src/network_job_wire.cesta" "src/network_job_machine.cesta" "src/network_dns_job_abi.cesta" "src/network_dns_job_wire.cesta" "src/network_dns_job_machine.cesta" "src/network_dns_job_liveness.cesta" "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_tcp_packet.cesta" "src/network_tcp_client.cesta" "src/network_tcp_listener.cesta" "src/network_engine_neighbor.cesta" "src/network_dns_codec.cesta" "src/network_engine_dns.cesta" "src/network_engine_transport.cesta" "src/network_job_engine_policy.cesta" "src/network_job_engine_adapter.cesta" "src/network_dns_job_engine_adapter.cesta" "src/network_service_native.cesta" "src/network_service_core.cesta")
+    (include "generated/include"))
+  (target source-policy
+    (profile userland)
+    (kind archive)
+    (sources "src/source_policy.cesta")
+    (include "generated/include"))
+  (target network-config
+    (profile userland)
+    (kind archive)
+    (sources "src/network_config.cesta")
+    (include "generated/include"))
+  (target history-recovery
+    (profile userland)
+    (kind archive)
+    (sources "src/history_recovery.cesta" "src/history_decode.cesta" "runtime/history_native.c")
+    (include "generated/include"))
+  (target pci-policy
+    (profile userland)
+    (kind archive)
+    (sources "src/pci_policy.cesta")
+    (include "generated/include"))
+  (target pager-state
+    (profile userland)
+    (kind archive)
+    (sources "src/pager_state.cesta")
+    (include "generated/include"))
+  (target app-private
+    (profile userland)
+    (kind archive)
+    (sources "src/app_private.cesta")
+    (include "generated/include"))
+  (target memory-regions
+    (profile userland)
+    (kind archive)
+    (sources "src/memory_regions.cesta")
+    (include "generated/include"))
+  (target region-writer
+    (profile userland)
+    (kind archive)
+    (sources "src/region_writer.cesta")
+    (include "generated/include"))
+  (target dma-lease
+    (profile userland)
+    (kind archive)
+    (sources "src/dma_lease.cesta")
+    (include "generated/include"))
+  (target device-reset
+    (profile userland)
+    (kind archive)
+    (sources "src/device_reset.cesta")
+    (include "generated/include"))
+  (target nvme-msix
+    (profile userland)
+    (kind archive)
+    (sources "src/nvme_msix.cesta")
+    (include "generated/include"))
+  (target smp-park
+    (profile userland)
+    (kind archive)
+    (sources "src/smp_park.cesta")
+    (include "generated/include"))
+  (target arm64-boot-policy
+    (profile userland)
+    (kind archive)
+    (sources "src/arm64_boot_policy.cesta")
+    (include "generated/arm64/include"))
   (target sexos-kernel
     (profile kernel)
     (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
-             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
+    (include "runtime/kernel" "generated/include"))
+  (target silk-shell-models
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_models.cesta" "src/silk_shell_commands.cesta" "src/silk_shell_models_root.cesta"
+             "src/silk_shell_models_bell.cesta"
+             "src/silk_shell_models_linen.cesta" "src/silk_shell_models_projection.cesta" "src/silk_shell_models_publish.cesta" "src/silk_shell_models_publish_native.cesta"
+             "src/silk_shell_models_render.cesta" "src/silk_shell_models_render_native.cesta"
+             "src/silk_shell_models_paint.cesta" "src/silk_shell_models_paint_native.cesta"
+             "src/silk_shell_models_workspace.cesta" "src/silk_shell_models_workspace_native.cesta"
+             "src/linen_capture.cesta" "src/linen_capture_client.cesta" "src/linen_capture_transport.cesta"
+             "src/shell_linen_snapshot.cesta" "src/shell_linen_list.cesta"
+             "src/shell_text_delivery.cesta" "src/shell_text_delivery_native.cesta" "src/shell_text_delivery_display.cesta" "src/shell_linen_presentation.cesta"
+             "src/silk_shell_custody.cesta")
+    (include "generated/include")
+    (define "SEXOS_LINEN_CORRELATED_REQUIRED=1"))
+  (target linen-protocol-probe
+    (profile userland)
+    (sources "src/linen_protocol_probe.cesta"
+             "src/silk_shell_models_linen.cesta" "src/silk_shell_models_projection.cesta"
+             "src/silk_shell_models_publish.cesta" "src/silk_shell_models_publish_native.cesta"
+             "src/linen_capture.cesta" "src/linen_capture_client.cesta" "src/linen_capture_transport.cesta"
+             "src/shell_linen_snapshot.cesta" "src/shell_text_delivery.cesta"
+             "src/shell_text_delivery_native.cesta" "src/shell_text_delivery_display.cesta"
+             "src/shell_linen_presentation.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c" "runtime/rpc_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=linen_protocol_probe_main" "SEXOS_LINEN_CORRELATED_REQUIRED=1"
+            "SEXOS_PDX_SENDER_TASK=1"))
+  (target linen-capture
+    (profile userland)
+    (kind archive)
+    (sources "src/linen_capture.cesta" "src/linen_capture_client.cesta"
+             "src/linen_capture_transport.cesta" "src/linen_capture_service.cesta")
+    (include "generated/include"))
+  (target shell-linen-snapshot
+    (profile userland)
+    (kind archive)
+    (sources "src/shell_linen_snapshot.cesta")
+    (include "generated/include"))
+  (target silk-shell-models-linen
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_models_linen.cesta" "src/silk_shell_models_projection.cesta" "src/silk_shell_models_publish.cesta" "src/silk_shell_models_publish_native.cesta"
+             "src/linen_capture.cesta" "src/linen_capture_client.cesta" "src/linen_capture_transport.cesta"
+             "src/shell_linen_snapshot.cesta" "src/shell_text_delivery.cesta" "src/shell_text_delivery_native.cesta" "src/shell_text_delivery_display.cesta" "src/shell_linen_presentation.cesta")
+    (include "generated/include"))
+  (target silk-shell-models-render
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_models_render.cesta" "src/silk_shell_models_render_native.cesta"
+             "src/silk_shell_models_paint.cesta" "src/silk_shell_models_paint_native.cesta"
+             "src/silk_shell_models_linen.cesta" "src/silk_shell_models_projection.cesta" "src/silk_shell_models_publish.cesta" "src/silk_shell_models_publish_native.cesta"
+             "src/linen_capture.cesta" "src/linen_capture_client.cesta" "src/linen_capture_transport.cesta"
+             "src/shell_linen_snapshot.cesta" "src/shell_linen_list.cesta"
+             "src/shell_text_delivery.cesta" "src/shell_text_delivery_native.cesta" "src/shell_linen_presentation.cesta")
+    (include "generated/include"))
+  (target silk-shell-diagnostics-a
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_diagnostics_a.cesta" "src/silk_shell_diagnostics_a_native.cesta")
+    (include "generated/include"))
+  (target silk-shell-proofs-a
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_proofs_a.cesta" "src/silk_shell_proofs_a_root.cesta"
+             "src/silk_shell_proofs_a_routes.cesta" "src/silk_shell_proofs_a_routes_native.cesta"
+             "src/shell_proof_lifecycle_fixture.cesta"
+             "src/silk_shell_proofs_a_lifecycle.cesta" "src/silk_shell_proofs_a_lifecycle_native.cesta"
+             "src/silk_shell_diagnostics_a.cesta" "src/silk_shell_diagnostics_a_native.cesta")
+    (include "generated/include"))
+  (target silk-shell-proofs-b-palette
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_proofs_b_palette.cesta" "src/silk_shell_proofs_b_palette_native.cesta")
+    (include "generated/include"))
+  (target silk-shell-proofs-b-atlas
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_proofs_b_atlas.cesta" "src/silk_shell_proofs_b_atlas_native.cesta")
+    (include "generated/include"))
+  (target silk-shell-proofs-b-input
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_proofs_b_input.cesta" "src/silk_shell_proofs_b_input_native.cesta")
+    (include "generated/include"))
+  (target silk-shell-proofs-b
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_proofs_b_palette.cesta" "src/silk_shell_proofs_b_palette_native.cesta"
+             "src/silk_shell_proofs_b_atlas.cesta" "src/silk_shell_proofs_b_atlas_native.cesta"
+             "src/silk_shell_proofs_b_input.cesta" "src/silk_shell_proofs_b_input_native.cesta"
+             "src/silk_shell_proofs_b_root.cesta")
+    (include "generated/include"))
+  (target silk-shell-core
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_core_root.cesta" "src/silk_shell_core_dispatch.cesta" "src/silk_shell_startup.cesta" "src/silk_shell_core_main.cesta" "src/silk_shell_join.cesta"
+             "src/silk_shell_proofs_b_palette.cesta" "src/silk_shell_proofs_b_palette_native.cesta"
+             "src/silk_shell_proofs_b_atlas.cesta" "src/silk_shell_proofs_b_atlas_native.cesta"
+             "src/silk_shell_proofs_b_input.cesta" "src/silk_shell_proofs_b_input_native.cesta"
+             "src/silk_shell_proofs_b_root.cesta")
+    (include "generated/include"))
+  (target silk-shell
+    (profile userland)
+    (kind executable)
+    (sources "src/silk_shell_entry.cesta" "runtime/client_runtime.c" "runtime/server_runtime.c"
+             "runtime/traps_x86_64.c" "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S"
+             "runtime/rpc_traps_x86_64.c" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=silk_shell_main")
+    (link "-Wl,--start-group"
+          "build/silk-shell-core/libsilk-shell-core.a"
+          "build/silk-shell-models/libsilk-shell-models.a"
+          "build/silk-shell-input/libsilk-shell-input.a"
+          "build/silk-shell-atlas/libsilk-shell-atlas.a"
+          "build/silk-shell-surfaces/libsilk-shell-surfaces.a"
+          "build/silk-shell-chrome/libsilk-shell-chrome.a"
+          "build/silk-shell-diagnostics-a/libsilk-shell-diagnostics-a.a"
+          "build/silk-shell-custody/libsilk-shell-custody.a"
+          "build/silk-shell-viewport/libsilk-shell-viewport.a"
+          "build/shell-text-delivery/libshell-text-delivery.a"
+          "-Wl,--end-group"
+          "-nostdlib" "-static-pie" "-Wl,-e,_start" "-Wl,--build-id=none"))
+  (target shell-proof-lifecycle-fixture
+    (profile userland)
+    (kind archive)
+    (sources "src/shell_proof_lifecycle_fixture.cesta")
+    (include "generated/include"))
+  (target silk-shell-input
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_input.cesta" "src/silk_shell_input_adapter.cesta"
+             "src/silk_shell_input_diagnostics.cesta" "src/silk_shell_input_apps.cesta" "src/silk_shell_diagnostics_a.cesta"
+             "src/silk_shell_diagnostics_a_native.cesta" "src/silk_shell_chrome_atomic.cesta"
+             "src/silk_shell_custody.cesta")
+    (include "generated/include"))
+  (target silk-shell-atlas
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_atlas.cesta" "src/silk_shell_atlas_adapter.cesta")
+    (include "generated/include"))
+  (target silk-shell-custody
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_custody.cesta")
+    (include "generated/include"))
+  (target silk-shell-chrome
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_chrome.cesta" "src/silk_shell_chrome_atomic.cesta" "src/silk_shell_custody.cesta" "src/silk_shell_viewport.cesta" "src/silkbar_geometry.cesta" "src/silkbar_model.cesta")
+    (include "generated/include"))
+  (target silk-shell-viewport
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_viewport.cesta" "src/silk_shell_custody.cesta")
+    (include "generated/include"))
+  (target shell-text-delivery
+    (profile userland)
+    (kind archive)
+    (sources "src/shell_text_delivery.cesta" "src/shell_text_delivery_native.cesta" "src/shell_text_delivery_display.cesta")
+    (include "generated/include"))
+  (target silk-shell-surfaces
+    (profile userland)
+    (kind archive)
+    (sources "src/silk_shell_surfaces.cesta" "src/silk_shell_surfaces_native.cesta" "src/silk_shell_commands.cesta"
+             "src/silk_shell_command_count.cesta"
+             "src/shell_text_delivery.cesta" "src/shell_text_delivery_native.cesta" "src/shell_text_delivery_display.cesta"
+             "src/silk_shell_chrome.cesta" "src/silk_shell_chrome_atomic.cesta"
+             "src/silk_shell_custody.cesta" "src/silk_shell_viewport.cesta"
+             "src/silkbar_geometry.cesta" "src/silkbar_model.cesta")
+    (include "generated/include"))
+  (target pager-probe
+    (profile userland)
+    (define "SEXOS_MAIN=pager_probe_main" "SEXOS_PDX_SENDER_TASK=1")
+    (sources "tests/pager_boot/client.cesta" "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target source-probe
+    (profile userland)
+    (define "SEXOS_MAIN=source_probe_main" "SEXOS_PDX_SENDER_TASK=1")
+    (sources "tests/kernel_sources/probe.cesta" "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target pci-probe
+    (profile userland)
+    (define "SEXOS_MAIN=pci_probe_main" "SEXOS_PDX_SENDER_TASK=1")
+    (sources "tests/kernel_pci/probe.cesta" "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target region-writer-probe
+    (profile userland)
+    (define "SEXOS_MAIN=region_writer_probe_main" "SEXOS_PDX_SENDER_TASK=1")
+    (sources "tests/region_writer/probe.cesta" "runtime/client_runtime.c" "runtime/server_runtime.c"
+             "runtime/traps_x86_64.c" "runtime/server_traps_x86_64.c"
+             "runtime/region_writer_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target fpu-probe-a
+    (profile userland-f64)
+    (define "SEXOS_MAIN=fpu_probe_main" "FPU_PROBE_ID=1")
+    (sources "tests/fpu_context/probe.cesta" "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target fpu-probe-b
+    (profile userland-f64)
+    (define "SEXOS_MAIN=fpu_probe_main" "FPU_PROBE_ID=2")
+    (sources "tests/fpu_context/probe.cesta" "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target history-probe
+    (profile userland)
+    (define "SEXOS_MAIN=history_probe_main" "SEXOS_PDX_SENDER_TASK=1")
+    (sources "tests/history_recovery/probe.cesta" "src/history_recovery.cesta" "src/history_decode.cesta" "runtime/history_native.c"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target retire-probe
+    (profile userland)
+    (define "SEXOS_MAIN=retire_probe_main" "SEXOS_PDX_SENDER_TASK=1")
+    (sources "tests/kernel_retire/probe.cesta" "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target sext
+    (profile userland)
+    (define "SEXOS_MAIN=sext_main" "SEXOS_PDX_SENDER_TASK=1"
+            "SEXOS_SEXT_PARTITIONED_ALLOCATOR=1")
+    (sources "src/sext.cesta" "src/sext_service.cesta" "src/sext_workspace.cesta"
+             "runtime/sext_native.c" "runtime/client_runtime.c" "runtime/server_runtime.c"
+             "runtime/traps_x86_64.c" "runtime/server_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target sexos-kernel-current
+    (profile kernel)
+    (define "SEXOS_KERNEL_CURRENT_PDX=1" "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1"
+            "SEXOS_KERNEL_CURRENT_SMP=1" "SEXOS_NVME_INTERRUPT_MODE=1")
+    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
+             "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
+    (include "runtime/kernel" "generated/include"))
+  (target sexos-kernel-fpu-corrupt-probe
+    (profile kernel)
+    (define "SEXOS_KERNEL_CURRENT_PDX=1" "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1"
+            "SEXOS_KERNEL_CURRENT_SMP=1" "SEXOS_NVME_INTERRUPT_MODE=1"
+            "SEXOS_FPU_CONTEXT_CORRUPT_PROBE=1")
+    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
+             "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
+    (include "runtime/kernel" "generated/include"))
+  (target sexos-kernel-boot-audit
+    (profile kernel)
+    (define "SEXOS_KERNEL_CURRENT_PDX=1" "SEXOS_KERNEL_BOOT_AUDIT=1"
+            "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1" "SEXOS_KERNEL_CURRENT_SMP=1"
+            "SEXOS_NVME_INTERRUPT_MODE=1")
+    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
+             "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
+    (include "runtime/kernel" "generated/include"))
+  (target sexos-kernel-smp-corrupt-probe
+    (profile kernel)
+    (define "SEXOS_KERNEL_CURRENT_PDX=1" "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1"
+            "SEXOS_KERNEL_CURRENT_SMP=1" "SEXOS_SMP_EPOCH_CORRUPT_PROBE=1"
+            "SEXOS_NVME_INTERRUPT_MODE=1")
+    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include"))
   (target sexos-kernel-network
     (profile kernel)
     (define "SEXOS_NETWORK_PROFILE=1")
     (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
-             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include")))

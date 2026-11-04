@@ -11,6 +11,14 @@
     (cpp-if "defined(SEXOS_SILKBAR_CLOCK_FORCE_STALL_PROOF)"
       (then (define CLOCK_FORCE_STALL_PROOF_ENABLED "1"))
       (else (define CLOCK_FORCE_STALL_PROOF_ENABLED "0")))
+    (cpp-if "!defined(SEXOS_SILKBAR_DISPLAY_READY)"
+      (then (define SEXOS_SILKBAR_DISPLAY_READY "1")))
+    (define SILKBAR_DISPLAY_READY_ENABLED "(((SEXOS_SILKBAR_DISPLAY_READY) != 0))")
+    (define SILKBAR_DISPLAY_READY_OP "UINT64_C(0x101)")
+    (define SILKBAR_DISPLAY_READY_VERSION "UINT64_C(1)")
+    (define SILKBAR_STARTUP_CAPACITY "((size_t)256)")
+    (cpp-if "!defined(SEXOS_SILKBAR_BELL_REPLY_CALLER)"
+      (then (define SEXOS_SILKBAR_BELL_REPLY_CALLER "10")))
 
     (comment "Clock cadence: ticks per logical second for each tick source.")
     (define STALE_REAL_TICK_FALLBACK_LOOPS "((uint16_t)16)")
@@ -37,6 +45,46 @@
       (uint32_t bell_gen_cap_err) (uint32_t force_stall_suppress) (uint32_t cadence_sample)
       (uint32_t boot_canary) (uint32_t boot_canary_suppress) (uint32_t source_liveness)
       (uint32_t clock_send_count)) Silkbar)
+
+    (typedef (struct SilkbarStartup
+      (SexosMessage ([] messages 256))
+      (size_t head) (size_t len) (bool ready)) SilkbarStartup)
+    (var (static SilkbarStartup) silkbar_startup)
+
+    (fn (static bool) silkbar_startup_observe ((SexosMessage message))
+      (if (== (. message type_id) SILKBAR_DISPLAY_READY_OP)
+        (block
+          (if (&& (== (. message caller_pd) 1)
+                   (&& (== (. message arg0) SILKBAR_DISPLAY_READY_VERSION)
+                     (&& (== (. message arg1) 0) (== (. message arg2) 0))))
+            (= (. silkbar_startup ready) true)
+            (call sexos_line "[display.ready.rejected] client=silkbar caller=%u version=%llu"
+              (cast unsigned (. message caller_pd))
+              (cast (unsigned long long) (. message arg0))))
+          (return true)))
+      (if (>= (. silkbar_startup len) SILKBAR_STARTUP_CAPACITY) (return false))
+      (=
+        ([] (. silkbar_startup messages)
+          (% (+ (. silkbar_startup head) (. silkbar_startup len)) SILKBAR_STARTUP_CAPACITY))
+        message)
+      (+= (. silkbar_startup len) 1)
+      (return true))
+
+    (fn (static void) silkbar_wait_display (void)
+      (while (! (. silkbar_startup ready))
+        (block
+          (if (>= (. silkbar_startup len) SILKBAR_STARTUP_CAPACITY) (call sexos_fail))
+          (var SexosMessage message)
+          (if (call sexos_try_listen 0 (& message))
+            (if (! (call silkbar_startup_observe message)) (call sexos_fail)))
+          (call sexos_yield))))
+
+    (fn (static bool) silkbar_startup_pop ((SexosMessage (* out)))
+      (if (== (. silkbar_startup len) 0) (return false))
+      (= (* out) ([] (. silkbar_startup messages) (. silkbar_startup head)))
+      (= (. silkbar_startup head) (% (+ (. silkbar_startup head) 1) SILKBAR_STARTUP_CAPACITY))
+      (-= (. silkbar_startup len) 1)
+      (return true))
 
     (comment "A budget allows its line while it lasts.")
     (fn (static bool) take ((uint32_t (* budget)))
@@ -100,6 +148,10 @@
           (= (. bell_gen_cap_err) 8) (= (. force_stall_suppress) 4) (= (. cadence_sample) 32)
           (= (. boot_canary) 8) (= (. boot_canary_suppress) 4) (= (. source_liveness) 32)))
       (call sexos_line "[silkbar.init.start]")
+      (if SILKBAR_DISPLAY_READY_ENABLED
+        (block
+          (call silkbar_wait_display)
+          (call sexos_line "[display.ready.accepted] client=silkbar caller=1 version=1")))
       (call sexos_line "[silkbar.boot.begin]")
       (call sexos_line "[bootgraph.silkbar.spawned]")
       (var uint32_t contract_err (call validate_silkbar_contract))
@@ -172,7 +224,8 @@
           (if (call take (& (. s stall_before_recv)))
             (call sexos_line "[silkbar.stall.before_recv] iter=%llu" (cast (unsigned long long) loop_iter)))
           (var SexosMessage msg)
-          (if (call sexos_try_listen 0 (& msg))
+          (if (|| (&& SILKBAR_DISPLAY_READY_ENABLED (call silkbar_startup_pop (& msg)))
+                  (call sexos_try_listen 0 (& msg)))
             (block (if (== (. msg type_id) SEXOS_SILKBAR_workspace_active)
               (block
                 (var uint8_t ws (cast uint8_t (. msg arg0)))
@@ -205,7 +258,7 @@
                       (= last_options_mask options_mask)
                       (call send_update (& s) (call silkbar_update SILKBAR_UPDATE_SET_SELECTED_OPTIONS 0 options_mask 0))
                       (call sexos_line "[silkbar.selected.options.forward] mask=%#x" (cast unsigned options_mask)))))
-                (if (&& (== (. msg type_id) 1) (== (. msg caller_pd) 1))
+                (if (&& (== (. msg type_id) 1) (== (. msg caller_pd) SEXOS_SILKBAR_BELL_REPLY_CALLER))
                   (block
                     (comment "Bell reply: a LIST's packed counts, or a SUBSCRIBE's generation.")
                     (if (call take (& (. s stall_before_bell)))

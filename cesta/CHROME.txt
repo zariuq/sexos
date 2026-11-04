@@ -1,0 +1,189 @@
+SHELL CUSTODY AND THE CHROME LIFECYCLE/FRAME SLICE
+
+The shell still runs as Rust. Five of the original eight implementation
+partitions are translated. Chrome contains all 88 original entry functions,
+seven current helpers, the two Rect methods and 52 internal helpers. The process
+panic handler belongs to Core. Remaining native peers and current-source
+reconciliation still prevent a joined-shell claim.
+
+ShellChromeContext borrows Chrome, Models, Input and proof state plus the current
+app custody and viewport records. Geometry arithmetic explicitly preserves release-Rust
+integer wrapping. Invalid native tab indices fail closed instead of indexing
+outside the fixed array. Atomic desktop-size reads use a small acquire-load
+adapter; it is an explicit native obligation, not an interpreted checked body.
+Other geometry/liveness peers remain declared subsystem obligations.
+
+Shell custody
+-------------
+
+silk_shell_custody.cesta implements every method of the current app_custody.rs
+record and the drive-sender predicate. The catalog is descriptive BOOT data,
+not a grant. An entry must still come from the shell's held, attested kernel
+association; constructing a numeric record does not confer authority.
+
+The caller domain selects a held entry. Operation admission separately checks
+the actual stamped task, which need not equal that domain. Pending close and
+terminal records deny operations. A hint is not death: only exact attestation
+sets the terminal fence. Unsaved-work declines end the pending close and mark
+the next attempt as confirmed. Retry timing uses unsigned wrapping distance.
+
+interfaces/shell_apps.data is generated from the actual Rust incarnation
+catalog and initial lifecycle list, using tools/shell_catalog.py. Its Cesta
+export supplies both custody and metadata sizing. There are currently 28
+app incarnations and 17 initial lifecycle entries. Retained native metadata
+adds 26 entries. The explicitly declared lazy palette adds one more, giving
+capacity 44. The pinned Rust budget is 43 and omits that palette entry.
+This does not expand kernel grants;
+the Cesta kernel's newer BOOT reservations remain a separate migration.
+
+Generation corrections
+----------------------
+
+The actual Rust bodies reproduce three generation failures: re-registration
+resets a stamp to 1 and can revive an old FocusRef; an invalidating transition
+at UINT64_MAX can succeed without advancing its stamp; entry into Closing
+from Mapped (among other omitted predecessors) leaves the old stamp current.
+Chrome's Cesta version uses a fresh generation for re-registration and every
+entry into Closing. When no fresh generation exists,
+re-registration and invalidating transitions return false before changing
+state. A same-state operation remains a no-op, even at exhaustion.
+
+RetainedGeneration.lean reuses GenerationInvalidation's state and bounded
+invariant, with a distinct per-identity observation rule. It proves fresh
+replacement invalidation, bound preservation, rejection at exhaustion and
+non-resurrection across later registrations, replacements and payload writes.
+Positive and counterexample controls accompany the general trace theorem.
+This is a retained-identity model, not a whole-C refinement proof.
+
+Close now preflights registered metadata, frame indices and three fresh
+generations before requesting an app close or sending a display operation.
+The close-request peer may alter app custody retry fields; it must preserve
+these lifecycle counters during the call. The inspected native close-send
+helper meets that obligation. Other unchecked writers or concurrency are
+outside this component guarantee.
+
+Restore stages frame, lifecycle and viewport metadata. If its bounds lookup
+fails, it restores those local values before any external operation. Success
+retains the original effect order. This does not undo prior IPC or hardware
+effects. Minimize rejects unknown lifecycle metadata before changing flags.
+
+The remaining recreation/focus/drag callers and native interfaces still need
+joining. No whole-shell generation or rollback guarantee is claimed.
+
+Qualification
+-------------
+
+tests/silk_shell_custody.py compares full state traces against the current Rust
+module under GCC/Clang, optimization and sanitizers. Independent controls cover
+exact task identity, no-effect probes, forged hints/declines, terminal custody,
+retry wrap and shell-frame association. Semantic mutations must be caught.
+
+tests/silk_shell_chrome.py compares the actual pinned Rust lifecycle/frame
+bodies and ordered diagnostics with scripted geometry/liveness peers. Named
+generation corrections and malformed native indices have independent controls;
+they are not normalized out of the Rust comparison. Independent controls check
+all 64 lifecycle state pairs, both ordinarily and at counter exhaustion. The
+actual original counterexamples must remain reproducible. Rect and resize
+controls include integer boundaries.
+
+The ownership suites admit the actual function plans through Lean and refuse
+read-only mutation, escaped stack references, access during exclusive loans
+and uninitialized contexts. Native hooks remain visible in those plans.
+Both archive targets build through the project driver and ordinary C exports.
+No joined Cesta-shell boot is claimed.
+
+VIEWPORT DELIVERY
+
+The checked viewport archive shares the identical document/Spindle delivery
+state machine behind distinct C record types. No runtime family tag is added.
+It retains the exact notice on backpressure, captures the actual task, refreshes
+a previously admitted size, and retires permanently on terminal errors or
+sequence exhaustion. The native send boundary must use the held route bound
+to the notice's attested subject; numbers alone confer no authority.
+
+The same archive ports document toolbar layout/hit testing, Spindle panes,
+workspace refresh, desktop child geometry and parent associations. Spindle
+notice decoding additionally refuses a zero task, consistently with its queue
+and document decoding. Malformed native layout scales fail closed.
+
+tests/silk_shell_viewport.py compiles the actual Rust modules, appending harness
+inspection/setup methods without changing the original bodies. It compares
+complete state and sends, and independently checks the zero-task and invalid-
+scale boundaries. No external networking or display execution is inferred.
+
+
+FOCUS, TILING AND TAB BOUNDARIES
+
+Tiling and focus now call their real checked bodies, including from close,
+restore and zoom. Repeated legacy shadow writes remain explicit: custody can
+reject the preceding geometry update, so dropping those writes changes the
+source behavior at that declared peer boundary. The once-per-process Mesh
+marker uses a native relaxed atomic exchange; no aliasing hint is inferred.
+
+Tab selection validates the full-width index before narrowing. The Rust
+source's u8 check can accept 256 as tab0, or index out of bounds for 257. Focus
+clearing also clears its shadow reference, and focus refuses an unusable zero
+generation. On hover changes, the previous frame is retained until its old
+highlight has been cleared, then the new frame is notified. These deliberate
+differences have independent controls and original-source counterexamples.
+
+Remaining scene, hit-test, IPC and proof peers stay explicit
+obligations. This does not establish a joined shell, input capture correctness
+for every current caller, or hardware isolation.
+
+ACCESSIBILITY
+
+Semantic scene/frame nodes, bounded labels, focus descriptions, distinct-target
+traversal and keyboard dispatch use their real checked bodies. Node arrays and
+labels are inline value records. The label-copy input carries a 32-byte prefix
+and its source length; only min(length,31) bytes are inspected. The terminator
+is written without clearing the remaining destination bytes, matching Rust.
+Scene labels undergo full strict UTF-8 validation before trailing NUL trimming;
+invalid input uses the source's "scene" fallback. Frame names cross the native
+Models boundary as a bounded label record, without retaining a static pointer.
+
+Focus traversal skips duplicates, hidden annotations, missing focus rights,
+dead/tombstoned surfaces and surfaces from another scene. The final focus gate
+still checks generation and lifecycle. Keyboard activation's boolean means
+that the key was handled: it can be true after a logged failed restore or
+minimize. It is not an operation-completion receipt.
+
+The runtime suite compares full node fields and label bytes, including buffer
+capacity, embedded NULs, malformed Unicode, dead targets and all keyboard
+actions. Independent controls and semantic mutations qualify the boundaries.
+Scene switching and the Models label provider remain native obligations;
+these component tests do not establish complete shell accessibility behavior.
+Semantic targets describe the UI; their numeric identities do not grant IPC
+authority. Actions still require the held route and the actual operation gate.
+
+INTERACTION AND CLICK ROUTING
+
+The original drag, resize, hit-test and panel handlers now use checked bodies.
+Dragging retains its captured surface when keyboard focus changes. Interaction
+transitions preserve the source's allowed/forbidden table and complete typed
+payloads. A bounded serializer retains the original Debug diagnostics without
+libc. The log budget uses native relaxed atomic load/store, matching Rust.
+
+Click routing preserves Atlas interception, document toolbar admission, frame
+lights, resize/tab capture, then SilkBar interception and content-drag policy.
+Document toolbar coordinates use the real checked document layout/hit functions.
+A pending toolbar event retains its exact route, action and sequence. Further
+clicks advance the source counter without overwriting that pending event; at
+counter exhaustion the toolbar path does not wrap. These are the source's
+bounded admission rules, not a completion acknowledgement.
+
+Panel callers stage their boolean receiver in a local value, avoiding a mutable
+field loan that overlaps the complete context loan. The final flag is installed
+before the caller continues. Diagnostic hooks must remain transparent to this
+staged value; no concurrent-observer equivalence is established here.
+
+silkbar_geometry.cesta adds the current width-adjusted dispatch profile using
+the existing SilkBar model, with its explicit narrow-screen fallback. It checks
+and admits the two geometry functions. This does not reconcile every newer field
+and function in the full upstream SilkBar crate or its server.
+
+Tests compare all interaction payloads, capture/panel flags and pending document
+records, rather than relying only on diagnostics. Independent controls cover all
+36 transitions, captured-target movement, zoomed/dead resize, hit priority,
+finite-width geometry and pending-event preservation. Other subsystem peers
+remain declared obligations; Surfaces, Proofs and Core still need real joins.

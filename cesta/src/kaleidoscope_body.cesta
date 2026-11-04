@@ -1,0 +1,54 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (include "kaleidoscope_body.h")
+  (ownership (check-all))
+  (fn (static void) kaleidoscope_body_clean
+    (((const KaleidoscopeBodySource) (* input)) (KaleidoscopeBodyClean (* content)))
+    (= (* content) (compound KaleidoscopeBodyClean (= (. len) 0)))
+    (if (> (-> input len) KALEIDOSCOPE_BODY_CAPACITY) (return))
+    (var bool space false)
+    (for (var size_t i 0) (< i (-> input len)) (++ i)
+      (block
+        (var uint8_t byte ([] (-> input bytes) i))
+        (= byte (?: (|| (<= byte 32) (== byte 127)) 32 (?: (<= byte 126) byte 63)))
+        (if (== byte 32)
+          (block
+            (= space (!= (-> content len) 0))
+            continue))
+        (var size_t needed (+ 1 (?: space 1 0)))
+        (if (> (+ (-> content len) needed) 96)
+          (block
+            (for (var size_t j 93) (< j 96) (++ j) (= ([] (-> content bytes) j) 46))
+            (= (-> content len) 96)
+            break))
+        (if space
+          (block
+            (= ([] (-> content bytes) (-> content len)) 32)
+            (+= (-> content len) 1)
+            (= space false)))
+        (= ([] (-> content bytes) (-> content len)) byte)
+        (+= (-> content len) 1))))
+  (fn void kaleidoscope_body_build
+    (((const KaleidoscopeBodySource) (* body))
+     ((const KaleidoscopeBodySource) (* network_summary))
+     (KaleidoscopeBodyPreview (* preview)))
+    (var (static const uint8_t) ([] prefix) "Kaleidoscope\nCached / sample network text\n\n")
+    (var (static const uint8_t) ([] empty) "No text available.")
+    (= (* preview) (compound KaleidoscopeBodyPreview (= (. len) 0)))
+    (for (var size_t i 0) (< i (- (sizeof prefix) 1)) (++ i)
+      (block
+        (= ([] (-> preview bytes) (-> preview len)) ([] prefix i))
+        (+= (-> preview len) 1)))
+    (var KaleidoscopeBodyClean content (init 0))
+    (call kaleidoscope_body_clean body (& content))
+    (if (== (. content len) 0) (call kaleidoscope_body_clean network_summary (& content)))
+    (if (== (. content len) 0)
+      (for (var size_t i 0) (< i (- (sizeof empty) 1)) (++ i)
+        (block
+          (= ([] (-> preview bytes) (-> preview len)) ([] empty i))
+          (+= (-> preview len) 1)))
+      (for (var size_t i 0) (< i (. content len)) (++ i)
+        (block
+          (= ([] (-> preview bytes) (-> preview len)) ([] (. content bytes) i))
+          (+= (-> preview len) 1)))))
+  ))

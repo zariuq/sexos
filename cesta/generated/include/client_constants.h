@@ -19,6 +19,8 @@ typedef enum {
     SEXOS_SYSCALL_grant_mem_lend = 50,
     SEXOS_SYSCALL_map_mem_lend = 51,
     SEXOS_SYSCALL_net_diag = 52,
+    SEXOS_SYSCALL_region_writer = 75,
+    SEXOS_SYSCALL_device_reset = 76,
 } SexosSyscall;
 
 typedef enum {

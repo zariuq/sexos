@@ -1,0 +1,10 @@
+
+#ifndef SEXOS_NETWORK_JOB_ENGINE_H
+#define SEXOS_NETWORK_JOB_ENGINE_H
+#include "network_job_machine.h"
+#include "network_engine_transport.h"
+typedef struct NetworkJobEngineContext { NetworkEngineTransport *engine; bool tls; } NetworkJobEngineContext;
+NetworkJobLink network_job_engine_link_policy(bool pending,bool stopped,NetworkTcpClientState state,bool peer_fin);
+uint32_t network_job_engine_error_policy(NetworkEngineError error);
+NetworkJobWire network_job_engine_wire(NetworkJobEngineContext *context);
+#endif

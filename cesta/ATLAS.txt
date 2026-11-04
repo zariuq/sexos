@@ -1,0 +1,58 @@
+SHELL SCENES, ATLAS AND LOCAL LAYOUT SNAPSHOTS
+
+The Atlas archive implements the forty-four scene, overview, navigation,
+reparenting and snapshot entries selected from the current Rust source. Eight
+internal helpers share rectangle drawing, confirmation, integer wrapping and
+diagnostic-budget operations. The whole shell still runs as Rust until its
+remaining units and current interfaces are joined.
+
+ShellAtlasContext borrows three state records: Atlas, Chrome and Models.
+Checked functions pass these references through typed calls. Small labels are
+returned as fixed-size records, preserving their sixteen-byte extent rather
+than accepting an unbounded output pointer. Native compatibility adapters
+retain the shell's existing output-buffer ABI and require its declared extent.
+They bind context fields to their exact shell state subobjects.
+
+The current source adds custody filtering before scene membership is accepted
+and invalidates pending launcher focus before a visibility change. The unit
+retains those operations. Remaining subsystem calls are explicit native peer
+obligations. An archive with unresolved subsystem edges is not a shell boot.
+
+Snapshot corrections
+--------------------
+
+The original validator scans only the first frame_count storage slots, while
+capture counts occupied slots and restore reads the whole table. A sparse
+snapshot can therefore contain an unchecked occupied tail. The Cesta validator
+visits every slot and checks canonical presence, scene/tab bounds, known flags,
+the occupied count and unique frame identities. Reserved header bytes must be
+zero. A well-formed sparse table remains accepted.
+
+Checksum computation folds the defined scalar fields and tab surface values.
+It does not read compiler padding. Reserved bytes remain meaningful and enter
+the checksum. This is a local data-integrity check, not an authentication code.
+
+Restore prepares candidate records before changing live frame storage. If no
+frame can be restored, the live table and active scene remain unchanged;
+diagnostic budgets may advance. Successful publication retains the existing
+visibility, focus reconciliation, tiling and service-call order. This local
+transition does not roll back prior IPC or hardware effects.
+
+Checks and boundaries
+---------------------
+
+tests/silk_shell_atlas_differential.py compiles the actual pinned Rust bodies
+and compares complete ordered diagnostics/peer calls and the affected state
+after each command. Scripted peers are declared subsystem boundaries, not
+evidence of their current implementations. Custody matching links the real
+Cesta custody implementation against the current 28-entry catalog; the other
+peers remain scripted. Separate independent malformed
+snapshot controls qualify the corrected behavior, including compiler-padding
+independence and failed-restore preservation. Semantic mutations must be caught.
+
+tests/silk_shell_atlas_ownership.py checks the actual GCC/Clang permission plans,
+requires every current entry, and rejects read-only mutation, a stored local
+reference, aliasing under an exclusive field borrow and an uninitialized context.
+Its optional Lean admission checks the actual emitted plans. These are ownership
+projections; they are not a whole-C functional refinement proof or concurrent
+shell guarantee. Native peer obligations remain visible in the plans.

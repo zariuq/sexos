@@ -1,0 +1,125 @@
+Current BOOT construction and reserved incarnations
+===================================================
+
+The current development profile uses interfaces/kernel_current.data, exported
+once into kernel_current.h. It declares twenty-nine domains with separate logical
+IDs, image layouts, hardware keys and initial-admission flags; one hundred fifty-six final
+Domain routes; seventeen app incarnations; and four typed source grants. The app rows are compared with the
+actual upstream app_catalog module, while layout/spawn facts are checked against
+init.rs. App-array capacity and route slots derive from the same declaration. The
+normal current profile audits actual captured task/lifecycle/self/route/activation
+state before any user entry; the table never supplies runtime authority. It
+publishes the checked catalog records before sealing and records the first
+actual scheduler handoff, allowing the unchanged upstream recovery/pixel
+checkers to join held identities with native service evidence.
+
+IDs16/18/19..23 reuse key9; IDs17/24..29 reuse key12, all with separate layouts. Their image
+and stack backing is distinct from every other private image. They do not enter
+the run queue. BOOT clears and invalidates all their private leaves before any
+user entry, preserving the exact saved leaves for the later activation protocol.
+A copied domain number or a layout number cannot supply a task identity.
+
+Private-image transition core
+-----------------------------
+
+app_private.cesta checks the lifecycle and leaf-transition functions for lifecycle rights, lineage, final
+key flags and leaf retirement/restoration. A private manifest records virtual
+page, exact leaf address and expected PTE. Retirement permits only accessed/dirty
+variation. Restoration requires zero leaves. Duplicate virtual pages, leaf
+addresses and physical frames are refused. Every validation/read precedes the
+first mutation; each write is followed by invalidation.
+
+The named leaf providers are native obligations: trusted addresses, exclusive
+page-table transition authority, no manifest mutation, completed invalidation
+and no concurrent relevant execution. The kernel adapter uses volatile accesses
+and the architecture invalidation instruction. The checked metadata program
+is not a proof of arbitrary hardware or concurrent page-table semantics.
+
+The actual loader captures each mapped segment and user-stack page, checks
+per-image and cross-image physical uniqueness, and binds the actual attached
+task. Logical ID, key and layout are distinct loader arguments. A failure during
+BOOT must abort construction; no rollback of already-reserved backing is claimed.
+
+Installed construction scope
+-----------------------------
+
+The current BOOT function loads all twenty-nine records, installs the one hundred fifty-six
+routes and the input capability, then installs service/pager/self lifecycle
+metadata and the fourteen exact activation grants. It reserves successors, creates
+DMA/shared/document/UiIR region views, probes/restores BOOT PCI BAR0 state and
+publishes its bounded per-holder MMIO aliases. Command-register status bits
+are not echoed into W1C writes. Runtime BAR resolution only reads these grants.
+
+Sealing precedes run-queue publication. Dormant targets reject ordinary PDX
+calls/replies and run_push cannot make them ready. The current profile still
+has the paging pool/arenas, fault transactions, wait/wake and paging cleanup
+adapters (PAGING.txt). Entropy/clock/trust source grants and their runtime adapters
+are implemented (SOURCES.txt). PCI command/configuration is implemented (PCI.txt).
+History roster queries and the paired NVMe history recovery join are implemented
+(HISTORY.txt). Retirement/workspace custody and CPU relaunch
+are implemented with separate RAM,CPU and GUI cleanup gates (RETIREMENT.txt). Catalog/status and
+service ACK are implemented; their metadata does not itself authorize reuse.
+Complete current-userland qualification remains open.
+
+tests/app_gui_boot.py exercises every source-declared Quil reserve and Browser
+cleanup in a frozen normal image. Each Quil performs real fresh editor input
+with exact glyph checks. An unsaved close must first be declined without task
+termination; only the subsequent confirmed discard may reach the five cleanup
+ACKs, private retirement and Sext workspace reuse. Reserve exhaustion is checked
+through the actual launcher. This gate does not qualify Quil document persistence.
+
+Native pre-entry audit
+-----------------------
+
+    cesta build sexos-kernel-boot-audit
+    python3 tests/current_boot.py --reference-tree ... --kernel ... --limine ... --work ...
+
+The audit target executes real BOOT construction and validates the actual graph,
+private leaf states, region PTEs, initial key uniqueness, sealing and dormant
+admission fences. It stops before user code. The serial checker verifies every
+domain/app record and the hidden/present page totals. Network/NVMe options test
+additional BOOT devices only; device presence or successful construction does
+not establish a completed device transfer.
+
+    make check-current-boot
+    make qualify-current-boot CESTA_SOURCE=... LEAN_ROOT=...
+
+The host gate executes the production allocator, loader, capture, route, grant
+and page-table code on RAM with CPU/TLB providers. It loads a synthetic ELF into
+all twenty-nine layouts and exercises late-leaf failure before any clear. Semantic
+mutations must compile and be observed at runtime. The separate pure Rust gate
+compares complete leaf-effect traces, including validation failures and replay.
+
+Logical certificate
+-------------------
+
+    python3 tools/current_boot_lean.py --cesta ... CurrentBoot.lean
+
+The generated SexOSCurrentBoot instance imports the existing BootAuthority
+model. It checks IDs/layouts, initial key uniqueness, route subjects/slots,
+incarnation lineage, all installed routes and the explicit pager routes. The
+proved sealing law then prevents extending that logical graph after BOOT.
+Certificates that admit a same-key successor, overlap a layout, omit sealing
+or retarget a demand client are rejected. Separate source-role, subject and
+slot constraints reject ambient Browser sources and communication-slot collisions;
+these metadata declarations are not interpreted as communication capabilities.
+
+Global key injectivity is intentionally false for the twenty-nine records. The
+certificate proves uniqueness among the fifteen initial admissions and records
+the intentional dormant reuse. Private-leaf detachment, future activation and
+native C realization have separate obligations and tests. The certificate does
+not turn hardware keys into capabilities or prove the whole kernel.
+
+Activation mechanism
+---------------------
+
+The held one-shot activation grant observes reserved/ready state or commits an
+exact precreated successor. Live, attached, unretired or unacknowledged predecessors
+cannot release it. Old private leaves must actually be absent; a retirement flag
+alone is insufficient. New task identity, dormant phase, saved frame, queue room
+and every saved leaf are validated before restoring. All leaves are restored and
+flushed before authority/ready publication. Replay returns the spent receipt;
+retired successors are never restored. No new image, frame or capability is made.
+The RAM gate checks all dormant reservations, the eight-incarnation Quil chain
+and physical key-reuse fences. The normal-kernel/real-Sext CPU gate runs both eight-incarnation families;
+real GUI cleanup has a separate paired gate (RETIREMENT.txt).

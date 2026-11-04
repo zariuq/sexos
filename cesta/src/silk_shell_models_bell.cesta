@@ -1,0 +1,30 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (include "silk_shell_models_bell.h")
+  (ownership (check-all)
+   (record LinenObject (field display_name (static nullable)))
+   (record QuilBuffer (field display_name (static nullable)))
+   (record SilkShellModelsState)
+   (record ShellBellModelsContext (field models (borrow write)))
+   (foreign sexos_line (variadic-read)
+    (obligation "Prints one complete Bell-ring diagnostic synchronously without retaining a borrow.")))
+  (native "
+void shell_models_bell_record_event(ShellBellModelsContext *ctx,uint64_t object_id,uint64_t buffer_id)
+{
+ SilkShellModelsState *state=ctx->models;
+ size_t index=(size_t)state->BELL_RING_WRITE_INDEX%BELL_RING_CAP;
+ uint64_t sequence=state->BELL_EVENT_SEQUENCE++;
+ BellEvent previous=state->BELL_EVENTS[index];
+ state->BELL_EVENTS[index]=(BellEvent){.present=true,.event_id=sequence,
+  .kind=BELL_EVENT_OBJECT_LINKED_TO_BUFFER,.object_id=object_id,.buffer_id=buffer_id,
+  .sequence=state->BELL_RING_WRITE_INDEX};
+ ++state->BELL_RING_WRITE_INDEX;
+ if(previous.present)sexos_line(\"[bell.ring.overwrite] idx=%zu prev_event_id=%llu\",index,(unsigned long long)previous.event_id);
+ sexos_line(\"[bell.ring.write] idx=%zu event_id=%llu object_id=%llu buffer_id=%llu\",index,
+  (unsigned long long)sequence,(unsigned long long)object_id,(unsigned long long)buffer_id);
+}
+size_t shell_models_bell_ring_count(const ShellBellModelsContext *ctx)
+{
+ size_t count=(size_t)ctx->models->BELL_RING_WRITE_INDEX;return count<BELL_RING_CAP?count:BELL_RING_CAP;
+}
+")))

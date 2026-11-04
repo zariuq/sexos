@@ -1,0 +1,48 @@
+(cesta native-c/1 compact-c/2
+ (unit
+ (include "sexos_document_service_transport.h")
+ (ownership (check-all)
+  (foreign memset (returns-borrow 0) (obligation "Writes exactly the requested bytes of the destination and retains no reference."))
+  (foreign sexos_document_decode (obligation "Decodes the request by value and retains no reference."))
+  (foreign sexos_document_reply (obligation "Encodes a reply by value and retains no reference."))
+  (foreign document_service_init (obligation "Initializes exactly the supplied service state and retains no reference."))
+  (foreign document_service_handle (obligation "Checks and advances only the authenticated caller session in the supplied service state."))
+  (foreign document_service_progress (obligation "Advances at most one pending service transaction and returns its exact completion by value."))
+  (foreign document_service_retire (obligation "Retires only the authenticated caller session and cancels its transient backend work."))
+  (foreign sexos_answer_request (obligation "Answers exactly the retained request envelope or reports that its obligation remains pending or was cancelled.")))
+ (native "
+void document_service_transport_init(DocumentServiceTransport *state,bool correlated_required)
+{memset(state,0,sizeof *state);document_service_init(&state->service);state->correlated_required=correlated_required;}
+static size_t document_envelope_slot(const DocumentServiceTransport *state)
+{for(size_t i=0;i<DOCUMENT_SERVICE_RECEIPTS;i++)if(!state->envelopes[i].present)return i;return SIZE_MAX;}
+bool document_service_transport_prepare(DocumentServiceTransport *state,const SexosRequest *request,bool live)
+{
+ if(request->message.type_id!=SEXOS_DOCUMENT_OP)return false;
+ size_t slot=document_envelope_slot(state);if(slot==SIZE_MAX)return true;
+ uint32_t sequence=(uint32_t)(request->message.arg0&SEXOS_DOCUMENT_SEQ_MAX);SexosDocumentDecode decoded=sexos_document_decode(request->message.arg0,request->message.arg1,request->message.arg2);
+ DocumentServiceEnvelope envelope={true,false,*request,decoded.request,0};
+ if(!decoded.ok)envelope.value=sexos_document_reply(sequence,false,SEXOS_DOCUMENT_INVALID),envelope.ready=true;
+ else if((state->correlated_required&&!request->id)||(request->id&&request->message.caller_task!=request->message.caller_pd))envelope.value=sexos_document_reply(decoded.request.seq,false,SEXOS_DOCUMENT_DENIED),envelope.ready=true;
+ else{DocumentServiceResult result=document_service_handle(&state->service,request->message.caller_pd,live,decoded.request);envelope.ready=result.answered;envelope.value=result.value;}
+ state->envelopes[slot]=envelope;return true;
+}
+void document_service_transport_progress(DocumentServiceTransport *state)
+{
+ DocumentServiceCompletion completion=document_service_progress(&state->service);if(!completion.present)return;
+ for(size_t i=0;i<DOCUMENT_SERVICE_RECEIPTS;i++){DocumentServiceEnvelope *envelope=&state->envelopes[i];if(envelope->present&&!envelope->ready&&envelope->transport.message.caller_pd==completion.caller&&envelope->document.seq==completion.request.seq){envelope->value=completion.value;envelope->ready=true;return;}}
+}
+bool document_service_transport_poll(DocumentServiceTransport *state)
+{
+ for(size_t i=0;i<DOCUMENT_SERVICE_RECEIPTS;i++){DocumentServiceEnvelope *envelope=&state->envelopes[i];if(!envelope->present||!envelope->ready)continue;uint64_t status=sexos_answer_request(&envelope->transport,envelope->value);if(!status||(envelope->transport.id&&status==SEXOS_RPC_INVALID))memset(envelope,0,sizeof *envelope);}
+ for(size_t i=0;i<DOCUMENT_SERVICE_RECEIPTS;i++)if(state->envelopes[i].present)return false;
+ return true;
+}
+bool document_service_transport_pending(const DocumentServiceTransport *state)
+{for(size_t i=0;i<DOCUMENT_SERVICE_RECEIPTS;i++)if(state->envelopes[i].present)return true;return false;}
+bool document_service_transport_retire(DocumentServiceTransport *state,uint32_t caller)
+{
+ if(!document_service_retire(&state->service,caller))return false;
+ for(size_t i=0;i<DOCUMENT_SERVICE_RECEIPTS;i++){DocumentServiceEnvelope *envelope=&state->envelopes[i];if(envelope->present&&envelope->transport.message.caller_pd==caller){envelope->ready=true;envelope->value=sexos_document_reply(envelope->document.seq,false,SEXOS_DOCUMENT_DENIED);}}
+ return true;
+}
+")))

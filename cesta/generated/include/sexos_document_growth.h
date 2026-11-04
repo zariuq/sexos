@@ -1,0 +1,37 @@
+#ifndef SEXOS_DOCUMENT_GROWTH_H
+#define SEXOS_DOCUMENT_GROWTH_H
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#define DOCUMENT_GROWTH_MAX_EXTENTS ((size_t)8)
+#define DOCUMENT_GROWTH_BLOCK_SECTORS UINT64_C(8)
+typedef enum DocumentGrowthAction {
+ DOCUMENT_GROWTH_INVALID=0,
+ DOCUMENT_GROWTH_ZERO=1,
+ DOCUMENT_GROWTH_ZERO_BARRIER=2,
+ DOCUMENT_GROWTH_DESCRIPTOR=3,
+ DOCUMENT_GROWTH_DESCRIPTOR_BARRIER=4,
+ DOCUMENT_GROWTH_PUBLISH=5,
+ DOCUMENT_GROWTH_PUBLISH_BARRIER=6,
+ DOCUMENT_GROWTH_DONE=7
+} DocumentGrowthAction;
+typedef struct DocumentGrowthPlan {
+ bool active;
+ bool descriptor_attempted;
+ bool in_flight;
+ uint8_t phase;
+ DocumentGrowthAction pending;
+ size_t original;
+ size_t count;
+ size_t extent;
+ uint64_t sector;
+ uint16_t sector_count[DOCUMENT_GROWTH_MAX_EXTENTS];
+} DocumentGrowthPlan;
+bool document_growth_init(DocumentGrowthPlan *plan,size_t original,size_t count);
+bool document_growth_set_extent(DocumentGrowthPlan *plan,size_t index,uint16_t sector_count);
+DocumentGrowthAction document_growth_current(const DocumentGrowthPlan *plan);
+bool document_growth_begin_action(DocumentGrowthPlan *plan,DocumentGrowthAction action);
+bool document_growth_finish_action(DocumentGrowthPlan *plan,DocumentGrowthAction action);
+bool document_growth_cancel_releases(const DocumentGrowthPlan *plan);
+void document_growth_abort(DocumentGrowthPlan *plan);
+#endif

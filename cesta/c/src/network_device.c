@@ -186,7 +186,7 @@ static void rx_bytes_transfer(RxContext *c) {
 #define network_rx_run_CHECKED 1
 #define network_rx_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()
 
-/* Generated from cesta-protocol/1. Declare the context and native hooks first. */
+/* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
 
 #ifdef CESTA_PROTOCOL_network_rx_run_DEFINED
 #error "duplicate protocol definition"
@@ -311,7 +311,7 @@ network_rx_run(RxContext *ctx)
             for (;;) {}
         }
 #endif
-        return network_rx_run_suspended;
+        return network_rx_run_done;
     }
 #if network_rx_run_CHECKED
     if (!rx_available(ctx)) {
@@ -511,6 +511,18 @@ network_rx_run(RxContext *ctx)
             }
 #endif
 #if network_rx_run_CHECKED
+            if (!rx_copied(ctx)) {
+                network_rx_run_CHECK_FAILURE(ctx, "fact", "copied", 1);
+                for (;;) {}
+            }
+#endif
+#if network_rx_run_CHECKED
+            if (!rx_settled(ctx)) {
+                network_rx_run_CHECK_FAILURE(ctx, "fact", "settled", 1);
+                for (;;) {}
+            }
+#endif
+#if network_rx_run_CHECKED
             if (rx_descriptor_owned(ctx)) {
                 network_rx_run_CHECK_FAILURE(ctx, "own", "descriptor", 0);
                 for (;;) {}
@@ -620,7 +632,7 @@ network_rx_run(RxContext *ctx)
                 for (;;) {}
             }
 #endif
-            return network_rx_run_suspended;
+            return network_rx_run_done;
         }
 #if network_rx_run_CHECKED
         if (!rx_descriptor_owned(ctx)) {
@@ -657,5 +669,5 @@ NetworkStep network_device_receive(NetworkDevice *d, NetworkFrame *frame) {
     .device = d,.frame = frame,.sealed_frame = frame,.index = d->rx_next,.descriptor = d->rx_desc + d->rx_next * 16
   };
   unsigned outcome = (unsigned) network_rx_run(&context);
-  return outcome == network_rx_run_answered ? NET_READY : outcome == network_rx_run_suspended ? NET_PENDING : NET_FAILED;
+  return outcome == network_rx_run_answered ? NET_READY : outcome == network_rx_run_done ? NET_PENDING : NET_FAILED;
 }

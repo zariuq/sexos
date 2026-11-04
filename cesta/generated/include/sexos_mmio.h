@@ -3,6 +3,8 @@
 
 #include "sexos_server.h"
 
+#include "sexos_device_reset.h"
+
 /*Device-driver syscalls and typed volatile MMIO/DMA accessors for sexdrive, sexusb and sexnet.*/
 
 void *memcpy(void *destination, const void *source, size_t count);

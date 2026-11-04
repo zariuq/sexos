@@ -1,0 +1,14 @@
+{
+  "current_pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "source_pins": [
+    "c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321",
+    "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28"
+  ],
+  "expected_functions": 78,
+  "partitions": [
+    {"manifest": "interfaces/silk_shell_proofs_a.source.json", "field": "functions", "count": 51, "source_pin": "c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321"},
+    {"manifest": "interfaces/silk_shell_proofs_a_routes.source.json", "field": "functions", "count": 23, "source_pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28"},
+    {"manifest": "interfaces/silk_shell_proofs_a_lifecycle.source.json", "field": "functions", "count": 4, "source_pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28"}
+  ],
+  "residual": []
+}

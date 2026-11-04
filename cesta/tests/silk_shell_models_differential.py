@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare original shell models with scripted UI/IPC peers, independently of whole-shell boots."""
+"""Replay the original Models cohort, independently of the live current-source gate."""
 import argparse
 import filecmp
 import hashlib
@@ -626,7 +626,7 @@ def isolated_scenarios(work):
     return result, commands
 
 
-def check_variant(work, scenarios, oracle, exported, compiler, source, flags):
+def check_variant(work, scenarios, oracle, exported, compiler, source, flags, include):
     reference = work / 'rust'
     run(['rustc', '--edition=2021', '-O', '--cap-lints=allow', str(oracle), '-o', str(reference)],
         work, 'compile-rust', flags=flags)
@@ -642,7 +642,7 @@ def check_variant(work, scenarios, oracle, exported, compiler, source, flags):
             run([str(binary)], work, 'run-' + label + '-' + name, stdin=inputs, stdout=trace)
             compare(expected[name], trace, label + '/' + name)
     common = ['-std=c11', '-Wall', '-Wextra', '-Wpedantic', '-Wformat=2', '-Werror',
-              '-ffunction-sections', '-fdata-sections', '-I', str(HERE / 'generated/include'),
+              '-ffunction-sections', '-fdata-sections', '-I', str(include), '-I', str(HERE / 'generated/include'),
               *(f'-D{flag}=1' for flag in flags)]
     provider = str(FIXTURES / 'provider.c')
     for cc in ('gcc', 'clang'):
@@ -702,15 +702,29 @@ def check_variant(work, scenarios, oracle, exported, compiler, source, flags):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cesta', type=Path, required=True)
-    parser.add_argument('--source', type=Path, default=HERE / 'src/silk_shell_models.cesta')
+    parser.add_argument('--source', type=Path, help='Explicit candidate for the historical Rust cohort; default replays the committed original port.')
+    parser.add_argument('--interface', type=Path, help='Interface matching an explicit historical candidate.')
     parser.add_argument('--seeds', type=int, default=4)
     parser.add_argument('--cases', type=int, default=256)
     args = parser.parse_args()
     compiler = str(Path(shutil.which(str(args.cesta)) or args.cesta).resolve())
-    watched = (Path(compiler), args.source.resolve(), HERE / 'generated/include/silk_shell.h')
+    watched = (Path(compiler), *((args.source.resolve(),)if args.source else()), HERE / 'generated/include/silk_shell.h')
     fingerprints = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in watched}
     with tempfile.TemporaryDirectory(prefix='silk-shell-models-') as temporary:
         work = Path(temporary)
+        include=work/'include';include.mkdir()
+        if args.source is None:
+            commit='b5ee992f5fe01ed67b5e4acc60c7dd30a768fa4c'
+            args.source=work/'historical-models.cesta'
+            args.source.write_bytes(subprocess.check_output(['git','show',commit+':cesta/src/silk_shell_models.cesta'],cwd=HERE.parent))
+            interface_source=work/'historical-interface.cesta'
+            interface_source.write_bytes(subprocess.check_output(['git','show',commit+':cesta/src/silk_shell_interface.cesta'],cwd=HERE.parent))
+            (include/'silk_shell.h').write_bytes(subprocess.check_output(['git','show',commit+':cesta/generated/include/silk_shell.h'],cwd=HERE.parent))
+        else:
+            assert args.interface,'an explicit historical candidate requires its matching --interface'
+            interface_source=None
+            (include/'silk_shell.h').write_bytes(args.interface.read_bytes())
+        candidate_hash=hashlib.sha256(args.source.read_bytes()).hexdigest()
         inputs = work / 'vectors.txt'
         count = vectors(inputs, args.seeds, args.cases)
         isolated, isolated_commands = isolated_scenarios(work)
@@ -721,32 +735,29 @@ def main():
         exported = work / 'models.c'
         run([compiler, 'export-c', str(args.source.resolve()), '--'], work, 'export', stdout=exported)
         interface = work / 'silk_shell.h'
-        run([compiler, 'export-c', str(HERE / 'src/silk_shell_interface.cesta'), '--'], work, 'export-interface', stdout=interface)
-        canonical_interface = interface.read_bytes().rstrip(b'\n') + b'\n'
-        assert canonical_interface == (HERE / 'generated/include/silk_shell.h').read_bytes(), 'shell interface needs regeneration'
-        if args.source.resolve() == HERE / 'src/silk_shell_models.cesta':
-            assert exported.read_bytes() == (HERE / 'c/src/silk_shell_models.c').read_bytes(), 'plain C models need regeneration'
-            assert interface.read_bytes() == (HERE / 'c/generated/include/silk_shell.h').read_bytes(), 'plain C shell header needs regeneration'
+        if interface_source:
+            run([compiler, 'export-c', str(interface_source), '--'], work, 'export-interface', stdout=interface)
+            assert interface.read_bytes().rstrip(b'\n')+b'\n'==(include/'silk_shell.h').read_bytes(),'historical interface export differs'
         const_write = work / 'const_write.c'
         const_write.write_text('#include "silk_shell.h"\nvoid invalid(void) { PRESET_NAMES[0] = "changed"; }\n')
         for cc in ('gcc', 'clang'):
             label = cc + '-const-write'
             status = run([cc, '-std=c11', '-Wall', '-Wextra', '-Wpedantic', '-Werror',
-                          '-I', str(HERE / 'generated/include'), '-fsyntax-only', str(const_write)], work, label, check=False)
+                          '-I', str(include), '-I', str(HERE / 'generated/include'), '-fsyntax-only', str(const_write)], work, label, check=False)
             assert status != 0 and 'PRESET_NAMES' in (work / (label + '.log')).read_text(), 'writable preset table'
         lines, mutations = 0, 0
         for name, flags in (('default', ()), ('enforce', ('SEXOS_COLLAR_ENFORCE_PROOF',))):
             variant = work / name
             variant.mkdir()
             checked_lines, checked_mutations = check_variant(variant, scenarios, oracle, exported,
-                                                             compiler, args.source.resolve(), flags)
+                                                             compiler, args.source.resolve(), flags, include)
             lines += checked_lines
             mutations += checked_mutations
         assert all(hashlib.sha256(path.read_bytes()).hexdigest() == digest for path, digest in fingerprints.items()), 'inputs changed during verification'
         print(f'silk-shell models: {count} commands in {len(scenarios)} scenarios, {lines} exact Rust trace lines, '
               f'default/enforce, GCC/Clang authored/exported O0/O2 and sanitizers, {mutations} mutations detected, '
               f'2 const-write refusals, cesta={fingerprints[Path(compiler)][:16]}, '
-              f'models={fingerprints[args.source.resolve()][:16]}')
+              f'historical-models={candidate_hash[:16]}')
 
 
 if __name__ == '__main__':

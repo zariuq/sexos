@@ -61,7 +61,41 @@
       (for (var size_t i 0) (< i 8) (++ i)
         (= ([] p i) (cast uint8_t (& (>> v (* i 8)) 0xFFu)))))
 
+    (fn (static bool) diskfs_writer_offer ((uint64_t (* job)) (uint32_t (* home)))
+      (var RegionWriterReceipt query (call sexos_region_writer_query SEXOS_SLOT_buf_lend))
+      (if (|| (!= (. query status) REGION_WRITER_OK)
+              (|| (== (. query current) 0) (|| (!= (. query job) 0) (== (. query peer) 0))))
+        (return false))
+      (var uint64_t next (. sexfiles_state diskfs_writer_job_next))
+      (if (|| (== next 0) (== next UINT64_MAX)) (return false))
+      (var RegionWriterReceipt offered
+        (call sexos_region_writer_change SEXOS_SLOT_buf_lend REGION_WRITER_OFFER (. query revision) next))
+      (if (|| (!= (. offered status) REGION_WRITER_OK)
+              (|| (!= (. offered current) (. query current)) (!= (. offered job) next)))
+        (return false))
+      (= (. sexfiles_state diskfs_writer_job_next) (+ next 1))
+      (= (* job) next)
+      (= (* home) (. query current))
+      (return true))
+
+    (fn (static bool) diskfs_writer_settle ((uint64_t job) (uint32_t home))
+      (var RegionWriterReceipt query (call sexos_region_writer_query SEXOS_SLOT_buf_lend))
+      (if (|| (!= (. query status) REGION_WRITER_OK) (!= (. query current) home)) (return false))
+      (if (== (. query job) 0) (return true))
+      (if (!= (. query job) job) (return false))
+      (var RegionWriterReceipt cancelled
+        (call sexos_region_writer_change SEXOS_SLOT_buf_lend REGION_WRITER_CANCEL (. query revision) job))
+      (return (&& (== (. cancelled status) REGION_WRITER_OK)
+                  (&& (== (. cancelled current) home) (== (. cancelled job) 0)))))
+
     (fn uint64_t diskfs_block_call ((uint64_t opcode) (uint64_t arg0) (uint64_t arg1) (uint64_t arg2))
+      (var bool writer_offered false)
+      (var uint64_t writer_job 0)
+      (var uint32_t writer_home 0)
+      (if (&& (== opcode BLOCK_READ) (== arg2 SEXOS_SLOT_buf_lend))
+        (block
+          (= writer_offered (call diskfs_writer_offer (& writer_job) (& writer_home)))
+          (if (! writer_offered) (return BLOCK_ERR_NO_DEVICE))))
       (if (call diskfs_hot_log)
         (call sexos_line "[sexfiles.ap24.provenance] head=COMPILE_TIME_UNKNOWN dirty=0 note=clean_diag"))
       (if (|| (== opcode BLOCK_READ) (== opcode BLOCK_WRITE))
@@ -81,6 +115,8 @@
       (var SexosReply send_res (call sexos_pdx_call SEXOS_SLOT_block opcode arg0 arg1 arg2))
       (if (!= (. send_res status) 0)
         (block
+          (if (&& writer_offered (! (call diskfs_writer_settle writer_job writer_home)))
+            (call sexos_fail))
           (if (call diskfs_hot_log)
             (call sexos_line "[sexfiles.diskfs.reply] status=%#llx value=0 err=enqueue_fail"
               (cast (unsigned long long) (. send_res status))))
@@ -93,7 +129,11 @@
           (return (. send_res status))))
       (while 1
         (block
-          (var SexosMessage msg (call sexos_listen (& (. sexfiles_state listener)) 0))
+          (var SexosRequest request (compound SexosRequest (= (. id) 0)))
+          (cpp-if "SEXOS_SEXFILES_CURRENT_DOCUMENT"
+            (then (= request (call sexos_rpc_listen_once 0)))
+            (else (= (. request message) (call sexos_listen (& (. sexfiles_state listener)) 0))))
+          (var SexosMessage msg (. request message))
           (if (== (. msg type_id) 1)
             (block
               (var uint64_t reply_val (. msg arg0))
@@ -106,9 +146,11 @@
                   (if (call diskfs_hot_log)
                     (call sexos_line "[sexfiles.diskfs.block.reply] op=%s status=%llu bytes=%llu"
                       op (cast (unsigned long long) reply_val) (cast (unsigned long long) arg1)))))
+              (if (&& writer_offered (! (call diskfs_writer_settle writer_job writer_home)))
+                (call sexos_fail))
               (return reply_val)))
           (if (!= (. msg type_id) 0)
-            (cast void (call defer_stash (. msg type_id) (. msg caller_pd) (. msg arg0) (. msg arg1) (. msg arg2))))
+            (cast void (call defer_stash request)))
           (call sexos_yield))))
 
     (fn uint64_t diskfs_block_read ((uint64_t offset) (uint64_t size) (uint64_t buffer_cap))

@@ -1,0 +1,25 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (include "network_engine_frame.h")
+  (ownership
+   (check-all)
+   (foreign net_config_valid (obligation "Separately admitted immutable network-configuration validator; has no memory effects.")))
+  (native "
+static NetworkEngineTicket engine_frame_ticket(const NetworkEngineFrame *frame,NetConfig config,uint8_t protocol,size_t minimum)
+{
+ if(!net_config_valid(config)||frame->length>NETWORK_ENGINE_MAX_FRAME||frame->length<minimum)return(NetworkEngineTicket){0};
+ uint32_t source=(uint32_t)frame->bytes[26]<<24|(uint32_t)frame->bytes[27]<<16|(uint32_t)frame->bytes[28]<<8|frame->bytes[29];
+ if(frame->bytes[12]!=8||frame->bytes[13]!=0||frame->bytes[14]>>4!=4||frame->bytes[23]!=protocol||source!=config.local)return(NetworkEngineTicket){0};
+ size_t header=(size_t)(frame->bytes[14]&15)*4;
+ size_t transport=protocol==6?20:8;
+ if(header<20||frame->length<14+header+transport)return(NetworkEngineTicket){0};
+ size_t offset=14+header;
+ uint16_t port=(uint16_t)((uint16_t)frame->bytes[offset]<<8|frame->bytes[offset+1]);
+ if(port<=config.source_base)return(NetworkEngineTicket){0};
+ return(NetworkEngineTicket){true,(uint32_t)(port-config.source_base)};
+}
+NetworkEngineTicket network_engine_client_ticket(const NetworkEngineFrame *frame,NetConfig config)
+{return engine_frame_ticket(frame,config,6,54);}
+NetworkEngineTicket network_engine_dns_ticket(const NetworkEngineFrame *frame,NetConfig config)
+{return engine_frame_ticket(frame,config,17,42);}
+")))

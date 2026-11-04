@@ -1,0 +1,595 @@
+{
+  "pin": "c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321",
+  "functions": [
+    {
+      "name": "maybe_run_bell_workflow_detail_proof",
+      "flag": "BELL_WORKFLOW_DETAIL_PROOF_ENABLED",
+      "done": "BELL_WORKFLOW_DETAIL_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "38ef43b7dbe44087b214249de8a03f3c168496248131458465f5710edaae46cb",
+      "env_flags": [
+        "SEXOS_BELL_WORKFLOW_DETAIL_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_app_lifecycle_state_proof",
+      "flag": "APP_LIFECYCLE_STATE_PROOF_ENABLED",
+      "done": "APP_LIFECYCLE_STATE_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "72cdc7b92c50abe7c82f4a138793df6404a6af1beb07df32314b1fd6bb0dd18c",
+      "env_flags": [
+        "SEXOS_APP_LIFECYCLE_STATE_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_app_lifecycle_close_restore_proof",
+      "flag": "APP_LIFECYCLE_CLOSE_RESTORE_PROOF_ENABLED",
+      "done": "APP_LIFECYCLE_CLOSE_RESTORE_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "6b7b4ebd8acd2caf9a196fdf40ff9c3c898f75cf2f4ab3ff32968bf1389a7963",
+      "env_flags": [
+        "SEXOS_APP_LIFECYCLE_CLOSE_RESTORE_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_bell_delivery_audit_proof",
+      "flag": "BELL_DELIVERY_AUDIT_PROOF_ENABLED",
+      "done": "BELL_DELIVERY_AUDIT_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "5812a26524c5773aaf47ef27dd35508ab5e7a017ec2351adf1b692cdbdad414f",
+      "env_flags": [
+        "SEXOS_BELL_DELIVERY_AUDIT_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_app_lifecycle_summary_v2_proof",
+      "flag": "APP_LIFECYCLE_SUMMARY_V2_PROOF_ENABLED",
+      "done": "APP_LIFECYCLE_SUMMARY_V2_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "99bd0011288dab171956ee0804b293830bde1bf58fe1be63b1a1018ab9fb0585",
+      "env_flags": [
+        "SEXOS_APP_LIFECYCLE_SUMMARY_V2_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_app_registry_lifecycle_v2_proof",
+      "flag": "APP_REGISTRY_LIFECYCLE_V2_PROOF_ENABLED",
+      "done": "APP_REGISTRY_LIFECYCLE_V2_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "d58861b98f5164af59b622017374207b4a84cbaf6e04143bdd5f0e689f59954b",
+      "env_flags": [
+        "SEXOS_APP_REGISTRY_LIFECYCLE_V2_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_stub_proof",
+      "flag": "BROWSER_STUB_PROOF_ENABLED",
+      "done": "BROWSER_STUB_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "bb4eb22d42d8557e6ed4f9ef690c2dbd6c2dd67d426a59b253873f66eeb66050",
+      "env_flags": [
+        "SEXOS_BROWSER_STUB_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_localdoc_stub_proof",
+      "flag": "BROWSER_LOCALDOC_STUB_PROOF_ENABLED",
+      "done": "BROWSER_LOCALDOC_STUB_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "2c09bda7c03754e9e7c9c61503d3886aa0316d81d25fc52f381189e8e32d9361",
+      "env_flags": [
+        "SEXOS_BROWSER_LOCALDOC_STUB_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_webstub_localdoc_surface_text_proof",
+      "flag": "WEBSTUB_LOCALDOC_TEXT_PROOF_ENABLED",
+      "done": "WEBSTUB_LOCALDOC_TEXT_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "64291c9ce86776d1374e5bff29ed49dd65aa8df55595db014d5dba857e770325",
+      "env_flags": [
+        "SEXOS_WEBSTUB_LOCALDOC_TEXT_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_webstub_static_text_render_proof",
+      "flag": "WEBSTUB_STATIC_TEXT_RENDER_PROOF_ENABLED",
+      "done": "WEBSTUB_STATIC_TEXT_RENDER_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "337ffc50d12a7ca227e1fcee609c50b20bbf26e5332a6b9ebc9514a986283e7c",
+      "env_flags": [
+        "SEXOS_WEBSTUB_STATIC_TEXT_RENDER_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_shell_draw_text_helper_proof",
+      "flag": "SHELL_DRAW_TEXT_HELPER_PROOF_ENABLED",
+      "done": "SHELL_DRAW_TEXT_HELPER_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "c0e346ae94ea14a5a63210bf4074919eda880188e968c5b34e3664e8ffdfd54c",
+      "env_flags": [
+        "SEXOS_SHELL_DRAW_TEXT_HELPER_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_stub_v2_proof",
+      "flag": "BROWSER_STUB_V2_PROOF_ENABLED",
+      "done": "BROWSER_STUB_V2_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "20157b74524fd0128eab4f44e56f493b3ae9fead82d78fe85c515c6144f5450f",
+      "env_flags": [
+        "SEXOS_BROWSER_STUB_V2_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_localdoc_viewer_proof",
+      "flag": "BROWSER_LOCALDOC_VIEWER_PROOF_ENABLED",
+      "done": "BROWSER_LOCALDOC_VIEWER_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "874894b2e0b4d9bae420739764581e5a724274bc6bb350c6ec9ca20170e43279",
+      "env_flags": [
+        "SEXOS_BROWSER_LOCALDOC_VIEWER_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_url_bar_intent_proof",
+      "flag": "BROWSER_URL_BAR_INTENT_PROOF_ENABLED",
+      "done": "BROWSER_URL_BAR_INTENT_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "b6c6b4de7ecfdb369ea5fdeae6f6ec46f3a5d19e9c0b64a85b831dca6598b02e",
+      "env_flags": [
+        "SEXOS_BROWSER_URL_BAR_INTENT_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_history_proof",
+      "flag": "BROWSER_HISTORY_PROOF_ENABLED",
+      "done": "BROWSER_HISTORY_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "5b72277ed5ef565589feacae0a4fe25fb5b1bf7adaf3573bc10e290154bc6979",
+      "env_flags": [
+        "SEXOS_BROWSER_HISTORY_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_bookmarks_proof",
+      "flag": "BROWSER_BOOKMARKS_PROOF_ENABLED",
+      "done": "BROWSER_BOOKMARKS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "33760920d7f82836c8b40d1e4272b06031bbb7099640b12ec22ad1c6a4c9c04d",
+      "env_flags": [
+        "SEXOS_BROWSER_BOOKMARKS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_tabs_proof",
+      "flag": "BROWSER_TABS_PROOF_ENABLED",
+      "done": "BROWSER_TABS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "3c8877f1a034ae24b7ac6f64ccb2dbd28ebb6b5172a1b85f86a1b8c72af02e81",
+      "env_flags": [
+        "SEXOS_BROWSER_TABS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_actions_proof",
+      "flag": "BROWSER_ACTIONS_PROOF_ENABLED",
+      "done": "BROWSER_ACTIONS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "5e423e6652f8573e5ea87680bcaf67ee718d77838ff699aefdbc36acc1758ecd",
+      "env_flags": [
+        "SEXOS_BROWSER_ACTIONS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_dashboard_proof",
+      "flag": "BROWSER_DASHBOARD_PROOF_ENABLED",
+      "done": "BROWSER_DASHBOARD_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "fba3b57f4004b30eee2063921caa275d52cee77848af2339b0806b5796572238",
+      "env_flags": [
+        "SEXOS_BROWSER_DASHBOARD_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_find_proof",
+      "flag": "BROWSER_FIND_PROOF_ENABLED",
+      "done": "BROWSER_FIND_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "c5ec5b726d0f752f909413ed59f23e4b5dbc97c0ff6330eced39c42886be1d39",
+      "env_flags": [
+        "SEXOS_BROWSER_FIND_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_reader_proof",
+      "flag": "BROWSER_READER_PROOF_ENABLED",
+      "done": "BROWSER_READER_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "18253e6e97a15239aa6becc6913059941a06f42cca8b42381b114258abddf4a3",
+      "env_flags": [
+        "SEXOS_BROWSER_READER_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_save_proof",
+      "flag": "BROWSER_SAVE_PROOF_ENABLED",
+      "done": "BROWSER_SAVE_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "d5f61c03b1c24d138c568d689f724f5903fcb382bb795eb76bfa3b1c64e693b2",
+      "env_flags": [
+        "SEXOS_BROWSER_SAVE_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_export_proof",
+      "flag": "BROWSER_EXPORT_PROOF_ENABLED",
+      "done": "BROWSER_EXPORT_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "cb455737de6332fb80a035de88ece2efd2c2c11c2d55ead5f4fa9b209d6fcdd9",
+      "env_flags": [
+        "SEXOS_BROWSER_EXPORT_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_url_parse_proof",
+      "flag": "BROWSER_URL_PARSE_PROOF_ENABLED",
+      "done": "BROWSER_URL_PARSE_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "4a4c96aec5b54025114f5a9fec5d7863755a39b18e9a3c254ffd753eaa686dee",
+      "env_flags": [
+        "SEXOS_BROWSER_URL_PARSE_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_sexnet_source3_proof",
+      "flag": "BROWSER_SEXNET_SOURCE3_PROOF_ENABLED",
+      "done": "BROWSER_SEXNET_SOURCE3_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "f8c4cd1075e78ca36e21b25e3b0265cfff678bfb5194b96107fdfc3c03f97d56",
+      "env_flags": [
+        "SEXOS_BROWSER_SEXNET_SOURCE3_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_render_stability_proof",
+      "flag": "BROWSER_RENDER_STABILITY_PROOF_ENABLED",
+      "done": "BROWSER_RENDER_STABILITY_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "2c376c9a374c3b9a3f137008621312594db0fa42157e4d87dc506f9d352cc2aa",
+      "env_flags": [
+        "SEXOS_BROWSER_SEXNET_SOURCE3_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_sexnet_browser_cap_proof",
+      "flag": "SEXNET_BROWSER_CAP_PROOF_ENABLED",
+      "done": "SEXNET_BROWSER_CAP_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "ddb9d99915aedaf6007f791a7c36a52c9d95e1086d34f63002fd2e76ad44dc2d",
+      "env_flags": [
+        "SEXOS_SEXNET_BROWSER_CAP_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_sexnet_status_route_proof",
+      "flag": "SEXNET_STATUS_ROUTE_PROOF_ENABLED",
+      "done": "SEXNET_STATUS_ROUTE_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "277a872b94284c099ce82b129d20ac6516b1b2a14f6012b338a4296d0d01a15d",
+      "env_flags": [
+        "SEXOS_SEXNET_STATUS_ROUTE_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_net_grant_proof",
+      "flag": "BROWSER_NET_GRANT_PROOF_ENABLED",
+      "done": "BROWSER_NET_GRANT_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "5c2c424bc327e6b8adc7930e74ef8a13994c899ec73d586e531721e03cc4e0ad",
+      "env_flags": [
+        "SEXOS_BROWSER_NET_GRANT_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_http_client_status_proof",
+      "flag": "HTTP_CLIENT_STATUS_PROOF_ENABLED",
+      "done": "HTTP_CLIENT_STATUS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "ea825e17c8b4c78526462a77712dd28041b68ee6ea9716106e5ad2d9fec3c505",
+      "env_flags": [
+        "SEXOS_HTTP_CLIENT_STATUS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_http_req_builder_proof",
+      "flag": "HTTP_REQ_BUILDER_PROOF_ENABLED",
+      "done": "HTTP_REQ_BUILDER_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "267cb0ee575e0d2cf8141959db5844f9f1261ad6055582942aa737277a3603cb",
+      "env_flags": [
+        "SEXOS_HTTP_REQ_BUILDER_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_sexnet_http_handshake_proof",
+      "flag": "SEXNET_HTTP_HANDSHAKE_PROOF_ENABLED",
+      "done": "SEXNET_HTTP_HANDSHAKE_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "f3f5a0b68f99164542868723465035a98768c029701f54e9f2e97f850ee36121",
+      "env_flags": [
+        "SEXOS_SEXNET_HTTP_HANDSHAKE_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_qemu_e1000_pci_enum_proof",
+      "flag": "QEMU_E1000_PCI_ENUM_PROOF_ENABLED",
+      "done": "QEMU_E1000_PCI_ENUM_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "165199af044244b44330b56f2870f2737690e33dd0cc3adb536ef5cf86fe7f71",
+      "env_flags": [
+        "SEXOS_QEMU_E1000_PCI_ENUM_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_pci_net_status_proof",
+      "flag": "PCI_NET_STATUS_PROOF_ENABLED",
+      "done": "PCI_NET_STATUS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "d4c6824c22a67ef3d575f9cc79f1c689f10e633e8e7bf2980607e30df2c7fc65",
+      "env_flags": [
+        "SEXOS_PCI_NET_STATUS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_e1000_bar_meta_proof",
+      "flag": "E1000_BAR_META_PROOF_ENABLED",
+      "done": "E1000_BAR_META_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "01c74c921ecc849c4a40ac582e3548698ef06fd6b248d6817b6d6d323061d110",
+      "env_flags": [
+        "SEXOS_E1000_BAR_META_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_e1000_driver_status_proof",
+      "flag": "E1000_DRIVER_STATUS_PROOF_ENABLED",
+      "done": "E1000_DRIVER_STATUS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "2c6e8f660c816b023124b0587ddaf4110ef1b93dc454be769a08ee522121a146",
+      "env_flags": [
+        "SEXOS_E1000_DRIVER_STATUS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_e1000_ring_alloc_proof",
+      "flag": "E1000_RING_ALLOC_PROOF_ENABLED",
+      "done": "E1000_RING_ALLOC_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "aeda8ca77f65875f3e555b12566e64a530697977e1c576219c2c08115e9eab63",
+      "env_flags": [
+        "SEXOS_E1000_RING_ALLOC_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_html_proof",
+      "flag": "BROWSER_HTML_PROOF_ENABLED",
+      "done": "BROWSER_HTML_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "912ed9e2b01695f9096b1c18438e51985413e0f22c17d1bc84d4037abd0600bc",
+      "env_flags": [
+        "SEXOS_BROWSER_HTML_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_html_link_proof",
+      "flag": "BROWSER_HTML_LINK_PROOF_ENABLED",
+      "done": "BROWSER_HTML_LINK_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "3fd7d235fa1de11bba0509fdb7e8012aa70661b48a576e2a9f2a41379a0540a1",
+      "env_flags": [
+        "SEXOS_BROWSER_HTML_LINK_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_html_history_proof",
+      "flag": "BROWSER_HTML_HISTORY_PROOF_ENABLED",
+      "done": "BROWSER_HTML_HISTORY_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "0511c849630a75027d23a17f8187a428a391f232bd4d8dc2c832135b0550c790",
+      "env_flags": [
+        "SEXOS_BROWSER_HTML_HISTORY_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_url_intent_proof",
+      "flag": "BROWSER_URL_INTENT_PROOF_ENABLED",
+      "done": "BROWSER_URL_INTENT_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "7d5b270e19aa370aea6183ef7151b721572c32df83b001ec6673bdf2e026c6d5",
+      "env_flags": [
+        "SEXOS_BROWSER_URL_INTENT_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_browser_placeholder_surface_visual_proof",
+      "flag": "BROWSER_PLACEHOLDER_SURFACE_VISUAL_PROOF_ENABLED",
+      "done": "BROWSER_PLACEHOLDER_SURFACE_VISUAL_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "03d50453f162dfb4846bfecd21936bfddb825ef8e8c28fac8ed9973fa6d3f26e",
+      "env_flags": [
+        "SEXOS_BROWSER_PLACEHOLDER_SURFACE_VISUAL_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_frame_chrome_model_proof",
+      "flag": "FRAME_CHROME_MODEL_PROOF_ENABLED",
+      "done": "FRAME_CHROME_MODEL_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "a04abff48416b5ec439420cd6e1a4f79d3fd3507f4d6b1d832e5026eb83a4fb5",
+      "env_flags": [
+        "SEXOS_FRAME_CHROME_MODEL_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_frame_rim_markers_proof",
+      "flag": "FRAME_RIM_MARKERS_PROOF_ENABLED",
+      "done": "FRAME_RIM_MARKERS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "6b39be19966e05e243d0571ae90162d15d0d81112283045812653dbac70cbcb0",
+      "env_flags": [
+        "SEXOS_FRAME_RIM_MARKERS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_bell_launch_outcome_proof",
+      "flag": "BELL_LAUNCH_OUTCOME_PROOF_ENABLED",
+      "done": "BELL_LAUNCH_OUTCOME_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "62f6dd4659cc5a861cac57d538b9c62540064116a91ebd546692a48a551925d4",
+      "env_flags": [
+        "SEXOS_BELL_LAUNCH_OUTCOME_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_project_scene_link_proof",
+      "flag": "PROJECT_SCENE_LINK_PROOF_ENABLED",
+      "done": "PROJECT_SCENE_LINK_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "098e98cc2041ad170de27ff943a576ab635806a99711d1ae3e8c7f90bc3159ca",
+      "env_flags": [
+        "SEXOS_PROJECT_SCENE_LINK_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_mesh_graph_status_proof",
+      "flag": "MESH_GRAPH_STATUS_PROOF_ENABLED",
+      "done": "MESH_GRAPH_STATUS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "fc2a60c51e01cee3076839be57ccfd6ba01f2af5d31162e4108dd9c4d387cb34",
+      "env_flags": [
+        "SEXOS_MESH_GRAPH_STATUS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_collar_grant_status_proof",
+      "flag": "COLLAR_GRANT_STATUS_PROOF_ENABLED",
+      "done": "COLLAR_GRANT_STATUS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "ad53beda2ea3bca9a17593219957ab789a023dda33501a2f58b3fb25f9642aae",
+      "env_flags": [
+        "SEXOS_COLLAR_GRANT_STATUS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_atlas_scene_stub_proof",
+      "flag": "ATLAS_SCENE_STUB_PROOF_ENABLED",
+      "done": "ATLAS_SCENE_STUB_PROOF_DONE",
+      "state_component": "atlas",
+      "state_type": "SilkShellAtlasState",
+      "source_sha256": "935f6255a63bd25a95f2cd5ab016dcde768498c97908f4a4a80037ceb39a0ca7",
+      "env_flags": [
+        "SEXOS_ATLAS_SCENE_STUB_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_scene_lifecycle_markers_proof",
+      "flag": "SCENE_LIFECYCLE_MARKERS_PROOF_ENABLED",
+      "done": "SCENE_LIFECYCLE_MARKERS_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "744f5e94d24a538fced9fa4a2f20d4d4f1dfd9d69ba00a8612ffb2df16c1191d",
+      "env_flags": [
+        "SEXOS_SCENE_LIFECYCLE_MARKERS_PROOF"
+      ]
+    },
+    {
+      "name": "maybe_run_scene_keyboard_switch_proof",
+      "flag": "SCENE_KEYBOARD_SWITCH_PROOF_ENABLED",
+      "done": "SCENE_KEYBOARD_SWITCH_PROOF_DONE",
+      "state_component": "proofs_a",
+      "state_type": "SilkShellProofsAState",
+      "source_sha256": "7e3f288920b6f8ee826986d2f1b43e510d747a90c7c2c329ec22b52608601527",
+      "env_flags": [
+        "SEXOS_SCENE_KEYBOARD_SWITCH_PROOF"
+      ]
+    }
+  ],
+  "remaining": [
+    "maybe_run_linen_keyboard_route_proof",
+    "maybe_run_bell_keyboard_detail_proof",
+    "maybe_run_bell_detail_seed_proof",
+    "maybe_run_atlas_scene_keyboard_proof",
+    "maybe_run_atlas_theme_visual_proof",
+    "maybe_run_atlas_theme_presets_proof",
+    "maybe_run_silkbar_keyboard_status_proof",
+    "maybe_run_physical_keyboard_to_quil_focus_proof",
+    "maybe_run_silkbar_palette_status_proof",
+    "maybe_run_silkbar_phase2_shell_proof",
+    "maybe_run_bell_system_events_proof",
+    "maybe_run_bell_app_event_integration_proof",
+    "maybe_run_bell_workflow_event_proof",
+    "maybe_run_window_workflow_v2_proof",
+    "maybe_run_frame_lights_stub_proof",
+    "maybe_run_frame_lights_keyboard_proof",
+    "maybe_run_frame_lights_pointer_proof",
+    "maybe_run_lifecycle_multitab_proof",
+    "maybe_run_silk_focus_reject_proof",
+    "maybe_run_silk_drag_reject_proof",
+    "maybe_run_silk_window_move_proof",
+    "maybe_run_quil_visible_typing_e2e_proof",
+    "maybe_run_atlas_visible_restore_proof",
+    "maybe_run_appdeath_cleanup_proof",
+    "maybe_run_linen_object_detail_proof",
+    "maybe_run_linen_nonblocking_open_proof",
+    "maybe_run_collar_keyboard_grants_proof"
+  ]
+}

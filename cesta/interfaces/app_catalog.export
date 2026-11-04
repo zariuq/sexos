@@ -1,0 +1,2 @@
+(cesta-export/1 (header SEXOS_APP_CATALOG_ROWS_H) (profile c11)
+  (table-rows "kernel_current.data" Apps (macro SEXOS_APP_LIFECYCLE_ROWS) (columns lifecycle_slot)))

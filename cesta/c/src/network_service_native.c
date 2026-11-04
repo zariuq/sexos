@@ -1,0 +1,12 @@
+#include "network_service_core.h"
+
+bool network_service_native_job(NetworkJobMachine *jobs,NetworkEngineTransport *transport,NetworkJobIdentity owner,NetworkJobRequest request,uint64_t now,bool other_held,const NetworkJobResolution *resolution,uint32_t admission_error)
+{NetworkJobEngineContext context={transport,request.kind==NETWORK_JOB_BEGIN_DUPLEX_RESOLVED||jobs->duplex};NetworkJobWire wire=network_job_engine_wire(&context);return network_job_machine_handle_resolved(jobs,owner,request,now,other_held,resolution,admission_error,wire);}
+bool network_service_native_dns_job(NetworkDnsJobMachine *jobs,NetworkEngineTransport *transport,NetworkJobIdentity owner,NetworkDnsJobRequest request,uint64_t now,bool other_held)
+{NetworkDnsJobEngineContext context={transport};NetworkDnsJobWire wire=network_dns_job_engine_wire(&context);return network_dns_job_machine_handle(jobs,owner,request,now,other_held,wire);}
+void network_service_native_advance(NetworkJobMachine *jobs,NetworkDnsJobMachine *dns_jobs,NetworkEngineTransport *transport,uint64_t now)
+{network_engine_transport_advance(transport,now);NetworkJobEngineContext context={transport,jobs->duplex};NetworkJobWire wire=network_job_engine_wire(&context);network_job_machine_advance(jobs,now,wire);NetworkDnsJobEngineContext dns_context={transport};NetworkDnsJobWire dns_wire=network_dns_job_engine_wire(&dns_context);network_dns_job_machine_advance(dns_jobs,now,dns_wire);}
+bool network_service_native_retire(NetworkJobMachine *jobs,NetworkDnsJobMachine *dns_jobs,NetworkEngineTransport *transport,NetworkJobIdentity owner)
+{NetworkJobEngineContext context={transport,jobs->duplex};NetworkJobWire wire=network_job_engine_wire(&context);bool client=network_job_machine_retire(jobs,owner,wire);NetworkDnsJobEngineContext dns_context={transport};NetworkDnsJobWire dns_wire=network_dns_job_engine_wire(&dns_context);bool dns=network_dns_job_machine_retire(dns_jobs,owner,dns_wire);return client||dns;}
+
+

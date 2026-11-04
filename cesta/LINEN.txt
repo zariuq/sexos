@@ -1,0 +1,103 @@
+CURRENT LINEN SNAPSHOT, PUBLICATION AND RENDERING
+
+The current-upstream client keeps one outstanding storage request, a bounded
+staging table and a FIFO of open intents. It publishes a complete snapshot once,
+retains a still-present selection and preserves the previous complete view on
+rejection. Rendering uses the published table, including during a new refresh.
+
+The checked pure list composer retains the upstream width-dependent scale,
+bounded columns, five-row pagination, selection, ASCII sanitization and line
+truncation. Object rendering keeps the eight-rectangle budget and queues text
+with its publication metadata through the existing atomic outbox. The current
+paint path postpones initiating refresh while startup messages remain; fast
+paint renders the current publication without initiating storage work.
+
+The upstream static fallback sends NUL-filled gaps to an atomic text validator
+that rejects NUL. The original Rust body consequently asserts for a nonzero-size
+fallback view. The Cesta variant fills those same twenty-column gaps with spaces.
+Tests reproduce the original failure and independently check all 108 replacement
+bytes, colors, selection and rectangle count. The reference used for comparison
+changes only this initialization; the original failure remains a negative control.
+
+The runtime gate composes the actual asynchronous client, bounded publication,
+list composer, paint functions, renderer and atomic text outbox. It extracts the
+current Rust function bodies, retains their original state declarations, and
+compares ordered calls, diagnostic records and queued text. Rendering during
+staging must keep using the old publication. Chrome and transport admissions
+remain scripted; queue admission is not evidence of displayed pixels.
+
+ShellLinenRenderContext borrows the canonical Chrome context and the independent
+Linen runtime. Local client views borrow the disjoint Models and runtime records
+only for their operation. Check-all plans cover list composition and both paint
+and render entry points. Source controls reject a read-only outbox and a live
+outbox loan crossing a conflicting render. Lean admission checks the emitted
+plans and rejects altered plans; it is not a whole-C refinement proof.
+
+Reference-record arrays are checked pointwise using their C extents. Linen's
+published table declares its nullable static display-name fields and uses a
+checked value publisher: it validates the complete staged result before changing
+Models, preserves a still-present selection, refuses duplicate or reserved IDs,
+does not substitute seeds for a correlated complete-empty capture, and advances
+its separate publication revision without wrapping. Uniform unknown-index shared
+reads require one referent footprint (or static origins); owning or exclusive
+unknown extraction remains refused. Native text erasure, the display adapter and
+Chrome operations retain their own contracts and qualification scopes.
+
+The strong path uses correlated requests 0x2C0 through 0x2C2. Linen retains one
+bounded capture, authenticated by shell domain/task and logical job. Begin copies
+the public projection in one server turn; later reads use only that retained
+frame, and End retires the job idempotently. The generated version-one encoding
+is little-endian, at most 574 bytes, preserves full-width IDs and arbitrary name
+bytes, and returns seven-byte tagged chunks with disjoint error tags. Disk rescan
+is an awaited dependency before capture rather than part of capture consistency.
+
+The shell keeps one refresh job, one active presentation and one latest desired
+presentation. Replacement of an unsent desired job is Superseded. Once display
+may have accepted an operation, cancellation or rejection is Indeterminate rather
+than a false rollback claim. Display acknowledgments are authenticated by domain
+and task and must match the active surface/sequence; an old acknowledgment can
+complete only its own attempt. The legacy path is selected explicitly and keeps
+the current Rust serialized behavior; it never becomes a fallback after a
+correlated request has been admitted.
+
+Reproduce with check-silk-shell-models-linen,
+check-silk-shell-models-render and check-silk-shell-models-render-ownership.
+The silk-shell-models archive binds the existing global Linen entry points to
+the canonical root's Models, Chrome, Input, Apps, Proofs and Linen runtime
+records. Publication's fast-paint callback validates the exact root identities
+and calls the real renderer. The removed synchronous receive and sanitization
+helpers and their obsolete state budget are absent from active source.
+
+Current Models policy checks explicit object denial before workspace lookup.
+Workspace permission requires an active matching record, current publication,
+the Linen subject, an allowed operation and an unprotected document slot.
+Opening disk_path 1 or 2 is refused before capability/link processing. Boot
+initialization adds the existing BOOT workspace policy record, refuses an
+occupied next slot and does not wrap its final generation increment. It does
+not mint a kernel capability. Full-table and occupied-slot bootstrap controls
+retain the original rejection and ordered diagnostic prefix. Normal tests call
+the seed initializer before later mutable table publications, as boot does.
+
+Workspace invalidation checks the authenticated sender domain/task against
+held custody and the exact no-payload operation. It retains a retry, cancels
+pending work on absence/death/close and queues a read-only rescan only after
+LIVE. Its context has a shared custody view and exclusive Linen runtime view.
+The lifecycle status adapter uses the existing held-slot syscall; hosted tests
+script its status and compile the actual native adapter separately.
+
+check-silk-shell-models compares 83 actual current Models bodies, including the
+complete open/policy/grant functions, then tests the root and workspace joins.
+check-silk-shell-models-historical replays the original committed Cesta source
+and its original interface against its original Rust cohort. It does not treat
+that cohort's old receive path as current behavior.
+
+The protocol-probe target joins the real strong shell client, checked publisher,
+presentation jobs, Linen dispatcher, current kernel RPC and display admission
+adapter. Paired QEMU qualification keeps an unchanged Rust legacy image and a
+current Cesta correlated-required image. The latter reaches capture, publication
+revision 2, a display commit and the authenticated matching acknowledgment.
+This is a protocol probe, not a completed shell or pixel proof.
+
+Core must still call silk_shell_models_runtime_init before using these APIs,
+dispatch snapshot/workspace messages, pump the shared outbox, and preserve
+startup FIFO ordering. A complete current shell boot remains required.

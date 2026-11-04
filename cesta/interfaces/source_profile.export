@@ -1,0 +1,2 @@
+(cesta-export/1 (header SEXOS_SOURCE_PROFILE_ROWS_H) (profile c11)
+  (table-rows "source_profile.data" Trust (macro SEXOS_SOURCE_TRUST_CONSTANTS) (columns name value)))

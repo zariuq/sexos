@@ -1,0 +1,21 @@
+Module KernelReply {
+  Theory Protocols() {
+    Empty Equations {
+      (kernel_reply_run) == (Protocol "cesta-protocol/1"
+        (Context KernelReplyContext)
+        (Hooks
+          (Hook inspect kernel_reply_inspect prepare (Requires) (Uses) (Proves heard))
+          (Hook complete kernel_reply_complete effect
+            (Requires heard) (Uses) (Proves ready) (Invalidates heard))
+          (Hook publish kernel_reply_publish effect (Requires ready) (Uses) (Proves)))
+        (Resources)
+        (Entry (Facts) (Owns))
+        (Body
+          (Call inspect
+            (Call complete (Call publish (Return done) (Return engine_failure))
+              (Return engine_failure))
+            (Return declined)))
+        (Checks (Fact heard kernel_reply_is_heard) (Fact ready kernel_reply_is_ready)));
+    }
+  }
+}

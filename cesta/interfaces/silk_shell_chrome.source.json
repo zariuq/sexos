@@ -1,0 +1,1137 @@
+{
+  "rect_impl_sha256": "42a188d60add5034557280f8f3fb94c5bbb96513b6d3f40934abac6d80305a43",
+  "runtime_panic_owner": "core",
+  "pin": "c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321",
+  "source_sha256": "fb36d2e89eeca1f450b5f8b825bc31bda30c7d50c5aa04f4821b6d52edd8030a",
+  "functions": [
+    {
+      "name": "scancode_to_action",
+      "start": 8297,
+      "end": 8347,
+      "sha256": "cfe9f8f1f2c7e5d3f4630191f2a5736095136352c0bba7e643d609d9b7b3846c"
+    },
+    {
+      "name": "action_name",
+      "start": 8349,
+      "end": 8368,
+      "sha256": "818401b7134eb5af2787c34f359d4d23d558e1db7e910ffb6bf5cbb850c17374"
+    },
+    {
+      "name": "desktop_width",
+      "start": 8277,
+      "end": 8279,
+      "sha256": "03e4d6ab62669dbd9c760e5f37f56f0499b4e0855208320c02b9e9f2ffef2d13"
+    },
+    {
+      "name": "desktop_height",
+      "start": 8280,
+      "end": 8282,
+      "sha256": "840045385624218d5f7325f293ca6ccc0690c3b537874ceca2365962543d62a8"
+    },
+    {
+      "name": "layout_left",
+      "start": 8370,
+      "end": 8372,
+      "sha256": "11a4ff6cb8f399870c793b2d6a7075d49c400863ee75c261fec90afe1b085814"
+    },
+    {
+      "name": "layout_right",
+      "start": 8374,
+      "end": 8376,
+      "sha256": "9f6928457a02857d9b803fa293c2bb9aac0aef8015f000c692d8b5a5d5c9c13e"
+    },
+    {
+      "name": "layout_maximize",
+      "start": 8378,
+      "end": 8380,
+      "sha256": "a0f95e8107821c1158806749053b3a1ea51717c55c64a31eaf31c933765f73a9"
+    },
+    {
+      "name": "clamp_position",
+      "start": 8384,
+      "end": 8388,
+      "sha256": "12c15fb06000c7b316f5bd7ba44da7d235e66b50986a1a75969ef75f06895e69"
+    },
+    {
+      "name": "snap_end_pos",
+      "start": 8392,
+      "end": 8396,
+      "sha256": "17dda9918e9870c2418cf715e7ad53452b6286ac6a602ec3dbca50c7df3475b3"
+    },
+    {
+      "name": "lifecycle_register",
+      "start": 11351,
+      "end": 11374,
+      "sha256": "2db3204bd413975e3dcc693a827b4eb1e48ae0d888eb78d6520c5e1c614e8e12"
+    },
+    {
+      "name": "lifecycle_state",
+      "start": 11377,
+      "end": 11386,
+      "sha256": "016fadecf8144b7cdf376d98b51a700ac98414a300c7336e7bc8d01bfc8f7f63"
+    },
+    {
+      "name": "set_lifecycle_state",
+      "start": 11391,
+      "end": 11428,
+      "sha256": "c72144c77d6800fb3b788470ea60d7c5d5e6d76cdb7c320f5d7f9c5e5c4f4c33"
+    },
+    {
+      "name": "surface_generation",
+      "start": 11431,
+      "end": 11440,
+      "sha256": "a5d811aeeddc00df3e5fca72cae4f6e7f799b219341efc889239e3427d920367"
+    },
+    {
+      "name": "bump_surface_generation",
+      "start": 11443,
+      "end": 11460,
+      "sha256": "a708645bb9898568b6f4f56b5baa2eccacd09ce13baf96e70011b59893044958"
+    },
+    {
+      "name": "make_focus_ref",
+      "start": 11463,
+      "end": 11471,
+      "sha256": "bfa934ef7cd33a38637536fea51849da45926926bb82bf632a9aa27b0f029d04"
+    },
+    {
+      "name": "focus_ref_is_current",
+      "start": 11475,
+      "end": 11488,
+      "sha256": "4f1c9cb4c199d092ebdcc36dd35eef402dbc49c1bc792e86be12d620ed878aee"
+    },
+    {
+      "name": "sync_focus_ref",
+      "start": 11492,
+      "end": 11499,
+      "sha256": "a4e6137790641718c7346edf911c5917e81c803f6160cfe3e2ee8499be6ddc69"
+    },
+    {
+      "name": "surface_is_lifecycle_live",
+      "start": 11503,
+      "end": 11510,
+      "sha256": "e5def0107f11344072ea77ca15d2928d67d96e503e4dbc37943838d89f7ede8f"
+    },
+    {
+      "name": "surface_is_lifecycle_focusable",
+      "start": 11514,
+      "end": 11519,
+      "sha256": "14d7b055714e0788e183250bf042613988dc8b4992334936e9076f451be6c723"
+    },
+    {
+      "name": "lifecycle_init_all",
+      "start": 11523,
+      "end": 11533,
+      "sha256": "21bbe90d925ae6c2b4280923cb446476de2e5fa71a60b662244a076bcdcf765e"
+    },
+    {
+      "name": "is_shell_surface",
+      "start": 11535,
+      "end": 11538,
+      "sha256": "1d36ac8fa9b176af9bef8cd871f580eb00e9a503c87521271b5189e81cdf0de0"
+    },
+    {
+      "name": "is_focusable_surface",
+      "start": 11543,
+      "end": 11551,
+      "sha256": "c4fc7195dbdda915a5ddc662d648c2a43afb7b5b391185ec32a4b4f8b99ebc65"
+    },
+    {
+      "name": "frame_for_surface",
+      "start": 19721,
+      "end": 19734,
+      "sha256": "e49bef5797a8491ce664ddb4a8551db067b3d1d362bbd07e4cb4331a2e978901"
+    },
+    {
+      "name": "active_surface_for_frame",
+      "start": 19738,
+      "end": 19749,
+      "sha256": "70e7a1d10044623dd5b74fa0ce0fb579bfa1858454be4f88a642db84c3f9cfe7"
+    },
+    {
+      "name": "selected_frame_id",
+      "start": 19753,
+      "end": 19755,
+      "sha256": "7a1c772d91545e2a5ea9e7c30cd22cc2686b9c3054f831df6036018078564b5a"
+    },
+    {
+      "name": "selected_surface_id",
+      "start": 19758,
+      "end": 19761,
+      "sha256": "94dc908a03f4c84f506230a41ea41851007d51b34f9275b0abcc503a37e30fb1"
+    },
+    {
+      "name": "selected_window_options_mask",
+      "start": 19766,
+      "end": 19775,
+      "sha256": "b0bdcfa95c1b70bdcfa7a75ebfb605342972461e5e5b8c27193134dc8510a698"
+    },
+    {
+      "name": "frame_is_minimized",
+      "start": 20021,
+      "end": 20030,
+      "sha256": "909d2aa333e78d5fd619471930308bf01d804b67b3e495962a7480bd5a0f30c6"
+    },
+    {
+      "name": "set_frame_minimized",
+      "start": 20103,
+      "end": 20116,
+      "sha256": "90dd8cc933d34781872588512aa574b00bab5e9edc8eb88259962a5c0b5216e7"
+    },
+    {
+      "name": "frame_is_zoomed",
+      "start": 20275,
+      "end": 20284,
+      "sha256": "238d16170a56d8f8837e0c5fefd7ea12bd04a22a65d1c86ea491debcf890825c"
+    },
+    {
+      "name": "set_frame_zoomed",
+      "start": 20287,
+      "end": 20300,
+      "sha256": "34f34cc93becb9a544fe5dadfc03bcf00b093f71ecf876344c310df49c9bbcfa"
+    },
+    {
+      "name": "frame_has_top_bar",
+      "start": 20305,
+      "end": 20314,
+      "sha256": "da3f276a3a63a8c479a53f430e54336b22c8ff8e1d81ee9633827773a8724a20"
+    },
+    {
+      "name": "set_frame_top_bar",
+      "start": 20346,
+      "end": 20359,
+      "sha256": "4a60d175dc822ffd5819cf74f2809f4632dd5da2789614b8be31ce38f1017db2"
+    },
+    {
+      "name": "first_minimized_frame_id",
+      "start": 20120,
+      "end": 20129,
+      "sha256": "6ee4b180d82c01fc179f042222ecd24f01dee13919c5dbbfc2f57c68ad18b140"
+    },
+    {
+      "name": "frame_accepts_input",
+      "start": 20034,
+      "end": 20057,
+      "sha256": "ea59dff9d173d77b77c7948d7073f640d009324722308560c3656a067de47fe4"
+    },
+    {
+      "name": "frame_chrome_visible",
+      "start": 20064,
+      "end": 20088,
+      "sha256": "22f893b4d216ef96b6e22651298f30dff79227da768efccb469b61e113b1c801"
+    },
+    {
+      "name": "clear_hover_if_wrong_scene",
+      "start": 20092,
+      "end": 20100,
+      "sha256": "8e3da8343c1536cf97cecc68365da46c09342ba3668f5064a8ea063d3acb6716"
+    },
+    {
+      "name": "frame_tab_count",
+      "start": 21822,
+      "end": 21831,
+      "sha256": "8d55d0d6b5d4b5811e5b086d3b19d4b1c45d5bb9f077d8d1ba303365d2d55df7"
+    },
+    {
+      "name": "frame_active_tab_index",
+      "start": 21834,
+      "end": 21843,
+      "sha256": "79728e2f19a3277164204284ce7c53b978fc2c06e7c2d30fc77c59f4c554e8e0"
+    },
+    {
+      "name": "frame_tab_at",
+      "start": 21850,
+      "end": 21899,
+      "sha256": "27f7c3d9e42440545f995af68faabe25f8fec59beb5d7845726c95b6e5c3cbb9"
+    },
+    {
+      "name": "swap_frame_tabs",
+      "start": 21904,
+      "end": 21932,
+      "sha256": "ee5f624c8c018e06202895a6db0742fdd5f74d99ae4e88901f48ff3477e02e03"
+    },
+    {
+      "name": "frame_light_to_option_mask",
+      "start": 20595,
+      "end": 20602,
+      "sha256": "7bc1790f311207288542458f8d702d3bc46c625a84d728c1c6cd2947dbb0ada7"
+    },
+    {
+      "name": "abs_screen_to_raw",
+      "start": 20682,
+      "end": 20686,
+      "sha256": "4e492f03b5732f9d10679d3925921d55838eed525af22975e0817433961389a3"
+    },
+    {
+      "name": "compute_resize_edge",
+      "start": 22687,
+      "end": 22705,
+      "sha256": "fb4ffc38b66db06622dd210947f6ff75cffdb4271bfa6b0a77d3719594da7a96"
+    },
+    {
+      "name": "compute_resize_rect",
+      "start": 22804,
+      "end": 22840,
+      "sha256": "8445f52c662732b429ad9ad0ea89879f20d76cb38d5c4f77dc2668a93946a89b"
+    },
+    {
+      "name": "native_child_geometry",
+      "start": 20362,
+      "end": 20376,
+      "sha256": "da08f0aab9f24680b501d00e395d32040cce3e6d2b0f011656b88b4140f9cbf4"
+    },
+    {
+      "name": "update_local_geometry",
+      "start": 20382,
+      "end": 20438,
+      "sha256": "7c5bf9be1f6a7a3542ad9706a4b2d2225d9e867ae9a329c394eb2d8f281d42e3"
+    },
+    {
+      "name": "is_closeable_surface",
+      "start": 19780,
+      "end": 19821,
+      "sha256": "40fd109ac687c5bf59b13198ef29f6f9317c47d96bfd592f389019c01fbf395a"
+    },
+    {
+      "name": "frame_close_allowed",
+      "start": 19824,
+      "end": 19829,
+      "sha256": "5ed6aadd6b794c8e5ae12c23adf4d7b8389133ed3aef2ebc9a54dc18b9fb677c"
+    },
+    {
+      "name": "emit_chrome_diagnostics",
+      "start": 20319,
+      "end": 20343,
+      "sha256": "cf2a1ac9d69736a3a337f5d22aba0080ed2bb65c5a4b57c368801e41536aaf58"
+    },
+    {
+      "name": "frame_chrome_operation",
+      "start": 21942,
+      "end": 21973,
+      "sha256": "803d5c778d62e603907fb346116622928284d014be30aae409727a08c204d502"
+    },
+    {
+      "name": "send_frame_tab_info",
+      "start": 21975,
+      "end": 21992,
+      "sha256": "a8f22eb005951091c37fef75769389afa5e23b168f2dd105f38c9d2b24bae4ee"
+    },
+    {
+      "name": "close_surface_from_frame_light",
+      "start": 19835,
+      "end": 20018,
+      "sha256": "2348f6c770636eef1be40c701abbc9f39f620ccdc2b05e666005922b4225667d"
+    },
+    {
+      "name": "minimize_frame",
+      "start": 20134,
+      "end": 20185,
+      "sha256": "de061027bbb592c343f23308f724d69c0bf12dfcde65895b91e29254a1dc3f53"
+    },
+    {
+      "name": "restore_minimized_frame_inner",
+      "start": 20193,
+      "end": 20270,
+      "sha256": "45c35608cc6e11e45e1cc5ebe65579d25baec9ea5f1d9419594d34255619302d"
+    },
+    {
+      "name": "restore_minimized_frame",
+      "start": 20190,
+      "end": 20192,
+      "sha256": "45a78a0076c2a3c478c5329956f53ab1a8509c20015b4f724ff30cbdb7f0b001"
+    },
+    {
+      "name": "zoom_frame",
+      "start": 20444,
+      "end": 20504,
+      "sha256": "6370d5e8bb190dcdf4c6e7b2946349aeb68d3a88f52b4a413f74e972cf5cdfe3"
+    },
+    {
+      "name": "unzoom_frame",
+      "start": 20509,
+      "end": 20560,
+      "sha256": "b0a8425a41b4866b2c1d17c33609fb19a3278db177b4eb8077d0dd8e53101549"
+    },
+    {
+      "name": "toggle_zoom_frame",
+      "start": 20564,
+      "end": 20591,
+      "sha256": "63a0d78e81f7ad757a923f2bf538383186e16d1061d084357aecadb842cc35e8"
+    },
+    {
+      "name": "tile_active_scene_frames",
+      "start": 8420,
+      "end": 8634,
+      "sha256": "3f760576f98afbab3b2449c88262e95c384b9fca0b53f7aa9ae8060fc54c6476"
+    },
+    {
+      "name": "tile_visible_frames",
+      "start": 8409,
+      "end": 8412,
+      "sha256": "d34a6fc20dbd1fc9450758267d095c0a18b3201e18e36312287f6bd6863003c3"
+    },
+    {
+      "name": "frame_light_at",
+      "start": 20608,
+      "end": 20680,
+      "sha256": "6e80ddfb3a3463afce3d7697b1da736ac5cd4890e9ffa76b538e4cb5e4427fd0"
+    },
+    {
+      "name": "toggle_top_bar_for_active_frame",
+      "start": 21999,
+      "end": 22034,
+      "sha256": "8f478f96a6bd51e93a3e8ef1c85e078b724be00046a4b372b2a282ce367e2305"
+    },
+    {
+      "name": "switch_to_tab",
+      "start": 22040,
+      "end": 22123,
+      "sha256": "6ccb8820319c45715751b7b83114dd29d4b1919e60a5152d4d0a534e9af79c7c"
+    },
+    {
+      "name": "try_set_focus_inner",
+      "start": 22279,
+      "end": 22460,
+      "sha256": "45172c7bd9e49230efb86e3fdb3b8b2f078659bb62033d0991c0c6cb9a31c735"
+    },
+    {
+      "name": "try_set_focus",
+      "start": 22276,
+      "end": 22278,
+      "sha256": "098fa628ddb8787fb362343605c88d99d5461806022a6f5e4530f07f3fe43ddd"
+    },
+    {
+      "name": "update_frame_hover_at",
+      "start": 22130,
+      "end": 22266,
+      "sha256": "79dded95931ba9746a07b304d479de4c2038a31fd7aecb61b5f2835d0ab5628f"
+    },
+    {
+      "name": "access_copy_label",
+      "start": 8946,
+      "end": 8950,
+      "sha256": "09f9fb794659543cdb1c34b518d319806bb023a5ab00ad621823ccc6bb4b1adb"
+    },
+    {
+      "name": "access_label_token",
+      "start": 9348,
+      "end": 9355,
+      "sha256": "ca5c7593ff5e36ed0408e9d5cf65b2d89ce1a3c965f01ece8441e910b6691daf"
+    },
+    {
+      "name": "access_node_is_valid_target",
+      "start": 8955,
+      "end": 8971,
+      "sha256": "7a5fe34f29326e8216cbc73cefddf5d66c627985977e4c2d237fe124a8b87908"
+    },
+    {
+      "name": "access_emit_scene_node",
+      "start": 8975,
+      "end": 9010,
+      "sha256": "b0eecb012715d4fc26e54f721f4e522c624257fe6a381c98238a35025329bed6"
+    },
+    {
+      "name": "access_emit_frame_node",
+      "start": 9014,
+      "end": 9068,
+      "sha256": "14978a3ed27f9573dc22d47155f53ee9d13ec750aa4a78fff6a54da4091c2504"
+    },
+    {
+      "name": "access_emit_shell_nodes",
+      "start": 9072,
+      "end": 9126,
+      "sha256": "5dd62b34e01968b3b8562a8cac8d7fc75aa612ecbb4cb3aac69b25a3c63d8ae8"
+    },
+    {
+      "name": "access_describe_node",
+      "start": 9361,
+      "end": 9378,
+      "sha256": "0c232daeb48905e8273481fde444b6fcd29499301c686b861d495a7c9a8ad09d"
+    },
+    {
+      "name": "access_describe_focus",
+      "start": 9383,
+      "end": 9420,
+      "sha256": "7471084435bcefdb0fbd3f5ea6701025cbcf5a6816444c465d75780fc4b2a8bb"
+    },
+    {
+      "name": "access_move_focus",
+      "start": 9131,
+      "end": 9162,
+      "sha256": "84855cf14a0410ad27470684965ceabb8c5f9dd441ff7aa5a1d879c7eea0f25f"
+    },
+    {
+      "name": "access_handle_keyboard_action",
+      "start": 9176,
+      "end": 9342,
+      "sha256": "5ac5467280ca325fe505028ded295089c7e364c749d5f9871908908ab3b6ca46"
+    },
+    {
+      "name": "try_transition",
+      "start": 22466,
+      "end": 22504,
+      "sha256": "0f755bcf5e05603400f8aa2c5dcaafd1ae2ef5976f891d3c7141b3059aa778d0"
+    },
+    {
+      "name": "move_surface_by",
+      "start": 22517,
+      "end": 22583,
+      "sha256": "aefa14e3a5278d9c6ca61816b7cfd7ebbb3e67074d6d745fbd6d4a7e3bd391ce"
+    },
+    {
+      "name": "synthetic_window_drag_target",
+      "start": 20688,
+      "end": 20746,
+      "sha256": "efb2f7e1e4bcb974a3f41a2a93888804b2d49b9b550b6781f17fda68779615ce"
+    },
+    {
+      "name": "silk_drag_begin_mark",
+      "start": 22586,
+      "end": 22593,
+      "sha256": "a582526feb1ce180e011836b31cac518c9ee7fb66a4f3e82319b5839b340c131"
+    },
+    {
+      "name": "silk_drag_end_mark",
+      "start": 22595,
+      "end": 22606,
+      "sha256": "256b2e17723b475ec75ba85fe64ee5f14c81a5b65b3c385d581969e8ea48fa5b"
+    },
+    {
+      "name": "drag_move_focused",
+      "start": 22612,
+      "end": 22684,
+      "sha256": "297f06bbaa4470ffc41ce0a0e019ae7e323f05eeed1a1e86a2cae9b59fd419df"
+    },
+    {
+      "name": "resize_accumulate_delta",
+      "start": 22709,
+      "end": 22729,
+      "sha256": "fb6f367f8d5c12a6802c26047ba0fde37b8232dfd93f999912a213efea69648a"
+    },
+    {
+      "name": "clear_resize_if_dead",
+      "start": 22732,
+      "end": 22739,
+      "sha256": "ddede39bc20e95bfc95e4796e4d1b77c5131da7fc012ec063f2cdf42c434455f"
+    },
+    {
+      "name": "try_snap_on_drag_release",
+      "start": 22744,
+      "end": 22799,
+      "sha256": "b215fbaf544fe38f605c7f0910d871bb25b7f27337aca3816e02b9576940fec2"
+    },
+    {
+      "name": "apply_resize_geometry",
+      "start": 22845,
+      "end": 22911,
+      "sha256": "c67ec199a72fc122bdbf62d65be20780387968c965f9f21b5c64cf4cb7cfc111"
+    },
+    {
+      "name": "hit_test_surface_chrome",
+      "start": 22916,
+      "end": 23005,
+      "sha256": "f75c73aff99fe4ab01d8db577bb96706427993ee0b62eef41f9df722c57cf9dd"
+    },
+    {
+      "name": "hit_test_at",
+      "start": 23012,
+      "end": 23089,
+      "sha256": "4a0f74b9dda1c8cbc60ce2f8792fd4a10932b6ef649e9f4a0140ecce89f92730"
+    },
+    {
+      "name": "hit_target_surface",
+      "start": 23092,
+      "end": 23097,
+      "sha256": "4896e6aacf3faa1d5cc17266f24a1218364538b8cfe7d2df40ede4019039278c"
+    },
+    {
+      "name": "hit_target_label",
+      "start": 23101,
+      "end": 23111,
+      "sha256": "6723bd3864e29e0e6206d353b85f6624ddd91d482d6e52a235b56c61325ec7a8"
+    },
+    {
+      "name": "toggle_os_panel",
+      "start": 23666,
+      "end": 23689,
+      "sha256": "0fdef56294cf753add631fccbb710db7a588209b33c308881f870dd263ae1ade"
+    },
+    {
+      "name": "toggle_scene_settings_panel",
+      "start": 23694,
+      "end": 23722,
+      "sha256": "a7eb6586e1dc8d9680a751d82db507a18e78e547ecea3e32f6d552982d14c5e6"
+    },
+    {
+      "name": "handle_silkbar_click",
+      "start": 23727,
+      "end": 23789,
+      "sha256": "74581159a87d439485cbd5010eaf1c575efb659311a3cea2a500b8b8d96bdc4c"
+    },
+    {
+      "name": "click_hit_test_and_focus",
+      "start": 23121,
+      "end": 23659,
+      "sha256": "07343c459648a8010cf26626569ed0a1f54ea5a73fa9cf1b813ccc49e44fc47e"
+    }
+  ],
+  "remaining": [],
+  "native_peers": [
+    "load_relaxed",
+    "store_relaxed",
+    "point_in_surface",
+    "surface_input_lifetime_mark_drag_target",
+    "surface_input_lifetime_mark_click_target",
+    "shell_interaction_contract_mark_stage",
+    "shell_interaction_contract_try_done",
+    "click_drag_proof_begin_drag_once",
+    "atlas_scene_at_point",
+    "switch_scene",
+    "sync_scene_visibility",
+    "clear_focus_if_wrong_scene",
+    "clear_drag_if_wrong_scene",
+    "atlas_capture_snapshot",
+    "toggle_bell",
+    "validate_scene_id",
+    "next_scene",
+    "prev_scene",
+    "frame_label",
+    "exchange_bool",
+    "surface_scene_id",
+    "surface_in_active_scene",
+    "launcher_focus_discard",
+    "mesh_is_visible_in_active_scene",
+    "mesh_render_pd_graph",
+    "bell_ring_count",
+    "send_silkbar_phase2_update",
+    "surface_input_lifetime_mark_focus_live",
+    "surface_input_lifetime_try_done",
+    "frame_name",
+    "pdx_call",
+    "app_closeable",
+    "shell_request_app_close",
+    "clear_focus_if_dead",
+    "clear_drag_if_dead",
+    "clear_hover_if_dead",
+    "record_tombstone_event",
+    "snap_capture_layout",
+    "desktop_ready",
+    "linen_object_count",
+    "linen_render_object_list",
+    "load_dimension",
+    "surface_is_alive",
+    "is_tombstoned",
+    "get_surface_bounds",
+    "clamp_surface_size",
+    "app_focusable"
+  ],
+  "diagnostics": [
+    {
+      "owner": "is_closeable_surface",
+      "name": "CLOSE_ALLOWED_GATE_BUDGET",
+      "value": 16,
+      "field": "is_closeable_surface__CLOSE_ALLOWED_GATE_BUDGET"
+    },
+    {
+      "owner": "send_frame_tab_info",
+      "name": "SHELL_TAB_INFO_SEND_BUDGET",
+      "value": 8,
+      "field": "send_frame_tab_info__SHELL_TAB_INFO_SEND_BUDGET"
+    },
+    {
+      "owner": "minimize_frame",
+      "name": "FRAME_MINIMIZE_BUDGET",
+      "value": 8,
+      "field": "minimize_frame__FRAME_MINIMIZE_BUDGET"
+    },
+    {
+      "owner": "minimize_frame",
+      "name": "TILE_AFTER_MINIMIZE_BUDGET",
+      "value": 8,
+      "field": "minimize_frame__TILE_AFTER_MINIMIZE_BUDGET"
+    },
+    {
+      "owner": "restore_minimized_frame_inner",
+      "name": "FRAME_RESTORE_BUDGET",
+      "value": 8,
+      "field": "restore_minimized_frame__FRAME_RESTORE_BUDGET"
+    },
+    {
+      "owner": "zoom_frame",
+      "name": "FRAME_ZOOM_BUDGET",
+      "value": 8,
+      "field": "zoom_frame__FRAME_ZOOM_BUDGET"
+    },
+    {
+      "owner": "unzoom_frame",
+      "name": "FRAME_UNZOOM_BUDGET",
+      "value": 8,
+      "field": "unzoom_frame__FRAME_UNZOOM_BUDGET"
+    },
+    {
+      "owner": "unzoom_frame",
+      "name": "TILE_AFTER_UNZOOM_BUDGET",
+      "value": 8,
+      "field": "unzoom_frame__TILE_AFTER_UNZOOM_BUDGET"
+    },
+    {
+      "owner": "tile_active_scene_frames",
+      "name": "SHELL_TILE_APPLY_BUDGET",
+      "value": 24,
+      "field": "tile_active_scene_frames__SHELL_TILE_APPLY_BUDGET"
+    },
+    {
+      "owner": "frame_light_at",
+      "name": "LIGHT_HITBOX_BUDGET",
+      "value": 4,
+      "field": "frame_light_at__LIGHT_HITBOX_BUDGET"
+    },
+    {
+      "owner": "toggle_top_bar_for_active_frame",
+      "name": "TOP_BAR_TOGGLE_REJECT_BUDGET",
+      "value": 4,
+      "field": "toggle_top_bar_for_active_frame__TOP_BAR_TOGGLE_REJECT_BUDGET"
+    },
+    {
+      "owner": "toggle_top_bar_for_active_frame",
+      "name": "TOP_BAR_TOGGLE_BUDGET",
+      "value": 8,
+      "field": "toggle_top_bar_for_active_frame__TOP_BAR_TOGGLE_BUDGET"
+    },
+    {
+      "owner": "switch_to_tab",
+      "name": "TAB_SWITCH_BUDGET",
+      "value": 8,
+      "field": "switch_to_tab__TAB_SWITCH_BUDGET"
+    },
+    {
+      "owner": "try_set_focus_inner",
+      "name": "SELECTED_OPTIONS_CLEAR_BUDGET",
+      "value": 4,
+      "field": "try_set_focus__SELECTED_OPTIONS_CLEAR_BUDGET"
+    },
+    {
+      "owner": "try_set_focus_inner",
+      "name": "SELECTED_OPTIONS_SET_BUDGET",
+      "value": 8,
+      "field": "try_set_focus__SELECTED_OPTIONS_SET_BUDGET"
+    },
+    {
+      "owner": "try_set_focus_inner",
+      "name": "SELECTED_OPTIONS_SEND_BUDGET",
+      "value": 8,
+      "field": "try_set_focus__SELECTED_OPTIONS_SEND_BUDGET"
+    },
+    {
+      "owner": "try_set_focus_inner",
+      "name": "ACCESS_FOCUS_DESCRIBE_BUDGET",
+      "value": 32,
+      "field": "try_set_focus__ACCESS_FOCUS_DESCRIBE_BUDGET"
+    },
+    {
+      "owner": "update_frame_hover_at",
+      "name": "INTERACT_HOVER_BUDGET",
+      "value": 8,
+      "field": "update_frame_hover_at__INTERACT_HOVER_BUDGET"
+    },
+    {
+      "owner": "update_frame_hover_at",
+      "name": "HOVER_STATE_CHANGE_BUDGET",
+      "value": 6,
+      "field": "update_frame_hover_at__HOVER_STATE_CHANGE_BUDGET"
+    },
+    {
+      "owner": "update_frame_hover_at",
+      "name": "FRAME_LIGHT_HOVER_BUDGET",
+      "value": 8,
+      "field": "update_frame_hover_at__FRAME_LIGHT_HOVER_BUDGET"
+    },
+    {
+      "owner": "update_frame_hover_at",
+      "name": "TAB_CHROME_SHOW_BUDGET",
+      "value": 8,
+      "field": "update_frame_hover_at__TAB_CHROME_SHOW_BUDGET"
+    },
+    {
+      "owner": "update_frame_hover_at",
+      "name": "TAB_CHROME_HIDE_BUDGET",
+      "value": 4,
+      "field": "update_frame_hover_at__TAB_CHROME_HIDE_BUDGET"
+    },
+    {
+      "owner": "update_frame_hover_at",
+      "name": "TAB_CHROME_PERSIST_BUDGET",
+      "value": 8,
+      "field": "update_frame_hover_at__TAB_CHROME_PERSIST_BUDGET"
+    },
+    {
+      "owner": "access_emit_scene_node",
+      "name": "ACCESS_SCENE_BUDGET",
+      "value": 8,
+      "field": "access_emit_scene_node__ACCESS_SCENE_BUDGET"
+    },
+    {
+      "owner": "access_emit_frame_node",
+      "name": "ACCESS_SKIP_DEAD_BUDGET",
+      "value": 8,
+      "field": "access_emit_frame_node__ACCESS_SKIP_DEAD_BUDGET"
+    },
+    {
+      "owner": "access_emit_frame_node",
+      "name": "ACCESS_FRAME_BUDGET",
+      "value": 8,
+      "field": "access_emit_frame_node__ACCESS_FRAME_BUDGET"
+    },
+    {
+      "owner": "access_emit_shell_nodes",
+      "name": "ACCESS_EMIT_BUDGET",
+      "value": 8,
+      "field": "access_emit_shell_nodes__ACCESS_EMIT_BUDGET"
+    },
+    {
+      "owner": "access_describe_node",
+      "name": "ACCESS_DESCRIBE_NODE_BUDGET",
+      "value": 32,
+      "field": "access_describe_node__ACCESS_DESCRIBE_NODE_BUDGET"
+    },
+    {
+      "owner": "access_describe_focus",
+      "name": "ACCESS_DESCRIBE_EMPTY_BUDGET",
+      "value": 8,
+      "field": "access_describe_focus__ACCESS_DESCRIBE_EMPTY_BUDGET"
+    },
+    {
+      "owner": "access_describe_focus",
+      "name": "ACCESS_DESCRIBE_NOFOCUS_BUDGET",
+      "value": 8,
+      "field": "access_describe_focus__ACCESS_DESCRIBE_NOFOCUS_BUDGET"
+    },
+    {
+      "owner": "access_describe_focus",
+      "name": "ACCESS_DESCRIBE_SKIP_BUDGET",
+      "value": 8,
+      "field": "access_describe_focus__ACCESS_DESCRIBE_SKIP_BUDGET"
+    },
+    {
+      "owner": "access_describe_focus",
+      "name": "ACCESS_DESCRIBE_NOTFOUND_BUDGET",
+      "value": 8,
+      "field": "access_describe_focus__ACCESS_DESCRIBE_NOTFOUND_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_ACTIVATE_EMPTY_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_ACTIVATE_EMPTY_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_ACTIVATE_DEAD_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_ACTIVATE_DEAD_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_ACTIVATE_RESTORE_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_ACTIVATE_RESTORE_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_ACTIVATE_MINIMIZE_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_ACTIVATE_MINIMIZE_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_ACTIVATE_OK_BUDGET",
+      "value": 8,
+      "field": "access_handle_keyboard_action__ACCESS_ACTIVATE_OK_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_CLOSE_NOFOCUS_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_CLOSE_NOFOCUS_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_CLOSE_DEAD_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_CLOSE_DEAD_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_CLOSE_OK_BUDGET",
+      "value": 8,
+      "field": "access_handle_keyboard_action__ACCESS_CLOSE_OK_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_CLOSE_FAIL_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_CLOSE_FAIL_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_ZOOM_NOFOCUS_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_ZOOM_NOFOCUS_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_ZOOM_DEAD_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_ZOOM_DEAD_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_ZOOM_OK_BUDGET",
+      "value": 8,
+      "field": "access_handle_keyboard_action__ACCESS_ZOOM_OK_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_ZOOM_FAIL_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_ZOOM_FAIL_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_SCENE_NEXT_BUDGET",
+      "value": 8,
+      "field": "access_handle_keyboard_action__ACCESS_SCENE_NEXT_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_SCENE_PREV_BUDGET",
+      "value": 8,
+      "field": "access_handle_keyboard_action__ACCESS_SCENE_PREV_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_RESTORE_OK_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_RESTORE_OK_BUDGET"
+    },
+    {
+      "owner": "access_handle_keyboard_action",
+      "name": "ACCESS_RESTORE_NOOP_BUDGET",
+      "value": 4,
+      "field": "access_handle_keyboard_action__ACCESS_RESTORE_NOOP_BUDGET"
+    },
+    {
+      "owner": "synthetic_window_drag_target",
+      "name": "TARGET_REJECT_BUDGET",
+      "value": 4,
+      "field": "synthetic_window_drag_target__TARGET_REJECT_BUDGET"
+    },
+    {
+      "owner": "silk_drag_begin_mark",
+      "name": "SILK_DRAG_BEGIN_BUDGET",
+      "value": 16,
+      "field": "silk_drag_begin_mark__SILK_DRAG_BEGIN_BUDGET"
+    },
+    {
+      "owner": "silk_drag_end_mark",
+      "name": "SILK_DRAG_END_BUDGET",
+      "value": 16,
+      "field": "silk_drag_end_mark__SILK_DRAG_END_BUDGET"
+    },
+    {
+      "owner": "drag_move_focused",
+      "name": "SILK_DRAG_MOVE_BUDGET",
+      "value": 24,
+      "field": "drag_move_focused__SILK_DRAG_MOVE_BUDGET"
+    },
+    {
+      "owner": "drag_move_focused",
+      "name": "INTERACT_DRAG_MOVE_BUDGET",
+      "value": 24,
+      "field": "drag_move_focused__INTERACT_DRAG_MOVE_BUDGET"
+    },
+    {
+      "owner": "drag_move_focused",
+      "name": "DRAG_MOVE_OK_BUDGET",
+      "value": 8,
+      "field": "drag_move_focused__DRAG_MOVE_OK_BUDGET"
+    },
+    {
+      "owner": "drag_move_focused",
+      "name": "INTEGRATED_DRAG_TARGET_BUDGET",
+      "value": 4,
+      "field": "drag_move_focused__INTEGRATED_DRAG_TARGET_BUDGET"
+    },
+    {
+      "owner": "resize_accumulate_delta",
+      "name": "RESIZE_DELTA_BUDGET",
+      "value": 16,
+      "field": "resize_accumulate_delta__RESIZE_DELTA_BUDGET"
+    },
+    {
+      "owner": "apply_resize_geometry",
+      "name": "RESIZE_CLAMP_BUDGET",
+      "value": 16,
+      "field": "apply_resize_geometry__RESIZE_CLAMP_BUDGET"
+    },
+    {
+      "owner": "apply_resize_geometry",
+      "name": "RESIZE_FLUSH_BUDGET",
+      "value": 16,
+      "field": "apply_resize_geometry__RESIZE_FLUSH_BUDGET"
+    },
+    {
+      "owner": "hit_test_surface_chrome",
+      "name": "CHROME_BOUNDS_BUDGET",
+      "value": 8,
+      "field": "hit_test_surface_chrome__CHROME_BOUNDS_BUDGET"
+    },
+    {
+      "owner": "hit_test_surface_chrome",
+      "name": "DRAG_BOUNDS_BUDGET",
+      "value": 24,
+      "field": "hit_test_surface_chrome__DRAG_BOUNDS_BUDGET"
+    },
+    {
+      "owner": "hit_test_at",
+      "name": "CHROME_HIT_PRODUCED_BUDGET",
+      "value": 6,
+      "field": "hit_test_at__CHROME_HIT_PRODUCED_BUDGET"
+    },
+    {
+      "owner": "hit_test_at",
+      "name": "CHROME_HIT_Z_BUDGET",
+      "value": 4,
+      "field": "hit_test_at__CHROME_HIT_Z_BUDGET"
+    },
+    {
+      "owner": "toggle_scene_settings_panel",
+      "name": "PANEL_BUDGET",
+      "value": 16,
+      "field": "toggle_scene_settings_panel__PANEL_BUDGET"
+    },
+    {
+      "owner": "handle_silkbar_click",
+      "name": "SCENE_SWITCH_BUDGET",
+      "value": 8,
+      "field": "handle_silkbar_click__SCENE_SWITCH_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "ATLAS_SELECT_BUDGET",
+      "value": 4,
+      "field": "click_hit_test_and_focus__ATLAS_SELECT_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "ATLAS_MISS_BUDGET",
+      "value": 4,
+      "field": "click_hit_test_and_focus__ATLAS_MISS_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "DRAG_HIT_TEST_BUDGET",
+      "value": 32,
+      "field": "click_hit_test_and_focus__DRAG_HIT_TEST_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "CLICK_HIT_LIVE_OK_BUDGET",
+      "value": 8,
+      "field": "click_hit_test_and_focus__CLICK_HIT_LIVE_OK_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "FOCUS_SET_OK_BUDGET",
+      "value": 8,
+      "field": "click_hit_test_and_focus__FOCUS_SET_OK_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "SILK_FOCUS_CLICK_BUDGET",
+      "value": 16,
+      "field": "click_hit_test_and_focus__SILK_FOCUS_CLICK_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "FRAME_LIGHT_CLOSE_BUDGET",
+      "value": 8,
+      "field": "click_hit_test_and_focus__FRAME_LIGHT_CLOSE_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "FRAME_MINIMIZE_REJECT_BUDGET",
+      "value": 4,
+      "field": "click_hit_test_and_focus__FRAME_MINIMIZE_REJECT_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "FRAME_ZOOM_REJECT_BUDGET",
+      "value": 4,
+      "field": "click_hit_test_and_focus__FRAME_ZOOM_REJECT_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "RIM_DRAG_START_BUDGET",
+      "value": 8,
+      "field": "click_hit_test_and_focus__RIM_DRAG_START_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "RIM_DRAG_BEGIN_OK_BUDGET",
+      "value": 8,
+      "field": "click_hit_test_and_focus__RIM_DRAG_BEGIN_OK_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "RESIZE_BEGIN_BUDGET",
+      "value": 8,
+      "field": "click_hit_test_and_focus__RESIZE_BEGIN_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "TAB_SWITCH_REJECT_BUDGET",
+      "value": 4,
+      "field": "click_hit_test_and_focus__TAB_SWITCH_REJECT_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "CHROME_CAPTURE_BUDGET",
+      "value": 4,
+      "field": "click_hit_test_and_focus__CHROME_CAPTURE_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "DRAG_BEGIN_OK_BUDGET",
+      "value": 8,
+      "field": "click_hit_test_and_focus__DRAG_BEGIN_OK_BUDGET"
+    },
+    {
+      "owner": "click_hit_test_and_focus",
+      "name": "SILK_DRAG_REJECT_BUDGET",
+      "value": 8,
+      "field": "click_hit_test_and_focus__SILK_DRAG_REJECT_BUDGET"
+    }
+  ],
+  "deviations": [
+    "Re-registration allocates a fresh generation instead of resetting to 1.",
+    "Exhausted invalidating transitions return false before updating state.",
+    "Every entry into Closing requires a fresh generation, including from Mapped and Allocated.",
+    "Invalid native tab indices fail closed instead of indexing outside the fixed array.",
+    "Close preflights registered metadata and three available generations before external effects.",
+    "Missing restore geometry rolls back staged local metadata before any external visibility operation.",
+    "Full-width tab indices are checked before narrowing or indexing.",
+    "Clearing focus clears its shadow reference; unusable generation references refuse focus.",
+    "Hover changes clear the previous frame highlight before publishing the new one."
+  ],
+  "dependencies": {
+    "crates/silkbar-model/src/lib.rs": "09814965887cbe47a4a6d21e31c92028b8330211dc616c9a10ac7344a3240c06",
+    "crates/sex-pdx/src/app_catalog.rs": "b64e70fd3e9d813b20edd479bab9c68edbd1485f0af382fdc0f0d9424a2c2f0c",
+    "servers/silk-shell/src/app_custody.rs": "07847af51c94ddd5c9dac06214beef38287697d72a919c34185ee6598ed2abd0",
+    "crates/sex-pdx/src/document_view.rs": "180b16b767d342b26bbf727c21d875a853c6f386bf7729b19b2c928f119a6aa9",
+    "crates/sex-pdx/src/spindle_view.rs": "181bbc85e81fe11e7750fdcbda1898b13eebf9cbbd4a01f84c36e42f9c7e97f2",
+    "crates/sex-pdx/src/desktop_style.rs": "b79c66b3e4487377ba5387b25dcb46193e92606087921cd9aca55b82bc5e89fd",
+    "servers/silk-shell/src/desktop_content.rs": "ff2f25393c952b06d3d0dfe136090b927ba4952b1cfc8c0e62a9a66873070048",
+    "servers/silk-shell/src/linen_text_delivery.rs": "5048f93e17eed3b1a74ac64cdf4cbbe87c25f6de069f8af4d97a5e4a53f2b9c7"
+  }
+}

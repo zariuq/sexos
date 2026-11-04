@@ -1,0 +1,108 @@
+Immutable BOOT memory regions
+=============================
+
+The memory-regions archive contains the checked Cesta translation of the pure
+sex-pdx memory_region policy at 174f684d (byte-identical to 1c54fbbf). It validates immutable grant data,
+bounds, rights, optional DMA addresses and exact authenticated peers. Runtime
+resolution neither allocates frames nor changes mappings or capability tables.
+The checked functions take read loans of metadata and return value records;
+a returned numerical address is not an owning pointer or release authority.
+
+MemoryRegionCapability is policy input data. Only trusted lookup in the caller's
+held table establishes authority for a kernel operation. The current kernel
+accepts Region or the preassigned region within a PCI lease; a different kind
+with otherwise plausible descriptor bytes grants nothing. PKU state is not an
+input to the policy decision.
+
+Runtime ABI
+-----------
+
+Current-profile syscall 54 resolves offset/length/rights within the held slot.
+Rights retain their full register width until validation. Syscall 55 returns
+region identity, length, rights and optional peer, without a virtual or DMA
+address. Every failed reply clears all four output words. Selectors outside
+1..1024 fail before narrowing or lookup. Metadata queries preserve the pinned
+reference's treatment of unused request words.
+
+Syscall 43 now returns the existing BAR0 view: index zero, default length 4096,
+and sufficient held query/read/write permissions. It does not probe PCI or map
+a new page at runtime. The former allocation/mapping/lending syscalls 30, 31,
+50 and 51 refuse; syscall 40 retains its zero failure convention. The current
+profile also refuses the retired set-state and kernel network-demo operations.
+
+The boot display bridge 0xE6 checks the sanctioned display/shell/input identities
+and zero reserved arguments. Geometry and pitch are available to those roles;
+only Display receives the framebuffer address. These role identities are bound
+from declared domain labels at BOOT, independently of hardware keys. The older
+0xE3 disclosure and 0xBB hook remain confined to the historical profile.
+
+BOOT construction
+-----------------
+
+kernel_boot_memory.cesta reserves already-zeroed backing, including buddy-size
+rounding, and records each fresh region identity once. Mapping requires an
+exact held backing record. Each holder receives a different virtual address
+under its own hardware key. Consumer mappings may be read-only; every mapping
+is non-executable. Paired grants reveal no physical address; only an explicit
+DMA grant includes that authority. Same-holder/same-key pairs, occupied slots,
+invalid sizes and duplicate backing identities are refused.
+
+Constructors are closed after genesis sealing. A construction failure must
+stop BOOT before admitting tasks: these helpers do not roll back page tables
+or backing already reserved during a failed construction. Runtime view queries
+never call this layer.
+
+The current namespace covers user-domain IDs 1..1023 and capability selectors
+1..1024. Sparse records keep identity separate from storage position. This
+build reserves 32 BOOT domain records, 1024 capability records and 64 backing
+records. Exhaustion refuses without replacing an existing identity or slot.
+Capability records are copied into kernel-owned storage and never reallocated
+at runtime. Current masks open only the holder's own key, including private
+key 14; the frozen profile retains its older shared-key policy.
+
+Qualification
+-------------
+
+    make check-memory-regions
+    make qualify-memory-regions CESTA_SOURCE=... LEAN_ROOT=...
+    make check-kernel-regions
+
+The pure-policy gate executes the actual pinned Rust functions and extracts
+the actual kernel region-query encoder. It compares GCC/Clang optimization
+and sanitizer variants, checks authored/plain-C identity and admits the six
+actual permission plans when Lean is selected. Semantic mutations must compile
+and change the observed result.
+
+The dispatch gate executes the actual kernel units with counted providers,
+covering held lookup, failure outputs, immutable storage, scoped display data
+and zero runtime mapping effects. The BOOT gate additionally runs production
+allocation, zeroing and page-table code against RAM. It checks real PTEs,
+per-holder masks, physical sharing, read-only/NX flags, untouched neighbours,
+DMA disclosure and sealed construction. CPU/TLB operations are providers;
+these checks do not execute hardware isolation or a DMA transfer.
+
+The ELF-header helper also checks bounds before arithmetic and every caller
+propagates decoding failure. Malformed-header controls do not qualify the
+entire loader or all hostile-image isolation boundaries.
+
+The current-image BOOT graph, bounded MMIO installation, private-incarnation
+capture/detachment and paging/wake adapters are now implemented and qualified
+in their declared scopes (CURRENT_BOOT.txt, PAGING.txt). The ordinary current
+userland has not yet been qualified together on the Cesta kernel. The historical Lean trace and historical
+boot remain separate evidence. Native kernel storage, mapping constructors and
+CPU effects are outside the six-function permission admission.
+
+General view laws
+-----------------
+
+Mettapedia.Machines.CMemory.RegionViews reuses the existing provenance-bearing
+range geometry. It proves range/rights attenuation, address bounds, composition
+of two restrictions, preservation of disjoint source ranges and held-table
+origin. A query remains stable under unrelated table edits when its complete
+looked-up grant is unchanged; revocation has an explicit negative control.
+
+These laws are independent of mask encoding, hardware keys and the C lowering.
+They do not turn an authorized view record into a live loan or release right.
+A concrete control proves that two authorized views may overlap: exclusivity
+still requires the separate borrowing invariant. The native policy's concrete
+word/mask checks retain their Rust differential and mutation qualification.

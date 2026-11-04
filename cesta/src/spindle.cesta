@@ -1,9 +1,13 @@
 (cesta native-c/1 compact-c/2
   (unit
     (include "sexos_server.h")
+    (include "spindle_calc.h")
+    (include "spindle_complete.h")
+    (include "spindle_sextime.h")
     (comment "Spindle command console server, translated from apps/spindle/src/main.rs. The Rust statics (scrollback, history, the 2x2 surface subgrid cache and the log budgets) and the locals of _start (the event ring and the vi-mode command line) are fields of one Spindle state in static storage (~116 KiB).")
 
     (comment "Build-time proof profiles: option_env! in the Rust source.")
+    (cpp-if "defined(SEXOS_SPINDLE_CURRENT)" (then (define SPINDLE_CURRENT_ENABLED "1")) (else (define SPINDLE_CURRENT_ENABLED "0")))
     (cpp-if "defined(SEXOS_SPINDLE_APPS_REGISTRY_PROOF)" (then (define APPS_REGISTRY_PROOF_ENABLED "1")) (else (define APPS_REGISTRY_PROOF_ENABLED "0")))
     (cpp-if "defined(SEXOS_SPINDLE_COMMAND_HISTORY_PROOF)" (then (define CMD_HISTORY_PROOF_ENABLED "1")) (else (define CMD_HISTORY_PROOF_ENABLED "0")))
     (cpp-if "defined(SEXOS_SPINDLE_PERSIST_HISTORY_PROOF)" (then (define PERSIST_PROOF_ENABLED "1")) (else (define PERSIST_PROOF_ENABLED "0")))
@@ -148,7 +152,10 @@
       (uint32_t frame_budget)
       (uint32_t raw_budget)
       (uint32_t key_recv_budget)
-      (uint32_t echo_budget)) Spindle)
+      (uint32_t echo_budget)
+      (bool calc_has_answer)
+      (SpindleCalcInt calc_answer)
+      (SpindleCalcEnv calc_env)) Spindle)
 
     (var (static Spindle) spindle_state)
 
@@ -473,6 +480,32 @@
     (fn (static void) sb_push_cstr ((Scrollback (* sb)) ((const char) (* s)))
       (call scrollback_push sb (call cstr_slice s)))
 
+    (fn (static bool) complete_command ((CmdLine (* line)) (Scrollback (* sb)))
+      (if (|| (== (-> line len) 0) (!= (-> line cur) (-> line len))) (return false))
+      (for (var size_t i 0) (< i (-> line len)) (++ i)
+        (if (== ([] (-> line buf) i) 32u) (return false)))
+      (var SpindleCompleteWord word (init 0))
+      (= (. word len) (-> line len))
+      (if (> (. word len) SPINDLE_COMPLETE_WORD_MAX)
+        (= (. word too_long) true)
+        (for (var size_t i 0) (< i (. word len)) (++ i)
+          (= ([] (. word bytes) i) ([] (-> line buf) i))))
+      (var SpindleCompletion completion (call spindle_complete (& word)))
+      (if (! (. completion matched)) (return false))
+      (if (&& (== (. completion extra_len) 0) (> (. completion matches) 1))
+        (call scrollback_push sb
+          (compound ByteSlice (= (. ptr) (. completion candidates))
+                              (= (. len) (. completion candidates_len)))))
+      (for (var size_t i 0) (< i (. completion extra_len)) (++ i)
+        (call cmdline_insert_at line (-> line len) ([] (. completion extra) i)))
+      (if (== (. completion matches) 1)
+        (call cmdline_insert_at line (-> line len) 32u))
+      (call sexos_line "[spindle.complete] matches=%zu added=%zu len=%zu"
+        (. completion matches)
+        (+ (. completion extra_len) (?: (== (. completion matches) 1) 1 0))
+        (-> line len))
+      (return true))
+
     (fn (static ByteSlice) scrollback_get (((const Scrollback) (* sb)) (size_t ring_idx))
       (var (const uint8_t) (* raw) ([] (-> sb ring) (% ring_idx MAX_SCROLLBACK)))
       (var size_t len 0)
@@ -752,19 +785,114 @@
         (call sexos_line "[spindle.alias.proof.summary] alias_count=6 ok=1"))
       (if (== (. cmd len) 0) (return true))
       (var bool recognized false)
+      (if (call slice_eq cmd "calc")
+        (block
+          (var SpindleCalcInput input (init 0))
+          (if (> (. args len) SPINDLE_CALC_INPUT_MAX)
+            (= (. input too_long) true)
+            (block
+              (= (. input len) (. args len))
+              (for (var size_t i 0) (< i (. args len)) (++ i)
+                (= ([] (. input bytes) i) ([] (. args ptr) i)))))
+          (if SPINDLE_CURRENT_ENABLED
+            (block
+              (var SpindleCalcSessionResult session
+                (call spindle_calc_eval_session (& input) (& (-> sp calc_env))))
+              (var SpindleCalcRenderResult rendered
+                (call spindle_calc_render_session session))
+              (if (. rendered ok)
+                (block
+                  (var ByteSlice output_slice
+                    (compound ByteSlice (= (. ptr) (. (. rendered line) bytes))
+                                        (= (. len) (. (. rendered line) len))))
+                  (call scrollback_push sb output_slice)
+                  (var SliceText text (call slice_to_text output_slice))
+                  (call sexos_line "[spindle.calc] expr_bytes=%zu result=%s ok=1"
+                    (. args len) (. text text)))
+                (block
+                  (var (const char) (* message) (call spindle_calc_error_text (. rendered error)))
+                  (call sb_push_cstr sb message)
+                  (call sexos_line "[spindle.calc] expr_bytes=%zu error=%s ok=0"
+                    (. args len) (call spindle_calc_error_name (. rendered error))))))
+            (block
+              (var SpindleCalcResult result
+                (call spindle_calc_eval (& input) (-> sp calc_has_answer) (-> sp calc_answer)))
+              (if (. result ok)
+                (block
+                  (= (-> sp calc_has_answer) true)
+                  (= (-> sp calc_answer) (. (. result value) scaled))
+                  (var SpindleCalcLine output (call spindle_calc_render (. result value)))
+                  (var ByteSlice output_slice
+                    (compound ByteSlice (= (. ptr) (. output bytes)) (= (. len) (. output len))))
+                  (call scrollback_push sb output_slice)
+                  (var SliceText rendered (call slice_to_text output_slice))
+                  (call sexos_line "[spindle.calc] expr_bytes=%zu result=%s ok=1"
+                    (. args len) (. rendered text)))
+                (block
+                  (var (const char) (* message) (call spindle_calc_error_text (. result error)))
+                  (call sb_push_cstr sb message)
+                  (call sexos_line "[spindle.calc] expr_bytes=%zu error=%s ok=0"
+                    (. args len) (call spindle_calc_error_name (. result error)))))))
+          (call event_ring_push ev EV_CMD_OK cmd)
+          (return true)))
+      (if (call slice_eq cmd "sextime")
+        (block
+          (var SpindleSextimeInput input (init 0))
+          (if (> (. args len) SPINDLE_SEXTIME_INPUT_MAX)
+            (= (. input too_long) true)
+            (block
+              (= (. input len) (. args len))
+              (for (var size_t i 0) (< i (. args len)) (++ i)
+                (= ([] (. input bytes) i) ([] (. args ptr) i)))))
+          (var int64_t unix_seconds 0)
+          (var bool parsed (call spindle_sextime_parse (& input) (& unix_seconds)))
+          (var SpindleSextimeLines lines (init 0))
+          (if parsed (= lines (call spindle_sextime_render unix_seconds)))
+          (if (&& parsed (. lines ok))
+            (block
+              (for (var size_t row 0) (< row 3) (++ row)
+                (call scrollback_push sb
+                  (compound ByteSlice
+                    (= (. ptr) ([] (. lines rows) row))
+                    (= (. len) ([] (. lines lens) row)))))
+              (var SliceText first (call slice_to_text
+                (compound ByteSlice (= (. ptr) ([] (. lines rows) 0)) (= (. len) ([] (. lines lens) 0)))))
+              (var SliceText second (call slice_to_text
+                (compound ByteSlice (= (. ptr) ([] (. lines rows) 1)) (= (. len) ([] (. lines lens) 1)))))
+              (var SliceText third (call slice_to_text
+                (compound ByteSlice (= (. ptr) ([] (. lines rows) 2)) (= (. len) ([] (. lines lens) 2)))))
+              (call sexos_line "[spindle.sextime] %s | %s | %s ok=1"
+                (. first text) (. second text) (. third text)))
+            (block
+              (call sb_push_cstr sb "usage: sextime <unix-seconds>")
+              (call sb_push_cstr sb "Converts the number given; it does not read a clock.")
+              (call sexos_line "[spindle.sextime] ok=0 reason=usage")))
+          (call event_ring_push ev EV_CMD_OK cmd)
+          (return true)))
       (if (call slice_eq cmd "help")
         (block
-          (call sexos_line "[spindle.help.section] name=basics commands=6")
+          (call sexos_line "[spindle.help.section] name=basics commands=%llu"
+            (?: SPINDLE_CURRENT_ENABLED 9ULL 8ULL))
           (call sb_push_cstr sb "--- Basics ---")
           (call sb_push_cstr sb "  help         show this help")
           (call sb_push_cstr sb "  clear        clear scrollback")
           (call sb_push_cstr sb "  echo <msg>   print message")
+          (call sb_push_cstr sb "  sextime <n>  Unix seconds as SexTime/UTC/Long Count")
+          (if SPINDLE_CURRENT_ENABLED
+            (block
+              (call sb_push_cstr sb "  calc <expr>  exact + - * / % ** sqrt abs min max round floor ceil ans")
+              (call sb_push_cstr sb "  calc x = 2   name a value (up to 8)")
+              (call sb_push_cstr sb "  calc 255 in hex   also in bin / in oct")
+              (call sb_push_cstr sb "  Tab          complete a command name"))
+            (call sb_push_cstr sb "  calc <expr>  exact decimal + - * / % ( ), ans"))
           (call sb_push_cstr sb "  about        Spindle version + identity")
           (call sb_push_cstr sb "  route        input/surface route info")
           (call sb_push_cstr sb "  close        session lifecycle status")
           (call sexos_line "[spindle.help.command] name=help ok=1")
           (call sexos_line "[spindle.help.command] name=clear ok=1")
           (call sexos_line "[spindle.help.command] name=echo ok=1")
+          (call sexos_line "[spindle.help.command] name=sextime ok=1")
+          (call sexos_line "[spindle.help.command] name=calc ok=1")
           (call sexos_line "[spindle.help.command] name=about ok=1")
           (call sexos_line "[spindle.help.command] name=route ok=1")
           (call sexos_line "[spindle.help.command] name=close ok=1")
@@ -2108,7 +2236,7 @@
                                                             (call sb_push_cstr sb "    Esc              toggle palette")
                                                             (call sb_push_cstr sb "  Selection: range markers [start, end] tracked.")
                                                             (call sb_push_cstr sb "  Palette: up/down nav, Enter execute, Esc dismiss.")
-                                                            (call sb_push_cstr sb "Limitations: no shift, no visual cursor indicator.")
+                                                            (call sb_push_cstr sb "Limitations: no visual cursor indicator.")
                                                             (call sexos_line "[spindle.editor.command] name=edit-help ok=1 reason=keybindings_v2")
                                                             (= recognized true))
                                                           (if (call slice_eq cmd "edit-status")
@@ -2504,6 +2632,19 @@
         (case 0x0Fu (block (= (* ch_out) 9u) (return true)))
         (default (return false)))))
 
+    (fn (static uint8_t) shifted ((uint8_t ch))
+      (if (&& (>= ch 97u) (<= ch 122u)) (return (- ch 32u)))
+      (switch ch
+        (block
+          (case 49u (return 33u)) (case 50u (return 64u)) (case 51u (return 35u))
+          (case 52u (return 36u)) (case 53u (return 37u)) (case 54u (return 94u))
+          (case 55u (return 38u)) (case 56u (return 42u)) (case 57u (return 40u))
+          (case 48u (return 41u)) (case 45u (return 95u)) (case 61u (return 43u))
+          (case 91u (return 123u)) (case 93u (return 125u)) (case 59u (return 58u))
+          (case 39u (return 34u)) (case 96u (return 126u)) (case 92u (return 124u))
+          (case 44u (return 60u)) (case 46u (return 62u)) (case 47u (return 63u))
+          (default (return ch)))))
+
     (fn (static void) scrollback_page ((Scrollback (* sb)) (bool up))
       (var uint32_t page (cast uint32_t (- GRID_ROWS 1)))
       (if up
@@ -2516,7 +2657,7 @@
       (call sexos_line "[spindle.page.nav] dir=%s offset=%u ok=1"
         (?: up "up" "down") (-> sb scroll_offset)))
 
-    (fn (static void) handle_key_insert ((Spindle (* sp)) (uint8_t scancode))
+    (fn (static void) handle_key_insert ((Spindle (* sp)) (uint8_t scancode) (bool shift))
       (var CmdLine (* line) (& (-> sp line)))
       (var History (* hist) (& (-> sp hist)))
       (switch scancode
@@ -2569,7 +2710,9 @@
             break))
         (case 0x0Fu
           (block
-            (if (! (call ghost_accept line hist))
+            (if (&& (! (call ghost_accept line hist))
+                    (|| (! SPINDLE_CURRENT_ENABLED)
+                        (! (call complete_command line (& (-> sp sb))))))
               (call sexos_line "[spindle.key.tab] no_ghost"))
             break))
         (default
@@ -2577,6 +2720,7 @@
             (var uint8_t ch 0)
             (if (call scancode_to_ascii scancode (& ch))
               (block
+                (if shift (= ch (call shifted ch)))
                 (call cmdline_insert_at line (-> line cur) ch)
                 (= (-> line has_hist_nav) false)
                 (var CharText ct (call char_text ch))
@@ -2703,9 +2847,9 @@
                 (default break))))
             break)))))
 
-    (fn (static void) handle_key ((Spindle (* sp)) (uint8_t scancode))
+    (fn (static void) handle_key ((Spindle (* sp)) (uint8_t scancode) (bool shift))
       (if (== (. (-> sp line) mode) VI_INSERT)
-        (call handle_key_insert sp scancode)
+        (call handle_key_insert sp scancode shift)
         (call handle_key_normal sp scancode)))
 
     (fn (static void) run_command_history_proof ((Spindle (* sp)))
@@ -3095,7 +3239,9 @@
               (cast (unsigned long long) (. msg caller_pd))))
           (if (== (. msg type_id) 0x202u)
             (block
-              (var uint8_t scancode (cast uint8_t (. msg arg0)))
+              (var uint64_t key_word (. msg arg0))
+              (var uint8_t scancode (cast uint8_t key_word))
+              (var bool shift (!= (& (>> key_word 8u) 1u) 0u))
               (var uint64_t value (. msg arg1))
               (if (call take (& (-> sp key_recv_budget)))
                 (call sexos_line "[spindle.key.recv] code=%u down=%llu mod=0"
@@ -3126,7 +3272,7 @@
                       (call sexos_line "[spindle.bell.notify] status=%llu"
                         (cast (unsigned long long) (. br status)))))
                   (= (. (-> sp line) has_hist_nav) false)))
-              (call handle_key sp scancode)
+              (call handle_key sp scancode shift)
               (if (call take (& (-> sp echo_budget)))
                 (call sexos_line "[spindle.input.echo.ok] key=%u" (cast unsigned scancode)))
               (call content_render sp))))))))

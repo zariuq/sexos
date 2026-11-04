@@ -1,0 +1,1520 @@
+(cesta native-c/1 compact-c/2
+ (unit
+ (ownership (check-all)
+(record ShellChromeContext (field chrome (borrow write)) (field models (borrow write)) (field apps (borrow write)) (field input (borrow write)) (field proofs_a (borrow write)))
+(record ShellSurfacesContext (field surfaces (borrow write)))
+(foreign shell_custody_owns_surface (obligation "Reads the given custody value; retains no borrowed argument."))
+(foreign shell_chrome_send_frame_tab_info (obligation "Implements the checked Chrome operation using this borrowed context."))
+(foreign sexos_line (variadic-read) (obligation "Prints the diagnostic without retaining borrowed arguments."))
+(foreign shell_surfaces_peer_native_launcher_status (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_spindle_history_label (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_launcher_row_title (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_send_silkbar_phase2_update (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_launcher_palette_closed (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_atlas_toggle (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_collar_auto_grant_from_manifest (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_registration_reply_poll (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_launcher_focus_discard (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_launcher_action_record (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_launcher_focus_existing (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_native_launcher_available (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_raw_pdx_call (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_pdx_call (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_linen_refresh (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_linen_paint_surface (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_linen_paint_surface_fast (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_linen_object_count (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_quil_buffer_count (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_quil_render_buffer_list (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_mesh_render_fact_list (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_mesh_emit_linen_quil_links (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_collar_render_grants_text (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_snap_capture_layout (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_surface_is_alive (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument.")) (foreign shell_surfaces_peer_collar_check_operation (obligation "Performs the declared subsystem operation using the held shell context; retains no borrowed argument."))(foreign shell_custody_shell_surface (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_custody_allows (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_lifecycle_state (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_lifecycle_register (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_custody_catalog_at (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_active_surface_for_frame (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_frame_is_minimized (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_frame_is_zoomed (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_restore_minimized_frame (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_try_set_focus (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_tile_active_scene_frames (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_frame_for_surface (obligation "Implements the checked catalog or Chrome operation using the given receiver.")) (foreign shell_chrome_minimize_frame (obligation "Implements the checked catalog or Chrome operation using the given receiver."))(function surface_capability_description (returns-static)) (function surface_bell_kind (returns-static)) (foreign linen_kind_color (obligation "Returns the color of the declared Linen kind without effects."))(function panel_label_text (returns-borrow 0 bytes)) (foreign shell_surfaces_command_label (obligation "Copies the immutable current command-table label into a bounded owned record.")) (foreign shell_surfaces_command_code (obligation "Reads the immutable current command code after validating the index."))(foreign shell_text_queue (obligation "Implements the checked component using only the given borrowed state.")) (foreign shell_text_cancel (obligation "Implements the checked component using only the given borrowed state.")) (foreign shell_chrome_set_frame_minimized (obligation "Implements the checked component using only the given borrowed state.")) (foreign shell_chrome_set_lifecycle_state (obligation "Implements the checked component using only the given borrowed state.")) (foreign shell_chrome_first_minimized_frame_id (obligation "Implements the checked component using only the given borrowed state.")) (foreign shell_chrome_access_handle_keyboard_action (obligation "Implements the checked component using only the given borrowed state."))(foreign shell_surfaces_debug_record (obligation "Validates the fixed record length and sends those bytes synchronously; retains no pointer."))(foreign shell_surfaces_activation_call (obligation "Invokes syscall 66 through the held immutable BOOT slot. Supplies no domain, image, address or replacement grant.")) (foreign sexos_fail (obligation "Stops the invalid receipt path.")))
+ (native "#include \"silk_shell_surfaces.h\"
+typedef struct SurfaceSpec {
+    uint32_t frame;uint64_t sid;int32_t x,y;uint32_t w,h;
+    char label[20];bool send_tabs,guard_custody;
+} SurfaceSpec;
+static const SurfaceSpec SURFACE_SPECS[7]={
+ {LINEN_FRAME_ID,SURFACE_ID_LINEN,LINEN_BOOT_X,LINEN_BOOT_Y,LINEN_BOOT_W,LINEN_BOOT_H,\"linen\",true,false},
+ {QUIL_FRAME_ID,SURFACE_ID_QUIL,QUIL_BOOT_X,QUIL_BOOT_Y,QUIL_BOOT_W,QUIL_BOOT_H,\"quil\",true,true},
+ {MESH_FRAME_ID,SURFACE_ID_MESH,MESH_BOOT_X,MESH_BOOT_Y,MESH_BOOT_W,MESH_BOOT_H,\"mesh\",false,false},
+ {COLLAR_FRAME_ID,SURFACE_ID_COLLAR,COLLAR_BOOT_X,COLLAR_BOOT_Y,COLLAR_BOOT_W,COLLAR_BOOT_H,\"collar\",false,false},
+ {SPINDLE_FRAME_ID,SURFACE_ID_SPINDLE,SPINDLE_BOOT_X,SPINDLE_BOOT_Y,SPINDLE_BOOT_W,SPINDLE_BOOT_H,\"spindle\",false,true},
+ {BELL_FRAME_ID,SURFACE_ID_BELL_PLACEHOLDER,BELL_BOOT_X,BELL_BOOT_Y,BELL_BOOT_W,BELL_BOOT_H,\"bell\",false,false},
+ {COMMAND_PALETTE_FRAME_ID,SURFACE_ID_COMMAND_PALETTE,COMMAND_PALETTE_BOOT_X,COMMAND_PALETTE_BOOT_Y,COMMAND_PALETTE_BOOT_W,COMMAND_PALETTE_BOOT_H,\"command_palette\",false,false}
+};
+static bool surface_take(uint32_t *budget){if(!*budget)return false;--*budget;return true;}
+static bool surface_frame(ShellSurfacesContext *ctx,uint32_t frame,uint32_t *out)
+{
+    for(size_t i=0;i<MAX_FRAMES;++i)if(ctx->shell.chrome->FRAMES[i].present && ctx->shell.chrome->FRAMES[i].frame_id==frame){*out=frame;return true;}
+    return false;
+}
+static bool surface_create_budget(ShellSurfacesContext *ctx,uint8_t family)
+{
+    switch(family){
+    case 0:return surface_take(&ctx->surfaces->ensure_linen_frame__LINEN_CREATE_BUDGET);
+    case 1:return surface_take(&ctx->surfaces->ensure_quil_frame__QUIL_CREATE_BUDGET);
+    case 2:return surface_take(&ctx->surfaces->ensure_mesh_frame__MESH_CREATE_BUDGET);
+    case 3:return surface_take(&ctx->surfaces->ensure_collar_frame__COLLAR_CREATE_BUDGET);
+    case 5:return surface_take(&ctx->surfaces->ensure_bell_frame__BELL_CREATE_BUDGET);
+    default:return false;
+    }
+    return false;
+}
+static bool surface_reject_budget(ShellSurfacesContext *ctx,uint8_t family)
+{
+    switch(family){
+    case 0:return surface_take(&ctx->surfaces->ensure_linen_frame__LINEN_NOSLOT_BUDGET);
+    case 1:return surface_take(&ctx->surfaces->ensure_quil_frame__QUIL_NOSLOT_BUDGET);
+    case 2:return surface_take(&ctx->surfaces->ensure_mesh_frame__MESH_NOSLOT_BUDGET);
+    case 3:return surface_take(&ctx->surfaces->ensure_collar_frame__COLLAR_NOSLOT_BUDGET);
+    case 5:return surface_take(&ctx->surfaces->ensure_bell_frame__BELL_NOSLOT_BUDGET);
+    default:return false;
+    }
+    return false;
+}
+static bool surface_palette_lifecycle(ShellSurfacesContext *ctx)
+{
+    uint8_t state=0;
+    if(shell_chrome_lifecycle_state(&ctx->shell,SURFACE_ID_COMMAND_PALETTE,&state))return true;
+    return shell_chrome_lifecycle_register(&ctx->shell,SURFACE_ID_COMMAND_PALETTE,LIFECYCLE_ALLOCATED);
+}
+static bool surface_ensure(ShellSurfacesContext *ctx,uint8_t family,uint32_t *out)
+{
+    if(family>=7)return false;
+    SurfaceSpec spec=SURFACE_SPECS[family];
+    if(spec.guard_custody)for(size_t i=0;i<SHELL_APP_COUNT;++i)if(ctx->shell.apps->present[i]){
+        ShellAppCustody entry=ctx->shell.apps->entries[i];
+        if((entry.dead || entry.close_pending) && shell_custody_owns_surface(&entry,spec.sid))return false;
+    }
+    if(surface_frame(ctx,spec.frame,out)){if(family==6 && !surface_palette_lifecycle(ctx))return false;return true;}
+    for(size_t i=0;i<MAX_FRAMES;++i)if(!ctx->shell.chrome->FRAMES[i].present){
+        if(family==6 && !surface_palette_lifecycle(ctx))return false;
+        ShellFrame frame={.present=true,.frame_id=spec.frame,.active_tab=0,.tab_count=1,
+            .scene_id=ctx->shell.chrome->ACTIVE_SCENE_IDX,.flags=FRAME_FLAG_TOP_BAR,
+            .normal_x=spec.x,.normal_y=spec.y,.normal_w=spec.w,.normal_h=spec.h};
+        frame.tabs[0]=(ShellTab){true,spec.sid,0,0};ctx->shell.chrome->FRAMES[i]=frame;
+        if(family==6){
+            sexos_line(\"[command_palette.attach.frame] frame=%u scene=%u slot=%zu\",spec.frame,(unsigned)frame.scene_id,i);
+            sexos_line(\"[command_palette.attach.tab] frame=%u tab=0 surface=%llu\",spec.frame,(unsigned long long)spec.sid);
+        }else{
+            sexos_line(\"[%s.placeholder.attach.frame] frame=%u scene=%u slot=%zu\",spec.label,spec.frame,(unsigned)frame.scene_id,i);
+            sexos_line(\"[%s.placeholder.attach.tab] frame=%u tab=0 surface=%llu\",spec.label,spec.frame,(unsigned long long)spec.sid);
+        }
+        if(spec.send_tabs)shell_chrome_send_frame_tab_info(&ctx->shell,spec.frame);
+        if(surface_create_budget(ctx,family))sexos_line(\"[shell.%s.frame.create] frame=%u slot=%zu\",spec.label,spec.frame,i);
+        *out=spec.frame;return true;
+    }
+    if(family==4)sexos_line(\"[spindle.frame.reject] reason=no_slot\");
+    else if(surface_reject_budget(ctx,family))sexos_line(\"[shell.%s.frame.reject] reason=no_slot\",spec.label);
+    return false;
+}
+
+static ShellAppCatalogRow surface_row(uint32_t target,uint64_t surface)
+{
+    for(size_t i=0;i<SHELL_APP_COUNT;++i){ShellAppCatalogRow row=shell_custody_catalog_at(i);if(row.target==target && row.surface==surface)return row;}
+    return(ShellAppCatalogRow){0};
+}
+static ShellAppCatalogRow surface_predecessor(ShellAppCatalogRow current)
+{
+    if(!current.ordinal)return(ShellAppCatalogRow){0};
+    for(size_t i=0;i<SHELL_APP_COUNT;++i){ShellAppCatalogRow row=shell_custody_catalog_at(i);if(row.app==current.app && row.ordinal==current.ordinal-1)return row;}
+    return(ShellAppCatalogRow){0};
+}
+static size_t surface_app_count(uint8_t app)
+{
+    size_t count=0;
+    for(size_t i=0;i<SHELL_APP_COUNT;++i){ShellAppCatalogRow row=shell_custody_catalog_at(i);if(row.app==app)++count;}
+    return count;
+}
+static bool surface_activation_equal(ShellActivationInfo a,ShellActivationInfo b)
+{
+    return a.successor==b.successor && a.task==b.task && a.surface==b.surface && a.state==b.state;
+}
+ShellActivationResult shell_surfaces_quil_activation_edge(ShellSurfacesContext *ctx,size_t slot,uint32_t target,uint64_t surface,size_t lifecycle,bool commit)
+{
+    ShellActivationRaw raw=shell_surfaces_activation_call(slot,commit);
+    if(raw.status)return(ShellActivationResult){.status=raw.status};
+    if(raw.pd>UINT32_MAX || raw.task>UINT32_MAX)return(ShellActivationResult){.status=1};
+    ShellActivationInfo info={(uint32_t)raw.pd,(uint32_t)raw.task,raw.surface,raw.state};
+    for(size_t i=0;i<SHELL_APP_COUNT;++i)if(ctx->shell.apps->present[i]){
+        ShellAppCustody entry=ctx->shell.apps->entries[i];
+        if(entry.target==target && entry.slot==lifecycle){
+            if(info.successor!=entry.target || info.task!=entry.task || info.surface!=entry.surface || entry.surface!=surface || info.state>3)return(ShellActivationResult){.status=3};
+            return(ShellActivationResult){0,info};
+        }
+    }
+    return(ShellActivationResult){.status=3};
+}
+ShellActivationResult shell_surfaces_app_activation_info(ShellSurfacesContext *ctx,uint8_t app,bool commit)
+{
+    for(size_t i=0;i<SHELL_APP_COUNT;++i){
+        ShellAppCatalogRow row=shell_custody_catalog_at(i);
+        if(row.app!=app || !row.ordinal)continue;
+        if(!row.has_activation)return(ShellActivationResult){.status=3};
+        ShellActivationResult result=shell_surfaces_quil_activation_edge(ctx,row.activation_slot,row.target,row.surface,row.lifecycle_slot,false);
+        if(result.status)return result;
+        if(result.info.state==3 && (size_t)row.ordinal+1<surface_app_count(app))continue;
+        if(commit)return shell_surfaces_quil_activation_edge(ctx,row.activation_slot,row.target,row.surface,row.lifecycle_slot,true);
+        return result;
+    }
+    return(ShellActivationResult){.status=3};
+}
+ShellActivationResult shell_surfaces_quil_activation_info(ShellSurfacesContext *ctx,bool commit)
+{
+    return shell_surfaces_app_activation_info(ctx,SHELL_APP_QUIL,commit);
+}
+ShellActivationResult shell_surfaces_spindle_activation_info(ShellSurfacesContext *ctx,bool commit)
+{
+    return shell_surfaces_app_activation_info(ctx,SHELL_APP_SPINDLE,commit);
+}
+ShellSurfaceSubject shell_surfaces_spindle_active_frame(ShellSurfacesContext *ctx)
+{
+    ShellActivationResult result=shell_surfaces_spindle_activation_info(ctx,false);
+    if(result.status || result.info.state!=2)return(ShellSurfaceSubject){0};
+    ShellAppCatalogRow row=surface_row(result.info.successor,result.info.surface);
+    if(!row.present || row.app!=SHELL_APP_SPINDLE)return(ShellSurfaceSubject){0};
+    return(ShellSurfaceSubject){true,row.target,row.shell_surface?row.shell_surface:row.surface};
+}
+
+static bool surface_visible(ShellSurfacesContext *ctx,uint32_t fid)
+{
+    for(size_t i=0;i<MAX_FRAMES;++i){ShellFrame f=ctx->shell.chrome->FRAMES[i];
+        if(f.present && f.frame_id==fid && f.scene_id==ctx->shell.chrome->ACTIVE_SCENE_IDX && !(f.flags&FRAME_FLAG_MINIMIZED))return true;
+    }
+    return false;
+}
+static void surface_move_scene(ShellSurfacesContext *ctx,uint32_t fid)
+{
+    for(size_t i=0;i<MAX_FRAMES;++i)if(ctx->shell.chrome->FRAMES[i].present && ctx->shell.chrome->FRAMES[i].frame_id==fid){
+        ctx->shell.chrome->FRAMES[i].scene_id=ctx->shell.chrome->ACTIVE_SCENE_IDX;break;
+    }
+}
+static bool surface_restore_budget(ShellSurfacesContext *ctx,uint8_t family)
+{
+    switch(family){
+    case 1:return surface_take(&ctx->surfaces->open_quil_in_active_scene__QUIL_RESTORE_BUDGET);
+    case 2:return surface_take(&ctx->surfaces->open_mesh_in_active_scene__MESH_RESTORE_BUDGET);
+    case 3:return surface_take(&ctx->surfaces->open_collar_in_active_scene__COLLAR_RESTORE_BUDGET);
+    case 5:return surface_take(&ctx->surfaces->open_bell_in_active_scene__BELL_RESTORE_BUDGET);
+    default:return false;
+    }
+    return false;
+}
+static bool surface_open_budget(ShellSurfacesContext *ctx,uint8_t family)
+{
+    switch(family){
+    case 0:return surface_take(&ctx->surfaces->open_linen_in_active_scene__LINEN_OPEN_BUDGET);
+    case 1:return surface_take(&ctx->surfaces->open_quil_in_active_scene__QUIL_OPEN_BUDGET);
+    case 2:return surface_take(&ctx->surfaces->open_mesh_in_active_scene__MESH_OPEN_BUDGET);
+    case 3:return surface_take(&ctx->surfaces->open_collar_in_active_scene__COLLAR_OPEN_BUDGET);
+    case 5:return surface_take(&ctx->surfaces->open_bell_in_active_scene__BELL_OPEN_BUDGET);
+    default:return false;
+    }
+    return false;
+}
+static bool surface_focus_budget(ShellSurfacesContext *ctx,uint8_t family)
+{
+    switch(family){
+    case 0:return surface_take(&ctx->surfaces->focus_or_open_linen__LINEN_FOCUS_BUDGET);
+    case 1:return surface_take(&ctx->surfaces->focus_or_open_quil__QUIL_FOCUS_BUDGET);
+    case 2:return surface_take(&ctx->surfaces->focus_or_open_mesh__MESH_FOCUS_BUDGET);
+    case 3:return surface_take(&ctx->surfaces->focus_or_open_collar__COLLAR_FOCUS_BUDGET);
+    case 5:return surface_take(&ctx->surfaces->focus_or_open_bell__BELL_FOCUS_BUDGET);
+    default:return false;
+    }
+    return false;
+}
+static bool surface_toggle_budget(ShellSurfacesContext *ctx,uint8_t family)
+{
+    switch(family){
+    case 0:return surface_take(&ctx->surfaces->toggle_linen__LINEN_TOGGLE_BUDGET);
+    case 1:return surface_take(&ctx->surfaces->toggle_quil__QUIL_TOGGLE_BUDGET);
+    case 2:return surface_take(&ctx->surfaces->toggle_mesh__MESH_TOGGLE_BUDGET);
+    case 3:return surface_take(&ctx->surfaces->toggle_collar__COLLAR_TOGGLE_BUDGET);
+    case 5:return surface_take(&ctx->surfaces->toggle_bell__BELL_TOGGLE_BUDGET);
+    default:return false;
+    }
+    return false;
+}
+static ShellSurfaceBool surface_reopen(ShellSurfacesContext *ctx,uint8_t family)
+{
+    ShellActivationResult first=family==1?shell_surfaces_quil_activation_info(ctx,false):shell_surfaces_spindle_activation_info(ctx,false);
+    if(first.status)return(ShellSurfaceBool){true,false};
+    if(first.info.state==1){
+        shell_surfaces_peer_launcher_focus_discard(ctx);
+        ShellActivationResult active=family==1?shell_surfaces_quil_activation_info(ctx,true):shell_surfaces_spindle_activation_info(ctx,true);
+        if(active.status)return(ShellSurfaceBool){true,false};
+        ShellActivationResult replay=family==1?shell_surfaces_quil_activation_info(ctx,true):shell_surfaces_spindle_activation_info(ctx,true);
+        if(replay.status || !surface_activation_equal(active.info,replay.info))return(ShellSurfaceBool){true,false};
+        ShellAppCatalogRow row=surface_row(active.info.successor,active.info.surface),previous=surface_predecessor(row);
+        if(!row.present || !previous.present){sexos_fail();return(ShellSurfaceBool){true,false};}
+        SexosReply stale=shell_surfaces_peer_raw_pdx_call(ctx,previous.route_slot,family==1?OP_QUIL_PING:0,0,0,0);
+        if(stale.status!=ERR_SERVICE_NOT_READY){sexos_fail();return(ShellSurfaceBool){true,false};}
+        sexos_line(family==1?\"[app.activation.negative] stale_predecessor_route=denied duplicate_activation=receipt ok=1\":\"[spindle.activation.negative] stale_predecessor_route=denied duplicate_activation=receipt ok=1\");
+        sexos_line(\"[shell.app.relaunch] predecessor=%u successor=%u task=%u surface=%llu receipt_replayed=1\",previous.target,active.info.successor,active.info.task,(unsigned long long)active.info.surface);
+        uint64_t frame=family==1?active.info.surface:(row.shell_surface?row.shell_surface:row.surface);
+        shell_surfaces_peer_launcher_action_record(ctx,active.info.successor,frame,0,ctx->shell.chrome->ACTIVE_SCENE_IDX,true,true);
+        return(ShellSurfaceBool){true,true};
+    }
+    if(first.info.state==2){
+        uint32_t target=first.info.successor;uint64_t frame=first.info.surface;
+        if(family==4){ShellSurfaceSubject subject=shell_surfaces_spindle_active_frame(ctx);if(!subject.present)return(ShellSurfaceBool){true,false};target=subject.target;frame=subject.frame;}
+        ShellSurfaceBool focused=shell_surfaces_peer_launcher_focus_existing(ctx,target,frame,false,0);
+        return(ShellSurfaceBool){true,focused.present?focused.value:true};
+    }
+    uint32_t target=family==1?9:12;uint64_t frame=family==1?SURFACE_ID_QUIL:SURFACE_ID_SPINDLE;
+    if(first.info.state==3 || !shell_surfaces_peer_native_launcher_available(ctx,target))return(ShellSurfaceBool){true,false};
+    return shell_surfaces_peer_launcher_focus_existing(ctx,target,frame,false,0);
+}
+static bool surface_open_plain(ShellSurfacesContext *ctx,uint8_t family)
+{
+    if(family>=6)return false;
+    SurfaceSpec spec=SURFACE_SPECS[family];
+    if(family==0){
+        shell_surfaces_peer_linen_refresh(ctx,true);ctx->shell.models->LINEN_REMOTE_FETCHED=true;
+        sexos_line(\"[shell.linen.rescan.sent] ok=1\");shell_surfaces_peer_linen_paint_surface(ctx);
+    }
+    if(family==1 || family==4){ShellSurfaceBool early=surface_reopen(ctx,family);if(early.present)return early.value;}
+    else if(surface_visible(ctx,spec.frame)){
+        sexos_line(\"[%s.placeholder.reject.duplicate] frame=%u scene=%u\",spec.label,spec.frame,(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);
+        uint64_t sid=0;
+        if(shell_chrome_active_surface_for_frame(&ctx->shell,spec.frame,&sid) && shell_chrome_try_set_focus(&ctx->shell,sid))sexos_line(\"[%s.placeholder.focus] frame=%u sid=%llu\",spec.label,spec.frame,(unsigned long long)sid);
+        if(family==0){shell_surfaces_peer_linen_paint_surface_fast(ctx);sexos_line(\"[linen.open.nonblocking] path=duplicate_focus ok=1 reason=fast_paint\");}
+        return true;
+    }
+    uint32_t fid=0;if(!surface_ensure(ctx,family,&fid))return false;surface_move_scene(ctx,fid);
+    if(shell_chrome_frame_is_minimized(&ctx->shell,fid)){
+        if(!shell_chrome_restore_minimized_frame(&ctx->shell,fid))return false;
+        if(surface_restore_budget(ctx,family))sexos_line(\"[shell.%s.lifecycle.restore] frame=%u\",spec.label,fid);
+    }else if(!shell_chrome_frame_is_zoomed(&ctx->shell,fid)){
+        uint64_t sid=0;if(!shell_chrome_active_surface_for_frame(&ctx->shell,fid,&sid))return false;
+        if(shell_surfaces_peer_surface_is_alive(ctx,sid))shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEC,sid,((uint64_t)(int64_t)spec.y<<32)|(uint64_t)(int64_t)spec.x,((uint64_t)spec.h<<32)|spec.w);
+        shell_chrome_tile_active_scene_frames(&ctx->shell);
+        if(family!=1 && family!=4)(void)shell_chrome_try_set_focus(&ctx->shell,sid);
+    }
+    if(family==4){
+        if(!ctx->surfaces->open_spindle_in_active_scene__SESSION_INIT_DONE){
+            ctx->surfaces->open_spindle_in_active_scene__SESSION_INIT_DONE=true;
+            sexos_line(\"[spindle.session.init] idx=0 count=%zu\",SPINDLE_SESSION_COUNT);sexos_line(\"[spindle.session.pane.create] idx=0\");
+            sexos_line(\"[spindle.session.init] idx=1 count=%zu\",SPINDLE_SESSION_COUNT);sexos_line(\"[spindle.session.pane.create] idx=1\");
+            sexos_line(\"[spindle.session.active] idx=%zu\",ctx->surfaces->SPINDLE_ACTIVE_SESSION);sexos_line(\"[spindle.stargate.init]\");
+        }
+        shell_surfaces_spindle_render(ctx);sexos_line(\"[spindle.placeholder.open] frame=%u\",fid);
+        ShellSurfaceBool focus=shell_surfaces_peer_launcher_focus_existing(ctx,12,SURFACE_ID_SPINDLE,true,0);return focus.present && focus.value;
+    }
+    if(family!=1){uint64_t sid=0;if(shell_chrome_active_surface_for_frame(&ctx->shell,fid,&sid)){(void)shell_chrome_try_set_focus(&ctx->shell,sid);sexos_line(\"[%s.placeholder.focus] frame=%u sid=%llu\",spec.label,fid,(unsigned long long)sid);}}
+    if(family==0){
+        sexos_line(\"[linen.placeholder.open] frame=%u\",fid);sexos_line(\"[linen.object_table.ready] count=%zu\",shell_surfaces_peer_linen_object_count(ctx));
+        shell_surfaces_peer_linen_paint_surface_fast(ctx);sexos_line(\"[linen.open.nonblocking] path=open_scene ok=1 reason=fast_paint\");
+    }else if(family==1){
+        shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_QUIL,0,((uint64_t)QUIL_PLACEHOLDER_COLOR<<32)|((uint64_t)ctx->shell.input->SURFACE_201_H<<16)|ctx->shell.input->SURFACE_201_W);
+        shell_surfaces_peer_pdx_call(ctx,SLOT_QUIL,OP_QUIL_PING,0,0,0);
+        if(surface_take(&ctx->surfaces->open_quil_in_active_scene__QUIL_ROUTE_BUDGET))sexos_line(\"[shell.quil.route.ping] fid=%u\",fid);
+        sexos_line(\"[quil.placeholder.open] frame=%u\",fid);sexos_line(\"[quil.buffer_table.ready] count=%zu\",shell_surfaces_peer_quil_buffer_count(ctx));shell_surfaces_peer_quil_render_buffer_list(ctx);
+    }else if(family==2){
+        shell_surfaces_peer_mesh_render_fact_list(ctx);sexos_line(\"[mesh.placeholder.open] frame=%u\",fid);shell_surfaces_peer_mesh_emit_linen_quil_links(ctx);
+    }else if(family==3){
+        shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_COLLAR,0,((uint64_t)COLLAR_PLACEHOLDER_COLOR<<32)|((uint64_t)ctx->shell.input->SURFACE_203_H<<16)|ctx->shell.input->SURFACE_203_W);
+        shell_surfaces_peer_collar_render_grants_text(ctx);sexos_line(\"[collar.placeholder.open] frame=%u\",fid);
+    }else{shell_surfaces_bell_render_event_list(ctx);sexos_line(\"[bell.placeholder.open] frame=%u\",fid);}
+    shell_surfaces_peer_snap_capture_layout(ctx);
+    if(surface_open_budget(ctx,family))sexos_line(\"[shell.%s.open] frame=%u\",spec.label,fid);
+    if(family==1){ShellSurfaceBool focus=shell_surfaces_peer_launcher_focus_existing(ctx,9,SURFACE_ID_QUIL,true,0);return focus.present && focus.value;}
+    return true;
+}
+static bool surface_focus_plain(ShellSurfacesContext *ctx,uint8_t family)
+{
+    if(family>=6)return false;
+    SurfaceSpec spec=SURFACE_SPECS[family];
+    if(surface_visible(ctx,spec.frame)){uint64_t sid=0;if(shell_chrome_active_surface_for_frame(&ctx->shell,spec.frame,&sid) && shell_chrome_try_set_focus(&ctx->shell,sid)){
+        if(surface_focus_budget(ctx,family))sexos_line(\"[shell.%s.focus] frame=%u\",spec.label,spec.frame);
+        return true;
+    }}
+    return surface_open_plain(ctx,family);
+}
+static bool surface_toggle_plain(ShellSurfacesContext *ctx,uint8_t family)
+{
+    if(family>=6)return false;
+    SurfaceSpec spec=SURFACE_SPECS[family];
+    if(family==5){uint8_t decision=shell_surfaces_peer_collar_check_operation(ctx,COLLAR_OP_ACCESS_BELL,ctx->shell.chrome->FOCUSED_SURFACE_ID,0);
+        if(decision!=COLLAR_DECISION_ALLOW){sexos_line(\"[shell.bell.access.reject] decision=%u caller=%llu\",(unsigned)decision,(unsigned long long)ctx->shell.chrome->FOCUSED_SURFACE_ID);return false;}
+    }
+    if(family==4){ShellSurfaceSubject active=shell_surfaces_spindle_active_frame(ctx);if(active.present){
+        uint32_t fid=0;if(shell_chrome_frame_for_surface(&ctx->shell,active.frame,&fid) && !shell_chrome_frame_is_minimized(&ctx->shell,fid))return shell_chrome_minimize_frame(&ctx->shell,fid);
+        return surface_open_plain(ctx,family);
+    }}
+    if(surface_visible(ctx,spec.frame)){
+        if(!shell_chrome_minimize_frame(&ctx->shell,spec.frame))return false;
+        if(family==3){ctx->shell.models->COLLAR_OVERLAY_ENABLED=false;sexos_line(\"[collar.overlay.toggle] enabled=0 ok=1 reason=minimized\");}
+        if(surface_toggle_budget(ctx,family)){if(family==0)sexos_line(\"[shell.linen.toggle.minimize] frame=%u\",spec.frame);else sexos_line(\"[shell.%s.lifecycle.minimize] frame=%u\",spec.label,spec.frame);}
+        return true;
+    }
+    bool ok=surface_open_plain(ctx,family);
+    if(family==3){if(ok)ctx->shell.models->COLLAR_OVERLAY_ENABLED=true;sexos_line(ok?\"[collar.overlay.toggle] enabled=1 ok=1 reason=opened\":\"[collar.overlay.toggle] enabled=0 ok=0 reason=open_reject\");}
+    return ok;
+}
+
+static bool surface_manifest(uint64_t sid,uint64_t title,uint64_t packed,AppManifest *out)
+{
+    if(packed&UINT64_C(0xFFFFFFFFFF000000))return false;
+    uint8_t bits=(uint8_t)packed;
+    if(bits&~APP_CAP_KNOWN)return false;
+    *out=(AppManifest){sid,title,(uint16_t)(packed>>8),{bits}};
+    return true;
+}
+static const char *surface_capability_description(uint8_t bits)
+{
+    switch(bits){case 0:return \"none\";case APP_CAP_BELL:return \"bell\";case APP_CAP_SEXFILES:return \"sexfiles\";case APP_CAP_KNOWN:return \"bell+sexfiles\";default:return \"unknown\";}
+    return \"unknown\";
+}
+bool shell_surfaces_handle_app_surface_req(ShellSurfacesContext *ctx,uint64_t sid,uint64_t title,uint64_t packed,uint32_t caller)
+{
+    AppManifest manifest={0};
+    if(!surface_manifest(sid,title,packed,&manifest)){
+        sexos_line(\"[shell.app_surface.reject] reason=manifest_invalid sid=%llu arg2=0x%llx caller=%u\",(unsigned long long)sid,(unsigned long long)packed,caller);return false;
+    }
+    ShellCustodyWord frame_surface={0};
+    for(size_t i=0;i<SHELL_APP_COUNT;++i)if(ctx->shell.apps->present[i]){
+        ShellAppCustody entry=ctx->shell.apps->entries[i];
+        if(shell_custody_allows(&entry,caller,manifest.surface_id,manifest.app_id)){
+            frame_surface=shell_custody_shell_surface(&entry);
+            if(!frame_surface.present)frame_surface=(ShellCustodyWord){true,manifest.surface_id};
+            break;
+        }
+    }
+    if(!frame_surface.present){sexos_line(\"[shell.app_surface.reject] reason=catalog_authority sid=%llu caller=%u\",(unsigned long long)sid,caller);return false;}
+    if(!sid){sexos_line(\"[shell.app_surface.reject] reason=zero_surface_id caller=%u\",caller);return false;}
+    if(!title){sexos_line(\"[shell.app_surface.reject] reason=zero_title_id sid=%llu caller=%u\",(unsigned long long)sid,caller);return false;}
+    uint8_t state=0;
+    if(shell_chrome_lifecycle_state(&ctx->shell,frame_surface.value,&state)){
+        sexos_line(\"[shell.app_surface.reject] reason=already_registered sid=%llu caller=%u\",(unsigned long long)sid,caller);return false;
+    }
+    if(sid<200){sexos_line(\"[shell.app_surface.reject] reason=reserved_range sid=%llu caller=%u\",(unsigned long long)sid,caller);return false;}
+    if(manifest.capabilities.bits)sexos_line(\"[shell.app_surface.capabilities] sid=%llu caps=0x%x desc=%s app_id=%u\",(unsigned long long)sid,(unsigned)manifest.capabilities.bits,surface_capability_description(manifest.capabilities.bits),(unsigned)manifest.app_id);
+    size_t slot=MAX_FRAMES;
+    for(size_t i=0;i<MAX_FRAMES;++i)if(!ctx->shell.chrome->FRAMES[i].present){slot=i;break;}
+    if(slot==MAX_FRAMES){sexos_line(\"[shell.app_surface.reject] reason=no_frame_slot sid=%llu caller=%u\",(unsigned long long)sid,caller);return false;}
+    /* Admit lifecycle metadata before publishing the frame. No external effect
+       occurs between this successful admission and the two local stores. */
+    if(!shell_chrome_lifecycle_register(&ctx->shell,frame_surface.value,LIFECYCLE_VISIBLE)){
+        sexos_line(\"[shell.app_surface.reject] reason=no_lifecycle_slot sid=%llu caller=%u\",(unsigned long long)sid,caller);return false;
+    }
+    uint32_t frame_id=(uint32_t)slot+10;
+    ShellFrame frame={.present=true,.frame_id=frame_id,.tab_count=1,.scene_id=ctx->shell.chrome->ACTIVE_SCENE_IDX,.flags=FRAME_FLAG_TOP_BAR,.normal_x=200,.normal_y=100,.normal_w=600,.normal_h=400};
+    frame.tabs[0]=(ShellTab){true,frame_surface.value,title,0};ctx->shell.chrome->FRAMES[slot]=frame;
+    for(size_t i=0;i<SHELL_APP_COUNT;++i)if(ctx->shell.apps->present[i]&&ctx->shell.apps->entries[i].surface==sid){
+        ctx->shell.apps->entries[i].has_bounds=true;ctx->shell.apps->entries[i].x=200;ctx->shell.apps->entries[i].y=100;ctx->shell.apps->entries[i].w=600;ctx->shell.apps->entries[i].h=400;break;
+    }
+    shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEC,frame_surface.value,(UINT64_C(100)<<32)|200,(UINT64_C(400)<<32)|600);
+    shell_surfaces_peer_collar_auto_grant_from_manifest(ctx,&manifest);
+    shell_chrome_tile_active_scene_frames(&ctx->shell);(void)shell_chrome_try_set_focus(&ctx->shell,frame_surface.value);
+    sexos_line(\"[shell.app_surface.accept] sid=%llu title_id=%llu frame=%u caps=0x%x app_id=%u caller=%u\",(unsigned long long)sid,(unsigned long long)title,frame_id,(unsigned)manifest.capabilities.bits,(unsigned)manifest.app_id,caller);
+    for(size_t i=0;i<SHELL_APP_COUNT;++i)if(ctx->shell.apps->present[i]&&ctx->shell.apps->entries[i].target==caller&&ctx->shell.apps->entries[i].surface==sid){ctx->shell.apps->entries[i].registration_reply=true;break;}
+    shell_surfaces_peer_registration_reply_poll(ctx);return true;
+}
+
+static bool spindle_valid_line(ShellSurfacesContext *ctx)
+{
+    return ctx->surfaces->YARN.cmd_len<=YARN_CMD_BUF_CAP && ctx->surfaces->SPINDLE_VI_CUR<=YARN_CMD_BUF_CAP;
+}
+bool shell_surfaces_spindle_scan_to_char(uint8_t scan,uint8_t *out)
+{
+    static const uint8_t row1[]=\"qwertyuiop\";
+    static const uint8_t row2[]=\"asdfghjkl\";
+    static const uint8_t row3[]=\"zxcvbnm\";
+    static const uint8_t nums[]=\"1234567890\";
+    if(scan>=0x10 && scan<=0x19){*out=row1[scan-0x10];return true;}
+    if(scan>=0x1E && scan<=0x26){*out=row2[scan-0x1E];return true;}
+    if(scan>=0x2C && scan<=0x32){*out=row3[scan-0x2C];return true;}
+    if(scan>=2 && scan<=0x0B){*out=nums[scan-2];return true;}
+    if(scan==0x39){*out=' ';return true;}
+    return false;
+}
+void shell_surfaces_spindle_vi_save_undo(ShellSurfacesContext *ctx)
+{
+    for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->SPINDLE_VI_PREV_BUF[i]=ctx->surfaces->YARN.cmd_buf[i];
+    ctx->surfaces->SPINDLE_VI_PREV_LEN=ctx->surfaces->YARN.cmd_len;
+}
+void shell_surfaces_spindle_vi_undo(ShellSurfacesContext *ctx)
+{
+    if(ctx->surfaces->SPINDLE_VI_PREV_LEN>YARN_CMD_BUF_CAP)return;
+    for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->YARN.cmd_buf[i]=ctx->surfaces->SPINDLE_VI_PREV_BUF[i];
+    ctx->surfaces->YARN.cmd_len=ctx->surfaces->SPINDLE_VI_PREV_LEN;
+    if(ctx->surfaces->SPINDLE_VI_CUR>ctx->surfaces->YARN.cmd_len)ctx->surfaces->SPINDLE_VI_CUR=ctx->surfaces->YARN.cmd_len;
+}
+void shell_surfaces_spindle_vi_word_fwd(ShellSurfacesContext *ctx)
+{
+    if(!spindle_valid_line(ctx))return;
+    size_t pos=ctx->surfaces->SPINDLE_VI_CUR,len=ctx->surfaces->YARN.cmd_len;
+    while(pos<len && ctx->surfaces->YARN.cmd_buf[pos]!=' ')++pos;
+    while(pos<len && ctx->surfaces->YARN.cmd_buf[pos]==' ')++pos;
+    ctx->surfaces->SPINDLE_VI_CUR=pos;
+}
+void shell_surfaces_spindle_vi_word_back(ShellSurfacesContext *ctx)
+{
+    if(!spindle_valid_line(ctx))return;
+    size_t pos=ctx->surfaces->SPINDLE_VI_CUR;
+    while(pos && ctx->surfaces->YARN.cmd_buf[pos-1]==' ')--pos;
+    while(pos && ctx->surfaces->YARN.cmd_buf[pos-1]!=' ')--pos;
+    ctx->surfaces->SPINDLE_VI_CUR=pos;
+}
+void shell_surfaces_spindle_vi_word_end(ShellSurfacesContext *ctx)
+{
+    if(!spindle_valid_line(ctx))return;
+    size_t len=ctx->surfaces->YARN.cmd_len,pos=ctx->surfaces->SPINDLE_VI_CUR;
+    if(pos>=len)return;
+    ++pos;
+    while(pos<len && ctx->surfaces->YARN.cmd_buf[pos]==' ')++pos;
+    while(pos+1<len && ctx->surfaces->YARN.cmd_buf[pos+1]!=' ')++pos;
+    ctx->surfaces->SPINDLE_VI_CUR=pos<len?pos:len-1;
+}
+void shell_surfaces_spindle_vi_insert_at(ShellSurfacesContext *ctx,size_t pos,uint8_t byte)
+{
+    size_t len=ctx->surfaces->YARN.cmd_len;
+    if(len>=YARN_CMD_BUF_CAP-1 || pos>len)return;
+    for(size_t i=len;i>pos;--i)ctx->surfaces->YARN.cmd_buf[i]=ctx->surfaces->YARN.cmd_buf[i-1];
+    ctx->surfaces->YARN.cmd_buf[pos]=byte;ctx->surfaces->YARN.cmd_len=len+1;
+    ctx->surfaces->SPINDLE_VI_CUR=pos+1;
+}
+void shell_surfaces_spindle_vi_delete_at(ShellSurfacesContext *ctx,size_t pos)
+{
+    size_t len=ctx->surfaces->YARN.cmd_len;
+    if(len>YARN_CMD_BUF_CAP || pos>=len)return;
+    for(size_t i=pos;i+1<len;++i)ctx->surfaces->YARN.cmd_buf[i]=ctx->surfaces->YARN.cmd_buf[i+1];
+    ctx->surfaces->YARN.cmd_buf[len-1]=0;ctx->surfaces->YARN.cmd_len=len-1;
+    if(ctx->surfaces->SPINDLE_VI_CUR>len-1)ctx->surfaces->SPINDLE_VI_CUR=len-1;
+}
+size_t shell_surfaces_spindle_history_entry_len(const ShellCommandBytes *entry)
+{
+    for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)if(!(*entry)[i])return i;
+    return YARN_CMD_BUF_CAP;
+}
+void shell_surfaces_spindle_history_load(ShellSurfacesContext *ctx,size_t index)
+{
+    if(index>=YARN_HISTORY_CAP)return;
+    size_t len=0;
+    {const YarnSession *view=&ctx->surfaces->YARN;len=shell_surfaces_spindle_history_entry_len(&view->history[index]);}
+    for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->YARN.cmd_buf[i]=ctx->surfaces->YARN.history[index][i];
+    ctx->surfaces->YARN.cmd_len=len;ctx->surfaces->SPINDLE_VI_CUR=len;
+}
+void shell_surfaces_spindle_history_up(ShellSurfacesContext *ctx)
+{
+    size_t count=ctx->surfaces->YARN.history_count;
+    if(!count || count>YARN_HISTORY_CAP)return;
+    if(ctx->surfaces->YARN.history_pos==-1){
+        for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->SPINDLE_HIST_DRAFT_BUF[i]=ctx->surfaces->YARN.cmd_buf[i];
+        ctx->surfaces->SPINDLE_HIST_DRAFT_LEN=ctx->surfaces->YARN.cmd_len;
+        ctx->surfaces->YARN.history_pos=(int64_t)count-1;
+    }else if(ctx->surfaces->YARN.history_pos>0)--ctx->surfaces->YARN.history_pos;
+    if(ctx->surfaces->YARN.history_pos<0 || (uint64_t)ctx->surfaces->YARN.history_pos>=count)return;
+    shell_surfaces_spindle_history_load(ctx,(size_t)ctx->surfaces->YARN.history_pos);
+    sexos_line(\"[silk-shell.spindle.history.nav] dir=up pos=%lld len=%zu\",(long long)ctx->surfaces->YARN.history_pos,ctx->surfaces->YARN.cmd_len);
+    shell_surfaces_spindle_render(ctx);
+}
+void shell_surfaces_spindle_history_down(ShellSurfacesContext *ctx)
+{
+    int64_t pos=ctx->surfaces->YARN.history_pos;
+    if(pos==-1)return;
+    if(pos<0 || (uint64_t)pos>=YARN_HISTORY_CAP || ctx->surfaces->YARN.history_count>YARN_HISTORY_CAP)return;
+    ++pos;ctx->surfaces->YARN.history_pos=pos;
+    if((size_t)pos>=ctx->surfaces->YARN.history_count){
+        ctx->surfaces->YARN.history_pos=-1;
+        for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->YARN.cmd_buf[i]=ctx->surfaces->SPINDLE_HIST_DRAFT_BUF[i];
+        ctx->surfaces->YARN.cmd_len=ctx->surfaces->SPINDLE_HIST_DRAFT_LEN;
+        ctx->surfaces->SPINDLE_VI_CUR=ctx->surfaces->YARN.cmd_len;
+    }else shell_surfaces_spindle_history_load(ctx,(size_t)pos);
+    sexos_line(\"[silk-shell.spindle.history.nav] dir=down pos=%lld len=%zu\",(long long)ctx->surfaces->YARN.history_pos,ctx->surfaces->YARN.cmd_len);
+    shell_surfaces_spindle_render(ctx);
+}
+ShellSpindleSuffix shell_surfaces_spindle_ghost_suffix(ShellSurfacesContext *ctx)
+{
+    ShellSpindleSuffix result={0};
+    size_t len=ctx->surfaces->YARN.cmd_len,count=ctx->surfaces->YARN.history_count;
+    if(!len || len>=YARN_CMD_BUF_CAP || ctx->surfaces->SPINDLE_VI_CUR!=len || count>YARN_HISTORY_CAP)return result;
+    while(count){
+        --count;
+        size_t entry_len=0;
+        {const YarnSession *view=&ctx->surfaces->YARN;entry_len=shell_surfaces_spindle_history_entry_len(&view->history[count]);}
+        if(entry_len<=len)continue;
+        bool match=true;
+        for(size_t i=0;i<len;++i)if(ctx->surfaces->YARN.history[count][i]!=ctx->surfaces->YARN.cmd_buf[i]){match=false;break;}
+        if(match){
+            result.present=true;result.len=entry_len-len;
+            for(size_t i=0;i<result.len;++i)result.bytes[i]=ctx->surfaces->YARN.history[count][len+i];
+            return result;
+        }
+    }
+    return result;
+}
+bool shell_surfaces_spindle_ghost_accept(ShellSurfacesContext *ctx)
+{
+    ShellSpindleSuffix suffix=shell_surfaces_spindle_ghost_suffix(ctx);
+    if(!suffix.present)return false;
+    for(size_t i=0;i<suffix.len;++i)shell_surfaces_spindle_vi_insert_at(ctx,ctx->surfaces->YARN.cmd_len,suffix.bytes[i]);
+    sexos_line(\"[spindle.ghost.accept] len=%zu\",suffix.len);shell_surfaces_spindle_render(ctx);return true;
+}
+void shell_surfaces_spindle_vi_normal_key(ShellSurfacesContext *ctx,uint8_t scan)
+{
+    uint8_t ch=0;bool found=shell_surfaces_spindle_scan_to_char(scan,&ch);
+    if(ctx->surfaces->SPINDLE_VI_PENDING_D){
+        ctx->surfaces->SPINDLE_VI_PENDING_D=false;
+        if(found && ch=='d'){
+            shell_surfaces_spindle_vi_save_undo(ctx);
+            for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->YARN.cmd_buf[i]=0;
+            ctx->surfaces->YARN.cmd_len=0;ctx->surfaces->SPINDLE_VI_CUR=0;
+            sexos_line(\"[spindle.line.edit.ok] op=dd\");sexos_line(\"[spindle.line.cursor] pos=0 len=0\");shell_surfaces_spindle_render(ctx);
+        }
+        return;
+    }
+    size_t cur=ctx->surfaces->SPINDLE_VI_CUR,len=ctx->surfaces->YARN.cmd_len;
+    if(scan==0x0E || (found&&ch=='h')){if(cur)--cur;ctx->surfaces->SPINDLE_VI_CUR=cur;}
+    else if(!found)return;
+    else if(ch=='l'){if(cur<len)++cur;ctx->surfaces->SPINDLE_VI_CUR=cur;}
+    else if(ch=='0'){ctx->surfaces->SPINDLE_VI_CUR=0;sexos_line(\"[spindle.line.cursor] pos=0 len=%zu\",len);sexos_line(\"[spindle.line.edit.ok] op=home\");shell_surfaces_spindle_render(ctx);return;}
+    else if(ch=='w' || ch=='b' || ch=='e'){
+        if(ch=='w')shell_surfaces_spindle_vi_word_fwd(ctx);
+        else if(ch=='b')shell_surfaces_spindle_vi_word_back(ctx);
+        else shell_surfaces_spindle_vi_word_end(ctx);
+        sexos_line(\"[spindle.line.cursor] pos=%zu len=%zu\",ctx->surfaces->SPINDLE_VI_CUR,len);
+        sexos_line(\"[spindle.line.edit.ok] op=%s\",ch=='w'?\"word_fwd\":ch=='b'?\"word_back\":\"word_end\");
+        shell_surfaces_spindle_render(ctx);return;
+    }else if(ch=='i'){ctx->surfaces->SPINDLE_VI_NORMAL=false;sexos_line(\"[spindle.vi.mode] mode=insert\");shell_surfaces_spindle_render(ctx);return;}
+    else if(ch=='a'){if(cur<len)++cur;ctx->surfaces->SPINDLE_VI_CUR=cur;ctx->surfaces->SPINDLE_VI_NORMAL=false;sexos_line(\"[spindle.vi.mode] mode=insert cursor=%zu\",cur);shell_surfaces_spindle_render(ctx);return;}
+    else if(ch=='d'){ctx->surfaces->SPINDLE_VI_PENDING_D=true;return;}
+    else if(ch=='u'){shell_surfaces_spindle_vi_undo(ctx);sexos_line(\"[spindle.line.edit.ok] op=undo len=%zu\",ctx->surfaces->YARN.cmd_len);sexos_line(\"[spindle.line.cursor] pos=%zu len=%zu\",ctx->surfaces->SPINDLE_VI_CUR,ctx->surfaces->YARN.cmd_len);shell_surfaces_spindle_render(ctx);return;}
+    else return;
+    sexos_line(\"[spindle.line.cursor] pos=%zu len=%zu\",ctx->surfaces->SPINDLE_VI_CUR,len);shell_surfaces_spindle_render(ctx);
+}
+
+void shell_surfaces_spindle_session_save(ShellSurfacesContext *ctx,size_t index)
+{
+    if(index>=SPINDLE_SESSION_COUNT)return;
+    SpindleSessionState *dst=&ctx->surfaces->SPINDLE_SESSIONS[index];
+    const YarnSession *src=&ctx->surfaces->YARN;
+    for(size_t i=0;i<YARN_CMD_BUF_CAP;++i){dst->cmd_buf[i]=src->cmd_buf[i];dst->vi_prev_buf[i]=ctx->surfaces->SPINDLE_VI_PREV_BUF[i];}
+    dst->cmd_len=src->cmd_len;dst->vi_normal=ctx->surfaces->SPINDLE_VI_NORMAL;
+    dst->vi_cur=ctx->surfaces->SPINDLE_VI_CUR;dst->vi_pending_d=ctx->surfaces->SPINDLE_VI_PENDING_D;
+    dst->vi_prev_len=ctx->surfaces->SPINDLE_VI_PREV_LEN;
+    for(size_t i=0;i<YARN_OUTPUT_LINES;++i)for(size_t j=0;j<YARN_OUTPUT_LINE_CAP;++j)dst->output_lines[i][j]=src->output_lines[i][j];
+    dst->output_count=src->output_count;
+    size_t source_lines=src->sb_total<SPINDLE_SB_LINES?src->sb_total:SPINDLE_SB_LINES;
+    size_t keep=source_lines<SESSION_SB_LINES?source_lines:SESSION_SB_LINES;
+    for(size_t i=0;i<SESSION_SB_LINES;++i)for(size_t j=0;j<SPINDLE_SB_LINE_CAP;++j)dst->sb_ring[i][j]=0;
+    for(size_t i=0;i<keep;++i){
+        size_t at=(src->sb_write+SPINDLE_SB_LINES-keep+i)%SPINDLE_SB_LINES;
+        for(size_t j=0;j<SPINDLE_SB_LINE_CAP;++j)dst->sb_ring[i][j]=src->sb_ring[at][j];
+    }
+    dst->sb_write=keep%SESSION_SB_LINES;dst->sb_total=(uint32_t)keep;
+    for(size_t i=0;i<YARN_HISTORY_CAP;++i)for(size_t j=0;j<YARN_CMD_BUF_CAP;++j)dst->history[i][j]=src->history[i][j];
+    dst->history_count=src->history_count;dst->history_pos=src->history_pos;
+    sexos_line(\"[spindle.session.save] idx=%zu cmd_len=%zu sb_total=%u\",index,dst->cmd_len,dst->sb_total);
+}
+void shell_surfaces_spindle_session_load(ShellSurfacesContext *ctx,size_t index)
+{
+    if(index>=SPINDLE_SESSION_COUNT)return;
+    const SpindleSessionState *src=&ctx->surfaces->SPINDLE_SESSIONS[index];
+    YarnSession *dst=&ctx->surfaces->YARN;
+    for(size_t i=0;i<YARN_CMD_BUF_CAP;++i){dst->cmd_buf[i]=src->cmd_buf[i];ctx->surfaces->SPINDLE_VI_PREV_BUF[i]=src->vi_prev_buf[i];}
+    dst->cmd_len=src->cmd_len;ctx->surfaces->SPINDLE_VI_NORMAL=src->vi_normal;
+    ctx->surfaces->SPINDLE_VI_CUR=src->vi_cur;ctx->surfaces->SPINDLE_VI_PENDING_D=src->vi_pending_d;
+    ctx->surfaces->SPINDLE_VI_PREV_LEN=src->vi_prev_len;
+    for(size_t i=0;i<YARN_OUTPUT_LINES;++i)for(size_t j=0;j<YARN_OUTPUT_LINE_CAP;++j)dst->output_lines[i][j]=src->output_lines[i][j];
+    dst->output_count=src->output_count;
+    for(size_t i=0;i<SPINDLE_SB_LINES;++i)for(size_t j=0;j<SPINDLE_SB_LINE_CAP;++j)dst->sb_ring[i][j]=0;
+    size_t count=src->sb_total<SESSION_SB_LINES?src->sb_total:SESSION_SB_LINES;
+    for(size_t i=0;i<count;++i){
+        size_t at=(src->sb_write+SESSION_SB_LINES-count+i)%SESSION_SB_LINES;
+        for(size_t j=0;j<SPINDLE_SB_LINE_CAP;++j)dst->sb_ring[i][j]=src->sb_ring[at][j];
+    }
+    dst->sb_write=count%SPINDLE_SB_LINES;dst->sb_total=(uint32_t)count;dst->sb_offset=0;
+    for(size_t i=0;i<YARN_HISTORY_CAP;++i)for(size_t j=0;j<YARN_CMD_BUF_CAP;++j)dst->history[i][j]=src->history[i][j];
+    dst->history_count=src->history_count;dst->history_pos=src->history_pos;
+    sexos_line(\"[spindle.session.load] idx=%zu cmd_len=%zu sb_total=%u\",index,dst->cmd_len,dst->sb_total);
+}
+void shell_surfaces_spindle_session_switch(ShellSurfacesContext *ctx)
+{
+    size_t previous=ctx->surfaces->SPINDLE_ACTIVE_SESSION;
+    shell_surfaces_spindle_session_save(ctx,previous);
+    size_t next=(previous+1)%SPINDLE_SESSION_COUNT;ctx->surfaces->SPINDLE_ACTIVE_SESSION=next;
+    shell_surfaces_spindle_session_load(ctx,next);
+    sexos_line(\"[spindle.session.pane.switch] from=%zu to=%zu\",previous,next);
+    sexos_line(\"[spindle.session.active] idx=%zu\",next);sexos_line(\"[spindle.session.pane.independent] prev=%zu next=%zu\",previous,next);
+    shell_surfaces_spindle_render(ctx);sexos_line(\"[spindle.session.render] idx=%zu\",ctx->surfaces->SPINDLE_ACTIVE_SESSION);
+}
+
+static bool spindle_range(ShellByteRange span)
+{
+    return span.start<=YARN_CMD_BUF_CAP && span.len<=YARN_CMD_BUF_CAP-span.start;
+}
+ShellByteRange shell_surfaces_trim_ascii(const ShellCommandBytes *bytes,ShellByteRange span)
+{
+    if(!spindle_range(span))return(ShellByteRange){0};
+    size_t first=span.start,end=span.start+span.len;
+    while(first<end){uint8_t b=(*bytes)[first];if(b!=' ' && b!='\\t' && b!='\\n')break;++first;}
+    while(end>first){uint8_t b=(*bytes)[end-1];if(b!=' ' && b!='\\t' && b!='\\n')break;--end;}
+    return(ShellByteRange){first,end-first};
+}
+static void spindle_debug_byte(ShellDebugRecord *out,uint8_t byte)
+{
+    if(out->len>=sizeof(out->bytes)){sexos_fail();return;}
+    out->bytes[out->len++]=byte;
+}
+static void spindle_debug_chunk(ShellDebugRecord *out,ShellDebugChunk chunk)
+{
+    for(size_t i=0;i<sizeof(chunk.bytes) && chunk.bytes[i];++i)spindle_debug_byte(out,chunk.bytes[i]);
+}
+static void spindle_debug_number(ShellDebugRecord *out,uint8_t value)
+{
+    if(value>=100)spindle_debug_byte(out,(uint8_t)('0'+value/100));
+    if(value>=10)spindle_debug_byte(out,(uint8_t)('0'+(value/10)%10));
+    spindle_debug_byte(out,(uint8_t)('0'+value%10));
+}
+static void spindle_debug_bytes(ShellDebugChunk prefix,const ShellCommandBytes *bytes,ShellByteRange span)
+{
+    if(!spindle_range(span)){sexos_fail();return;}
+    ShellDebugRecord out={0};spindle_debug_chunk(&out,prefix);spindle_debug_byte(&out,'[');
+    for(size_t i=0;i<span.len;++i){if(i){spindle_debug_byte(&out,',');spindle_debug_byte(&out,' ');}spindle_debug_number(&out,(*bytes)[span.start+i]);}
+    spindle_debug_byte(&out,']');spindle_debug_byte(&out,'\\n');shell_surfaces_debug_record(&out);
+}
+void shell_surfaces_yarn_append_output(ShellSurfacesContext *ctx,const ShellCommandBytes *bytes,ShellByteRange span)
+{
+    if(!spindle_range(span) || ctx->surfaces->YARN.sb_write>=SPINDLE_SB_LINES)return;
+    if(ctx->surfaces->YARN.output_count<YARN_OUTPUT_LINES)++ctx->surfaces->YARN.output_count;
+    for(size_t i=1;i<YARN_OUTPUT_LINES;++i)for(size_t j=0;j<YARN_OUTPUT_LINE_CAP;++j)ctx->surfaces->YARN.output_lines[i-1][j]=ctx->surfaces->YARN.output_lines[i][j];
+    size_t copied=span.len<YARN_OUTPUT_LINE_CAP-1?span.len:YARN_OUTPUT_LINE_CAP-1;
+    for(size_t i=0;i<copied;++i)ctx->surfaces->YARN.output_lines[YARN_OUTPUT_LINES-1][i]=(*bytes)[span.start+i];
+    size_t n=span.len<SPINDLE_SB_LINE_CAP?span.len:SPINDLE_SB_LINE_CAP,at=ctx->surfaces->YARN.sb_write;
+    for(size_t i=0;i<n;++i)ctx->surfaces->YARN.sb_ring[at][i]=(*bytes)[span.start+i];
+    for(size_t i=n;i<SPINDLE_SB_LINE_CAP;++i)ctx->surfaces->YARN.sb_ring[at][i]=0;
+    ctx->surfaces->YARN.sb_write=(at+1)%SPINDLE_SB_LINES;
+    if(ctx->surfaces->YARN.sb_total<UINT32_MAX)++ctx->surfaces->YARN.sb_total;
+    if(ctx->surfaces->YARN.sb_offset)--ctx->surfaces->YARN.sb_offset;
+    sexos_line(\"[spindle.scrollback.push] total=%u len=%zu\",ctx->surfaces->YARN.sb_total,n);
+    sexos_line(\"[spindle.output.append] len=%zu\",copied);
+}
+#define SPINDLE_OUTPUT(ctx,literal) {const ShellCommandBytes text=literal;shell_surfaces_yarn_append_output(ctx,&text,((ShellByteRange){0,sizeof(literal)-1}));}
+void shell_surfaces_yarn_cmd_help(ShellSurfacesContext *ctx)
+{
+    sexos_line(\"[spindle.command.help]\");
+    SPINDLE_OUTPUT(ctx,\"help clear echo about time pd scene routes faults\");
+    SPINDLE_OUTPUT(ctx,\"session panes history status\");
+}
+void shell_surfaces_yarn_cmd_clear(ShellSurfacesContext *ctx)
+{
+    sexos_line(\"[spindle.command.clear]\");
+    for(size_t i=0;i<YARN_OUTPUT_LINES;++i)for(size_t j=0;j<YARN_OUTPUT_LINE_CAP;++j)ctx->surfaces->YARN.output_lines[i][j]=0;
+    ctx->surfaces->YARN.output_count=0;
+    for(size_t i=0;i<SPINDLE_SB_LINES;++i)for(size_t j=0;j<SPINDLE_SB_LINE_CAP;++j)ctx->surfaces->YARN.sb_ring[i][j]=0;
+    ctx->surfaces->YARN.sb_write=0;ctx->surfaces->YARN.sb_total=0;ctx->surfaces->YARN.sb_offset=0;
+}
+void shell_surfaces_yarn_cmd_echo(ShellSurfacesContext *ctx,const ShellCommandBytes *bytes,ShellByteRange span)
+{
+    ShellByteRange trimmed=shell_surfaces_trim_ascii(bytes,span);
+    spindle_debug_bytes(((ShellDebugChunk){\"[spindle.command.echo] args=\"}),bytes,trimmed);
+    shell_surfaces_yarn_append_output(ctx,bytes,trimmed);
+}
+void shell_surfaces_yarn_cmd_about(ShellSurfacesContext *ctx)
+{
+    sexos_line(\"[spindle.command.about]\");SPINDLE_OUTPUT(ctx,\"SexOS 0.2 - Spindle terminal\");SPINDLE_OUTPUT(ctx,\"No POSIX, no TTY, no PTY\");
+}
+void shell_surfaces_yarn_cmd_time(ShellSurfacesContext *ctx)
+{
+    sexos_line(\"[spindle.command.time]\");SPINDLE_OUTPUT(ctx,\"System time: TBD (no RTC read in V1)\");
+}
+void shell_surfaces_yarn_cmd_pd(ShellSurfacesContext *ctx)
+{
+    sexos_line(\"[spindle.command.pd]\");SPINDLE_OUTPUT(ctx,\"PD slots: 5=display 6=shell 7=silkbar 10=store 11=quil 12=bell\");
+}
+void shell_surfaces_yarn_cmd_scene(ShellSurfacesContext *ctx)
+{
+    sexos_line(\"[spindle.command.scene]\");SPINDLE_OUTPUT(ctx,\"Active scene: 0\");
+}
+void shell_surfaces_yarn_cmd_routes(ShellSurfacesContext *ctx)
+{
+    sexos_line(\"[spindle.command.routes]\");SPINDLE_OUTPUT(ctx,\"200=linen 201=quil 202=mesh\");SPINDLE_OUTPUT(ctx,\"203=collar 204=bell 0x98=palette 0x99=spindle\");
+}
+void shell_surfaces_yarn_cmd_faults(ShellSurfacesContext *ctx)
+{
+    sexos_line(\"[spindle.command.faults]\");SPINDLE_OUTPUT(ctx,\"No fault counters tracked in V1\");
+}
+size_t shell_surfaces_fmt_u32(uint32_t value,ShellDecimalBytes *out)
+{
+    uint8_t reversed[10]={0};size_t count=0;
+    if(!value){(*out)[0]='0';return 1;}
+    while(value && count<10){reversed[count++]=(uint8_t)('0'+value%10);value/=10;}
+    for(size_t i=0;i<count;++i)(*out)[i]=reversed[count-1-i];
+    return count;
+}
+static SpindleResult spindle_result_table(void)
+{
+    return(SpindleResult){.kind=SPINDLE_RESULT_TABLE};
+}
+static SpindleResult spindle_result_text(const ShellCommandBytes *bytes,ShellByteRange span,uint8_t kind)
+{
+    SpindleResult result={.kind=kind};if(!spindle_range(span))return result;
+    result.text_len=span.len<RESULT_TEXT_CAP?span.len:RESULT_TEXT_CAP;
+    for(size_t i=0;i<result.text_len;++i)result.text[i]=(*bytes)[span.start+i];
+    return result;
+}
+static void spindle_result_row(SpindleResult *result,const ShellLineRecord *row,size_t len)
+{
+    if(result->row_count>=RESULT_MAX_ROWS)return;
+    size_t copied=len<YARN_OUTPUT_LINE_CAP?len:YARN_OUTPUT_LINE_CAP,at=result->row_count;
+    for(size_t i=0;i<copied;++i)result->rows[at][i]=row->bytes[i];
+    result->row_lens[at]=copied;++result->row_count;
+}
+void shell_surfaces_spindle_result_render(ShellSurfacesContext *ctx,const SpindleResult *result)
+{
+    if(result->text_len>RESULT_TEXT_CAP || result->row_count>RESULT_MAX_ROWS)return;
+    sexos_line(\"[spindle.structured.render] kind=%u\",(unsigned)result->kind);
+    if(result->kind==SPINDLE_RESULT_TABLE){
+        sexos_line(\"[spindle.structured.result.table]\");
+        for(size_t row=0;row<result->row_count;++row){
+            size_t len=result->row_lens[row];if(len>YARN_OUTPUT_LINE_CAP)return;
+            ShellCommandRecord text={0};for(size_t i=0;i<len;++i)text.bytes[i]=result->rows[row][i];
+            {const ShellCommandRecord *view=&text;shell_surfaces_yarn_append_output(ctx,&view->bytes,((ShellByteRange){0,len}));}
+        }
+    }else{
+        sexos_line(result->kind==SPINDLE_RESULT_ERROR?\"[spindle.structured.result.error]\":\"[spindle.structured.result.text]\");
+        if(result->text_len){ShellCommandRecord text={0};for(size_t i=0;i<result->text_len;++i)text.bytes[i]=result->text[i];
+            {const ShellCommandRecord *view=&text;shell_surfaces_yarn_append_output(ctx,&view->bytes,((ShellByteRange){0,result->text_len}));}
+        }
+    }
+}
+SpindleResult shell_surfaces_spindle_cmd_session(ShellSurfacesContext *ctx)
+{
+    SpindleResult result=spindle_result_table();size_t at=ctx->surfaces->SPINDLE_ACTIVE_SESSION;if(at>=SPINDLE_SESSION_COUNT)at=SPINDLE_SESSION_COUNT-1;
+    ShellLineRecord line0={.bytes=\"sess: \"};line0.bytes[6]=(uint8_t)('0'+at);
+    spindle_result_row(&result,&line0,7);
+    ShellLineRecord line1={.bytes=\"label: \"};size_t len=0;
+    while(len<16 && ctx->surfaces->SPINDLE_SESSIONS[at].label[len])++len;
+    if(len>YARN_OUTPUT_LINE_CAP-8)len=YARN_OUTPUT_LINE_CAP-8;
+    for(size_t i=0;i<len;++i)line1.bytes[7+i]=ctx->surfaces->SPINDLE_SESSIONS[at].label[i];
+    spindle_result_row(&result,&line1,7+len);return result;
+}
+SpindleResult shell_surfaces_spindle_cmd_panes(ShellSurfacesContext *ctx)
+{
+    SpindleResult result=spindle_result_table();size_t active=ctx->surfaces->SPINDLE_ACTIVE_SESSION;if(active>=SPINDLE_SESSION_COUNT)active=SPINDLE_SESSION_COUNT-1;
+    for(size_t at=0;at<SPINDLE_SESSION_COUNT;++at){
+        ShellLineRecord line={0};line.bytes[0]='[';line.bytes[1]=at==active?'*':' ';line.bytes[2]=']';line.bytes[3]=' ';line.bytes[4]='S';line.bytes[5]=(uint8_t)('0'+at);line.bytes[6]=':';line.bytes[7]=' ';
+        size_t len=0;while(len<16 && ctx->surfaces->SPINDLE_SESSIONS[at].label[len])++len;
+        if(len>YARN_OUTPUT_LINE_CAP-10)len=YARN_OUTPUT_LINE_CAP-10;
+        for(size_t i=0;i<len;++i)line.bytes[8+i]=ctx->surfaces->SPINDLE_SESSIONS[at].label[i];
+        spindle_result_row(&result,&line,8+len);
+    }
+    return result;
+}
+SpindleResult shell_surfaces_spindle_cmd_history(ShellSurfacesContext *ctx)
+{
+    if(!ctx->surfaces->YARN.history_count){const ShellCommandBytes text=\"No history.\";return spindle_result_text(&text,((ShellByteRange){0,11}),SPINDLE_RESULT_TEXT);}
+    SpindleResult result=spindle_result_table();size_t count=ctx->surfaces->YARN.history_count;
+    if(count>YARN_HISTORY_CAP)return result;
+    size_t start=count>RESULT_MAX_ROWS?count-RESULT_MAX_ROWS:0;
+    for(size_t at=start;at<count && at<start+RESULT_MAX_ROWS;++at){
+        size_t len=0;while(len<YARN_CMD_BUF_CAP && ctx->surfaces->YARN.history[at][len])++len;
+        if(len>YARN_OUTPUT_LINE_CAP-4)len=YARN_OUTPUT_LINE_CAP-4;
+        ShellLineRecord line={0};size_t n=at-start+1;
+        line.bytes[0]=(uint8_t)('0'+n/10);line.bytes[1]=(uint8_t)('0'+n%10);line.bytes[2]=':';line.bytes[3]=' ';
+        for(size_t i=0;i<len;++i)line.bytes[4+i]=ctx->surfaces->YARN.history[at][i];
+        spindle_result_row(&result,&line,4+len);
+    }
+    return result;
+}
+SpindleResult shell_surfaces_spindle_cmd_status(ShellSurfacesContext *ctx)
+{
+    SpindleResult result=spindle_result_table();ShellDecimalBytes number={0};
+    ShellLineRecord line0={.bytes=\"sessions: \"};size_t len=shell_surfaces_fmt_u32(SPINDLE_SESSION_COUNT,&number);
+    if(len>YARN_OUTPUT_LINE_CAP-10)len=YARN_OUTPUT_LINE_CAP-10;
+    for(size_t i=0;i<len;++i)line0.bytes[10+i]=number[i];
+    spindle_result_row(&result,&line0,10+len);
+    ShellLineRecord line1={.bytes=\"active: \"};size_t active=ctx->surfaces->SPINDLE_ACTIVE_SESSION;if(active>9)active=9;
+    line1.bytes[8]=(uint8_t)('0'+active);spindle_result_row(&result,&line1,9);
+    ShellLineRecord line2={.bytes=\"history: \"};len=shell_surfaces_fmt_u32((uint32_t)ctx->surfaces->YARN.history_count,&number);
+    if(len>YARN_OUTPUT_LINE_CAP-10)len=YARN_OUTPUT_LINE_CAP-10;
+    for(size_t i=0;i<len;++i)line2.bytes[9+i]=number[i];
+    spindle_result_row(&result,&line2,9+len);
+    ShellLineRecord line3={0};const ShellOutputLine ok=\"last: ok    \",error=\"last: error \";
+    for(size_t i=0;i<12;++i)line3.bytes[i]=ctx->surfaces->SPINDLE_LAST_CMD_OK?ok[i]:error[i];
+    spindle_result_row(&result,&line3,12);return result;
+}
+static bool spindle_token(const ShellCommandBytes *bytes,ShellByteRange span,ShellDebugChunk wanted)
+{
+    if(!spindle_range(span))return false;
+    size_t len=0;while(len<sizeof(wanted.bytes) && wanted.bytes[len])++len;
+    if(span.len!=len)return false;
+    for(size_t i=0;i<len;++i)if((*bytes)[span.start+i]!=wanted.bytes[i])return false;
+    return true;
+}
+#define SPINDLE_TOKEN(bytes,span,literal) spindle_token(bytes,span,((ShellDebugChunk){literal}))
+void shell_surfaces_spindle_dispatch(ShellSurfacesContext *ctx)
+{
+    size_t len=ctx->surfaces->YARN.cmd_len;if(!len || len>YARN_CMD_BUF_CAP || ctx->surfaces->YARN.history_count>YARN_HISTORY_CAP)return;
+    ShellCommandRecord storage={0};for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)storage.bytes[i]=ctx->surfaces->YARN.cmd_buf[i];
+    const ShellCommandRecord *view=&storage;const ShellCommandBytes *command=&view->bytes;
+    size_t count=ctx->surfaces->YARN.history_count;
+    if(count<YARN_HISTORY_CAP){for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->YARN.history[count][i]=(*command)[i];++ctx->surfaces->YARN.history_count;}
+    else{
+        for(size_t at=1;at<YARN_HISTORY_CAP;++at)for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->YARN.history[at-1][i]=ctx->surfaces->YARN.history[at][i];
+        for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->YARN.history[YARN_HISTORY_CAP-1][i]=(*command)[i];
+    }
+    ctx->surfaces->YARN.history_pos=-1;
+    size_t echo_len=len<YARN_OUTPUT_LINE_CAP-1?len:YARN_OUTPUT_LINE_CAP-1;
+    shell_surfaces_yarn_append_output(ctx,command,((ShellByteRange){0,echo_len}));
+    ShellByteRange args=shell_surfaces_trim_ascii(command,((ShellByteRange){0,len}));
+    size_t first=0;while(first<args.len && (*command)[args.start+first]!=' ')++first;
+    ShellByteRange token={args.start,first},rest={0,0};
+    if(first<args.len)rest=(ShellByteRange){args.start+first+1,args.len-first-1};
+    spindle_debug_bytes(((ShellDebugChunk){\"[spindle.structured.dispatch] cmd=\"}),command,token);
+    bool ok=true;
+    if(SPINDLE_TOKEN(command,token,\"help\"))shell_surfaces_yarn_cmd_help(ctx);
+    else if(SPINDLE_TOKEN(command,token,\"clear\"))shell_surfaces_yarn_cmd_clear(ctx);
+    else if(SPINDLE_TOKEN(command,token,\"echo\"))shell_surfaces_yarn_cmd_echo(ctx,command,rest);
+    else if(SPINDLE_TOKEN(command,token,\"about\"))shell_surfaces_yarn_cmd_about(ctx);
+    else if(SPINDLE_TOKEN(command,token,\"time\"))shell_surfaces_yarn_cmd_time(ctx);
+    else if(SPINDLE_TOKEN(command,token,\"pd\"))shell_surfaces_yarn_cmd_pd(ctx);
+    else if(SPINDLE_TOKEN(command,token,\"scene\"))shell_surfaces_yarn_cmd_scene(ctx);
+    else if(SPINDLE_TOKEN(command,token,\"routes\"))shell_surfaces_yarn_cmd_routes(ctx);
+    else if(SPINDLE_TOKEN(command,token,\"faults\"))shell_surfaces_yarn_cmd_faults(ctx);
+    else if(SPINDLE_TOKEN(command,token,\"session\")){SpindleResult result=shell_surfaces_spindle_cmd_session(ctx);shell_surfaces_spindle_result_render(ctx,&result);}
+    else if(SPINDLE_TOKEN(command,token,\"panes\")){SpindleResult result=shell_surfaces_spindle_cmd_panes(ctx);shell_surfaces_spindle_result_render(ctx,&result);}
+    else if(SPINDLE_TOKEN(command,token,\"history\")){SpindleResult result=shell_surfaces_spindle_cmd_history(ctx);shell_surfaces_spindle_result_render(ctx,&result);}
+    else if(SPINDLE_TOKEN(command,token,\"status\")){SpindleResult result=shell_surfaces_spindle_cmd_status(ctx);shell_surfaces_spindle_result_render(ctx,&result);}
+    else{const ShellCommandBytes text=\"Unknown command. Type 'help'.\";SpindleResult result=spindle_result_text(&text,((ShellByteRange){0,29}),SPINDLE_RESULT_ERROR);shell_surfaces_spindle_result_render(ctx,&result);ok=false;}
+    ctx->surfaces->SPINDLE_LAST_CMD_OK=ok;
+    sexos_line(\"[spindle.stargate.segment] kind=status ok=%u\",(unsigned)ok);sexos_line(\"[spindle.stargate.status] ok=%u sess=%zu\",(unsigned)ok,ctx->surfaces->SPINDLE_ACTIVE_SESSION);
+    for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->YARN.cmd_buf[i]=0;
+    ctx->surfaces->YARN.cmd_len=0;ctx->surfaces->SPINDLE_VI_CUR=0;ctx->surfaces->SPINDLE_VI_NORMAL=false;ctx->surfaces->SPINDLE_VI_PENDING_D=false;
+    shell_surfaces_spindle_render(ctx);
+}
+
+void shell_surfaces_spindle_render_cmdline(ShellSurfacesContext *ctx)
+{
+    uint32_t width=ctx->shell.input->SURFACE_0x99_W,height=ctx->shell.input->SURFACE_0x99_H;
+    size_t len=ctx->surfaces->YARN.cmd_len;
+    if(!width || !height || len>YARN_CMD_BUF_CAP)return;
+    size_t session=ctx->surfaces->SPINDLE_ACTIVE_SESSION;
+    if(session>=SPINDLE_SESSION_COUNT)session=SPINDLE_SESSION_COUNT-1;
+    bool ok=ctx->surfaces->SPINDLE_LAST_CMD_OK,normal=ctx->surfaces->SPINDLE_VI_NORMAL;
+    uint64_t session_color=session==0?CAT_BLUE:CAT_MAUVE;
+    uint64_t status_color=ok?CAT_GREEN:CAT_RED,mode_color=normal?CAT_YELLOW:CAT_GREEN;
+    sexos_line(\"[spindle.stargate.segment] kind=session idx=%zu\",session);
+    sexos_line(ok?\"[spindle.stargate.segment] kind=status tag=[91, 79, 75, 93]\":\"[spindle.stargate.segment] kind=status tag=[91, 33, 33, 93]\");
+    sexos_line(normal?\"[spindle.stargate.segment] kind=mode tag=[91, 78, 93]\":\"[spindle.stargate.segment] kind=mode tag=[91, 73, 93]\");
+    (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xFA,SURFACE_ID_SPINDLE,0,0);
+    uint8_t packed[40]={'[','S',session==0?'0':'1',']','[',ok?'O':'!',ok?'K':'!',']','[',normal?'N':'I',']','s','e','x','>',' '};
+    size_t used=16;
+    for(size_t i=0;i<len && used<40;++i)packed[used++]=ctx->surfaces->YARN.cmd_buf[i];
+    size_t command_end=used;
+    ShellSpindleSuffix suffix=shell_surfaces_spindle_ghost_suffix(ctx);
+    if(suffix.present){
+        if(ctx->surfaces->spindle_render_cmdline__SPINDLE_GHOST_MARK_BUDGET){
+            --ctx->surfaces->spindle_render_cmdline__SPINDLE_GHOST_MARK_BUDGET;
+            sexos_line(\"[spindle.ghost.suggest] suffix_len=%zu\",suffix.len);
+        }
+        for(size_t i=0;i<suffix.len && used<40;++i)packed[used++]=suffix.bytes[i];
+    }
+    for(size_t offset=0;offset<used;){
+        size_t count=used-offset;if(count>8)count=8;
+        uint64_t word=0;
+        for(size_t i=0;i<count;++i)word|=(uint64_t)packed[offset+i]<<(i*8);
+        uint64_t color=offset<4?session_color:offset<8?status_color:offset<11?mode_color:offset<16?CAT_SUBTEXT1:offset<command_end?CAT_TEXT:CAT_OVERLAY2;
+        (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xFB,SURFACE_ID_SPINDLE,word,(uint64_t)offset|((uint64_t)count<<8)|(color<<32));
+        offset+=count;
+    }
+    size_t cursor=ctx->surfaces->SPINDLE_VI_CUR;if(cursor>len)cursor=len;
+    uint32_t x=4+(16+(uint32_t)cursor)*8,max_x=width>8?width-8:0;if(x>max_x)x=max_x;
+    uint32_t y=SPINDLE_HEADER_H+SPINDLE_ROW_RECTS*(SPINDLE_ROW_H+SPINDLE_ROW_GAP)+SPINDLE_ROW_GAP;
+    uint64_t color=normal?CAT_YELLOW:CAT_ROSEWATER;
+    (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_SPINDLE,((uint64_t)y<<32)|x,(UINT64_C(7)<<56)|(color<<32)|((uint64_t)SPINDLE_ROW_H<<16)|8);
+    sexos_line(\"[spindle.stargate.render] cmd_len=%zu vi_cur=%zu cursor_x=%u ok=%u sess=%zu\",len,cursor,x,(unsigned)ok,session);
+}
+void shell_surfaces_spindle_render(ShellSurfacesContext *ctx)
+{
+    uint32_t width=ctx->shell.input->SURFACE_0x99_W,height=ctx->shell.input->SURFACE_0x99_H;
+    size_t count=ctx->surfaces->YARN.output_count;
+    if(!width || !height || count>YARN_OUTPUT_LINES)return;
+    sexos_line(\"[spindle.render.band] w=%u h=%u\",width,height);
+    (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_SPINDLE,0,((uint64_t)SPINDLE_PLACEHOLDER_COLOR<<32)|((uint64_t)SPINDLE_HEADER_H<<16)|width);
+    size_t start=count>SPINDLE_ROW_RECTS?count-SPINDLE_ROW_RECTS:0,visible=count-start;
+    for(size_t i=0;i<visible && i<SPINDLE_ROW_RECTS;++i){
+        size_t at=start+i;if(at>=YARN_OUTPUT_LINES)break;
+        uint64_t rect=(i+1)&15;
+        uint32_t y=SPINDLE_HEADER_H+(uint32_t)i*(SPINDLE_ROW_H+SPINDLE_ROW_GAP);
+        uint32_t color=ctx->surfaces->YARN.output_lines[at][0]=='>'?UINT32_C(0x007AAFA4):i==visible-1?UINT32_C(0x00386050):UINT32_C(0x00202830);
+        (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_SPINDLE,(uint64_t)y<<32,(rect<<56)|((uint64_t)color<<32)|((uint64_t)SPINDLE_ROW_H<<16)|width);
+        sexos_line(\"[spindle.render.band] index=%llu color=0x%08x\",(unsigned long long)rect,color);
+    }
+    shell_surfaces_spindle_render_cmdline(ctx);
+    sexos_line(\"[spindle.render.submit] lines=%zu\",visible);
+}
+
+bool shell_surfaces_spiderweb_match(const ShellCommandBytes *query,size_t query_len,const ShellCommandBytes *candidate,size_t candidate_len)
+{
+    if(query_len>YARN_CMD_BUF_CAP || candidate_len>YARN_CMD_BUF_CAP)return false;
+    if(!query_len)return true;
+    size_t at=0;
+    for(size_t i=0;i<candidate_len;++i)if((*candidate)[i]==(*query)[at]){++at;if(at==query_len)return true;}
+    return false;
+}
+void shell_surfaces_spiderweb_search(ShellSurfacesContext *ctx)
+{
+    size_t query_len=ctx->surfaces->SPIDERWEB_QUERY_LEN;
+    ctx->surfaces->SPIDERWEB_RESULT_COUNT=0;ctx->surfaces->SPIDERWEB_SELECTED=0;
+    if(query_len>SPIDERWEB_QUERY_CAP || ctx->surfaces->YARN.history_count>YARN_HISTORY_CAP)return;
+    ShellCommandRecord storage={0};
+    for(size_t i=0;i<query_len;++i)storage.bytes[i]=ctx->surfaces->SPIDERWEB_QUERY[i];
+    const ShellCommandRecord *query=&storage;
+    size_t filled=0;
+    if(ctx->surfaces->SPIDERWEB_MODE==SPIDERWEB_MODE_HISTORY){
+        size_t at=ctx->surfaces->YARN.history_count;
+        while(at && filled<SPIDERWEB_RESULT_CAP){
+            --at;size_t len=0;bool matched=false;
+            {const YarnSession *view=&ctx->surfaces->YARN;
+             len=shell_surfaces_spindle_history_entry_len(&view->history[at]);
+             if(len)matched=shell_surfaces_spiderweb_match(&query->bytes,query_len,&view->history[at],len);}
+            if(matched){
+                for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->SPIDERWEB_RESULTS[filled][i]=ctx->surfaces->YARN.history[at][i];
+                ctx->surfaces->SPIDERWEB_RESULT_LENS[filled]=len;++filled;
+            }
+        }
+    }else if(ctx->surfaces->SPIDERWEB_MODE==SPIDERWEB_MODE_COMMAND){
+        static const ShellCommandBytes commands[13]={\"help\",\"clear\",\"echo\",\"about\",\"time\",\"pd\",\"scene\",\"routes\",\"faults\",\"session\",\"panes\",\"history\",\"status\"};
+        for(size_t at=0;at<13 && filled<SPIDERWEB_RESULT_CAP;++at){
+            size_t len=shell_surfaces_spindle_history_entry_len(&commands[at]);
+            if(shell_surfaces_spiderweb_match(&query->bytes,query_len,&commands[at],len)){
+                for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->SPIDERWEB_RESULTS[filled][i]=commands[at][i];
+                ctx->surfaces->SPIDERWEB_RESULT_LENS[filled]=len;++filled;
+            }
+        }
+    }
+    ctx->surfaces->SPIDERWEB_RESULT_COUNT=filled;
+    sexos_line(\"[spindle.spiderweb.query] len=%zu results=%zu\",query_len,filled);
+}
+void shell_surfaces_spiderweb_render(ShellSurfacesContext *ctx)
+{
+    uint32_t width=ctx->shell.input->SURFACE_0x99_W,height=ctx->shell.input->SURFACE_0x99_H;
+    size_t query_len=ctx->surfaces->SPIDERWEB_QUERY_LEN,count=ctx->surfaces->SPIDERWEB_RESULT_COUNT,selected=ctx->surfaces->SPIDERWEB_SELECTED;
+    if(!width || !height || query_len>SPIDERWEB_QUERY_CAP || count>SPIDERWEB_RESULT_CAP)return;
+    for(size_t i=0;i<SPIDERWEB_RESULT_CAP;++i){
+        uint32_t y=SPINDLE_HEADER_H+(uint32_t)i*(SPINDLE_ROW_H+SPINDLE_ROW_GAP);
+        uint64_t color=i==selected && i<count?CAT_MAUVE:i<count?CAT_OVERLAY2:UINT64_C(0x00181825);
+        (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_SPINDLE,(uint64_t)y<<32,((uint64_t)(i+1)<<56)|(color<<32)|((uint64_t)SPINDLE_ROW_H<<16)|width);
+    }
+    (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xFA,SURFACE_ID_SPINDLE,0,0);
+    uint8_t text[40]={'^',ctx->surfaces->SPIDERWEB_MODE==SPIDERWEB_MODE_HISTORY?'R':'P',' '};size_t used=3;
+    for(size_t i=0;i<query_len && used<40;++i)text[used++]=ctx->surfaces->SPIDERWEB_QUERY[i];
+    for(size_t offset=0;offset<used;){
+        size_t chunk=used-offset;if(chunk>8)chunk=8;uint64_t word=0;
+        for(size_t i=0;i<chunk;++i)word|=(uint64_t)text[offset+i]<<(i*8);
+        (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xFB,SURFACE_ID_SPINDLE,word,(uint64_t)offset|((uint64_t)chunk<<8)|(CAT_PEACH<<32));offset+=chunk;
+    }
+    for(size_t row=0;row<count;++row){
+        size_t text_offset=4+query_len+row*40;if(text_offset>=255)break;
+        size_t len=ctx->surfaces->SPIDERWEB_RESULT_LENS[row];if(len>38)len=38;
+        uint64_t color=row==selected?UINT64_C(0x001E1E2E):CAT_TEXT;
+        for(size_t offset=0;offset<len;){
+            size_t chunk=len-offset;if(chunk>8)chunk=8;uint64_t word=0;
+            for(size_t i=0;i<chunk;++i)word|=(uint64_t)ctx->surfaces->SPIDERWEB_RESULTS[row][offset+i]<<(i*8);
+            (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xFB,SURFACE_ID_SPINDLE,word,(uint64_t)(text_offset+offset)|((uint64_t)chunk<<8)|(color<<32));offset+=chunk;
+        }
+    }
+    uint32_t y=SPINDLE_HEADER_H+SPINDLE_ROW_RECTS*(SPINDLE_ROW_H+SPINDLE_ROW_GAP)+SPINDLE_ROW_GAP;
+    uint32_t x=4+(3+(uint32_t)query_len)*8,max_x=width>8?width-8:0;if(x>max_x)x=max_x;
+    (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_SPINDLE,((uint64_t)y<<32)|x,(UINT64_C(7)<<56)|(CAT_PEACH<<32)|((uint64_t)SPINDLE_ROW_H<<16)|8);
+}
+void shell_surfaces_spiderweb_open(ShellSurfacesContext *ctx,uint8_t mode)
+{
+    if(mode>SPIDERWEB_MODE_COMMAND)return;
+    ctx->surfaces->SPIDERWEB_OPEN=true;ctx->surfaces->SPIDERWEB_MODE=(SpiderwebMode)mode;
+    for(size_t i=0;i<SPIDERWEB_QUERY_CAP;++i)ctx->surfaces->SPIDERWEB_QUERY[i]=0;
+    ctx->surfaces->SPIDERWEB_QUERY_LEN=0;ctx->surfaces->SPIDERWEB_RESULT_COUNT=0;ctx->surfaces->SPIDERWEB_SELECTED=0;
+    shell_surfaces_spiderweb_search(ctx);shell_surfaces_spiderweb_render(ctx);
+    sexos_line(mode==SPIDERWEB_MODE_HISTORY?\"[spindle.spiderweb.open] mode=R\":\"[spindle.spiderweb.open] mode=P\");
+}
+void shell_surfaces_spiderweb_accept(ShellSurfacesContext *ctx)
+{
+    size_t count=ctx->surfaces->SPIDERWEB_RESULT_COUNT;if(count>SPIDERWEB_RESULT_CAP)return;
+    if(count){
+        size_t selected=ctx->surfaces->SPIDERWEB_SELECTED;if(selected>=count)selected=count-1;
+        size_t len=ctx->surfaces->SPIDERWEB_RESULT_LENS[selected];if(len>=YARN_CMD_BUF_CAP)len=YARN_CMD_BUF_CAP-1;
+        for(size_t i=0;i<YARN_CMD_BUF_CAP;++i)ctx->surfaces->YARN.cmd_buf[i]=i<len?ctx->surfaces->SPIDERWEB_RESULTS[selected][i]:0;
+        ctx->surfaces->YARN.cmd_len=len;ctx->surfaces->SPINDLE_VI_CUR=len;
+        sexos_line(\"[spindle.spiderweb.accept] len=%zu\",len);
+    }
+    ctx->surfaces->SPIDERWEB_OPEN=false;shell_surfaces_spindle_render(ctx);
+}
+void shell_surfaces_spiderweb_cancel(ShellSurfacesContext *ctx)
+{
+    ctx->surfaces->SPIDERWEB_OPEN=false;sexos_line(\"[spindle.spiderweb.cancel]\");shell_surfaces_spindle_render(ctx);
+}
+void shell_surfaces_spiderweb_handle_key(ShellSurfacesContext *ctx,uint8_t scan)
+{
+    if(scan==0x1C){shell_surfaces_spiderweb_accept(ctx);return;}
+    if(scan==1){shell_surfaces_spiderweb_cancel(ctx);return;}
+    size_t len=ctx->surfaces->SPIDERWEB_QUERY_LEN;if(len>SPIDERWEB_QUERY_CAP)return;
+    if(scan==0x0E){if(len){ctx->surfaces->SPIDERWEB_QUERY_LEN=len-1;ctx->surfaces->SPIDERWEB_QUERY[len-1]=0;shell_surfaces_spiderweb_search(ctx);shell_surfaces_spiderweb_render(ctx);}return;}
+    uint8_t ch=0;if(!shell_surfaces_spindle_scan_to_char(scan,&ch))return;
+    if(ch=='j'){if(ctx->surfaces->SPIDERWEB_RESULT_COUNT && ctx->surfaces->SPIDERWEB_SELECTED<ctx->surfaces->SPIDERWEB_RESULT_COUNT-1)++ctx->surfaces->SPIDERWEB_SELECTED;shell_surfaces_spiderweb_render(ctx);}
+    else if(ch=='k'){if(ctx->surfaces->SPIDERWEB_SELECTED)--ctx->surfaces->SPIDERWEB_SELECTED;shell_surfaces_spiderweb_render(ctx);}
+    else if(len<SPIDERWEB_QUERY_CAP-1){ctx->surfaces->SPIDERWEB_QUERY[len]=ch;ctx->surfaces->SPIDERWEB_QUERY_LEN=len+1;shell_surfaces_spiderweb_search(ctx);shell_surfaces_spiderweb_render(ctx);}
+}
+
+static size_t surface_bell_count(ShellSurfacesContext *ctx)
+{
+    uint64_t total=ctx->shell.models->BELL_RING_WRITE_INDEX;
+    return total<BELL_RING_CAP?(size_t)total:BELL_RING_CAP;
+}
+static const char *surface_bell_kind(uint8_t kind)
+{
+    switch(kind){case BELL_EVENT_OBJECT_LINKED_TO_BUFFER:return \"ObjectLinkedToBuffer\";
+    case BELL_EVENT_OBJECT_OPEN_REQUESTED:return \"ObjectOpenRequested\";
+    case BELL_EVENT_OPERATION_NEEDS_GRANT:return \"OperationNeedsGrant\";
+    case BELL_EVENT_DIAGNOSTIC_ONLY:return \"DiagnosticOnly\";default:return \"Unknown\";}
+}
+uint32_t shell_surfaces_bell_row_color(ShellSurfacesContext *ctx,const BellEvent *event)
+{
+    if(event->kind==BELL_EVENT_OBJECT_LINKED_TO_BUFFER){
+        for(size_t i=0;i<LINEN_MAX_OBJECTS;++i)if(ctx->shell.models->LINEN_OBJECTS[i].present && ctx->shell.models->LINEN_OBJECTS[i].object_id==event->object_id)
+            return linen_kind_color(ctx->shell.models->LINEN_OBJECTS[i].kind);
+    }
+    return UINT32_C(0x00404060);
+}
+uint8_t shell_surfaces_bell_visible_event_count(ShellSurfacesContext *ctx)
+{
+    size_t count=surface_bell_count(ctx);return(uint8_t)(count<BELL_LIST_ROW_RECTS?count:BELL_LIST_ROW_RECTS);
+}
+uint32_t shell_surfaces_bell_selected_row_highlight(uint32_t color)
+{
+    uint32_t r=((color>>16)&255)+64,g=((color>>8)&255)+64,b=(color&255)+64;
+    if(r>255)r=255;
+    if(g>255)g=255;
+    if(b>255)b=255;
+    return(r<<16)|(g<<8)|b;
+}
+void shell_surfaces_bell_select_next_row(ShellSurfacesContext *ctx)
+{
+    uint8_t count=shell_surfaces_bell_visible_event_count(ctx),current=ctx->surfaces->BELL_SELECTED_ROW;
+    if(count<=1){sexos_line(\"[bell.selection.reject] reason=single_or_empty count=%u\",(unsigned)count);sexos_line(\"[bell.nav.move] old=%u new=%u total=%u\",(unsigned)current,(unsigned)current,(unsigned)count);return;}
+    uint8_t next=(unsigned)current+1>=count?0:(uint8_t)(current+1);ctx->surfaces->BELL_SELECTED_ROW=next;
+    sexos_line(\"[bell.selection.next] prev=%u next=%u\",(unsigned)current,(unsigned)next);
+    sexos_line(\"[bell.nav.move] old=%u new=%u total=%u\",(unsigned)current,(unsigned)next,(unsigned)count);shell_surfaces_bell_render_event_list(ctx);
+}
+void shell_surfaces_bell_select_prev_row(ShellSurfacesContext *ctx)
+{
+    uint8_t count=shell_surfaces_bell_visible_event_count(ctx),current=ctx->surfaces->BELL_SELECTED_ROW;
+    if(count<=1){sexos_line(\"[bell.selection.reject] reason=single_or_empty count=%u\",(unsigned)count);sexos_line(\"[bell.nav.move] old=%u new=%u total=%u\",(unsigned)current,(unsigned)current,(unsigned)count);return;}
+    uint8_t previous=current?current-1:count-1;ctx->surfaces->BELL_SELECTED_ROW=previous;
+    sexos_line(\"[bell.selection.prev] prev=%u next=%u\",(unsigned)current,(unsigned)previous);
+    sexos_line(\"[bell.nav.move] old=%u new=%u total=%u\",(unsigned)current,(unsigned)previous,(unsigned)count);shell_surfaces_bell_render_event_list(ctx);
+}
+bool shell_surfaces_bell_selected_event_snapshot(ShellSurfacesContext *ctx,BellEvent *event)
+{
+    size_t count=surface_bell_count(ctx);if(!count)return false;
+    size_t start=(size_t)(ctx->shell.models->BELL_RING_WRITE_INDEX-1)%BELL_RING_CAP;
+    for(size_t i=0;i<count;++i){size_t at=(start+BELL_RING_CAP-i)%BELL_RING_CAP;
+        if(ctx->shell.models->BELL_EVENTS[at].present && i==ctx->surfaces->BELL_SELECTED_ROW){*event=ctx->shell.models->BELL_EVENTS[at];return true;}}
+    return false;
+}
+void shell_surfaces_bell_emit_selected_event_detail_proof(ShellSurfacesContext *ctx)
+{
+    if(ctx->shell.chrome->FOCUSED_SURFACE_ID!=SURFACE_ID_BELL_PLACEHOLDER){sexos_line(\"[bell.detail.reject] reason=not_focused\");sexos_line(\"[bell.detail.open] event_id=0 ok=0 reason=not_focused\");return;}
+    BellEvent event={0};if(!shell_surfaces_bell_selected_event_snapshot(ctx,&event)){sexos_line(\"[bell.detail.reject] reason=no_event\");sexos_line(\"[bell.detail.open] event_id=0 ok=0 reason=no_event\");return;}
+    sexos_line(\"[bell.detail.open] event_id=%llu kind=%s\",(unsigned long long)event.event_id,surface_bell_kind(event.kind));ctx->surfaces->BELL_DETAIL_OPEN=true;
+    if(event.kind==BELL_EVENT_OBJECT_LINKED_TO_BUFFER){
+        sexos_line(\"[bell.detail.event] event_id=%llu kind=ObjectLinkedToBuffer object_id=%llu buffer_id=%llu\",(unsigned long long)event.event_id,(unsigned long long)event.object_id,(unsigned long long)event.buffer_id);
+        sexos_line(\"[bell.detail.object_link] object_id=%llu buffer_id=%llu\",(unsigned long long)event.object_id,(unsigned long long)event.buffer_id);
+        sexos_line(\"[bell.detail.open] event_id=%llu ok=1 reason=ok\",(unsigned long long)event.event_id);
+    }else{
+        sexos_line(\"[bell.detail.reject] reason=unsupported_kind kind=%s\",surface_bell_kind(event.kind));
+        sexos_line(\"[bell.detail.open] event_id=%llu ok=0 reason=unsupported_kind\",(unsigned long long)event.event_id);
+    }
+    sexos_line(\"[bell.detail.done] event_id=%llu\",(unsigned long long)event.event_id);
+}
+void shell_surfaces_bell_close_detail(ShellSurfacesContext *ctx)
+{
+    if(ctx->surfaces->BELL_DETAIL_OPEN){ctx->surfaces->BELL_DETAIL_OPEN=false;sexos_line(\"[bell.detail.close] ok=1 reason=ok\");}
+    else sexos_line(\"[bell.detail.close] ok=0 reason=not_open\");
+}
+bool shell_surfaces_bell_cycle_lane(ShellSurfacesContext *ctx)
+{
+    uint8_t old=ctx->surfaces->BELL_SELECTED_LANE;ctx->surfaces->BELL_SELECTED_LANE=old>=5?0:old+1;
+    sexos_line(\"[bell.lane.cycle] old=%u new=%u ok=1\",(unsigned)old,(unsigned)ctx->surfaces->BELL_SELECTED_LANE);return true;
+}
+bool shell_surfaces_bell_is_visible_in_active_scene(ShellSurfacesContext *ctx)
+{
+    for(size_t i=0;i<MAX_FRAMES;++i){ShellFrame frame=ctx->shell.chrome->FRAMES[i];
+        if(frame.present && frame.frame_id==BELL_FRAME_ID && frame.scene_id==ctx->shell.chrome->ACTIVE_SCENE_IDX && !(frame.flags&FRAME_FLAG_MINIMIZED)){
+            uint64_t sid=0;if(shell_chrome_active_surface_for_frame(&ctx->shell,BELL_FRAME_ID,&sid) && shell_surfaces_peer_surface_is_alive(ctx,sid))return true;}}
+    return false;
+}
+void shell_surfaces_bell_render_lane_text(ShellSurfacesContext *ctx)
+{
+    uint8_t bytes[60];for(size_t i=0;i<60;++i)bytes[i]=' ';
+    static const uint8_t title[]=\"BELL EVENTS\";for(size_t i=0;i<sizeof(title)-1;++i)bytes[i]=title[i];
+    size_t total=surface_bell_count(ctx);bytes[12]=(uint8_t)('0'+(total/10)%10);bytes[13]=(uint8_t)('0'+total%10);
+    if(total){size_t at=(size_t)(ctx->shell.models->BELL_RING_WRITE_INDEX-1)%BELL_RING_CAP;BellEvent event=ctx->shell.models->BELL_EVENTS[at];
+        if(event.present){static const uint8_t label[]=\"LAST OBJ\",buffer[]=\"BUF\",row[]=\"ROW \";
+            for(size_t i=0;i<sizeof(label)-1;++i)bytes[20+i]=label[i];
+            for(size_t i=0;i<sizeof(buffer)-1;++i)bytes[32+i]=buffer[i];
+            for(size_t i=0;i<sizeof(row)-1;++i)bytes[40+i]=row[i];
+            bytes[29]=(uint8_t)('0'+(event.object_id/10)%10);bytes[30]=(uint8_t)('0'+event.object_id%10);bytes[36]=(uint8_t)('0'+(event.buffer_id/10)%10);bytes[37]=(uint8_t)('0'+event.buffer_id%10);bytes[44]=(uint8_t)('0'+ctx->surfaces->BELL_SELECTED_ROW%10);
+        }
+    }else {static const uint8_t empty[]=\"NO LINKS\";for(size_t i=0;i<sizeof(empty)-1;++i)bytes[20+i]=empty[i];}
+    (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,OP_TEXT_CLEAR,SURFACE_ID_BELL_PLACEHOLDER,0,0);
+    for(size_t offset=0;offset<60;){size_t chunk=60-offset;if(chunk>8)chunk=8;uint64_t packed=0;
+        for(size_t i=0;i<chunk;++i)packed|=(uint64_t)bytes[offset+i]<<(i*8);
+        uint64_t control=(offset&255)|((uint64_t)chunk<<8)|(((uint64_t)(offset>>8)&15)<<12)|(UINT64_C(0x00E8FFFF)<<32);
+        (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xFB,SURFACE_ID_BELL_PLACEHOLDER,packed,control);offset+=chunk;}
+    if(ctx->surfaces->bell_render_lane_text__BELL_LANE_TEXT_BUDGET){--ctx->surfaces->bell_render_lane_text__BELL_LANE_TEXT_BUDGET;sexos_line(\"[bell.lane.render.ok] total=%zu ok=1\",total);}
+}
+void shell_surfaces_bell_render_event_list(ShellSurfacesContext *ctx)
+{
+    uint32_t width=ctx->shell.input->SURFACE_204_W,height=ctx->shell.input->SURFACE_204_H;if(!width || !height)return;
+    uint8_t visible=shell_surfaces_bell_visible_event_count(ctx);
+    if(!visible)ctx->surfaces->BELL_SELECTED_ROW=0;
+    else if(ctx->surfaces->BELL_SELECTED_ROW>=visible){uint8_t old=ctx->surfaces->BELL_SELECTED_ROW;ctx->surfaces->BELL_SELECTED_ROW=visible-1;sexos_line(\"[bell.selection.repair] old=%u new=%u count=%u\",(unsigned)old,(unsigned)ctx->surfaces->BELL_SELECTED_ROW,(unsigned)visible);}
+    sexos_line(\"[bell.selection.current] row=%u visible=%u\",(unsigned)ctx->surfaces->BELL_SELECTED_ROW,(unsigned)visible);
+    size_t count=surface_bell_count(ctx);sexos_line(\"[bell.event_list.render] w=%u h=%u count=%zu\",width,height,count);
+    (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_BELL_PLACEHOLDER,0,((uint64_t)BELL_PLACEHOLDER_COLOR<<32)|((uint64_t)BELL_LIST_HEADER_H<<16)|width);
+    size_t start=(size_t)(ctx->shell.models->BELL_RING_WRITE_INDEX-1)%BELL_RING_CAP;uint8_t rows=0,rects=0;
+    for(size_t i=0;i<count;++i){size_t at=(start+BELL_RING_CAP-i)%BELL_RING_CAP;BellEvent event=ctx->shell.models->BELL_EVENTS[at];if(!event.present)continue;
+        if(rows>=BELL_LIST_ROW_RECTS){sexos_line(\"[bell.event_list.skip] event_id=%llu reason=max_rows\",(unsigned long long)event.event_id);continue;}
+        const char *kind=event.kind==BELL_EVENT_OBJECT_LINKED_TO_BUFFER?\"ObjectLinkedToBuffer\":\"Unknown\";
+        sexos_line(\"[bell.event_list.row] event_id=%llu kind=%s object_id=%llu buffer_id=%llu\",(unsigned long long)event.event_id,kind,(unsigned long long)event.object_id,(unsigned long long)event.buffer_id);
+        uint64_t rect=(rows+1)&15;uint32_t y=BELL_LIST_HEADER_H+(uint32_t)rows*(BELL_LIST_ROW_H+BELL_LIST_ROW_GAP);
+        uint32_t base=shell_surfaces_bell_row_color(ctx,&event),color=base;
+        if(rows==ctx->surfaces->BELL_SELECTED_ROW){color=shell_surfaces_bell_selected_row_highlight(base);sexos_line(\"[bell.selection_visual.row] event_id=%llu index=%u base=0x%08x highlight=0x%08x\",(unsigned long long)event.event_id,(unsigned)rows,base,color);}
+        (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_BELL_PLACEHOLDER,(uint64_t)y<<32,(rect<<56)|((uint64_t)color<<32)|((uint64_t)BELL_LIST_ROW_H<<16)|width);
+        sexos_line(\"[bell.row_visual.rect] index=%llu event_id=%llu kind=%s color=0x%08x\",(unsigned long long)rect,(unsigned long long)event.event_id,kind,color);++rects;++rows;
+    }
+    sexos_line(\"[bell.event_list.done] count=%zu rows=%u rects=%u\",count,(unsigned)rows,(unsigned)rects);shell_surfaces_bell_render_lane_text(ctx);
+}
+
+#define PANEL_TEXT(literal) ((ShellPaletteString){.bytes=literal,.len=sizeof(literal)-1})
+static bool panel_label_valid(const ShellPaletteString *text)
+{
+    return text->len<sizeof(text->bytes) && !text->bytes[text->len];
+}
+static const char *panel_label_text(const ShellPaletteString *text)
+{
+    if(!panel_label_valid(text))sexos_fail();
+    return text->bytes;
+}
+static bool panel_label_equal(const ShellPaletteString *a,const ShellPaletteString *b)
+{
+    if(!panel_label_valid(a) || !panel_label_valid(b) || a->len!=b->len)return false;
+    for(size_t i=0;i<a->len;++i)if(a->bytes[i]!=b->bytes[i])return false;
+    return true;
+}
+static bool panel_text_is(ShellPaletteString a,ShellPaletteString b)
+{
+    return panel_label_equal(&a,&b);
+}
+#define PANEL_IS(a,literal) panel_text_is(a,PANEL_TEXT(literal))
+static void panel_line(ShellPaletteView *view,const ShellPaletteString *label,bool prefix,bool selected,size_t cols)
+{
+    if(!panel_label_valid(label) || !cols)return;
+    size_t leading=prefix?2:0;
+    for(size_t i=0;i<leading+label->len && i<cols-1;++i){
+        if(view->text.len>=511)break;
+        uint8_t byte=i<leading?(i==0 && selected?'>':' '):(uint8_t)label->bytes[i-leading];
+        view->text.bytes[view->text.len++]=byte>=32 && byte<=126?byte:'?';
+    }
+    if(view->text.len<512)view->text.bytes[view->text.len++]='\\n';
+}
+static ShellPaletteView panel_view(const ShellPaletteRows *rows,size_t selected,uint32_t width,uint32_t height)
+{
+    ShellPaletteView view={0};if(rows->count>11)return view;
+    view.scale=width>=256?2:1;uint32_t line_h=9*view.scale;
+    uint32_t space=height>44?height-44:0,capacity=space/line_h;capacity=capacity>2?capacity-2:0;capacity/=2;
+    size_t visible=capacity;if(visible>5)visible=5;if(visible>rows->count)visible=rows->count;
+    size_t bounded=selected;if(rows->count && bounded>=rows->count)bounded=rows->count-1;
+    view.first=visible && bounded>=visible-1?bounded-(visible-1):0;view.rows=visible;view.row_y=36+2*line_h;view.row_h=2*line_h;
+    size_t cols=(width>16?width-16:0)/(6*view.scale);if(cols>40)cols=40;
+    if(cols<3 || !visible){view.rows=0;return view;}
+    const ShellPaletteString title=PANEL_TEXT(\"APPS / ACTIONS\"),help=PANEL_TEXT(\"J/K CHOOSE  ENTER OPEN  ESC CLOSE\");
+    panel_line(&view,&title,false,false,cols);panel_line(&view,&help,false,false,cols);
+    for(size_t i=view.first;i<rows->count && i<view.first+visible;++i){panel_line(&view,&rows->names[i],true,i==selected,cols);panel_line(&view,&rows->statuses[i],true,false,cols);}
+    return view;
+}
+static ShellPaletteString panel_reserve_label(ShellPaletteString fallback,bool available,const ShellPaletteString *reason,ShellByteOption count)
+{
+    if(!available)return fallback;
+    if(PANEL_IS(*reason,\"original_incarnation_live\")){
+        if(!count.present)return PANEL_TEXT(\"RESERVE CHECK / FOCUS\");
+        if(count.value==2)return PANEL_TEXT(\"RUNNING / 2 REOPENS LEFT\");
+        if(count.value==1)return PANEL_TEXT(\"RUNNING / 1 REOPEN LEFT\");
+        if(!count.value)return PANEL_TEXT(\"RUNNING / LAST INSTANCE\");
+        return PANEL_TEXT(\"RUNNING / REOPENS AVAILABLE\");
+    }
+    if(PANEL_IS(*reason,\"boot_successor_ready\")){
+        if(!count.present || !count.value)return PANEL_TEXT(\"RESERVE CHECK / WAIT\");
+        if(count.value==2)return PANEL_TEXT(\"REOPEN / 2 RESERVED LEFT\");
+        if(count.value==1)return PANEL_TEXT(\"REOPEN / LAST RESERVED\");
+        return PANEL_TEXT(\"REOPEN / RESERVES READY\");
+    }
+    return fallback;
+}
+static ShellPaletteLabel panel_reserve_count(bool available,const ShellPaletteString *reason,ShellByteOption count)
+{
+    ShellPaletteLabel result={0};if(!available || !count.present)return result;
+    bool live=PANEL_IS(*reason,\"original_incarnation_live\"),ready=PANEL_IS(*reason,\"boot_successor_ready\");
+    if(live && !count.value)return(ShellPaletteLabel){true,PANEL_TEXT(\"LAST INSTANCE\")};
+    if(live && count.value==1)return(ShellPaletteLabel){true,PANEL_TEXT(\"1 REOPEN LEFT\")};
+    if(ready && count.value==1)return(ShellPaletteLabel){true,PANEL_TEXT(\"LAST RESERVED\")};
+    if((!live && !ready) || count.value<2)return result;
+    ShellDecimalBytes number={0};size_t len=shell_surfaces_fmt_u32(count.value,&number);
+    for(size_t i=0;i<len;++i)result.text.bytes[i]=(char)number[i];
+    const ShellPaletteString suffix=live?PANEL_TEXT(\" REOPENS LEFT\"):PANEL_TEXT(\" RESERVED LEFT\");
+    for(size_t i=0;i<suffix.len;++i)result.text.bytes[len+i]=suffix.bytes[i];
+    result.text.len=len+suffix.len;result.present=true;return result;
+}
+ShellByteOption shell_surfaces_app_reserve_remaining(ShellSurfacesContext *ctx,uint8_t app)
+{
+    uint8_t remaining=0;bool previous=false;uint64_t state=0;
+    for(size_t at=0;at<SHELL_APP_COUNT;++at){ShellAppCatalogRow row=shell_custody_catalog_at(at);if(row.app!=app || !row.ordinal)continue;
+        if(!row.has_activation)return(ShellByteOption){0};
+        ShellActivationResult result=shell_surfaces_quil_activation_edge(ctx,row.activation_slot,row.target,row.surface,row.lifecycle_slot,false);
+        if(result.status || (previous && state!=3 && result.info.state!=0))return(ShellByteOption){0};
+        if(result.info.state<=1){if(remaining==UINT8_MAX)return(ShellByteOption){0};++remaining;}
+        state=result.info.state;previous=true;
+    }
+    return(ShellByteOption){true,remaining};
+}
+static ShellPaletteStatus panel_unavailable(void)
+{
+    return(ShellPaletteStatus){false,PANEL_TEXT(\"UNAVAILABLE / NO AUTHORITY\"),PANEL_TEXT(\"incarnation_unverified\")};
+}
+ShellPaletteStatus shell_surfaces_app_launcher_status(ShellSurfacesContext *ctx,uint8_t app)
+{
+    ShellActivationResult info=shell_surfaces_app_activation_info(ctx,app,false);if(info.status)return panel_unavailable();
+    if(info.info.state==1)return(ShellPaletteStatus){true,PANEL_TEXT(\"REOPEN / RESERVED INSTANCE\"),PANEL_TEXT(\"boot_successor_ready\")};
+    if(info.info.state==2)return shell_surfaces_peer_native_launcher_status(ctx,info.info.successor);
+    if(info.info.state==3)return(ShellPaletteStatus){false,PANEL_TEXT(\"CLOSED / RESERVE EXHAUSTED\"),PANEL_TEXT(\"boot_reserve_exhausted\")};
+    ShellAppCatalogRow row=surface_row(info.info.successor,info.info.surface),previous=surface_predecessor(row);
+    if(!row.present || !previous.present)return panel_unavailable();
+    ShellPaletteStatus status=shell_surfaces_peer_native_launcher_status(ctx,previous.target);
+    if(PANEL_IS(status.reason,\"no_boot_successor\"))return(ShellPaletteStatus){false,PANEL_TEXT(\"CLEANING / PLEASE WAIT\"),PANEL_TEXT(\"predecessor_cleanup_pending\")};
+    return status;
+}
+ShellPaletteStatus shell_surfaces_palette_item_status(ShellSurfacesContext *ctx,uint8_t command)
+{
+    switch(command){
+    case CMD_FOCUS_SPINDLE:return shell_surfaces_app_launcher_status(ctx,SHELL_APP_SPINDLE);
+    case CMD_FOCUS_QUIL:return shell_surfaces_app_launcher_status(ctx,SHELL_APP_QUIL);
+    case CMD_FOCUS_BROWSER:
+        if(surface_app_count(SHELL_APP_BROWSER)==1){for(size_t i=0;i<SHELL_APP_COUNT;++i){ShellAppCatalogRow row=shell_custody_catalog_at(i);if(row.app==SHELL_APP_BROWSER && !row.ordinal)return shell_surfaces_peer_native_launcher_status(ctx,row.target);}}
+        return shell_surfaces_app_launcher_status(ctx,SHELL_APP_BROWSER);
+    case CMD_FOCUS_LINEN:return(ShellPaletteStatus){true,PANEL_TEXT(\"nonblocking_ready\"),PANEL_TEXT(\"linen_fast_paint_nonblocking\")};
+    case CMD_FOCUS_ATLAS:return(ShellPaletteStatus){true,PANEL_TEXT(\"overlay_available\"),PANEL_TEXT(\"atlas_overlay_available_even_if_old_exec_rejected\")};
+    case CMD_RESTORE_MINIMIZED:{uint32_t frame=0;if(shell_chrome_first_minimized_frame_id(&ctx->shell,&frame))return(ShellPaletteStatus){true,PANEL_TEXT(\"RESTORE WINDOW\"),PANEL_TEXT(\"minimized_target_exists\")};return(ShellPaletteStatus){false,PANEL_TEXT(\"NO MINIMIZED WINDOW\"),PANEL_TEXT(\"requires_minimized_target\")};}
+    case CMD_FOCUS_BELL:case CMD_FOCUS_COLLAR:case CMD_FOCUS_MESH:case CMD_ZOOM_TOGGLE:case CMD_MINIMIZE_FOCUSED:return(ShellPaletteStatus){true,PANEL_TEXT(\"ready\"),PANEL_TEXT(\"proven_safe\")};
+    default:return panel_unavailable();
+    }
+}
+uint32_t shell_surfaces_command_kind_color(uint8_t command)
+{
+    static const uint32_t colors[11]={0x00204060,0x00206060,0x00206040,0x00503060,0x00604040,0x00406090,0x00405070,0x00605030,0x00306030,0x00304030,0x00205550};
+    return command<11?colors[command]:0;
+}
+uint32_t shell_surfaces_command_palette_selected_accent(ShellSurfacesContext *ctx)
+{
+    static const uint32_t colors[11]={0x0040C0A0,0x0040C0C0,0x0040C080,0x00A060C0,0x00C06060,0x0060A0C0,0x008080C0,0x00C0A060,0x0080C060,0x00708080,0x005ED9C3};
+    uint8_t index=ctx->surfaces->COMMAND_PALETTE_SELECTED;uint8_t command=shell_surfaces_command_code(index);return index<11 && command<11?colors[command]:UINT32_C(0x00404060);
+}
+static ShellPaletteString panel_base_label(ShellSurfacesContext *ctx,uint8_t command,ShellPaletteStatus status)
+{
+    switch(command){case CMD_FOCUS_SPINDLE:return shell_surfaces_peer_spindle_history_label(ctx,status.status,status.available,status.reason);
+    case CMD_FOCUS_LINEN:return PANEL_TEXT(\"FILES / BROWSE\");case CMD_FOCUS_ATLAS:return PANEL_TEXT(\"DESKTOP OVERVIEW\");
+    case CMD_FOCUS_BELL:return PANEL_TEXT(\"NOTIFICATIONS\");case CMD_FOCUS_COLLAR:return PANEL_TEXT(\"APP PERMISSIONS\");case CMD_FOCUS_MESH:return PANEL_TEXT(\"SYSTEM OVERVIEW\");
+    case CMD_ZOOM_TOGGLE:return PANEL_TEXT(\"RESIZE CURRENT WINDOW\");case CMD_MINIMIZE_FOCUSED:return PANEL_TEXT(\"HIDE CURRENT WINDOW\");default:return status.status;}
+}
+void shell_surfaces_palette_render_list(ShellSurfacesContext *ctx)
+{
+    ShellPaletteRows rows={.count=11};
+    for(size_t i=0;i<11;++i){uint8_t command=shell_surfaces_command_code(i);ShellPaletteString name=shell_surfaces_command_label(i);
+        ShellPaletteStatus status=shell_surfaces_palette_item_status(ctx,command);ShellPaletteString base=panel_base_label(ctx,command,status);
+        uint8_t app=command==CMD_FOCUS_SPINDLE?SHELL_APP_SPINDLE:command==CMD_FOCUS_QUIL?SHELL_APP_QUIL:command==CMD_FOCUS_BROWSER?SHELL_APP_BROWSER:255;
+        bool hint=status.available && (PANEL_IS(status.reason,\"original_incarnation_live\") || PANEL_IS(status.reason,\"boot_successor_ready\")) && (command!=CMD_FOCUS_SPINDLE || !PANEL_IS(status.reason,\"original_incarnation_live\") || PANEL_IS(base,\"RUNNING / FOCUS\"));
+        ShellByteOption count={0};if(hint && app!=255)count=shell_surfaces_app_reserve_remaining(ctx,app);
+        ShellPaletteString fallback=hint?panel_reserve_label(base,status.available,&status.reason,count):base;
+        ShellPaletteLabel label={0};if(hint)label=panel_reserve_count(status.available,&status.reason,count);
+        rows.names[i]=shell_surfaces_peer_launcher_row_title(ctx,command,name);rows.statuses[i]=label.present?label.text:fallback;
+        sexos_line(\"[shell.palette.item] idx=%zu action=%s available=%u status=%s reason=%s\",i,panel_label_text(&name),(unsigned)status.available,panel_label_text(&status.status),panel_label_text(&status.reason));
+    }
+    ShellPaletteView view=panel_view(&rows,ctx->surfaces->COMMAND_PALETTE_SELECTED,COMMAND_PALETTE_BOOT_W,COMMAND_PALETTE_BOOT_H);
+    for(size_t i=0;i<8;++i)(void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_COMMAND_PALETTE,0,(uint64_t)i<<56);
+    (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_COMMAND_PALETTE,UINT64_C(28)<<32,(UINT64_C(0x0022384A)<<32)|((uint64_t)(view.row_y>28?view.row_y-28:0)<<16)|COMMAND_PALETTE_BOOT_W);
+    (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_COMMAND_PALETTE,(uint64_t)view.row_y<<32,(UINT64_C(1)<<56)|(UINT64_C(0x000C1420)<<32)|((uint64_t)(view.rows*view.row_h)<<16)|COMMAND_PALETTE_BOOT_W);
+    for(size_t row=0;row<view.rows;++row){size_t index=view.first+row;uint32_t y=view.row_y+(uint32_t)row*view.row_h;
+        if(index==ctx->surfaces->COMMAND_PALETTE_SELECTED)(void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_COMMAND_PALETTE,(uint64_t)y<<32,(UINT64_C(2)<<56)|(UINT64_C(0x002A4960)<<32)|((uint64_t)view.row_h<<16)|COMMAND_PALETTE_BOOT_W);
+        (void)shell_surfaces_peer_pdx_call(ctx,SLOT_DISPLAY,0xEF,SURFACE_ID_COMMAND_PALETTE,(uint64_t)y<<32,((uint64_t)(row+3)<<56)|(UINT64_C(0x005ED9C3)<<32)|((uint64_t)view.row_h<<16)|3);
+    }
+    (void)shell_text_queue(&ctx->surfaces->PALETTE_TEXT,&view.text,0x00F0F8FF,(ShellTextMetadata){11,view.first,view.rows,ctx->surfaces->COMMAND_PALETTE_SELECTED});
+    sexos_line(\"[launcher.text.view] x=%d y=%d w=%u h=%u scale=%u selected=%u first=%zu rows=%zu\",COMMAND_PALETTE_BOOT_X,COMMAND_PALETTE_BOOT_Y,COMMAND_PALETTE_BOOT_W,COMMAND_PALETTE_BOOT_H,view.scale,(unsigned)ctx->surfaces->COMMAND_PALETTE_SELECTED,view.first,view.rows);
+    for(size_t row=0;row<view.rows;++row){size_t index=view.first+row;sexos_line(\"[launcher.text.row] index=%zu row=%zu name=%s status=%s\",index,row,panel_label_text(&rows.names[index]),panel_label_text(&rows.statuses[index]));}
+    sexos_line(\"[command_palette.done] count=11 selected=%u\",(unsigned)ctx->surfaces->COMMAND_PALETTE_SELECTED);
+}
+static bool panel_show_checked(ShellSurfacesContext *ctx)
+{
+    uint32_t frame=0;if(!shell_surfaces_ensure_command_palette_frame(ctx,&frame))return false;
+    shell_chrome_set_frame_minimized(&ctx->shell,COMMAND_PALETTE_FRAME_ID,false);(void)shell_chrome_set_lifecycle_state(&ctx->shell,SURFACE_ID_COMMAND_PALETTE,LIFECYCLE_VISIBLE);
+    ctx->shell.apps->palette_visibility=(ShellChromeLatestOperation){true,{0xEC,SURFACE_ID_COMMAND_PALETTE,((uint64_t)(uint32_t)COMMAND_PALETTE_BOOT_Y<<32)|(uint32_t)COMMAND_PALETTE_BOOT_X,((uint64_t)COMMAND_PALETTE_BOOT_H<<32)|COMMAND_PALETTE_BOOT_W}};
+    return true;
+}
+void shell_surfaces_palette_show(ShellSurfacesContext *ctx)
+{
+    (void)panel_show_checked(ctx);
+}
+bool shell_surfaces_toggle_command_palette(ShellSurfacesContext *ctx)
+{
+    if(ctx->surfaces->COMMAND_PALETTE_OPEN){ctx->surfaces->COMMAND_PALETTE_OPEN=false;shell_text_cancel(&ctx->surfaces->PALETTE_TEXT);
+        sexos_line(\"[launcher.close] ok=1 reason=palette_closed\");sexos_line(\"[shell.palette.statusbar] open=0 selected=0 available=0\");
+        (void)shell_surfaces_peer_send_silkbar_phase2_update(ctx,SILKBAR_UPDATE_SET_PALETTE_STATE,0,0);
+        ShellLauncherFocus pending=ctx->surfaces->LAUNCHER_FOCUS;(void)shell_chrome_minimize_frame(&ctx->shell,COMMAND_PALETTE_FRAME_ID);shell_surfaces_peer_launcher_palette_closed(ctx,pending);
+        ctx->shell.apps->palette_visibility=(ShellChromeLatestOperation){true,{0xEE,SURFACE_ID_COMMAND_PALETTE,0,0}};sexos_line(\"[command_palette.close]\");return true;
+    }
+    if(!panel_show_checked(ctx)){sexos_line(\"[shell.palette.open.reject] reason=frame_or_lifecycle_capacity\");return false;}
+    ctx->surfaces->COMMAND_PALETTE_OPEN=true;ctx->surfaces->COMMAND_PALETTE_SELECTED=0;
+    size_t available=0;for(size_t i=0;i<11;++i){ShellPaletteStatus status=shell_surfaces_palette_item_status(ctx,shell_surfaces_command_code(i));if(status.available)++available;}
+    sexos_line(\"[shell.palette.statusbar] open=1 selected=%u available=%zu\",(unsigned)ctx->surfaces->COMMAND_PALETTE_SELECTED,available);
+    (void)shell_surfaces_peer_send_silkbar_phase2_update(ctx,SILKBAR_UPDATE_SET_PALETTE_STATE,1|((uint64_t)ctx->surfaces->COMMAND_PALETTE_SELECTED<<1)|((uint64_t)available<<9),0);
+    sexos_line(\"[launcher.open] count=8 selected=%u ok=1\",(unsigned)ctx->surfaces->COMMAND_PALETTE_SELECTED);sexos_line(\"[shell.palette.open] ok=1 selected=%u count=11\",(unsigned)ctx->surfaces->COMMAND_PALETTE_SELECTED);
+    for(size_t i=0;i<11;++i){ShellPaletteString name=shell_surfaces_command_label(i);sexos_line(\"[shell.palette.item] idx=%zu name=%s action=%u\",i,panel_label_text(&name),(unsigned)shell_surfaces_command_code(i));
+        ShellPaletteStatus status=shell_surfaces_palette_item_status(ctx,shell_surfaces_command_code(i));sexos_line(\"[shell.palette.status] idx=%zu action=%s available=%u status=%s reason=%s\",i,panel_label_text(&name),(unsigned)status.available,panel_label_text(&status.status),panel_label_text(&status.reason));
+        if(i<7 || i==CMD_FOCUS_BROWSER)sexos_line(\"[launcher.row] idx=%zu app=%s status=%s available=%u\",i,panel_label_text(&name),panel_label_text(&status.status),(unsigned)status.available);
+    }
+    sexos_line(\"[command_palette.open]\");return true;
+}
+static void panel_selection_mark(ShellSurfacesContext *ctx,uint8_t old,uint8_t next)
+{
+    ctx->surfaces->COMMAND_PALETTE_SELECTED=next;
+    sexos_line(\"[shell.palette.select] old=%u new=%u\",(unsigned)old,(unsigned)next);sexos_line(\"[command_palette.select] index=%u\",(unsigned)next);sexos_line(\"[launcher.nav] old=%u new=%u count=11\",(unsigned)old,(unsigned)next);
+    shell_surfaces_palette_render_list(ctx);
+    if(ctx->surfaces->COMMAND_PALETTE_OPEN)(void)shell_surfaces_peer_send_silkbar_phase2_update(ctx,SILKBAR_UPDATE_SET_PALETTE_STATE,1|((uint64_t)next<<1)|(UINT64_C(11)<<9),0);
+}
+void shell_surfaces_palette_select_next(ShellSurfacesContext *ctx)
+{
+    uint8_t old=ctx->surfaces->COMMAND_PALETTE_SELECTED;panel_selection_mark(ctx,old,old>=10?0:old+1);
+}
+void shell_surfaces_palette_select_prev(ShellSurfacesContext *ctx)
+{
+    uint8_t old=ctx->surfaces->COMMAND_PALETTE_SELECTED;panel_selection_mark(ctx,old,old?old-1:10);
+}
+void shell_surfaces_palette_batch_emit_app_focus(ShellSurfacesContext *ctx,const ShellPaletteString *app,uint64_t sid,bool ok,const ShellPaletteString *reason)
+{
+    uint32_t frame=0;(void)shell_chrome_frame_for_surface(&ctx->shell,sid,&frame);
+    sexos_line(\"[shell.app.open.focus] app=%s sid=%llu frame=%u ok=%u reason=%s\",panel_label_text(app),(unsigned long long)sid,frame,(unsigned)ok,panel_label_text(reason));
+}
+
+ShellActivationResult shell_surfaces_browser_activation_info(ShellSurfacesContext *ctx,bool commit)
+{
+    return shell_surfaces_app_activation_info(ctx,SHELL_APP_BROWSER,commit);
+}
+ShellSurfaceSubject shell_surfaces_browser_active_frame(ShellSurfacesContext *ctx)
+{
+    ShellAppCatalogRow row={0};
+    if(surface_app_count(SHELL_APP_BROWSER)==1){for(size_t i=0;i<SHELL_APP_COUNT;++i){ShellAppCatalogRow candidate=shell_custody_catalog_at(i);if(candidate.app==SHELL_APP_BROWSER && !candidate.ordinal)row=candidate;}}
+    else{
+        ShellActivationResult info=shell_surfaces_browser_activation_info(ctx,false);if(info.status)return(ShellSurfaceSubject){0};
+        ShellAppCatalogRow successor=surface_row(info.info.successor,info.info.surface);if(!successor.present || successor.app!=SHELL_APP_BROWSER)return(ShellSurfaceSubject){0};
+        if(info.info.state==2)row=successor;else if(info.info.state==0)row=surface_predecessor(successor);else return(ShellSurfaceSubject){0};
+    }
+    if(!row.present || row.app!=SHELL_APP_BROWSER || !shell_surfaces_peer_native_launcher_available(ctx,row.target))return(ShellSurfaceSubject){0};
+    return(ShellSurfaceSubject){true,row.target,row.shell_surface?row.shell_surface:row.surface};
+}
+bool shell_surfaces_open_browser_in_active_scene(ShellSurfacesContext *ctx)
+{
+    if(surface_app_count(SHELL_APP_BROWSER)>1){
+        ShellActivationResult info=shell_surfaces_browser_activation_info(ctx,false);if(info.status)return false;
+        if(info.info.state==1){
+            shell_surfaces_peer_launcher_focus_discard(ctx);
+            ShellActivationResult active=shell_surfaces_browser_activation_info(ctx,true);if(active.status)return false;
+            ShellActivationResult replay=shell_surfaces_browser_activation_info(ctx,true);
+            if(active.info.state!=2 || replay.status || !surface_activation_equal(active.info,replay.info))return false;
+            ShellAppCatalogRow row=surface_row(active.info.successor,active.info.surface);if(!row.present || row.app!=SHELL_APP_BROWSER)return false;
+            ShellAppCatalogRow previous=surface_predecessor(row);if(!previous.present)return false;
+            sexos_line(\"[shell.app.relaunch] predecessor=%u successor=%u task=%u surface=%llu receipt_replayed=1\",previous.target,active.info.successor,active.info.task,(unsigned long long)active.info.surface);
+            shell_surfaces_peer_launcher_action_record(ctx,active.info.successor,row.shell_surface?row.shell_surface:row.surface,0,ctx->shell.chrome->ACTIVE_SCENE_IDX,true,true);return true;
+        }
+        if(info.info.state==3)return false;
+    }
+    ShellSurfaceSubject subject=shell_surfaces_browser_active_frame(ctx);if(!subject.present)return false;
+    ShellSurfaceBool focused=shell_surfaces_peer_launcher_focus_existing(ctx,subject.target,subject.frame,false,0);return focused.present?focused.value:true;
+}
+static bool panel_execute_command(ShellSurfacesContext *ctx,uint8_t command)
+{
+    bool ok=false;uint64_t sid=0;
+    switch(command){
+    case CMD_FOCUS_SPINDLE:{ok=shell_surfaces_open_spindle_in_active_scene(ctx);if(ok){ShellSurfaceSubject subject=shell_surfaces_spindle_active_frame(ctx);sid=subject.present?subject.frame:SURFACE_ID_SPINDLE;}
+        sexos_line(\"[shell.palette.focus.result] target=SPINDLE sid=%llu ok=%u\",(unsigned long long)sid,(unsigned)ok);if(ok)sexos_line(\"[spindle.launch.route.ok]\");return ok;}
+    case CMD_FOCUS_QUIL:{ok=shell_surfaces_open_quil_in_active_scene(ctx);if(ok){ShellActivationResult info=shell_surfaces_quil_activation_info(ctx,false);sid=!info.status && info.info.state==2?info.info.surface:SURFACE_ID_QUIL;}
+        sexos_line(\"[shell.palette.focus.result] target=QUIL sid=%llu ok=%u\",(unsigned long long)sid,(unsigned)ok);if(ok)sexos_line(\"[quil.launch.route.ok]\");return ok;}
+    case CMD_FOCUS_BROWSER:{ok=shell_surfaces_open_browser_in_active_scene(ctx);if(ok){ShellSurfaceSubject subject=shell_surfaces_browser_active_frame(ctx);sid=subject.present?subject.frame:0;}
+        sexos_line(\"[shell.palette.focus.result] target=BROWSER sid=%llu ok=%u\",(unsigned long long)sid,(unsigned)ok);return ok;}
+    case CMD_FOCUS_LINEN:ok=shell_surfaces_open_linen_in_active_scene(ctx);sexos_line(\"[shell.palette.focus.result] target=LINEN sid=%llu ok=%u\",(unsigned long long)(ok?SURFACE_ID_LINEN:0),(unsigned)ok);if(ok)sexos_line(\"[linen.launch.route.ok]\");return ok;
+    case CMD_FOCUS_ATLAS:shell_surfaces_peer_atlas_toggle(ctx);ok=shell_chrome_try_set_focus(&ctx->shell,SURFACE_ID_ATLAS_OVERLAY);sexos_line(\"[shell.palette.focus.result] target=ATLAS sid=%llu ok=%u\",(unsigned long long)SURFACE_ID_ATLAS_OVERLAY,(unsigned)ok);return ok;
+    case CMD_FOCUS_BELL:ok=shell_surfaces_open_bell_in_active_scene(ctx);sexos_line(\"[shell.palette.focus.result] target=BELL sid=%llu ok=%u\",(unsigned long long)(ok?SURFACE_ID_BELL_PLACEHOLDER:0),(unsigned)ok);return ok;
+    case CMD_FOCUS_COLLAR:ok=shell_surfaces_open_collar_in_active_scene(ctx);sexos_line(\"[shell.palette.focus.result] target=COLLAR sid=%llu ok=%u\",(unsigned long long)(ok?SURFACE_ID_COLLAR:0),(unsigned)ok);return ok;
+    case CMD_FOCUS_MESH:ok=shell_surfaces_open_mesh_in_active_scene(ctx);sexos_line(\"[shell.palette.focus.result] target=MESH sid=%llu ok=%u\",(unsigned long long)(ok?SURFACE_ID_MESH:0),(unsigned)ok);if(ok)sexos_line(\"[mesh.launch.route.ok]\");return ok;
+    case CMD_RESTORE_MINIMIZED:return shell_chrome_access_handle_keyboard_action(&ctx->shell,ACTION_RESTORE_MINIMIZED);
+    case CMD_ZOOM_TOGGLE:return shell_chrome_access_handle_keyboard_action(&ctx->shell,ACTION_ACCESS_ZOOM_TOGGLE);
+    case CMD_MINIMIZE_FOCUSED:return shell_chrome_access_handle_keyboard_action(&ctx->shell,ACTION_ACCESS_ACTIVATE);
+    default:return false;
+    }
+}
+bool shell_surfaces_palette_execute_selected(ShellSurfacesContext *ctx)
+{
+    size_t index=ctx->surfaces->COMMAND_PALETTE_SELECTED;
+    if(index>=11){sexos_line(\"[shell.palette.exec] idx=%zu action=INVALID ok=0 reason=oob\",index);return false;}
+    uint8_t command=shell_surfaces_command_code(index);ShellPaletteString name=shell_surfaces_command_label(index);
+    ShellPaletteStatus status=shell_surfaces_palette_item_status(ctx,command);
+    if(!status.available){sexos_line(\"[launcher.execute.denied] idx=%zu status=%s reason=%s\",index,panel_label_text(&status.status),panel_label_text(&status.reason));sexos_line(\"[shell.palette.exec] idx=%zu action=%s ok=0 reason=%s\",index,panel_label_text(&name),panel_label_text(&status.reason));shell_surfaces_palette_render_list(ctx);return false;}
+    sexos_line(\"[command_palette.execute] cmd=%u name=%s\",(unsigned)command,panel_label_text(&name));
+    bool ok=panel_execute_command(ctx,command);
+    sexos_line(\"[shell.palette.exec] idx=%zu action=%s ok=%u reason=%s\",index,panel_label_text(&name),(unsigned)ok,ok?\"ok\":\"action_reject\");
+    if(index<7 || command==CMD_FOCUS_BROWSER)sexos_line(\"[launcher.exec] idx=%zu app=%s ok=%u reason=%s\",index,panel_label_text(&name),(unsigned)ok,ok?\"launched\":\"action_reject\");
+    status=shell_surfaces_palette_item_status(ctx,command);
+    ShellPaletteString reason=ok?PANEL_TEXT(\"executed\"):status.reason;
+    sexos_line(\"[shell.palette.exec.result] idx=%zu action=%s ok=%u status=%s reason=%s\",index,panel_label_text(&name),(unsigned)ok,panel_label_text(&status.status),panel_label_text(&reason));return ok;
+}
+
+bool shell_surfaces_ensure_linen_frame(ShellSurfacesContext *ctx,uint32_t *out){return surface_ensure(ctx,0,out);}
+
+bool shell_surfaces_ensure_quil_frame(ShellSurfacesContext *ctx,uint32_t *out){return surface_ensure(ctx,1,out);}
+
+bool shell_surfaces_ensure_mesh_frame(ShellSurfacesContext *ctx,uint32_t *out){return surface_ensure(ctx,2,out);}
+
+bool shell_surfaces_ensure_collar_frame(ShellSurfacesContext *ctx,uint32_t *out){return surface_ensure(ctx,3,out);}
+
+bool shell_surfaces_ensure_spindle_frame(ShellSurfacesContext *ctx,uint32_t *out){return surface_ensure(ctx,4,out);}
+
+bool shell_surfaces_ensure_bell_frame(ShellSurfacesContext *ctx,uint32_t *out){return surface_ensure(ctx,5,out);}
+
+bool shell_surfaces_ensure_command_palette_frame(ShellSurfacesContext *ctx,uint32_t *out){return surface_ensure(ctx,6,out);}
+
+bool shell_surfaces_linen_frame_id(ShellSurfacesContext *ctx,uint32_t *out){return surface_frame(ctx,LINEN_FRAME_ID,out);}
+
+bool shell_surfaces_quil_frame_id(ShellSurfacesContext *ctx,uint32_t *out){return surface_frame(ctx,QUIL_FRAME_ID,out);}
+
+bool shell_surfaces_mesh_frame_id(ShellSurfacesContext *ctx,uint32_t *out){return surface_frame(ctx,MESH_FRAME_ID,out);}
+
+bool shell_surfaces_collar_frame_id(ShellSurfacesContext *ctx,uint32_t *out){return surface_frame(ctx,COLLAR_FRAME_ID,out);}
+
+bool shell_surfaces_bell_frame_id(ShellSurfacesContext *ctx,uint32_t *out){return surface_frame(ctx,BELL_FRAME_ID,out);}
+
+bool shell_surfaces_open_linen_in_active_scene(ShellSurfacesContext *ctx){return surface_open_plain(ctx,0);}
+
+bool shell_surfaces_focus_or_open_linen(ShellSurfacesContext *ctx){return surface_focus_plain(ctx,0);}
+
+bool shell_surfaces_toggle_linen(ShellSurfacesContext *ctx){return surface_toggle_plain(ctx,0);}
+
+bool shell_surfaces_open_quil_in_active_scene(ShellSurfacesContext *ctx){return surface_open_plain(ctx,1);}
+
+bool shell_surfaces_focus_or_open_quil(ShellSurfacesContext *ctx){return surface_focus_plain(ctx,1);}
+
+bool shell_surfaces_toggle_quil(ShellSurfacesContext *ctx){return surface_toggle_plain(ctx,1);}
+
+bool shell_surfaces_open_mesh_in_active_scene(ShellSurfacesContext *ctx){return surface_open_plain(ctx,2);}
+
+bool shell_surfaces_focus_or_open_mesh(ShellSurfacesContext *ctx){return surface_focus_plain(ctx,2);}
+
+bool shell_surfaces_toggle_mesh(ShellSurfacesContext *ctx){return surface_toggle_plain(ctx,2);}
+
+bool shell_surfaces_open_collar_in_active_scene(ShellSurfacesContext *ctx){return surface_open_plain(ctx,3);}
+
+bool shell_surfaces_focus_or_open_collar(ShellSurfacesContext *ctx){return surface_focus_plain(ctx,3);}
+
+bool shell_surfaces_toggle_collar(ShellSurfacesContext *ctx){return surface_toggle_plain(ctx,3);}
+
+bool shell_surfaces_open_spindle_in_active_scene(ShellSurfacesContext *ctx){return surface_open_plain(ctx,4);}
+
+bool shell_surfaces_toggle_spindle(ShellSurfacesContext *ctx){return surface_toggle_plain(ctx,4);}
+
+bool shell_surfaces_open_bell_in_active_scene(ShellSurfacesContext *ctx){return surface_open_plain(ctx,5);}
+
+bool shell_surfaces_focus_or_open_bell(ShellSurfacesContext *ctx){return surface_focus_plain(ctx,5);}
+
+bool shell_surfaces_toggle_bell(ShellSurfacesContext *ctx){return surface_toggle_plain(ctx,5);}
+
+void shell_surfaces_open_app_in_active_scene_by_sid(ShellSurfacesContext *ctx,uint64_t sid){if(sid==200)(void)shell_surfaces_open_linen_in_active_scene(ctx);else if(sid==201)(void)shell_surfaces_open_quil_in_active_scene(ctx);else if(sid==202){sexos_line(\"[browser.placeholder.open] app=WebStub sid=205 network=0 engine=0 fetched=0 parsed=0 ok=0 reason=no_surface_placeholder_only\");sexos_line(\"[browser.placeholder.truth] focusable=0 launch_exec=1 lifecycle=placeholder_requested network=0 engine=0 ok=1 reason=honest_no_surface\");}}
+")))

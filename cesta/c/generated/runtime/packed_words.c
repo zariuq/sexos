@@ -3,6 +3,23 @@
 #include <stdbool.h>
 #include <limits.h>
 
+#ifndef CESTA_CHECKED_HINTS_DEFINED
+#define CESTA_CHECKED_HINTS_DEFINED
+#ifndef CESTA_CHECKED_OPTIMIZE
+#define CESTA_CHECKED_OPTIMIZE 0
+#endif
+#if CESTA_CHECKED_OPTIMIZE != 0 && CESTA_CHECKED_OPTIMIZE != 1
+#error "CESTA_CHECKED_OPTIMIZE must be 0 or 1"
+#endif
+#if CESTA_CHECKED_OPTIMIZE && (defined(__GNUC__) || defined(__clang__))
+#define CESTA_CHECKED_COLD __attribute__((cold, noinline))
+#define CESTA_CHECKED_ALLOC_SIZE __attribute__((alloc_size(1)))
+#else
+#define CESTA_CHECKED_COLD
+#define CESTA_CHECKED_ALLOC_SIZE
+#endif
+#endif
+
 _Static_assert(CHAR_BIT == 8 && sizeof(size_t) * CHAR_BIT == 64 &&
                PTRDIFF_MAX == SIZE_MAX / 2,
                "checked module word-bits disagrees with the C target");
@@ -68,7 +85,7 @@ uint64_t packed_words_load_le64(cesta_read_bytes);
 void packed_words_store_le64(cesta_write_bytes, uint64_t);
 uint64_t packed_words_display_metadata(size_t, size_t, uint32_t);
 
-static _Noreturn void cesta_packed_words_fail(void)
+static CESTA_CHECKED_COLD _Noreturn void cesta_packed_words_fail(void)
 {
     packed_words_failure();
     for (;;) {}

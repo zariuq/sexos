@@ -4,9 +4,11 @@
 #define SEXOS_CPU_X86_64_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 static inline void cpu_outb(uint16_t port, uint8_t value) { __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port)); }
 static inline uint8_t cpu_inb(uint16_t port) { uint8_t v; __asm__ volatile ("inb %1, %0" : "=a"(v) : "Nd"(port)); return v; }
+static inline void cpu_outw(uint16_t port, uint16_t value) { __asm__ volatile ("outw %0, %1" : : "a"(value), "Nd"(port)); }
 static inline void cpu_outl(uint16_t port, uint32_t value) { __asm__ volatile ("outl %0, %1" : : "a"(value), "Nd"(port)); }
 static inline uint32_t cpu_inl(uint16_t port) { uint32_t v; __asm__ volatile ("inl %1, %0" : "=a"(v) : "Nd"(port)); return v; }
 
@@ -21,6 +23,16 @@ static inline void cpu_wrmsr(uint32_t msr, uint64_t value)
 {
     __asm__ volatile ("wrmsr" : : "c"(msr), "a"((uint32_t)value), "d"((uint32_t)(value >> 32)));
 }
+
+/* The caller checks the RDSEED feature before this one sample operation. */
+static inline bool cpu_rdseed(uint64_t *out)
+{
+    uint64_t value;unsigned char carry;
+    __asm__ volatile ("rdseed %0; setc %1" : "=&r"(value), "=qm"(carry) : : "cc");
+    *out=value;return carry!=0;
+}
+
+static inline uint64_t cpu_read_rsp(void) { uint64_t v; __asm__ volatile ("mov %%rsp, %0" : "=r"(v)); return v; }
 
 static inline uint64_t cpu_read_cr0(void) { uint64_t v; __asm__ volatile ("mov %%cr0, %0" : "=r"(v)); return v; }
 static inline uint64_t cpu_read_cr2(void) { uint64_t v; __asm__ volatile ("mov %%cr2, %0" : "=r"(v)); return v; }
@@ -42,6 +54,26 @@ static inline uint64_t cpu_xgetbv(uint32_t index)
     uint32_t lo, hi;
     __asm__ volatile ("xgetbv" : "=a"(lo), "=d"(hi) : "c"(index));
     return ((uint64_t)hi << 32) | lo;
+}
+
+/* FXSAVE64 covers x87, MMX, MXCSR and all sixteen x86-64 XMM registers.
+ * Every area is kernel-owned and 16-byte aligned. */
+static inline void cpu_fxsave(void *area)
+{
+    __asm__ volatile ("fxsave64 (%0)" : : "r"(area) : "memory");
+}
+
+static inline void cpu_fxrstor(const void *area)
+{
+    __asm__ volatile ("fxrstor64 (%0)" : : "r"(area) : "memory");
+}
+
+static inline void cpu_fpu_state_init(void *area)
+{
+    const uint32_t mxcsr = UINT32_C(0x1f80);
+    __asm__ volatile ("fninit" : : : "memory");
+    __asm__ volatile ("ldmxcsr %0" : : "m"(mxcsr) : "memory");
+    cpu_fxsave(area);
 }
 
 /* Valid only after CR4.PKE is set. */

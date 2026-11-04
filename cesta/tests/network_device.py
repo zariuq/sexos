@@ -21,7 +21,7 @@ def main():
             binary=work/(compiler+'-'+mode)
             run([compiler,'-std=c11','-Wall','-Wextra','-Wpedantic','-Werror','-DSEXOS_HOST=1',*flags,
                  '-I',work,'-Igenerated/include','tests/network_device/host.c','-o',binary])
-            for case in ('ordinary','timeout','error'):run([binary,case])
+            for case in ('ordinary','timeout','error','permit'):run([binary,case])
             run([binary,'binding'],expected=77)
             run([binary,'rx-binding'],expected=77)
             print(compiler,mode,'ring/buffer/timeout/error controls and broken binding passed')

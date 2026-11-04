@@ -1,0 +1,10 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "working_main_sha256": "fb36d2e89eeca1f450b5f8b825bc31bda30c7d50c5aa04f4821b6d52edd8030a",
+  "functions": [
+    {"name":"maybe_run_frame_lights_pointer_proof","done":"FRAME_LIGHTS_POINTER_PROOF_DONE","flag":"SEXOS_FRAME_LIGHTS_POINTER_PROOF","source_sha256":"5f55a5e492e95bdb6cc3973d23d30a469a78190117eeaf5560f5bda66edce0a6"},
+    {"name":"maybe_run_lifecycle_multitab_proof","done":"LIFECYCLE_MULTITAB_PROOF_DONE","flag":"SEXOS_LIFECYCLE_MULTITAB_PROOF","source_sha256":"b7effced36109698b2406a12fb2f680e29d07edd4ecad50e56a43179fd063384"},
+    {"name":"maybe_run_atlas_visible_restore_proof","done":"ATLAS_VISIBLE_RESTORE_PROOF_DONE","owner":"atlas","flag":"SEXOS_LIFECYCLE_ATLAS_PROOF","source_sha256":"a272c5292da6cc772aef22f4519f9f59414417865ed817ff9da032cbd93b77a7"},
+    {"name":"maybe_run_appdeath_cleanup_proof","done":"APPDEATH_CLEANUP_PROOF_DONE","flag":"SEXOS_LIFECYCLE_APPDEATH_PROOF","source_sha256":"2b2d0b650a7253d5e71d6a6ef38a2c9cf943ba84bbeb075a105e1c4aed4a612e"}
+  ]
+}

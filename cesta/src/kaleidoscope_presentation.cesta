@@ -1,0 +1,30 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (include "kaleidoscope_presentation.h")
+  (ownership (check-all))
+  (native "
+static bool presentation_geometry_valid(KaleidoscopeBitmapGeometry geometry)
+{return geometry.width>=1&&geometry.width<=48&&geometry.height>=1&&geometry.height<=48&&geometry.scale>=1&&geometry.scale<=4;}
+static bool presentation_geometry_equal(KaleidoscopeBitmapGeometry a,KaleidoscopeBitmapGeometry b)
+{return a.x==b.x&&a.y==b.y&&a.width==b.width&&a.height==b.height&&a.scale==b.scale;}
+static bool presentation_metadata_equal(KaleidoscopeBitmapMetadata a,KaleidoscopeBitmapMetadata b)
+{return a.viewport==b.viewport&&a.source==b.source;}
+void kaleidoscope_presentation_init(KaleidoscopePresentation *presentation)
+{if(presentation)*presentation=(KaleidoscopePresentation){.mode=KALEIDOSCOPE_PRESENTATION_FIT,.generation=1};}
+bool kaleidoscope_presentation_invalidate(KaleidoscopePresentation *presentation)
+{if(!presentation)return false;presentation->text_present=false;presentation->layout_present=false;presentation->applied=false;presentation->clear_present=false;presentation->clear_applied=false;if(presentation->generation==UINT64_MAX){presentation->exhausted=true;return false;}if(presentation->exhausted)return false;presentation->generation++;return true;}
+KaleidoscopePresentationSelect kaleidoscope_presentation_select(KaleidoscopePresentation *presentation,uint8_t mode)
+{if(!presentation||(mode!=KALEIDOSCOPE_PRESENTATION_FIT&&mode!=KALEIDOSCOPE_PRESENTATION_ACTUAL))return(KaleidoscopePresentationSelect){0};if(presentation->mode==mode)return(KaleidoscopePresentationSelect){true,false};if(!kaleidoscope_presentation_invalidate(presentation))return(KaleidoscopePresentationSelect){false,false};presentation->mode=mode;return(KaleidoscopePresentationSelect){true,true};}
+bool kaleidoscope_presentation_text_applied(KaleidoscopePresentation *presentation,uint64_t generation,uint64_t viewport,uint64_t current_viewport)
+{if(!presentation||presentation->exhausted||generation!=presentation->generation||!viewport||viewport!=current_viewport||(presentation->text_present&&presentation->text_generation==generation&&presentation->text_viewport==viewport))return false;presentation->text_present=true;presentation->text_generation=generation;presentation->text_viewport=viewport;return true;}
+bool kaleidoscope_presentation_can_queue(const KaleidoscopePresentation *presentation,uint64_t viewport)
+{return presentation&&!presentation->exhausted&&viewport&&!presentation->layout_present&&!presentation->clear_present&&presentation->text_present&&presentation->text_generation==presentation->generation&&presentation->text_viewport==viewport;}
+bool kaleidoscope_presentation_expect(KaleidoscopePresentation *presentation,KaleidoscopeBitmapGeometry geometry,uint64_t viewport,uint32_t ticket,uint32_t sequence,uint64_t hash)
+{if(!kaleidoscope_presentation_can_queue(presentation,viewport)||!presentation_geometry_valid(geometry)||!ticket||sequence<=presentation->sequence_floor)return false;presentation->layout=(KaleidoscopePresentationLayout){presentation->generation,geometry,viewport,ticket,sequence,hash};presentation->layout_present=true;presentation->sequence_floor=sequence;presentation->applied=false;return true;}
+bool kaleidoscope_presentation_expect_clear(KaleidoscopePresentation *presentation,uint64_t viewport,uint32_t sequence)
+{if(!kaleidoscope_presentation_can_queue(presentation,viewport)||sequence<=presentation->sequence_floor)return false;presentation->clear=(KaleidoscopePresentationClear){presentation->generation,viewport,sequence};presentation->clear_present=true;presentation->sequence_floor=sequence;presentation->clear_applied=false;return true;}
+bool kaleidoscope_presentation_cleared(KaleidoscopePresentation *presentation,const KaleidoscopeBitmapReceipt *receipt,uint64_t current_viewport)
+{if(!presentation||!receipt||!presentation->clear_present)return false;KaleidoscopePresentationClear clear=presentation->clear;if(presentation->exhausted||presentation->clear_applied||clear.generation!=presentation->generation||clear.viewport!=current_viewport||receipt->sequence!=clear.sequence||receipt->geometry_present||receipt->hash||receipt->metadata.viewport!=clear.viewport||receipt->metadata.source)return false;presentation->clear_applied=true;return true;}
+bool kaleidoscope_presentation_applied(KaleidoscopePresentation *presentation,const KaleidoscopeBitmapReceipt *receipt,uint64_t current_viewport,uint32_t current_ticket,uint64_t current_hash)
+{if(!presentation||!receipt||!presentation->layout_present)return false;KaleidoscopePresentationLayout layout=presentation->layout;if(presentation->exhausted||presentation->applied||layout.generation!=presentation->generation||layout.viewport!=current_viewport||layout.ticket!=current_ticket||layout.hash!=current_hash||receipt->sequence!=layout.sequence||!receipt->geometry_present||!presentation_geometry_equal(receipt->geometry,layout.geometry)||receipt->hash!=layout.hash||!presentation_metadata_equal(receipt->metadata,(KaleidoscopeBitmapMetadata){layout.viewport,layout.ticket}))return false;presentation->applied=true;return true;}
+")))

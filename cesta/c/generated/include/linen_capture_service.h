@@ -1,0 +1,8 @@
+#ifndef SEXOS_LINEN_CAPTURE_SERVICE_H
+#define SEXOS_LINEN_CAPTURE_SERVICE_H
+#include "linen_capture.h"
+#include "sexos_rpc.h"
+typedef struct LinenCaptureAnswer {bool present;SexosRequest request;uint64_t value;} LinenCaptureAnswer;
+bool linen_capture_service_prepare(LinenCaptureServer *state,const LinenCaptureTable *table,const SexosRequest *request,LinenCaptureAnswer *answer);
+bool linen_capture_answer_poll(LinenCaptureAnswer *answer);
+#endif

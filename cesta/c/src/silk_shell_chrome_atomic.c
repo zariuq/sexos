@@ -1,0 +1,19 @@
+#include "silk_shell_chrome.h"
+uint32_t shell_chrome_peer_load_dimension(const atomic_uint_least32_t *dimension)
+{
+    return atomic_load_explicit(dimension,memory_order_acquire);
+}
+bool shell_chrome_peer_exchange_bool(atomic_bool *value,bool next)
+{
+    return atomic_exchange_explicit(value,next,memory_order_relaxed);
+}
+uint32_t shell_chrome_peer_load_relaxed(const atomic_uint_least32_t *value)
+{
+    return atomic_load_explicit(value,memory_order_relaxed);
+}
+void shell_chrome_peer_store_relaxed(atomic_uint_least32_t *value,uint32_t next)
+{
+    atomic_store_explicit(value,next,memory_order_relaxed);
+}
+
+

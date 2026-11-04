@@ -1,0 +1,15 @@
+{
+  "current_pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "expected_drivers": 37,
+  "partitions": [
+    {"manifest":"interfaces/silk_shell_proofs_b_palette.source.json","count":18},
+    {"manifest":"interfaces/silk_shell_proofs_b_atlas.source.json","count":8},
+    {"manifest":"interfaces/silk_shell_proofs_b_input.source.json","count":11}
+  ],
+  "production_helpers": [
+    {"rust":"atlas_same_scene_drop_noop","cesta":"shell_atlas_atlas_same_scene_drop_noop","source":"src/silk_shell_atlas.cesta"},
+    {"rust":"reparent_frame_to_scene","cesta":"shell_atlas_reparent_frame_to_scene","source":"src/silk_shell_atlas.cesta"},
+    {"rust":"palette_batch_emit_app_focus","cesta":"shell_proofs_b_batch_app_focus","source":"src/silk_shell_proofs_b_palette.cesta"}
+  ],
+  "residual_drivers": []
+}

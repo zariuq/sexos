@@ -1,0 +1,13 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "main_path": "servers/sexnet/src/dns_jobs.rs",
+  "main_sha256": "c53679005c289f530baa07ce3a4d9aa799a57303547b7acd0efd258b89a1ed62",
+  "abi_path": "crates/sex-pdx/src/network_dns.rs",
+  "abi_sha256": "9cb5fb2b78bf2d73308a25f504df99fcc29daf762d20990a025e25b8a0cb48bb",
+  "job_abi_path": "crates/sex-pdx/src/network_job.rs",
+  "job_abi_sha256": "d613d849a9df5cf193c4ce02e42ad934e8440e9002b924497f766cd124770671",
+  "wire_path": "crates/sex-net/src/dns_wire.rs",
+  "wire_sha256": "3d37688cf268ea48000d61f5a75cf3258032197a155e241ed06807786e95bdb4",
+  "config_path": "crates/sex-net-config/src/lib.rs",
+  "config_sha256": "e6713f58f993f3254056f5e60b33fb2d7cb9b67d17409787577d82483be8a2fe"
+}

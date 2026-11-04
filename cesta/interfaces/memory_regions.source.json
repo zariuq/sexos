@@ -1,0 +1,22 @@
+{
+  "source_pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "sources": [
+    {
+      "path": "crates/sex-pdx/src/memory_region.rs",
+      "sha256": "98b3aa56ce7b854e464fb10f066c5843062101b5b23c7b412b3fb9a583708f54"
+    },
+    {
+      "path": "kernel/src/capability_slot.rs",
+      "sha256": "8e11112db06db93316879d07d4dfb1f096ff1e6109802d7d0ea8ee10ca0380af"
+    },
+    {
+      "path": "kernel/src/syscalls/mod.rs",
+      "sha256": "671f6322cf7e76c48cd8b8eaa2c9f8d17734e92149c04b8acdcac4ae539cbbc4"
+    },
+    {
+      "path": "kernel/src/boot_memory.rs",
+      "sha256": "2b5d8e7ded42a0e2ac7b4ecf618e64192204aca8ba25c6a73a126f143b23e12c"
+    }
+  ],
+  "scope": "Pure immutable-region permission policy and syscall54/55 reply encoding. Held-capability lookup and existing mappings remain kernel responsibilities."
+}

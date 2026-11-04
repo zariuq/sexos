@@ -1,0 +1,104 @@
+{
+  "pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "sources": [
+    {
+      "path": "kernel/src/init.rs",
+      "sha256": "9559aa47d0c15e90620f43b18fb72ce4dc7683bfe4ba55413d4750906b159c58"
+    },
+    {
+      "path": "kernel/src/app_resource_state.rs",
+      "sha256": "a2a3b19a31269078689978fc90ce214a9251c04ed7d7b33d5ca8c6289b38a60a"
+    },
+    {
+      "path": "kernel/src/app_resources.rs",
+      "sha256": "599cefe3a0d1c8cd2ad0dd62e1a57253a2403956c07bd7e73413b1d5b7ba523b"
+    },
+    {
+      "path": "kernel/src/loader/elf.rs",
+      "sha256": "9b8f1cb1d1c4f749977434946b4ac2ce17dbd92209363b4641f2154c5d67d84a"
+    },
+    {
+      "path": "crates/sex-pdx/src/app_catalog.rs",
+      "sha256": "16304bb05e22493f2e1f6a8c9c09aa1ee838a0641cca3ecea7e575312e12f3b1"
+    },
+    {
+      "path": "crates/sex-pdx/src/app_lifecycle.rs",
+      "sha256": "95b5404b95fe2fa12107f960c022f2544191ab461db9acda2469095decee9e00"
+    },
+    {
+      "path": "kernel/src/app_catalog_state.rs",
+      "sha256": "ce70741547c0920f75d378f1bff21ca385ccb6465f90b2700861f61fef234442"
+    }
+  ],
+  "expected_boot": {
+    "domains": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29
+    ],
+    "apps": [
+      9,
+      12,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29
+    ],
+    "dormant": [
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29
+    ],
+    "initial": 15,
+    "routes": 156,
+    "backings": 16
+  }
+}

@@ -3,6 +3,10 @@
 
 #include "sexos_client.h"
 
+#include "sexos_memory_regions.h"
+
+#include "sexos_region_writer.h"
+
 /*Server-side calls of crates/sex-pdx beyond the client interface.*/
 
 /*Capability error sentinels; must match kernel/src/ipc.rs.*/
@@ -66,6 +70,10 @@ void sexfiles_main(void);
 /*core::hint::spin_loop: one pause, a hint to the processor inside a busy wait.*/
 
 void sexos_spin_loop_hint(void);
+
+/*A counted inline pause loop, avoiding one external C call per Rust spin-loop hint.*/
+
+void sexos_spin_loop_count(uint64_t count);
 
 /*A Rust panic handler that spins: never returns.*/
 

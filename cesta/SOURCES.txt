@@ -1,0 +1,95 @@
+TYPED BOOT SOURCES
+
+The current kernel profile implements source syscalls72..74. BOOT gives the
+network service entropy, civil-time and trust-policy grants whose immutable
+consumer is Browser. Silkbar separately holds a civil-time grant for itself.
+Browser has no direct source grant. A description of a source, clock reading,
+certificate or statistical estimate is not authority to invoke it.
+
+kernel_current.data declares the holder, slot, capability kind and consumer.
+The native BOOT constructor attaches the actual task identities and installs
+the grants before sealing. The ordinary BOOT audit checks held records against
+those declarations. Source identities never derive from a capability selector
+or an argument supplied by a caller.
+
+source_policy.cesta checks exact holder identity, valid consumer identity,
+full-width operation/reserved arguments, source profile and bounded provider
+completion. It returns all five result words; every failed result clears data.
+The source-policy archive is also built independently of the kernel adapter.
+interfaces/source_policy.source.json records the exact upstream cohort and
+policy/provider input hashes; the policy gate refuses drift before comparison.
+
+Entropy
+-------
+
+INFO reports RDSEED availability without sampling. READ checks the exact CPUID
+feature before reaching RDSEED, then makes at most eight carry-qualified
+attempts. A successful zero word is valid. Unavailability and temporary failure
+remain distinct. Logs contain attempt counts and custody metadata, never the
+sample. Entropy health and cryptographic construction belong to the service;
+neither instruction availability nor these tests prove randomness quality.
+
+Civil time
+----------
+
+The named q35 CMOS-UTC profile makes at most four paired snapshot attempts.
+Register reads have explicit C sequencing. Seconds and mode/update state are
+checked again, both snapshots must agree, and only supported calendar/mode
+values produce a one-second-precision UTC snapshot. Pending updates, absent
+hardware state and malformed values remain distinct outcomes. A timer tick
+does not synthesize civil time.
+
+Only port0x70 index selection is written, using NMI-enabled indexes. Port0x71
+is read; RTC data/control registers are not written and registerC is not read.
+The native lane assumes the current serialized BSP, masked syscall interrupts
+and APs enrolled and permanently parked before user entry. Parallel AP execution
+needs explicit shared CMOS serialization.
+The controlled q35 profile does not establish physical RTC/NMI integrity or
+authenticated time.
+
+Replay boundary
+---------------
+
+Clock and entropy reads are external inputs, not deterministic pure queries.
+A replayable epoch must declare whether it consumes protected recorded input,
+revalidates at a new effect boundary, or refuses replay of that operation.
+Recording private seed material requires a separate custody/persistence policy;
+public serial output is not that history. The whole-system epoch/replay engine
+remains to be implemented. Published IPC/device effects are not rolled back by
+the pager's metadata transactions.
+
+Trust policy
+------------
+
+INFO returns immutable profile, consumer, root size and version. Consumer
+packing follows the trust ABI, which differs from entropy/clock packing.
+source_profile.data supplies the public controlled-lab policy constants; a
+gate compiles the actual Rust trust-config crate and compares those constants.
+No root pointer, endpoint permission, mutable policy or public-Internet trust
+is exposed by this syscall.
+
+Qualification
+-------------
+
+make check-sources compares full replies and provider counts with the actual
+Rust policy modules, adds independent UTC calendar controls, exercises the real
+BOOT/capability/task adapter with scripted processor operations, and checks
+semantic mutants under GCC/Clang and sanitizers. make qualify-sources also
+admits the emitted ownership plans in Lean. Provider and hardware correctness
+remain explicit boundaries; these checks are not a whole-C refinement proof.
+
+current_boot_lean.py separately certifies finite source-slot uniqueness, source
+role/subject constraints and separation from communication routes. It does not
+encode source grants as communication edges or claim hardware integrity.
+
+tests/current_desktop.py --civil-clock reuses the upstream civil-time pixel
+oracle along with Browser's existing glyph/geometry oracle. It binds the log
+and screenshot to a stopped CPU and requires an actual Snapshot presentation.
+Passing this gate is narrower than complete desktop or network equivalence.
+
+tests/source_boot.py packages the source-probe payload under either kernel.
+It exercises the real source syscalls in q35 with RDSEED advertised and masked,
+checks held clock/trust replies and all initially admitted unheld callers, and
+requires successful sampling only in the advertised fixture. It records no
+entropy bytes. The probe replaces applications and therefore does not qualify
+their service protocols.

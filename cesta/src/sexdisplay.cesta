@@ -3,6 +3,12 @@
     (include "sexos_server.h")
     (include "silkbar_model.h")
     (comment "SexDisplay compositor, translated from servers/sexdisplay/src/main.rs. The Rust statics, global and function-local, are fields of one owned Sexdisplay state; its two 500 KiB glass buffers exceed the 64 KiB stack, so that one value lives in static storage and only sexdisplay_main takes its address. Every index the Rust bounds-checks is checked here too, and a failed check stops the server as Rust's panic handler does.")
+    (define OP_DISPLAY_READY "UINT64_C(0x101)")
+    (define DISPLAY_READY_VERSION "UINT64_C(1)")
+    (define DISPLAY_READY_SLOT_SHELL "UINT64_C(6)")
+    (define DISPLAY_READY_SLOT_SILKBAR "UINT64_C(7)")
+    (cpp-if "!defined(SEXOS_DISPLAY_READY_PUBLISHER)" (then (define SEXOS_DISPLAY_READY_PUBLISHER "1")))
+    (define DISPLAY_READY_PUBLISHER_ENABLED "(((SEXOS_DISPLAY_READY_PUBLISHER) != 0))")
 
     (comment "Build-time proof profiles (option_env! in the Rust source).")
     (cpp-if "defined(SEXOS_SILKBAR_PHASE3_RECEIVE_PROOF)"
@@ -28,7 +34,9 @@
     (define FALLBACK_H "UINT32_C(800)")
     (define MAX_FB_W "((size_t)8192)")
     (define MAX_FB_H "((size_t)4320)")
-    (define DRAIN_MAX "((size_t)16)")
+    (comment "Text arrives eight bytes per message. Applying up to 256 messages per frame prevents the current upstream display inbox from falling seconds behind without making the drain unbounded. Frozen-reference qualification selects its historical value explicitly.")
+    (cpp-if "!defined(SEXOS_DISPLAY_DRAIN_MAX)" (then (define SEXOS_DISPLAY_DRAIN_MAX "256u")))
+    (define DRAIN_MAX "((size_t)SEXOS_DISPLAY_DRAIN_MAX)")
 
     (comment "Atlas Phase C cards: flat 2-pixel teal-cyan outlines around active surfaces below the bar.")
     (define ATLAS_CARD_BORDER_COLOR "UINT32_C(0x0089DCE6)")
@@ -2079,10 +2087,27 @@
           (call sexos_line "[silk.frame.lights.visual.proof.done] ok=1 rendered=3 alpha=0 blur=0 shadow=0 action=0")))
       (call sexos_line "[silk.de.frame_lights.current_tier.pass] visual=1 keyboard=1 pointer_destructive=0 deferred=1")
       (call sexos_line "[sexdisplay.ready]")
+      (var uint8_t ready_pending 3)
 
       (comment "2. Listen for the framebuffer handoff and SilkBar updates.")
       (while 1
         (block
+          (if DISPLAY_READY_PUBLISHER_ENABLED
+            (block
+              (if (!= (& ready_pending 1) 0)
+                (block
+                  (var SexosReply ready_reply (call sexos_pdx_call DISPLAY_READY_SLOT_SHELL OP_DISPLAY_READY DISPLAY_READY_VERSION 0 0))
+                  (if (== (. ready_reply status) 0)
+                    (block
+                      (&= ready_pending (cast uint8_t (~ 1)))
+                      (call sexos_line "[display.ready.sent] to=silk-shell version=1")))))
+              (if (!= (& ready_pending 2) 0)
+                (block
+                  (var SexosReply ready_reply (call sexos_pdx_call DISPLAY_READY_SLOT_SILKBAR OP_DISPLAY_READY DISPLAY_READY_VERSION 0 0))
+                  (if (== (. ready_reply status) 0)
+                    (block
+                      (&= ready_pending (cast uint8_t (~ 2)))
+                      (call sexos_line "[display.ready.sent] to=silkbar version=1")))))))
           (+= (. l display_loop_counter) 1)
           (= (. l needs_surface_redraw) false)
           (= (. l needs_top_strip_redraw) false)

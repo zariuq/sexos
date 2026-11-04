@@ -1,0 +1,171 @@
+//! Native tests of the production register selector decoders.
+mod ipc {
+    pub const MAX_DOMAINS: usize = 1024;
+}
+
+#[path = "../kernel/src/capability_slot.rs"]
+mod capability_slot;
+
+use capability_slot::{decode_bridge_op, BridgeOp, decode_capability_slot, decode_domain_id, decode_pdx_slot, valid_syscall_selectors};
+
+#[test]
+fn preserves_every_valid_capability_slot() {
+    for slot in 1..=capability_slot::CAPABILITY_SLOT_COUNT {
+        assert_eq!(decode_capability_slot(slot), Some(slot as u32));
+        assert_eq!(decode_pdx_slot(slot), Some(slot as u32));
+    }
+}
+
+#[test]
+fn slot_zero_is_only_the_explicit_pdx_bridge() {
+    assert_eq!(decode_pdx_slot(0), Some(0));
+    assert_eq!(decode_capability_slot(0), None);
+}
+
+#[test]
+fn rejects_high_bits_that_would_alias_a_valid_slot_or_bridge() {
+    for high in [1u64 << 32, 2u64 << 32, 1u64 << 63] {
+        for low in [0, 1, 5, 13, 1024] {
+            let raw = high | low;
+            assert_eq!(decode_capability_slot(raw), None, "capability {raw}");
+            assert_eq!(decode_pdx_slot(raw), None, "PDX {raw}");
+        }
+    }
+}
+
+#[test]
+fn rejects_invalid_lend_destination_forms() {
+    // All these previously passed the occupancy check as absent. insert_at
+    // then silently ignored 0/1025, or accepted a truncated high-bit alias.
+    for raw in [0, 1025, u32::MAX as u64, 1u64 << 32, (1u64 << 32) | 13, u64::MAX] {
+        assert_eq!(decode_capability_slot(raw), None, "destination {raw}");
+    }
+}
+
+#[test]
+fn syscall_preflight_denies_aliases_and_invalid_lend_destinations() {
+    for number in [0, 28, 29, 43, 50, 51, 68, 69] {
+        for selector in [1u64 << 32, (1u64 << 32) | 5, u64::MAX] {
+            assert!(!valid_syscall_selectors(number, selector, 13));
+        }
+    }
+    for destination in [0, 1025, (1u64 << 32) | 13, u64::MAX] {
+        assert!(!valid_syscall_selectors(50, 5, destination));
+    }
+}
+
+#[test]
+fn syscall_preflight_preserves_existing_valid_calls() {
+    for number in [0, 28, 29, 43, 50, 51, 68, 69] {
+        assert!(valid_syscall_selectors(number, 5, 13));
+    }
+    assert!(valid_syscall_selectors(0, 0, u64::MAX));
+    assert!(valid_syscall_selectors(28, 0, u64::MAX));
+    assert!(valid_syscall_selectors(29, 0, 0));
+    for number in [43, 50, 51, 68, 69] {
+        assert!(!valid_syscall_selectors(number, 0, 13));
+    }
+    // Unrelated raw memory interfaces retain their existing behavior.
+    for number in [30, 31, 40] {
+        assert!(valid_syscall_selectors(number, u64::MAX, u64::MAX));
+    }
+}
+
+#[test]
+fn dispatch_rejects_before_any_operation_side_effect() {
+    // Integration source guard complements the host-executed production
+    // preflight: its rejection must return before the dispatch body, where
+    // dequeue, allocation, mapping, and reply insertion occur.
+    let source = include_str!("../kernel/src/syscalls/mod.rs");
+    let dispatch = source.split("pub fn dispatch(regs: &mut SyscallRegs)").nth(1).unwrap();
+    let preflight = dispatch.find("if !crate::capability_slot::valid_syscall_selectors(rax, rdi, rdx)").unwrap();
+    let body = dispatch.find("let result = match rax").unwrap();
+    assert!(preflight < body);
+    assert!(dispatch[preflight..body].contains("regs.rax = error;\n        return error;"));
+    assert!(!dispatch[..preflight].contains("GLOBAL_ALLOCATOR"));
+    assert!(!dispatch[..preflight].contains("send_reply"));
+    assert!(!dispatch[..preflight].contains(".dequeue("));
+    // Slot 0 has no ad hoc opcode arms: every bridge effect is selected by
+    // the tested decoder, and unknown operations deny.
+    let bridge = &dispatch[body..dispatch.find("crate::ipc::safe_pdx_call(slot").unwrap()];
+    assert!(bridge.contains("match decode_bridge_op(num)"));
+    assert!(bridge.contains("None => (sex_pdx::ERR_CAP_INVALID, 0),"));
+    for retired in ["0xE3", "0xBB", "FB_REQUEST", "FRAME_PRESENT"] {
+        assert!(!bridge.contains(retired), "{retired}");
+    }
+}
+
+#[test]
+fn rejects_slots_beyond_table_even_without_truncation() {
+    for raw in [1025, 2048, u32::MAX as u64, u64::MAX] {
+        assert_eq!(decode_capability_slot(raw), None);
+        assert_eq!(decode_pdx_slot(raw), None);
+    }
+}
+
+#[test]
+fn preserves_exact_registry_ids_including_reserved_zero() {
+    for id in 0..ipc::MAX_DOMAINS as u64 {
+        assert_eq!(decode_domain_id(id), Some(id as u32));
+    }
+}
+
+#[test]
+fn rejects_reply_destinations_outside_registry_or_with_high_bits() {
+    for id in [1024, 2048, (1u64 << 32) | 1, 1u64 << 32, u64::MAX] {
+        assert_eq!(decode_domain_id(id), None, "destination {id}");
+    }
+}
+
+#[test]
+fn slot_zero_bridge_admits_only_caller_scoped_operations() {
+    let allowed = [(0xE6, BridgeOp::BootDisplayQuery), (69, BridgeOp::SerialRecord), (0x12, BridgeOp::InitArg)];
+    for number in 0..=0x1_0000u64 {
+        let expected = allowed.iter().find(|(n, _)| *n == number).map(|(_, op)| *op);
+        assert_eq!(decode_bridge_op(number), expected, "bridge op {number:#x}");
+    }
+    for (number, _) in allowed {
+        for high in [1u64 << 8, 1 << 32, 1 << 63] {
+            assert_eq!(decode_bridge_op(number | high), None);
+        }
+    }
+}
+
+#[test]
+fn retired_ambient_display_disclosure_and_present_hook_deny() {
+    assert_eq!(decode_bridge_op(0xE3), None);
+    assert_eq!(decode_bridge_op(0xBB), None);
+    // Legacy discovery/loader/window requests never had bridge authority.
+    for number in [0x10, 0x16, 0xDE, 0xDD, 0xDF, 0xE0, u64::MAX] {
+        assert_eq!(decode_bridge_op(number), None);
+    }
+}
+
+#[test]
+fn no_capability_selects_kernel_privileged_code() {
+    // Integration source guard: the former SyncCall edge executed a
+    // capability-supplied address at kernel privilege. It must stay absent.
+    let ipc = include_str!("../kernel/src/ipc.rs");
+    let capability = include_str!("../kernel/src/capability.rs");
+    assert!(!ipc.contains("SyncCall"));
+    assert!(!ipc.contains("\"call {"));
+    assert!(ipc.contains("CapabilityData::IPC(_) => Err(sex_pdx::ERR_CAP_INVALID),"));
+    assert!(capability.contains("pub struct IpcCapData { pub node_id: u32, pub target_pd_id: u32 }"));
+    let traverse = ipc.split("pub fn traverse_edge(").nth(1).unwrap().split("pub fn safe_pdx_call(").next().unwrap();
+    assert!(!traverse.contains("asm!"));
+}
+
+#[test]
+fn kernel_authorization_never_consults_hardware_pku_state() {
+    // PKU accelerates enforcement only. Kernel-mediated decisions use the
+    // domain's software key mask and page metadata, identical with PKU absent.
+    let syscalls = include_str!("../kernel/src/syscalls/mod.rs");
+    let validate = syscalls.split("fn validate_user_bytes(").nth(1).unwrap().split("\nfn ").next().unwrap();
+    assert!(validate.contains("pd.current_pkru_mask.load(Ordering::Acquire)"));
+    for source in [validate, include_str!("../kernel/src/ipc.rs"), include_str!("../kernel/src/ipc/router.rs"),
+                   include_str!("../kernel/src/capability_table.rs"), include_str!("../kernel/src/capability_slot.rs")] {
+        for hardware in ["rdpkru", "get_pkru", "PKU_ENABLED", "is_pku_supported"] {
+            assert!(!source.contains(hardware), "{hardware}");
+        }
+    }
+}

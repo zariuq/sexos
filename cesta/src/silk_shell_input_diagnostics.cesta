@@ -1,0 +1,41 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "silk_shell_input.h")
+    (ownership
+      (check-all)
+      (record ShellChromeContext (field input (borrow write)) (field chrome (borrow write))
+        (field models (borrow write)) (field apps (borrow write)) (field proofs_a (borrow write)))
+      (record ShellInputContext (field atlas (borrow write)) (field surfaces (borrow write)))
+      (record ShellTextSinkContext
+        (field proofs_a (borrow write)) (field chrome (borrow read)))
+      (foreign shell_diagnostics_is_spindle_text_key (obligation "Calls the checked pure key classifier."))
+      (foreign shell_diagnostics_is_quil_text_key (obligation "Calls the checked pure key classifier."))
+      (foreign shell_diagnostics_input_negative_begin_once (obligation "Calls the checked helper on exactly the passed diagnostic state, retaining no reference."))
+      (foreign shell_diagnostics_input_negative_mark_done (obligation "Calls the checked helper on exactly the passed diagnostic state, retaining no reference."))
+      (foreign shell_diagnostics_click_drag_proof_begin_click_once (obligation "Calls the checked helper on exactly the passed diagnostic state, retaining no reference."))
+      (foreign shell_diagnostics_shell_interaction_contract_begin_once (obligation "Calls the checked helper on exactly the passed diagnostic state, retaining no reference."))
+      (foreign shell_diagnostics_shell_interaction_contract_mark_stage (obligation "Calls the checked helper on exactly the passed diagnostic state, retaining no reference."))
+      (foreign shell_diagnostics_shell_interaction_contract_try_done (obligation "Calls the checked helper on exactly the passed diagnostic state, retaining no reference."))
+      (foreign shell_diagnostics_surface_input_lifetime_mark_dead_clear (obligation "Calls the checked helper on exactly the passed diagnostic state, retaining no reference."))
+      (foreign shell_diagnostics_surface_input_lifetime_mark_drag_target (obligation "Calls the checked helper with the passed state and bounded label, retaining neither."))
+      (foreign shell_diagnostics_surface_input_lifetime_mark_key_route (obligation "Calls the checked helper on exactly the passed diagnostic state, retaining no reference."))
+      (foreign shell_diagnostics_surface_input_lifetime_try_done (obligation "Calls the checked helper on exactly the passed diagnostic state, retaining no reference."))
+      (foreign shell_diagnostics_silk_text_sink_key (obligation "Calls the checked sink using only its scoped diagnostic-write and chrome-read views; no reference escapes.")))
+    (native "
+bool shell_input_peer_is_spindle_text_key(ShellInputContext *ctx,uint8_t scancode) {(void)ctx;return shell_diagnostics_is_spindle_text_key(scancode);}
+bool shell_input_peer_is_quil_text_key(ShellInputContext *ctx,uint8_t scancode) {(void)ctx;return shell_diagnostics_is_quil_text_key(scancode);}
+void shell_input_peer_input_negative_begin_once(ShellInputContext *ctx) {shell_diagnostics_input_negative_begin_once(ctx->shell.proofs_a);}
+void shell_input_peer_input_negative_mark_done(ShellInputContext *ctx) {shell_diagnostics_input_negative_mark_done(ctx->shell.proofs_a);}
+void shell_input_peer_click_drag_proof_begin_click_once(ShellInputContext *ctx) {shell_diagnostics_click_drag_proof_begin_click_once(ctx->shell.proofs_a);}
+void shell_input_peer_shell_interaction_contract_begin_once(ShellInputContext *ctx) {shell_diagnostics_shell_interaction_contract_begin_once(ctx->shell.proofs_a);}
+void shell_input_peer_shell_interaction_contract_mark_stage(ShellInputContext *ctx,uint8_t stage) {shell_diagnostics_shell_interaction_contract_mark_stage(ctx->shell.proofs_a,stage);}
+void shell_input_peer_shell_interaction_contract_try_done(ShellInputContext *ctx) {shell_diagnostics_shell_interaction_contract_try_done(ctx->shell.proofs_a);}
+void shell_input_peer_surface_input_lifetime_mark_dead_clear(ShellInputContext *ctx,uint64_t target) {shell_diagnostics_surface_input_lifetime_mark_dead_clear(ctx->shell.proofs_a,target);}
+void shell_input_peer_surface_input_lifetime_mark_drag_target(ShellInputContext *ctx,uint64_t target,uint8_t live,const ShellDiagnosticLabel *phase,uint8_t ok) {shell_diagnostics_surface_input_lifetime_mark_drag_target(ctx->shell.proofs_a,target,live,phase,ok);}
+void shell_input_peer_surface_input_lifetime_mark_key_route(ShellInputContext *ctx,uint64_t target,uint8_t live,uint8_t routed,uint8_t ok) {shell_diagnostics_surface_input_lifetime_mark_key_route(ctx->shell.proofs_a,target,live,routed,ok);}
+void shell_input_peer_surface_input_lifetime_try_done(ShellInputContext *ctx) {shell_diagnostics_surface_input_lifetime_try_done(ctx->shell.proofs_a);}
+bool shell_input_peer_silk_text_sink_key(ShellInputContext *ctx,uint8_t scancode,uint64_t value) {
+    ShellTextSinkContext sink={.proofs_a=ctx->shell.proofs_a,.chrome=ctx->shell.chrome};
+    return shell_diagnostics_silk_text_sink_key(&sink,scancode,value);
+}
+")))

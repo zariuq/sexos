@@ -1,0 +1,32 @@
+Module KernelAppHandover {
+  Theory Protocols() {
+    Empty Equations {
+      (kernel_app_handover_run) == (Protocol "cesta-protocol/1"
+        (Context KernelAppHandoverContext)
+        (Hooks
+          (Hook snapshot kernel_app_handover_snapshot prepare
+            (Requires) (Uses) (Proves snapshotted))
+          (Hook transform kernel_app_handover_transform prepare
+            (Requires snapshotted) (Uses) (Proves transformed))
+          (Hook swap kernel_app_handover_swap prepare
+            (Requires snapshotted transformed) (Uses) (Proves swapped))
+          (Hook commit kernel_app_handover_commit effect
+            (Requires snapshotted transformed swapped) (Uses) (Proves)
+            (Invalidates snapshotted transformed swapped)))
+        (Resources)
+        (Entry (Facts) (Owns))
+        (Body
+          (Call snapshot
+            (Call transform
+              (Call swap
+                (Call commit (Return done) (Return engine_failure))
+                (Return engine_failure))
+              (Return engine_failure))
+            (Return declined)))
+        (Checks
+          (Fact snapshotted kernel_app_handover_is_snapshotted)
+          (Fact transformed kernel_app_handover_is_transformed)
+          (Fact swapped kernel_app_handover_is_swapped)));
+    }
+  }
+}

@@ -4,6 +4,7 @@
       (then
         (define SEXOS_CESTA_MMIO_H "1")
         (include "sexos_server.h")
+        (include "sexos_device_reset.h")
         (comment "Device-driver syscalls and typed volatile MMIO/DMA accessors for sexdrive, sexusb and sexnet.")
 
         (var void (* (function memcpy (void (* destination)) ((const void) (* source)) (size_t count))))

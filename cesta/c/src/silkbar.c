@@ -16,6 +16,18 @@
 #define CLOCK_FORCE_STALL_PROOF_ENABLED 0
 
 #endif
+#if !defined(SEXOS_SILKBAR_DISPLAY_READY)
+#define SEXOS_SILKBAR_DISPLAY_READY 1
+
+#endif
+#define SILKBAR_DISPLAY_READY_ENABLED (((SEXOS_SILKBAR_DISPLAY_READY) != 0))
+#define SILKBAR_DISPLAY_READY_OP UINT64_C(0x101)
+#define SILKBAR_DISPLAY_READY_VERSION UINT64_C(1)
+#define SILKBAR_STARTUP_CAPACITY ((size_t)256)
+#if !defined(SEXOS_SILKBAR_BELL_REPLY_CALLER)
+#define SEXOS_SILKBAR_BELL_REPLY_CALLER 10
+
+#endif
 /*Clock cadence: ticks per logical second for each tick source.*/
 #define STALE_REAL_TICK_FALLBACK_LOOPS ((uint16_t)16)
 #define STALE_REAL_TICK_FALLBACK_THRESHOLD ((uint16_t)4)
@@ -64,6 +76,40 @@ typedef struct Silkbar {
   uint32_t clock_send_count;
 }
 Silkbar;
+typedef struct SilkbarStartup {
+  SexosMessage messages[256];
+  size_t head;
+  size_t len;
+  bool ready;
+}
+SilkbarStartup;
+static SilkbarStartup silkbar_startup;
+static bool silkbar_startup_observe(SexosMessage message) {
+  if (message.type_id == SILKBAR_DISPLAY_READY_OP) {
+    if (message.caller_pd == 1 && (message.arg0 == SILKBAR_DISPLAY_READY_VERSION && (message.arg1 == 0 && message.arg2 == 0))) silkbar_startup.ready = true;
+    else sexos_line("[display.ready.rejected] client=silkbar caller=%u version=%llu", (unsigned) message.caller_pd, (unsigned long long) message.arg0);
+    return true;
+  }
+  if (silkbar_startup.len >= SILKBAR_STARTUP_CAPACITY) return false;
+  silkbar_startup.messages[(silkbar_startup.head + silkbar_startup.len) % SILKBAR_STARTUP_CAPACITY] = message;
+  silkbar_startup.len += 1;
+  return true;
+}
+static void silkbar_wait_display(void) {
+  while (!silkbar_startup.ready) {
+    if (silkbar_startup.len >= SILKBAR_STARTUP_CAPACITY) sexos_fail();
+    SexosMessage message;
+    if (sexos_try_listen(0, &message)) if (!silkbar_startup_observe(message)) sexos_fail();
+    sexos_yield();
+  }
+}
+static bool silkbar_startup_pop(SexosMessage *out) {
+  if (silkbar_startup.len == 0) return false;
+  *out = silkbar_startup.messages[silkbar_startup.head];
+  silkbar_startup.head = (silkbar_startup.head + 1) % SILKBAR_STARTUP_CAPACITY;
+  silkbar_startup.len -= 1;
+  return true;
+}
 /*A budget allows its line while it lasts.*/
 static bool take(uint32_t *budget) {
   if (*budget == 0) return false;
@@ -110,6 +156,10 @@ void silkbar_main(void) {
     .hot_log = 120,.edge_send = 1,.drop_log = 16,.clock_drop_log = 64,.cadence_start = 16,.stall_after_start = 2,.stall_before_recv = 2,.stall_before_bell = 2,.bell_reply = 8,.bell_gen_changed = 8,.bell_gen_steady = 1,.bell_gen_denied = 8,.stall_after_bell = 2,.stall_after_recv = 2,.stall_before_shell_sync = 2,.stall_after_shell_sync = 2,.synthetic_visible = 4,.real_tick = 12,.real_tick_resume = 4,.stale = 8,.synthetic_threshold = 1,.cadence_done = 16,.loop_alive = 16,.clock_tick = 12,.bell_gen_cap_err = 8,.force_stall_suppress = 4,.cadence_sample = 32,.boot_canary = 8,.boot_canary_suppress = 4,.source_liveness = 32
   };
   sexos_line("[silkbar.init.start]");
+  if (SILKBAR_DISPLAY_READY_ENABLED) {
+    silkbar_wait_display();
+    sexos_line("[display.ready.accepted] client=silkbar caller=1 version=1");
+  }
   sexos_line("[silkbar.boot.begin]");
   sexos_line("[bootgraph.silkbar.spawned]");
   uint32_t contract_err = validate_silkbar_contract();
@@ -169,7 +219,7 @@ void silkbar_main(void) {
 /*At most one upstream message per pass, without blocking.*/
     if (take(&s.stall_before_recv)) sexos_line("[silkbar.stall.before_recv] iter=%llu", (unsigned long long) loop_iter);
     SexosMessage msg;
-    if (sexos_try_listen(0, &msg)) {
+    if ((SILKBAR_DISPLAY_READY_ENABLED && silkbar_startup_pop(&msg)) || sexos_try_listen(0, &msg)) {
       if (msg.type_id == SEXOS_SILKBAR_workspace_active) {
         uint8_t ws = (uint8_t) msg.arg0;
         if (ws > SILKBAR_WORKSPACE_IDX_MAX) {
@@ -196,7 +246,7 @@ void silkbar_main(void) {
           send_update(&s, silkbar_update(SILKBAR_UPDATE_SET_SELECTED_OPTIONS, 0, options_mask, 0));
           sexos_line("[silkbar.selected.options.forward] mask=%#x", (unsigned) options_mask);
         }
-      } else if (msg.type_id == 1 && msg.caller_pd == 1) {
+      } else if (msg.type_id == 1 && msg.caller_pd == SEXOS_SILKBAR_BELL_REPLY_CALLER) {
 /*Bell reply: a LIST's packed counts, or a SUBSCRIBE's generation.*/
         if (take(&s.stall_before_bell)) sexos_line("[silkbar.stall.before_bell] iter=%llu", (unsigned long long) loop_iter);
         if (bell_pending_list) {

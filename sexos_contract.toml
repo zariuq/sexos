@@ -3,8 +3,8 @@
 
 [contract]
 name = "sexos-ipc-abi"
-version = "1.0.0"
-date = "2026-04-28"
+version = "1.1.0"
+date = "2026-10-30"
 
 [ipc]
 transport = "register-only"
@@ -20,12 +20,215 @@ value_reg = "rsi"
 syscall = 28
 type_id_reg = "rax"
 caller_pd_reg = "rsi"
+caller_task_reg = "rdi"
+caller_task_return = "SyscallRegs-RDI-offset8-copied-to-saved-RDI-offset96-before-final-return-pop"
+sender = "actual-current-PD-and-scheduled-task-stamped-at-enqueue;task-context-must-match-PD"
+kernel_sender = "explicit-kernel-generated-notices-use-PD0-task0;legacy-IRQ-messages-have-task0"
+caller_task_scope = "scalar-u32-transport-provenance-not-a-capability;no-legacy-struct-return-pointer"
 arg0_reg = "rdx"
 arg1_reg = "r10"
 arg2_reg = "r8"
 empty_type_id = 0
 
+[ipc.pdx_reply]
+syscall = 29
+input = "rdi-exact-target-domain,rsi-value"
+output = "rax-zero-enqueued-or-one-failure"
+receive = "type1-arg0-value-caller-actual-sending-domain-and-task-captured-by-kernel"
+backpressure = "single-slot-full-rejects-without-overwriting-existing-reply;caller-retries"
+authority_limit = "legacy-target-directed-return-path;sender-provenance-is-authenticated-not-a-return-capability"
+
+[ipc.wait_self]
+syscall = 53
+selector = "rdi-zero-self-inbox-only"
+result = "rax-zero-recheck-input-after-spurious-or-coalesced-wake"
+authority = "no-target-domain-no-cross-domain-wake"
+wait_condition = "self-message-ring-or-reply-pending-handshake"
+fault_wait = "ordinary-message-or-IRQ-wake-cannot-complete-pager-request"
+
+[ipc.clipboard]
+transport = "existing-BOOT-held-Domain-routes;register-only;no-caller-pointers"
+authority = "Shell-held-lifecycle-catalog-and-fresh-live-query-plus-actual-IPC-sender-PD-task;focus-selects-input-destination-only"
+participants = "Quil-PD9-surface156,PD16-surface301,PD18-surface307-publish-read;Browser-PD15-surface300-publish-only;exact-catalog-tasks"
+capacity = 12288
+operations = "0x280-Intent,0x281-Begin,0x282-Write,0x283-Read,0x284-Get,0x285-Finish,0x286-Cancel,0x287-Meta,0x288-Data,0x289-Query,0x28a-Publish"
+payload = "ordered-sixteen-byte-register-chunks;ASCII-printable-or-LF;checked-whole-length-and-integrity-hash;no-truncation"
+interaction = "Shell-issued-nonwrapping-ticket;one-global-unfinished-transaction;exact-subject-receipts;Full-retains-unsent-packet"
+effects = "Publish-atomic-after-complete-stage;accepted-mutations-never-replayed;Query-only-reemits-retained-receipt;Cancel-does-not-rollback-publication"
+handoff = "positive-Finish-receipt-admission-completes-read-transfer;source-retirement-before-Finish-admission-invalidates-read;completed-transfer-survives-later-source-retirement"
+cleanup = "permanent-exact-incarnation-fence-before-Shell-terminal-ACK;volatile-whole-buffer-and-pending-payload-erasure;old-producer-retirement-preserves-newer-publication"
+editor = "paste-or-cut-applies-once-only-if-source-generation-revision-and-selection-snapshot-unchanged;capacity-subtracts-replaced-bytes;one-undo-revision-dirty-change"
+key_data = "exact-catalog-destination-FIFO;complete-Control-Shift-snapshot;actual-Shell-main-task-authentication-before-app-key-decoding"
+
+[ipc.text_selection]
+transport = "legacy-text-Begin-Chunk-Commit-plus-optional-0x28b-Select"
+selection = "sequence-u32-and-checked-rendered-byte-range-within512-byte-batch;canonical-empty0-0"
+commit = "Select-after-complete-chunks;styled-hash-binds-body-length-and-range;atomic-with-text;legacy-Commit-clears-old-selection"
+render = "owned-surface-scalar-compositor-highlights-selected-cells-under-glyphs;source-byte-ranges-exclude-reader-chrome"
+
+# Reject full register-width aliases before any lookup or side effect.
+# This validates identity; it does not supply operation-specific authority.
+[ipc.selectors]
+capability_slot_min = 1
+capability_slot_max = 1024
+pdx_call_listen_slot_zero = "explicit-existing-bridge-only"
+reply_domain_id = "exact-u64-below-MAX_DOMAINS-then-registry-lookup"
+memlend_destination = "obsolete-operation-denied-no-allocation"
+validated_syscalls = [0, 28, 29, 43, 50, 51, 54, 55]
+invalid_call = "ERR_CAP_INVALID-with-value-zero"
+invalid_listen = "empty-all-output-registers-zero-including-caller-task-rdi"
+invalid_reply = 1
+invalid_pci_or_memlend = "u64::MAX"
+
+[memory]
+genesis = "BOOT_DAG-fixed-zeroed-reservations-and-premapped-views-before-capability-seal"
+runtime_authority = "actual-caller-capability-table-Region-or-Pci-bar0-view-only"
+runtime_effects = "region-queries-preserve-mappings;sext-authorized-paging-commits-install-preallocated-leaves;no-runtime-kernel-frame-table-VA-allocation-or-capability-minting"
+bootstrap_debt = "kernel-reserves-initial-fixed-backing-VA-and-page-tables;sext-selects-and-zeroes-frames-from-boot-granted-pool"
+denied_syscalls = [30, 31, 40, 50, 51]
+denied_result = "u64::MAX-except-historical-40-returns-zero"
+slot_dma_region = 32
+slot_frame_region = 33
+slot_block_buffer = 17
+rights_query_view = 1
+rights_read = 2
+rights_write = 4
+rights_dma_address = 8
+ordinary_view_physical_address = "zero"
+paired_region_peer = "authenticated-PDX-caller-matches-BOOT_DAG-peer"
+runtime_heap = "65536-byte-ELF-owned-domain-arena-idempotent-init-reusable-byte-allocation-no-frame-map-authority"
+
+[memory.region_view]
+syscall = 54
+input = "rdi-slot,rsi-offset,rdx-length,r10-rights"
+output = "rax-status,rsi-VA,rdx-length,r10-PA-or-zero,r8-region-id"
+invalid = "rax-u64::MAX-all-other-output-registers-zero"
+validation = "full-width-slot-and-rights-before-narrowing-nonempty-checked-subrange"
+
+[memory.region_info]
+syscall = 55
+input = "rdi-slot"
+output = "rax-status,rsi-length,rdx-rights,r10-peer-or-zero,r8-region-id"
+invalid = "rax-u64::MAX-all-other-output-registers-zero"
+
+[memory.pci_bar]
+syscall = 43
+policy = "idempotent-premapped-BOOT_DAG-Pci-BAR0-view-query"
+input = "rdi-Pci-cap-slot,rsi-zero-bar0,rdx-size-zero-defaults-4096"
+output = "rax-existing-VA-or-u64::MAX"
+validation = "requested-size-within-boot-probed-granted-extent"
+
+[ipc.page_fault]
+slot = 2
+opcode = 259
+legacy_opcode = 256
+legacy_policy = "retired-codec-only-no-completion-authority"
+transport = "register-only-by-value"
+capability_kind = "Domain-async-enqueue-only"
+target_policy = "nonzero-in-registry-and-distinct-from-caller"
+type_id_reg = "rax"
+caller_pd_reg = "rsi"
+fault_addr_reg = "rdx"
+error_code_reg = "r10"
+token_reg = "r8"
+address_bits = 48
+address_policy = "nonzero-lower-canonical-user-data-nonpresent-only"
+error_code_bits = 32
+domain_id_bits = 32
+domain_zero_allowed = false
+domain_policy = "authenticated-caller-only-no-payload-domain-id;registered-main-task-only"
+dispatch_success = "accepted-only-not-resolved"
+completion = "exact-nonwrapping-token-and-boot-map-pool-capabilities-through-56;ordinary-wakes-cannot-complete-fault"
+
+[paging]
+address_space = "one-GLOBAL_VAS-no-per-process-page-tables"
+genesis = "BOOT_DAG-FramePool34-PagerMapping36-and37-DemandRegion35-per-client-sealed-before-admission"
+boot_backing = "eight-zeroed-shared-frames-two-distinct-eight-page-arenas-preallocated-intermediate-tables"
+sext_policy_quota = 4
+capability_page_bound = 8
+fault_token = "nonzero-global-monotonic-u64-never-wraps-binds-exact-task-target-pager-page-error-and-saved-frame"
+eligible_fault_errors = [4, 6]
+zero_owner = "sext-writes-entire-frame-through-authorized-alias-kernel-verifies-before-exposure"
+commit_mechanism = "validated-exact-existing-leaf-write-and-local-TLB-invalidation-no-allocator-or-mapping-policy"
+rights_read = 2
+rights_write = 4
+execution = "NX-only-no-executable-demand-pages"
+statuses = "0-success,1-invalid,2-retry,3-denied,4-exhausted,5-target-still-live"
+retry = "post-publication-retry-retains-frame-no-rezero-or-refund"
+duplicate = "same-token-frame-rights-idempotent-no-remap-no-extra-wake;conflicting-tuple-denied"
+rejection = "consumes-only-authenticated-pending-request-and-exits-exact-faulting-task"
+scope = "bounded-two-client-BSP-main-task-paging-and-cooperative-release;task-exit-cleanup-after-custody-release;no-autonomous-eviction-or-SMP-shootdown"
+
+[paging.cleanup]
+syscall = 61
+input = "rdi-mapping-cap,rsi-pool-cap"
+output = "rax-status,rsi-detached-frame-bitmap,rdx-original-main-task-id;r10-r8-zero"
+failure = "all-output-fields-zero"
+precondition = "actual-target-main-task-exited-phaseDead-noCPUowner;trampoline-inactive;exact-static-pager-edge"
+ordering = "preflight-all-owned-and-unowned-leaves;retire-exact-dead-fault;clear-and-invlpg-every-owned-leaf;retire-ledger-and-close-range;acknowledge-watch"
+unfinished = "includes-published-but-not-finalized-commit-and-unpublished-sext-reservations-after-range-closure"
+replay = "cached-original-result-no-PTE-change;sext-releases-current-target-custody-once-never-blind-replay-bitmap-free"
+closure = "permanent-for-boot-range-no-task-or-domain-incarnation-reuse"
+
+[paging.exit_notice]
+opcode = 261
+source = "kernel-caller-zero;target-task-by-value;hint-not-cleanup-authority"
+delivery = "bounded-boot-watches;wake-pager-on-exit-intent-for-last-runnable-progress;enqueue-only-after-execution-custody-released;retry-full-ring;cleanup-ack-stops-watch"
+
+[paging.wait_cleanup]
+opcode = 262
+input = "authenticated-enrolled-client;other-enrolled-target-PD;nonzero-request-ID;reserved-zero"
+reply = "request-correlated-existing-pdx-reply-only-after-target-cleanup-closed"
+authority = "pager-policy-query-only-no-memory-authority-grant"
+
+[task.finish]
+syscall = 62
+input = "rdi-reason-value;no-target-selector"
+result = "actual-current-task-exits-and-switches;never-returns-to-ended-task"
+scope = "scheduler-task-lifecycle-not-Unix-process-exit"
+
+[paging.reclaim]
+syscall = 60
+input = "rdi-mapping-cap,rsi-pool-cap,rdx-frame-index,r10-original-fault-token"
+output = "rax-status"
+ordering = "validate-finalized-exact-binding-and-PTE;clear-leaf;local-invlpg;retire-lease;return-success;sext-may-free-then-zero-before-reuse"
+retry = "retained-exact-retired-binding-success-without-PTE-write;older-forgotten-tombstone-denied;no-new-owner-effect"
+revocation_scope = "all-client-leaves-for-lease-in-GLOBAL_VAS;authorized-trusted-pager-alias-retained;physical-APs-parked"
+
+[paging.release]
+opcode = 260
+input = "authenticated-caller-routes-map;args-pageVA-nonzero-monotonic-request-id-zero"
+reply = "existing-pdx-reply-type1-value-request-id-shift8-or-status;request-id-max-u64max-shift8;caller-and-ID-checked"
+replay = "per-client-last-request-page-result-cache;exact-retry-replays-result;old-zero-wrapped-conflicting-ID-denied-without-lookup-or-reclaim"
+policy = "explicit-client-release-only;allocator-frees-only-after-kernel-success;uncertain-outcome-retains-custody"
+
+[paging.commit]
+syscall = 56
+input = "rdi-mapping-cap,rsi-pool-cap,rdx-frame-index,r10-token,r8-rights"
+output = "rax-status"
+
+[paging.query]
+syscall = 57
+input = "rdi-mapping-cap,rsi-token"
+output = "rax-status,rsi-exact-page-VA,rdx-error-code,r10-authenticated-target-PD,r8-allowed-rights"
+failure = "nonzero-status-all-other-output-registers-zero"
+
+[paging.reject]
+syscall = 58
+input = "rdi-mapping-cap,rsi-token"
+output = "rax-status"
+
+[paging.info]
+syscall = 59
+input = "rdi-capability-slot"
+output = "rax-status,rsi-base-VA,rdx-bytes,r10-target-PD-or-zero-for-pool,r8-rights"
+failure = "nonzero-status-all-other-output-registers-zero"
+
 [slots]
+paging_frame_pool = 34
+paging_demand_region = 35
+paging_primary_mapping = 36
+paging_secondary_mapping = 37
 storage = 1
 sext = 2
 input = 3
@@ -37,3 +240,204 @@ shell = 6
 mismatch_type_id = 255
 error_symbol = "ERROR_PKRU_MISMATCH"
 policy = "explicit-ipc-error-return"
+
+# Display publishes only after renderer initialization; receivers authenticate
+# the kernel-provided caller ID. These messages grant no capability or memory.
+[ipc.display_ready]
+opcode = 257
+version = 1
+publisher_pd = 1
+arg0 = "protocol_version"
+reserved_arg1 = 0
+reserved_arg2 = 0
+scope = "boot-only"
+
+[ipc.shell_ready]
+opcode = 258
+version = 1
+publisher_pd = 3
+recipient_pd = 4
+publisher_route_slot = 9
+route_policy = "BOOT_DAG-Domain-edge-shell-SLOT_SHELL_INPUT_READY-to-sexinput"
+arg0 = "protocol_version"
+reserved_arg1 = 0
+reserved_arg2 = 0
+scope = "boot-only"
+consumer_policy = "wait-before-all-shell-producers-retain-unrelated-FIFO-input"
+overflow_policy = "explicit-startup-failure-before-dequeue"
+publisher_policy = "retry-per-main-loop-without-blocking-while-pending"
+
+[app_lifecycle]
+info_syscall = 63
+ack_syscall = 64
+retire_syscall = 65
+slots = [38, 39, 40, 45, 50]
+apps = "9:Quil:156:frame201;12:Spindle:154,160,161,162:frame153;15:Kaleidoscope:300;16:Quil-incarnation2:301;17:Spindle-incarnation2:302,303,304,305:frame306"
+notice = "0x107;caller0;targetPD,originalTaskID,reserved0;hint-only-retry-until-role-ACK"
+info_input = "rdi-exact-slot,rsi-kind0-dead-status-or-kind1-live-catalog"
+info_output = "rax-status;rsi-target,rdx-task,r10-requiredMask,r8-ackedMask;catalog-r10-surface,r8-shellCoordinator"
+ack_input = "rdi-exact-slot,rsi-originalTaskID;role-derived-from-BOOT-grant"
+required_service_mask = 31
+service_roles = "shell1,display2,files4,net8,bell16"
+retire_input = "rdi-exact-slot;sext-RETIRE-only"
+retire_output = "rax-status,rsi-poolAlias,rdx-byteLength,r10-originalTaskID"
+status = "0-OK,1-invalid,2-retry,3-denied,5-live;failure-query-payload-zero"
+preconditions = "pinned-original-main-Dead-no-owner;inactive-trampoline;all-five-ACK;demand-range-closed;exact-all-private-leaf-preflight"
+effects = "clear-and-local-invlpg-all-ELF-and-user-stack-pages;drain-terminal-message-reply-signal-contents;sext-zero-entire-BOOT-alias-before-workspace-reuse"
+retained = "permanent-PD-task-capability-queue-control-tombstones;shared-live-service-state;saved-documents;no-incarnation-reuse"
+limits = "five-BOOT-enrolled-app-identities;BSP-local-TLB;cooperative-task-finish;no-runtime-cap-mint-no-per-process-page-tables-no-buddy-free"
+
+[app_lifecycle.close]
+opcode = 264
+slots = [41, 42, 43, 46, 51]
+route = "shell3-to-BOOT-enrolled-app9-12-15-16-17"
+args = "targetPD,originalTaskID,reserved0"
+semantics = "cooperative-native-app-finish;retry-every16ticks-until-attested-death;enqueue-is-not-exit;no-runtime-mint"
+
+[app_lifecycle.presentation]
+registration = "shell0xFA-accepted-BOOT-catalog-manifest-replies-actualcaller3-value-surfaceID;reply-retained-on-full"
+opcode = 265
+args = "catalogSurfaceID,nonzeroRequestID-at-most-u64MAX-shift8,reserved0"
+authority = "exact-live-BOOT-catalog-app-owner"
+response = "type1-actual-display1-value-requestID-shift8-or-status;retain-on-BufferFull"
+visibility = "success-only-after-real-compositor-render-where-requested-native-surface-wins-a-framebuffer-pixel"
+cleanup = "discard-pending-app-presentation-before-display-retirement-ACK"
+
+[app_lifecycle.observer]
+holder = "Linen7"
+target = "Spindle12-original-main-task"
+slot = 39
+rights = "QUERY-only;no-ACK-no-RETIRE"
+semantics = "legacy-list-open-search-from12-only-while-statusLIVE;terminal-queued-calls-fenced;reply12-best-effort-as-before;permanent-shell3-replies-retained"
+
+[app_lifecycle.surface_groups]
+associations = "Quil9:frame201:content156;Spindle12:frame153:content154,160,161,162;Spindle17:frame306:content302,303,304,305"
+activation = "exact-immutable-catalog-owner-and-shell-coordinator;frame-binding-retained-after-minimize"
+geometry = "frame-authoritative-body-inset8,36,width-minus16,height-minus44;Spindle2x2-gap8"
+composition = "frame-owns-chrome-z-order;exact-app-owned-child-owns-body;bound-child-hidden-with-absent-parent;focus-preserves-content-color"
+
+[desktop.linen_text_delivery]
+authority = "existing-shell3-to-display1-BOOT-Domain-route"
+capacity = "one-active-and-one-latest-complete-text-batch;512bytes-each;no-allocation"
+progress = "at-most-four-checked-send-attempts-per-shell-pass;exact-operation-retained-on-full;receive-and-HID-progress-between-passes"
+receipt = "final-clear-and-chunk-admission-only;actual-visibility-requires-framebuffer-verification"
+coalescing = "active-batch-finishes-without-interleaving;newer-desired-repaint-replaces-only-pending-batch"
+
+[app_activation]
+syscall = 66
+slot = 44
+input = "rdi-exact-BOOT-AppActivation-slot;rsi-kind0-observe-or-kind1-activate"
+output = "rax-status;rsi-successorPD,rdx-successorTask,r10-successorSurface,r8-state;failure-payload-zero"
+state = "0-reserved-awaiting-predecessor-retirement,1-ready,2-activated-receipt,3-exhausted-terminal"
+reservation = "logicalQuil9-incarnation2;predecessor9-task9;successor16-task16-surface301;layout16-key9;fresh-ELF-stack-and-kernel-stack-at-BOOT;private-leaves-nonpresent-until-activation"
+authority = "immutable-holder-shell3-exact-predecessor-and-successor-task-tuple;no-runtime-domain-or-capability-creation"
+preconditions = "predecessorDead-no-owner-all5serviceACK-private-retired;exact-constructed-successor-and-trampoline;all-reserved-leaves-zero;BSP-only-execution-history"
+commit = "restore-exact-reserved-leaves-and-local-invlpg;publish-receipt-and-routing;one-scheduler-first-admission;IF-masked-no-other-execution-core"
+replay = "returns-consumed-receipt-without-restoring-leaves-or-requeueing;terminal-successor-exhausts-reserve"
+routes = "successor-close46;successor-call47;self-QUERY-catalog48;all-granted-and-sealed-at-BOOT"
+limits = "one-successor-each-for-Quil-and-Spindle;no-runtime-load-fork-exec-or-per-process-page-tables;Kaleidoscope-remains-reboot-only"
+
+[app_activation.spindle]
+slot = 49
+lifecycle_slot = 50
+close_slot = 51
+route_slot = 52
+binding = "logicalSpindle12-incarnation2;predecessor12-task12;successor17-task17;layout17-key12;content302,303,304,305-frame306"
+services = "fresh-BOOT-display-storage-shell-Linen-Bell-edges;Linen50-QUERY-only-observer;new-subject-starts-empty-private-history"
+geometry = "catalog-primary302-registers-shell-owned-frame306;all-four-app-owned-content-surfaces-follow-and-clip-to-frame"
+limits = "one-BOOT-reserved-Spindle-successor;existing-syscall66-and-BSP-activation-preconditions;permanent-both-incarnation-tombstones"
+
+[spindle_history]
+opcode = 75
+clients = "BOOT Spindle12/task12 and Spindle17/task17 only; exact lifecycle QUERY LIVE before every request"
+authority = "existing BOOT storage edge; caller-derived private name; real owner-checked SexFiles handle; no new kernel capabilities"
+request = "arg0=nonwrapping24bitSequence|kind8<<24,reservedHigh32zero;arg1=handle32|offset16<<32|length16<<48;arg2=up-to4bytesLE"
+reply = "actualSexFiles11;tag8<<56|sequence24<<32|payload32;tag0x53success-or0xE3error;single-admitted-client-request"
+operations = "1-open-save,2-open-load,3-stage-write,4-commit,5-stat,6-read,7-close"
+commit = "4096byte-bounded-staging;validate-complete-SHI1-owner-count-length-hash-entries;prepare-owner-private-RamFS;durable-journal-commit;publish-RamFS;Saved-only-after-commit-and-close-receipts"
+load = "fresh-own-open-handle;complete-validated-staging;close-receipt-before-live-history-swap;newer-local-history-revision-cancels-swap"
+limits = "durable-two-bank-journal;BOOT-grant53-sanctions-data-recovery12-to17-and-reboot17-to12;no-private-handle-or-capability-transfer;newest-complete-entries-fit4096;128entries-max256bytes;Saved-requires-real-NVMe-flush-and-readback"
+cleanup = "scrub-service-staging-and-drop-pending-reply-before-existing-RamFS-lease-retirement-and-files-ACK;retain-last-committed-bytes"
+
+[spindle_history.recovery]
+query_syscall = 67
+slot = 53
+holder = 11
+logical_object = 12
+subjects = "12:task12;17:task17;explicit-source-and-destination-recovery-relationship"
+base_lba = 1808
+sectors = 18
+banks = "two;each512byte-commit-header-plus4096byte-payload;no-overlap-with-V4-v0-or-driver-reservations"
+publication = "invalidate-inactive-header;flush;payload;flush;commit-header;flush;readback;old-bank-untouched"
+recovery = "validate-both-metadata-and-full-payload;highest-complete-generation;rewrite-owned-header-for-current-BOOT-subject;never-transfer-handles"
+limits = "fixed-object;no-online-replenishment;checksum-not-cryptographic;hardware-power-loss-guarantees-require-controller-validation"
+
+[spindle_viewport]
+opcode = "0x270"
+authority = "existing BOOT shell3-to-Spindle12/task12 or17/task17 edges; exact sender and incarnation; no runtime mint"
+request = "arg0=target32|task32<<32;arg1=frame_width32|frame_height32<<32;arg2=nonwrapping64bit-layout-sequence"
+delivery = "one latest desired layout per fixed BOOT subject; retain exact on Full; retire on subject death or permanent denial; wait for frame and chrome admission"
+render = "fixed four catalog-owned surfaces; collapse upper pair below two-row physical minimum; last visible logical row is prompt; up to20columns and6rows per pane; explicit-newline payload<=126bytes; retain source command/history/scrollback; cursor-following-window-with-presentation-only-caret-and-overflow-markers"
+
+[spindle_scrollback]
+selection = "retained chronological ring; page by visible output rows; prompt remains independent; clamp after eviction or resize"
+new_output = "live tail stays live; nonzero offset advances to preserve selected output; saturated lifetime counter does not freeze ring addressing"
+
+[spindle_display_delivery]
+queue = "fixed four BOOT-owned panes; immutable active plus latest desired text per pane; maximum four transport attempts per app turn; create before clear/chunks"
+backpressure = "Full preserves exact operation; main receive loop continues HID, storage receipts and Close; no nested listen or retry spin"
+completion = "whole batch admission only after its final chunk; actual pixel presentation remains separate; cancellation scrubs pending text and fences recreation"
+
+[spindle_history_liveness]
+deadline = "observed kernel ticks plus bounded cooperative app turns; progress resets stall budget but never total budget; frozen/regressing clock fails closed"
+uncertain = "timeout is neither success nor rollback; quarantine old sequence receipts; block saves, loads and synchronous storage probes"
+abort = "fresh own-session sequence on existing storage edge; no supplied lease/name; close service-known own handle, scrub staging and supersede own pending reply; ACK means quiescence, not durable rollback; stale abort never closes a newer lease"
+
+[spindle_desktop_status]
+notice = "bounded enum data on existing app-to-shell edge; exact actual sender, immutable domain/task/surface/coordinator catalog plus LIVE query and newer nonwrapping sequence"
+publication = "latest desired status retained on Full; no success claim on enqueue; verified shell viewport refreshes current state; task Close fences publication"
+presentation = "history state does not attest pixels; terminal launcher authority overrides late status; actual winning pixels from any exact catalog-owned Spindle child acknowledge the same group, including collapsed upper panes"
+
+[spindle_storage_probe]
+authority = "existing BOOT storage edges, exact live subjects12/task12 and17/task17; object numbers remain service data; no new mappings, capabilities or Unix descriptors"
+transport = "register-only requests; nonwrapping24bit sequence; distinct tagged32bit data/error receipts; one admitted exchange; bounded app turn and tick deadlines; no nested receive or HID drain"
+
+jobs = "coherent staged names; bounded binary pattern diagnostics; original caller retained; service-owned object/generation binding; nonwrapping request replay; real NVMe flush plus END receipt before mutation completion"
+coordination = "one complete history/probe job owns storage at a time; queued probes get next boundary; dirty history retained; uncertainty fences new work; no nested receive or HID discard"
+cancellation = "fresh own-session ABORT may supersede own pending receipt; ACK means quiescence, not rollback; only read-only retries after ACK; mutations require inspection and a new explicit command"
+desktop = "authenticated bounded probe state enum over existing shell edge; terminal launcher authority overrides status; Close fences local work before finish and service lease retirement precedes cleanup ACK"
+
+[quil_document_exchange]
+transport = "register-only-tagged-main-loop"
+opcode = 77
+subjects = "exact-BOOT-Quil-9-and-reserved-successor-16-live-catalogs"
+authority = "existing-BOOT-Domain-storage-route-workspace-document-2-and-user-slots-3-through-14;object-number-is-data-not-capability"
+selection = "service-owned-generation-bound-private-snapshot;original-authenticated-caller;no-runtime-mint"
+completion = "exact-sender-11-tag-55-or-E5-nonwrapping-sequence;single-admitted-request;Full-retains-receipt"
+publication = "whole-validated-load-and-unchanged-editor-revision;partial-error-timeout-retains-buffer"
+retirement = "terminal-catalog-fence-and-staging-scrub-before-files-cleanup-ack"
+save = "immutable-revision-snapshot-staged-in-service;single-COMMIT-effect;Saved-only-after-completion;newer-edits-stay-dirty;cancel-is-quiescence-not-rollback"
+durability = "QJ02-two-banks-inside-existing-V4-object;inactive-bank-invalidate-flush-payload-flush-readback-header-flush-readback;legacy-QP01-import-beyond-old-content"
+identity = "slot-and-nonwrapping-entry-incarnation;save-checks-previously-opened-identity;no-foreign-session-reference"
+crash_model = "QEMU-sector-I/O-with-ordered-FLUSH;V4-growth-data-descriptor-manifest-barriers;physical-torn-allocator-metadata-not-established"
+
+[quil_document_view]
+geometry = "authenticated-shell-3-exact-BOOT-target-task-nonwrapping-notice;existing-surface-only"
+metrics = "shared-desktop-style-integer-pixel-font-insets-and-line-advance"
+controls = "native-pointer-toolbar-and-app-local-Ctrl-N-O-S-A-R;Open-focuses-Linen-under-live-catalog"
+delivery = "immutable-active-plus-latest-512-byte-batch;4-display-attempts-per-main-loop-turn;Full-retains;admission-not-pixels;Close-scrubs"
+original_quil_orchestration = "BOOT_DAG-checks-slot6-empty-then-grants-Domain-shell3-before-seal;successor16-already-provisioned;no-runtime-mint"
+ready = "main-loop-READY-275-requests-current-geometry-after-startup-diagnostics;exact-live-catalog-check"
+
+[boot_display_metadata]
+query = "sex-pdx-slot0-E6-immutable-before-task-admission;exact-BOOT-display-shell-input-subjects-only"
+address = "query1-display-only-resolves-its-existing-BOOT-framebuffer;no-new-memory-authority-or-runtime-mapping"
+geometry = "queries0-and2-scalar-dimensions-pitch;reserved-args-zero;foreign-and-terminal-apps-denied"
+mode = "normal1280x800-and-compact1024x768-same-sealed-kernel-modules;compositor-checks-contiguous-pitch-before-first-write"
+pointer = "USB-tablet-absolute-coordinates-preserved-through-sexinput;current-shell-geometry-normalizes;no-fixed-height-relative-integration"
+
+[workspace_document_policy]
+kind = "revocable-shell-restriction-over-existing-BOOT-storage-edge;not-kernel-capability-genesis"
+subject = "Linen200-only-OpenObject-and-LinkObjectToBuffer"
+objects = "exact-members-of-complete-published-Linen-snapshot-with-disk-slots2-through14"
+denial = "inactive-workspace-record-or-explicit-object-denial-cannot-be-bypassed;missing-foreign-unpublished-protected-and-nondocument-operations-denied"

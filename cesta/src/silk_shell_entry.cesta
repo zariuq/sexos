@@ -1,0 +1,4 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (native "#include \"silk_shell_core.h\"
+")))

@@ -1,0 +1,151 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "source_sha256": "341fa37c96f8e24d99e179853c346a909093c129a8b8b76b46d2253d7e551338",
+  "functions": [
+    {
+      "name": "is_spindle_text_key",
+      "sha256": "ce110a9c48b28782466b3236ea689ed526b91afdca4e1a39dd6fc39329e6925f"
+    },
+    {
+      "name": "is_quil_text_key",
+      "sha256": "5753aa04df5d588a9b489ed12c9e7a768f27fc1f9a670b6e2fa0fb49423db9f8"
+    },
+    {
+      "name": "input_negative_begin_once",
+      "sha256": "a02eb80d83ec5a6b2494cd9edb1ffa9a7e4c01a07d37b809810edeadd73c146b"
+    },
+    {
+      "name": "input_negative_mark_done",
+      "sha256": "0bf76e0ab78a6438291bef2d6828b2e7ec5f85875c4135e2f1a6a2979e24e7e0"
+    },
+    {
+      "name": "surface_input_lifetime_begin_once",
+      "sha256": "ebbd628d0c9b7eb2987d5bab8a26f74f8cc1469b42f3ec15bddec7fcbff7007a"
+    },
+    {
+      "name": "surface_input_lifetime_mark_focus_live",
+      "sha256": "8477901d5e5d061c47a14ac42212c5c557fa779812641edb6d7bc4b4bd0b84a3"
+    },
+    {
+      "name": "surface_input_lifetime_mark_key_route",
+      "sha256": "16d334e528efb69346b77cb276d7b809a67238f9f543d04fc690d2ab249ab585"
+    },
+    {
+      "name": "surface_input_lifetime_mark_click_target",
+      "sha256": "4245e25c9ae642bfb9b8876b618f862376a6bec600ed703faffe03d51d555939"
+    },
+    {
+      "name": "surface_input_lifetime_mark_drag_target",
+      "sha256": "1ba5e0447628acfdb0d59c52b5dbb10e72fbe2d69207c37f11ba15011bda863d"
+    },
+    {
+      "name": "surface_input_lifetime_mark_dead_clear",
+      "sha256": "8bda25a88c6c24560ff0b840cdbe70b68dde96d9e21f1abbb565d3d334681778"
+    },
+    {
+      "name": "surface_input_lifetime_try_done",
+      "sha256": "3940b5bb80f41360829e6ca22d252cf3487300930d0d02b2bc122d1557dd318e"
+    },
+    {
+      "name": "shell_interaction_contract_begin_once",
+      "sha256": "9afe4c9a93295e25b97fa4b7c3160cd9872c3010e6c1e117ac58bf7f767836c2"
+    },
+    {
+      "name": "click_drag_proof_begin_click_once",
+      "sha256": "95a63fdc15ac1a71d0dd50e02270a3a33a3210bc8201aee0c7d64e0433ee9c7f"
+    },
+    {
+      "name": "click_drag_proof_begin_drag_once",
+      "sha256": "a80365cb39984b96920126181739e75fd511678f828a10c6f9be5bfb1e1f1867"
+    },
+    {
+      "name": "shell_interaction_contract_mark_stage",
+      "sha256": "c072fecc99304a1fa7db9ab6a1858f4562cb03996a05c108a052101943e9d324"
+    },
+    {
+      "name": "shell_interaction_contract_try_done",
+      "sha256": "b2beef161a46a178adb6eb9075c6a5ea7d39393bc415e682498d4f8c8b0ebae8"
+    },
+    {
+      "name": "send_silkbar_phase2_update",
+      "sha256": "b18b286fb1c505862b3214bbbcf1fbf7402d82c3dbfa3ba9d85b40e0cc300ec2"
+    },
+    {
+      "name": "bell_send_app_event",
+      "sha256": "321813c4957d9d8e5d184ecc43dd27bdbd716b7552f0ae34ec5d6c22a51c7593"
+    },
+    {
+      "name": "shell_draw_text",
+      "sha256": "2f72fcade538109c15efc0fae113b8a0443dde2a9067460da33ebb30e4e90394"
+    },
+    {
+      "name": "sink_scancode_to_char",
+      "sha256": "5ba12cd9e17f0f4faf24de2385d54968e6162140b4a06ba6d89b764dd04bc797"
+    },
+    {
+      "name": "silk_text_sink_redraw",
+      "sha256": "1a75f4656d9324aa5920ab3fa63209494c8632dde8e828c0b12eebc264896091"
+    },
+    {
+      "name": "silk_text_sink_key",
+      "sha256": "1a38447fdcf9431c56e1e52a5ea2bd2f2df503ee5aef3992aaab00f59d358880"
+    }
+  ],
+  "remaining": [
+    "maybe_run_bell_workflow_detail_proof",
+    "maybe_run_app_lifecycle_state_proof",
+    "maybe_run_app_lifecycle_close_restore_proof",
+    "maybe_run_bell_delivery_audit_proof",
+    "maybe_run_app_lifecycle_summary_v2_proof",
+    "maybe_run_app_registry_lifecycle_v2_proof",
+    "maybe_run_browser_stub_proof",
+    "maybe_run_browser_localdoc_stub_proof",
+    "maybe_run_webstub_localdoc_surface_text_proof",
+    "maybe_run_webstub_static_text_render_proof",
+    "maybe_run_shell_draw_text_helper_proof",
+    "maybe_run_browser_stub_v2_proof",
+    "maybe_run_browser_localdoc_viewer_proof",
+    "maybe_run_browser_url_bar_intent_proof",
+    "maybe_run_browser_history_proof",
+    "maybe_run_browser_bookmarks_proof",
+    "maybe_run_browser_tabs_proof",
+    "maybe_run_browser_actions_proof",
+    "maybe_run_browser_dashboard_proof",
+    "maybe_run_browser_find_proof",
+    "maybe_run_browser_reader_proof",
+    "maybe_run_browser_save_proof",
+    "maybe_run_browser_export_proof",
+    "maybe_run_browser_url_parse_proof",
+    "maybe_run_browser_sexnet_source3_proof",
+    "maybe_run_browser_render_stability_proof",
+    "maybe_run_sexnet_browser_cap_proof",
+    "maybe_run_sexnet_status_route_proof",
+    "maybe_run_browser_net_grant_proof",
+    "maybe_run_http_client_status_proof",
+    "maybe_run_http_req_builder_proof",
+    "maybe_run_sexnet_http_handshake_proof",
+    "maybe_run_qemu_e1000_pci_enum_proof",
+    "maybe_run_pci_net_status_proof",
+    "maybe_run_e1000_bar_meta_proof",
+    "maybe_run_e1000_driver_status_proof",
+    "maybe_run_e1000_ring_alloc_proof",
+    "maybe_run_browser_html_proof",
+    "maybe_run_browser_html_link_proof",
+    "maybe_run_browser_html_history_proof",
+    "maybe_run_browser_url_intent_proof",
+    "maybe_run_browser_placeholder_surface_visual_proof",
+    "maybe_run_frame_chrome_model_proof",
+    "maybe_run_frame_rim_markers_proof",
+    "maybe_run_frame_lights_pointer_proof",
+    "maybe_run_lifecycle_multitab_proof",
+    "maybe_run_bell_launch_outcome_proof",
+    "maybe_run_project_scene_link_proof",
+    "maybe_run_mesh_graph_status_proof",
+    "maybe_run_collar_grant_status_proof",
+    "maybe_run_atlas_scene_stub_proof",
+    "maybe_run_atlas_visible_restore_proof",
+    "maybe_run_scene_lifecycle_markers_proof",
+    "maybe_run_appdeath_cleanup_proof",
+    "maybe_run_scene_keyboard_switch_proof"
+  ]
+}

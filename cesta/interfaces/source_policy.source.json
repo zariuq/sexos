@@ -1,0 +1,34 @@
+{
+  "pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "scope": "Typed BOOT source policy and serialized BSP providers. Pure policies are compared directly; native providers have separate scripted/CPU qualifications.",
+  "sources": [
+    {
+      "path": "crates/sex-pdx/src/entropy_source.rs",
+      "sha256": "b6162ec468c09ea71592c7007ec8afd277e92bbbadc4398cd798b8e7720eb907"
+    },
+    {
+      "path": "crates/sex-pdx/src/clock_source.rs",
+      "sha256": "d5dd8911a6a12930f3985b43b976eb5d47ac2bfa3326b078b00246a1f7b1ac6d"
+    },
+    {
+      "path": "crates/sex-pdx/src/trust_source.rs",
+      "sha256": "29b181141aedab9a5c6244ebba2cf32fdecb21130a222ac98b4595a6b0e35d6f"
+    },
+    {
+      "path": "crates/sex-trust-config/src/lib.rs",
+      "sha256": "90d0bd17de7d495859e45d5d6ab859a5f4fb286b2e640cf55c2b2c50e8233058"
+    },
+    {
+      "path": "kernel/src/entropy_source.rs",
+      "sha256": "3d4409ab3f2238999dbad3988e56cb19e66cd3fae1d78de035617ca4d0cfafe0"
+    },
+    {
+      "path": "kernel/src/clock_source.rs",
+      "sha256": "4ac714fe630fedd0bdd83e5df0249fcd948d4ce1c713bde5e9ef70af5ab06ddd"
+    },
+    {
+      "path": "kernel/src/trust_source.rs",
+      "sha256": "d96aa774f2c9ddf72f5fca8c9aa31e6127d182038f9bff826faa5e55ef8083eb"
+    }
+  ]
+}

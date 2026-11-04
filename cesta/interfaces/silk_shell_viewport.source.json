@@ -1,0 +1,15 @@
+{
+  "pin": "a4b703d0af446f3f57691497e785fd2d39b62e01",
+  "sources": {
+    "crates/sex-pdx/src/document_view.rs": "180b16b767d342b26bbf727c21d875a853c6f386bf7729b19b2c928f119a6aa9",
+    "crates/sex-pdx/src/spindle_view.rs": "181bbc85e81fe11e7750fdcbda1898b13eebf9cbbd4a01f84c36e42f9c7e97f2",
+    "crates/sex-pdx/src/desktop_style.rs": "b79c66b3e4487377ba5387b25dcb46193e92606087921cd9aca55b82bc5e89fd",
+    "crates/sex-pdx/src/app_catalog.rs": "b64e70fd3e9d813b20edd479bab9c68edbd1485f0af382fdc0f0d9424a2c2f0c",
+    "servers/silk-shell/src/desktop_content.rs": "ff2f25393c952b06d3d0dfe136090b927ba4952b1cfc8c0e62a9a66873070048"
+  },
+  "scope": "Document/Spindle layout and viewport delivery, workspace refresh, desktop child geometry and parent association. Desktop text list is not yet ported.",
+  "deviations": [
+    "Spindle Notice decoding rejects a zero task, consistently with its queue and Document Notice decoding.",
+    "Malformed native document layouts with scale other than 1 or 2 fail closed before division."
+  ]
+}

@@ -1,0 +1,94 @@
+#include "sexos_source_policy.h"
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+
+bool source_identity_valid(SourceIdentity i){return i.pd && i.task;}
+bool source_identity_equal(SourceIdentity a,SourceIdentity b){return a.pd==b.pd && a.task==b.task;}
+static bool source_authorized(SourceGrant g,SourceIdentity caller,uint64_t kind,uint64_t a,uint64_t b,uint64_t c)
+{
+    return g.present && source_identity_valid(caller) && source_identity_valid(g.holder) && source_identity_valid(g.consumer) &&
+        source_identity_equal(g.holder,caller) && (kind==SOURCE_INFO || kind==SOURCE_READ) && !(a|b|c);
+}
+SourceReply source_entropy_invoke(SourceGrant g,SourceIdentity caller,uint64_t kind,uint64_t a,uint64_t b,uint64_t c)
+{
+    if(!source_authorized(g,caller,kind,a,b,c) || g.source!=1)return (SourceReply){.status=SOURCE_DENIED};
+    bool available=source_entropy_available();
+    if(kind==SOURCE_INFO)return (SourceReply){0,1,((uint64_t)g.consumer.pd<<32)|g.consumer.task,SOURCE_ENTROPY_ATTEMPTS,available};
+    if(!available)return (SourceReply){.status=SOURCE_UNAVAILABLE};
+    for(size_t attempt=1;attempt<=SOURCE_ENTROPY_ATTEMPTS;++attempt) {
+        SourceWord word=source_entropy_sample();if(word.present)return (SourceReply){0,word.value,attempt,0,0};
+    }
+    return (SourceReply){.status=SOURCE_BUSY};
+}
+static SourceNumber source_number(uint8_t value,bool binary)
+{
+    if(binary)return (SourceNumber){true,value};
+    if((value&15)>9 || (value>>4)>9)return (SourceNumber){0};
+    return (SourceNumber){true,(uint32_t)(value>>4)*10+(value&15)};
+}
+static bool source_leap(uint32_t year){return year%4==0 && (year%100!=0 || year%400==0);}
+static uint32_t source_month_days(uint32_t year,uint32_t month)
+{
+    if(month==2)return 28+source_leap(year);
+    if(month==4 || month==6 || month==9 || month==11)return 30;
+    if(month==1 || month==3 || month==5 || month==7 || month==8 || month==10 || month==12)return 31;
+    return 0;
+}
+SourceWord source_clock_seconds(SourceClockRaw raw)
+{
+    bool binary=(raw.status_b&4)!=0;
+    SourceNumber sec=source_number(raw.sec,binary),min=source_number(raw.min,binary);
+    SourceNumber hour=source_number((raw.status_b&2)?raw.hour:raw.hour&0x7f,binary);
+    SourceNumber day=source_number(raw.day,binary),month=source_number(raw.month,binary);
+    SourceNumber yy=source_number(raw.year,binary),century=source_number(raw.century,binary);
+    if(!sec.present || !min.present || !hour.present || !day.present || !month.present || !yy.present || !century.present)return (SourceWord){0};
+    if(!(raw.status_b&2)) {
+        if(hour.value<1 || hour.value>12)return (SourceWord){0};
+        hour.value=hour.value%12+((raw.hour&0x80)?12:0);
+    }
+    if(yy.value>99 || century.value!=20)return (SourceWord){0};
+    uint32_t year=century.value*100+yy.value;
+    if(year<2020 || year>2099 || sec.value>59 || min.value>59 || hour.value>23 ||
+        !day.value || day.value>source_month_days(year,month.value))return (SourceWord){0};
+    uint64_t days=0;
+    for(uint32_t y=1970;y<year;++y)days+=365+source_leap(y);
+    for(uint32_t m=1;m<month.value;++m)days+=source_month_days(year,m);
+    return (SourceWord){true,(days+day.value-1)*86400+(uint64_t)hour.value*3600+(uint64_t)min.value*60+sec.value};
+}
+bool source_clock_raw_equal(SourceClockRaw a,SourceClockRaw b)
+{
+    return a.sec==b.sec && a.min==b.min && a.hour==b.hour && a.day==b.day && a.month==b.month &&
+        a.year==b.year && a.century==b.century && a.status_a==b.status_a && a.status_b==b.status_b && a.status_d==b.status_d;
+}
+SourceReply source_clock_invoke(SourceGrant g,SourceIdentity caller,uint64_t kind,uint64_t a,uint64_t b,uint64_t c)
+{
+    if(!source_authorized(g,caller,kind,a,b,c) || g.source!=1)return (SourceReply){.status=SOURCE_DENIED};
+    if(kind==SOURCE_INFO)return (SourceReply){0,1,((uint64_t)g.consumer.pd<<32)|g.consumer.task,SOURCE_CLOCK_ATTEMPTS,SOURCE_PRECISION};
+    bool busy=false;
+    for(size_t attempt=1;attempt<=SOURCE_CLOCK_ATTEMPTS;++attempt) {
+        SourceClockPair pair=source_clock_pair();if(!pair.present)continue;
+        SourceClockRaw first=pair.first;
+        if(!source_clock_raw_equal(first,pair.second) || (first.status_a&0x80) || (first.status_b&0x80)){busy=true;continue;}
+        if(!(first.status_d&0x80) || (first.status_a&0x70)!=0x20)continue;
+        if(first.status_b&1)return (SourceReply){.status=SOURCE_INVALID};
+        SourceWord value=source_clock_seconds(first);
+        if(!value.present)return (SourceReply){.status=SOURCE_INVALID};
+        return (SourceReply){0,value.value,attempt,SOURCE_PRECISION,0};
+    }
+    return (SourceReply){.status=busy?SOURCE_BUSY:SOURCE_UNAVAILABLE};
+}
+SourceReply source_trust_invoke(SourceGrant g,SourceIdentity caller,uint64_t kind,uint64_t a,uint64_t b,uint64_t c,SourceTrustPolicy policy)
+{
+    if(!source_authorized(g,caller,kind,a,b,c) || kind!=SOURCE_INFO)return (SourceReply){.status=SOURCE_DENIED};
+    if(g.source!=policy.profile || !policy.root_bytes)return (SourceReply){.status=SOURCE_UNAVAILABLE};
+    return (SourceReply){0,g.source,g.consumer.pd|((uint64_t)g.consumer.task<<32),policy.root_bytes,policy.version};
+}
+
+

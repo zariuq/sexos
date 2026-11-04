@@ -21,6 +21,13 @@ static NET_DIAG_HTTP_SOURCE: AtomicU8 = AtomicU8::new(0);
 static NET_DIAG_HTTP_BODY_LEN: AtomicU32 = AtomicU32::new(0);
 static mut NET_DIAG_HTTP_BODY: [u8; 64] = [0u8; 64];
 
+// Optional historical boot diagnostics program rings directly. Ordinary boot
+// discovers devices only; the BOOT-assigned SexNet domain owns activation.
+// Never apply Intel register offsets to an arbitrary network controller.
+fn legacy_nic_diagnostics(vendor:u16,device:u16,setting:Option<&str>)->bool{
+    setting==Some("1") && crate::nic_boot::supported(vendor,device)
+}
+
 pub fn get_net_diag() -> (u32, u32, u8) {
     (
         NET_DIAG_HTTP_STATUS.load(Ordering::Acquire),
@@ -51,6 +58,27 @@ pub fn get_net_diag_body_chunk(idx: usize) -> u64 {
 }
 
 impl PciDevice {
+    /// Boot discovery only. Restore both BAR words and the command register;
+    /// upper status bits are W1C and must never be echoed into a config write.
+    pub fn probe_boot_bar0(&self) -> Option<(u64, u64)> {
+        assert_eq!(crate::ipc::BOOT_PHASE.load(Ordering::Acquire),
+            crate::ipc::BootPhase::RegistryBuild as u8, "PCI_PROBE_AFTER_GENESIS");
+        let low = self.read_u32(0x10);
+        if low & 1 != 0 || !matches!((low >> 1) & 3, 0 | 2) { return None; }
+        let wide = ((low >> 1) & 3) == 2;
+        let high = if wide { self.read_u32(0x14) } else { 0 };
+        let command = self.read_u32(0x04) & 0xffff;
+        self.write_u32(0x04, command & !7);
+        self.write_u32(0x10, u32::MAX);
+        if wide { self.write_u32(0x14, u32::MAX); }
+        let mask_low = self.read_u32(0x10);
+        let mask_high = if wide { self.read_u32(0x14) } else { 0 };
+        self.write_u32(0x10, low);
+        if wide { self.write_u32(0x14, high); }
+        self.write_u32(0x04, command);
+        crate::pci_bar_bounds::decode_bar0(low, high, mask_low, mask_high)
+    }
+
     pub fn read_u32(&self, offset: u8) -> u32 {
         unsafe { pci_config_read(self.bus, self.dev, self.func, offset) }
     }
@@ -76,22 +104,61 @@ impl PciDevice {
     }
 }
 
-pub unsafe fn pci_config_read(bus: u8, slot: u8, func: u8, offset: u8) -> u32 {
-    // Legacy Port I/O
-    let address = ((bus as u32) << 16) | ((slot as u32) << 11) |
-                  ((func as u32) << 8) | (offset as u32 & 0xFC) | 0x8000_0000;
-    x86_64::instructions::port::Port::new(0xCF8).write(address);
+static PCI_CONFIG_LOCK: spin::Mutex<()> = spin::Mutex::new(());
+
+fn config_address(bus:u8,slot:u8,func:u8,offset:u8)->u32 {
+    ((bus as u32)<<16)|((slot as u32)<<11)|((func as u32)<<8)|(offset as u32&0xfc)|0x8000_0000
+}
+
+fn config_locked<R>(operation:impl FnOnce()->R)->R {
+    x86_64::instructions::interrupts::without_interrupts(|| {
+        let _guard=PCI_CONFIG_LOCK.lock();operation()
+    })
+}
+
+unsafe fn config_read_unlocked(bus:u8,slot:u8,func:u8,offset:u8)->u32 {
+    x86_64::instructions::port::Port::new(0xCF8).write(config_address(bus,slot,func,offset));
     x86_64::instructions::port::Port::new(0xCFC).read()
 }
 
-pub unsafe fn pci_config_write(bus: u8, slot: u8, func: u8, offset: u8, value: u32) {
-    let address = ((bus as u32) << 16) | ((slot as u32) << 11) |
-                  ((func as u32) << 8) | (offset as u32 & 0xFC) | 0x8000_0000;
-    x86_64::instructions::port::Port::new(0xCF8).write(address);
+unsafe fn config_write_unlocked(bus:u8,slot:u8,func:u8,offset:u8,value:u32) {
+    x86_64::instructions::port::Port::new(0xCF8).write(config_address(bus,slot,func,offset));
     x86_64::instructions::port::Port::new(0xCFC).write(value);
 }
 
+pub unsafe fn pci_config_read(bus:u8,slot:u8,func:u8,offset:u8)->u32 {
+    config_locked(||config_read_unlocked(bus,slot,func,offset))
+}
+
+pub unsafe fn pci_config_write(bus:u8,slot:u8,func:u8,offset:u8,value:u32) {
+    config_locked(||config_write_unlocked(bus,slot,func,offset,value))
+}
+
+/// Capability authorization precedes this bounded mechanism. One config lock
+/// covers identity/read/optional16-bit command write/readback. Status at+6 is
+/// never echoed through a32-bit write (its error fields are write-one-to-clear).
+pub(crate) fn apply_command(update:sex_pdx::pci_command::Update)->Result<sex_pdx::pci_command::Reply,u64> {
+    use sex_pdx::pci_command::{Reply,IO};
+    config_locked(||unsafe {
+        let g=update.grant();
+        if config_read_unlocked(g.bus,g.device,g.function,0) != (g.vendor_id as u32 | ((g.device_id as u32)<<16)) {
+            return Err(IO);
+        }
+        let before=config_read_unlocked(g.bus,g.device,g.function,4) as u16;
+        let expected=update.next(before);
+        if expected != before {
+            x86_64::instructions::port::Port::new(0xCF8).write(config_address(g.bus,g.device,g.function,4));
+            x86_64::instructions::port::Port::<u16>::new(0xCFC).write(expected);
+        }
+        let after=config_read_unlocked(g.bus,g.device,g.function,4) as u16;
+        if after != expected { return Err(IO); }
+        Ok(Reply {before,after,changed:before!=after})
+    })
+}
+
 pub fn enumerate_bus() -> Vec<PciDevice> {
+    assert_eq!(crate::ipc::BOOT_PHASE.load(Ordering::Acquire),
+        crate::ipc::BootPhase::RegistryBuild as u8, "PCI_ENUMERATION_AFTER_GENESIS");
     let mut devices = Vec::new();
     for bus in 0..256 {
         for slot in 0..32 {
@@ -123,6 +190,7 @@ pub fn enumerate_bus() -> Vec<PciDevice> {
         }
     }
     
+    let mut diagnostic_nic_selected=false;
     // Log discovery for XPS 17 target
     for dev in &devices {
         match (dev.vendor_id, dev.device_id) {
@@ -135,13 +203,32 @@ pub fn enumerate_bus() -> Vec<PciDevice> {
         if dev.class_id == 0x02 {
             serial_println!("[pci.net.device] vendor=0x{:04X} device=0x{:04X} class=0x02 subclass=0x{:02X} prog_if=0x{:02X} ok=1 reason=network_controller_detected",
                 dev.vendor_id, dev.device_id, dev.subclass_id, dev.prog_if);
+            if !legacy_nic_diagnostics(dev.vendor_id,dev.device_id,option_env!("SEXOS_BOOT_NIC_DIAGNOSTICS")){
+                serial_println!("[pci.net.passive] vendor=0x{:04X} device=0x{:04X} config_writes=0 mmio=0 rings=0 dma=0 packets=0 owner=boot_assigned_sexnet ok=1",
+                    dev.vendor_id,dev.device_id);
+                continue;
+            }
+            if diagnostic_nic_selected{
+                serial_println!("[pci.net.legacy_diagnostics.skip] reason=owner_already_selected");
+                continue;
+            }
+            let Some((_,actual_length))=dev.probe_boot_bar0()else{
+                serial_println!("[pci.net.legacy_diagnostics.skip] reason=invalid_bar");
+                continue;
+            };
+            if crate::nic_boot::view_length(actual_length).is_none(){
+                serial_println!("[pci.net.legacy_diagnostics.skip] reason=short_bar");
+                continue;
+            }
+            diagnostic_nic_selected=true;
+            serial_println!("[pci.net.legacy_diagnostics] enabled=1 boot_only=1");
             // Ensure NIC PCI command enables MMIO + bus mastering for DMA.
             let cmd_status = unsafe { pci_config_read(dev.bus, dev.dev, dev.func, 0x04) };
             let mut cmd = (cmd_status & 0xFFFF) as u16;
             cmd |= 0x0001; // IO space
             cmd |= 0x0002; // MEM space
             cmd |= 0x0004; // bus master
-            let new_cmd_status = (cmd_status & 0xFFFF_0000) | (cmd as u32);
+            let new_cmd_status = cmd as u32; // PCI status upper bits are W1C.
             unsafe { pci_config_write(dev.bus, dev.dev, dev.func, 0x04, new_cmd_status); }
             let cmd_status_rb = unsafe { pci_config_read(dev.bus, dev.dev, dev.func, 0x04) };
             serial_println!("[pci.net.command.enable] old=0x{:08X} new=0x{:08X} rb=0x{:08X} bm={} mem={} io={} ok=1 reason=pci_command_enable",
@@ -184,8 +271,8 @@ pub fn enumerate_bus() -> Vec<PciDevice> {
                 // Order=0 = 4K page = 256 × 16B descriptors exactly.
                 // No MMIO writes. No RX/TX enable. No packets.
                 // UC policy declared here; actual UC PTE remapping deferred to driver attach.
-                let rx_phys_opt = crate::memory::allocator::alloc_frame();
-                let tx_phys_opt = crate::memory::allocator::alloc_frame();
+                let rx_phys_opt = Some(crate::boot_memory::backing(4096));
+                let tx_phys_opt = Some(crate::boot_memory::backing(4096));
                 if let (Some(rx_p), Some(tx_p)) = (rx_phys_opt, tx_phys_opt) {
                     let hhdm: u64 = 0xFFFF_8000_0000_0000;
                     let rx_v = hhdm + rx_p;
@@ -250,7 +337,7 @@ pub fn enumerate_bus() -> Vec<PciDevice> {
                     let mut pkt_pages: [u64; 8] = [0; 8];
                     let mut pkt_alloc_ok = true;
                     for i in 0..8 {
-                        match crate::memory::allocator::alloc_frame() {
+                        match Some(crate::boot_memory::backing(4096)) {
                             Some(phys) => {
                                 pkt_pages[i] = phys;
                                 // Zero via HHDM immediately

@@ -1,4 +1,4 @@
-/* Generated from cesta-protocol/1. Declare the context and native hooks first. */
+/* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
 
 #ifdef CESTA_PROTOCOL_network_rx_run_DEFINED
 #error "duplicate protocol definition"
@@ -123,7 +123,7 @@ network_rx_run(RxContext *ctx)
             for (;;) {}
         }
 #endif
-        return network_rx_run_suspended;
+        return network_rx_run_done;
     }
 #if network_rx_run_CHECKED
     if (!rx_available(ctx)) {
@@ -323,6 +323,18 @@ network_rx_run(RxContext *ctx)
             }
 #endif
 #if network_rx_run_CHECKED
+            if (!rx_copied(ctx)) {
+                network_rx_run_CHECK_FAILURE(ctx, "fact", "copied", 1);
+                for (;;) {}
+            }
+#endif
+#if network_rx_run_CHECKED
+            if (!rx_settled(ctx)) {
+                network_rx_run_CHECK_FAILURE(ctx, "fact", "settled", 1);
+                for (;;) {}
+            }
+#endif
+#if network_rx_run_CHECKED
             if (rx_descriptor_owned(ctx)) {
                 network_rx_run_CHECK_FAILURE(ctx, "own", "descriptor", 0);
                 for (;;) {}
@@ -432,7 +444,7 @@ network_rx_run(RxContext *ctx)
                 for (;;) {}
             }
 #endif
-            return network_rx_run_suspended;
+            return network_rx_run_done;
         }
 #if network_rx_run_CHECKED
         if (!rx_descriptor_owned(ctx)) {

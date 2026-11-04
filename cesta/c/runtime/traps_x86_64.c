@@ -25,12 +25,25 @@ SexosMessage sexos_listen_once(uint64_t slot)
     register uint64_t rdx __asm__("rdx");
     register uint64_t r10 __asm__("r10");
     register uint64_t r8 __asm__("r8");
+    register uint64_t rdi __asm__("rdi") = slot;
     __asm__ volatile ("syscall"
-        : "+a"(rax), "=S"(rsi), "=d"(rdx), "=r"(r10), "=r"(r8)
-        : "D"(slot)
+        : "+a"(rax), "=S"(rsi), "=d"(rdx), "=r"(r10), "=r"(r8), "+D"(rdi)
+        :
         : "rcx", "r11", "memory", "cc");
-    return (SexosMessage){rax, rdx, r10, r8, (uint32_t)rsi, 0};
+    uint32_t task = 0;
+#if defined(SEXOS_PDX_SENDER_TASK) && SEXOS_PDX_SENDER_TASK
+    task = rdi <= UINT32_MAX ? (uint32_t)rdi : 0;
+#endif
+    return (SexosMessage){rax, rdx, r10, r8, (uint32_t)rsi, task};
 }
+
+#if defined(SEXOS_PDX_SENDER_TASK) && SEXOS_PDX_SENDER_TASK
+void sexos_wait_self(void)
+{
+    register uint64_t rax __asm__("rax") = UINT64_C(53);
+    __asm__ volatile ("syscall" : "+a"(rax) : "D"(UINT64_C(0)) : "rcx", "r11", "memory", "cc");
+}
+#endif
 
 void sexos_yield(void)
 {

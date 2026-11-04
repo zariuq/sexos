@@ -4,7 +4,8 @@
     (Key id) (Unique name)
     (Rows (Row 0 call) (Row 28 listen) (Row 29 reply) (Row 30 map_memory) (Row 31 allocate_memory) (Row 32 yield)
           (Row 34 ticks) (Row 40 alloc_shared_buffer) (Row 42 set_state) (Row 43 map_pci_bar)
-          (Row 50 grant_mem_lend) (Row 51 map_mem_lend) (Row 52 net_diag)))
+          (Row 50 grant_mem_lend) (Row 51 map_mem_lend) (Row 52 net_diag)
+          (Row 75 region_writer) (Row 76 device_reset)))
   (Table Slots
     (Columns (Column id Nat) (Column name Identifier))
     (Key id) (Unique name)

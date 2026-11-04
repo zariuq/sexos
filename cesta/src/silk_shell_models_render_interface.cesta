@@ -1,0 +1,11 @@
+(cesta native-c/1 compact-c/2 (unit (native "#ifndef SEXOS_SHELL_MODELS_RENDER_H
+#define SEXOS_SHELL_MODELS_RENDER_H
+#include \"silk_shell_chrome.h\"
+#include \"shell_linen_runtime.h\"
+#include \"shell_linen_list.h\"
+typedef struct ShellLinenRenderContext {ShellChromeContext shell;ShellLinenRuntime *linen;} ShellLinenRenderContext;
+ShellLinenItems shell_models_peer_list_items(ShellLinenRenderContext *ctx);
+void shell_models_render_object_list(ShellLinenRenderContext *ctx);
+void shell_models_render_static_ui(ShellLinenRenderContext *ctx);
+#endif
+")))

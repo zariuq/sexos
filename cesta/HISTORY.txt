@@ -1,0 +1,73 @@
+BOOT-HELD HISTORY RECOVERY ROSTERS
+
+The current kernel constructs the history grant from registered Spindle tasks
+before BOOT sealing. Sexfiles holds it at slot53; syscall67 queries its exact
+roster and disk extent. The app catalog describes expected targets, while the
+held grant supplies the registered task identities and recovery relationship.
+Those task identities are not per-request authentication or transferable handles.
+
+The roster bound derives from the app declaration. The shared policy also
+supports declared counts1..64; zero/oversized configurations reject without
+provider effects. Empty storage retains one inactive C element rather than a
+nonstandard zero-length array. Both targets and tasks must be nonzero and
+independently unique. The eighteen-sector extent must not wrap.
+
+Query0 returns logical app,holder,count,version. Query1 returns base/extent and
+two zero words. Query2+i returns target,task,index and zero. Invalid kinds and
+wrong/invalid grants have separate errors with cleared result words. Native
+lookup checks the full-width slot and actual typed capability before policy.
+
+history_decode.cesta validates complete replies in order. Its local partial
+roster is published only after the exact header,extent,expected target order,
+full-width task identities,indexes,reserved words and final roster invariants
+pass. Canonical provider errors propagate; error replies retaining data become
+invalid. runtime/history_native.c performs the real five-word syscall and
+history_get derives expected targets from the same declaration.
+
+The BOOT audit compares the held roster with actual registered tasks and
+Linen's query-only observer grants. Domain IDs and task IDs remain separate.
+The native RAM gate deliberately assigns unequal task identities and rejects
+substitution of domain numbers,corrupted held tasks and full-width slot aliases.
+
+Checks
+------
+
+tests/history_recovery.py compiles the actual generic Rust implementation and
+compares validity,membership,permissions,all replies,final decoded data and every
+provider call/reply. Counts0/1/2/8/64/65 run under GCC/Clang at O0/O2 and with
+sanitizers; mutations and actual ownership-plan admission have separate gates.
+
+tests/history_boot.py executes the normal kernel,real client ABI and checked
+decoder with inert payloads. Only the actual holder obtains a complete roster;
+the other admitted callers receive zeroed failures. This is metadata/authority
+mechanism evidence. Disk persistence/recovery,retirement and replay remain
+separate execution joins.
+
+The current recovery relationship has eight reserved Spindle incarnations.
+Its declaration and observer allocation are catalog-derived. Imported upstream
+source and component evidence retain their exact cohorts; a newer catalog must
+be qualified rather than attached to older results.
+
+Current-image disk join
+-----------------------
+
+tests/history_disk_boot.py runs the normal reference image and a kernel/Sext
+candidate on real NVMe emulation. Every reserved Spindle incarnation enters
+through the actual launcher, loads its predecessor's data into a new own lease,
+records a new command, completes the durable save, visibly recalls it and
+retires through all five cleanup services. A source catalog supplies test
+expectations; the held BOOT roster supplies registered task identities.
+
+The expected snapshot bytes are independently assembled from the commands
+actually entered. The final journal must contain those exact bytes, not merely
+a matching success marker. Cold boot loads the last incarnation's data into
+the original incarnation, rebinding its owner header and checking actual prompt
+pixels. Corrupting the newest committed header must recover the preceding
+bank. Corrupting both headers must report CORRUPT, retain no loaded history
+and reject history navigation. Recovery must not change the journal region.
+
+The gate joins actual driver read completions, held metadata, service receipts,
+disk bytes and framebuffer glyphs. It qualifies the current kernel/service
+interface, including delayed workspace custody. The application, filesystem
+and journal implementation in these images are still the current Rust
+reference; their Cesta migration and power-loss qualification remain separate.

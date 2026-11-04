@@ -1,4 +1,5 @@
 #include "sexos_mmio.h"
+#include "sexos_dma_lease.h"
 /*NVMe storage driver and block service (apps/sexdrive/src/main.rs).*/
 #if !defined(SEXOS_STORAGE_100_PERSIST_WRITE)
 #define SEXOS_STORAGE_100_PERSIST_WRITE 0
@@ -24,17 +25,33 @@
 #define SEXOS_STORAGE_100_IO_READ_PROBE 0
 
 #endif
+#if !defined(SEXOS_CURRENT_REGION_WRITER)
+#define SEXOS_CURRENT_REGION_WRITER 0
+
+#endif
+#if !defined(SEXOS_DMA_QUARANTINE_PROBE)
+#define SEXOS_DMA_QUARANTINE_PROBE 0
+
+#endif
+#if !defined(SEXOS_NVME_INTERRUPT_MODE)
+#define SEXOS_NVME_INTERRUPT_MODE 0
+
+#endif
 #define STORAGE_100_PERSIST_WRITE_ENABLED SEXOS_STORAGE_100_PERSIST_WRITE
 #define STORAGE_100_PERSIST_READ_ENABLED SEXOS_STORAGE_100_PERSIST_READ
 #define STORAGE_100_FLUSH_AUDIT_ENABLED SEXOS_STORAGE_100_FLUSH_AUDIT
 #define STORAGE_100_NEGATIVE_ENABLED SEXOS_STORAGE_100_NEGATIVE
 #define STORAGE_100_NEG_MISMATCH_ENABLED SEXOS_STORAGE_100_NEG_MISMATCH
 #define STORAGE_100_IO_READ_PROBE_ENABLED SEXOS_STORAGE_100_IO_READ_PROBE
+#define DMA_QUARANTINE_PROBE_ENABLED SEXOS_DMA_QUARANTINE_PROBE
+#define NVME_INTERRUPT_MODE_ENABLED SEXOS_NVME_INTERRUPT_MODE
 #define OP_SHELL_BIND_BUFFER UINT64_C(0x14)
 #define SLOT_SHELL ((uint64_t)SEXOS_SLOT_shell)
 #define SLOT_USB_HOST UINT64_C(8)
 #define SLOT_NVME_HOST UINT64_C(16)
 #define SLOT_BUF_LEND ((uint64_t)SEXOS_SLOT_buf_lend)
+#define SLOT_FRAME_REGION UINT64_C(33)
+#define SLOT_DMA_REGION UINT64_C(32)
 #define BLOCK_READ UINT64_C(1)
 #define BLOCK_WRITE UINT64_C(2)
 #define BLOCK_SYNC UINT64_C(3)
@@ -43,10 +60,18 @@
 #define BLOCK_ERR_NO_DEVICE UINT64_C(4)
 #define BLOCK_SECTOR_SIZE UINT64_C(512)
 #define BLOCK_MAX_XFER UINT64_C(4096)
+#if !defined(SEXOS_SEXDRIVE_CURRENT_DURABILITY)
+#define SEXOS_SEXDRIVE_CURRENT_DURABILITY 1
+
+#endif
+#define DMA_RESET_LIMIT UINT32_C(12)
+#define DMA_PROBE_HANDSHAKE_SPINS UINT32_C(20000000)
 #define PAGE_SIZE UINT64_C(4096)
 #define NVME_SQ0TDBL UINT64_C(0x1000)
 #define NVME_CQ0HDBL UINT64_C(0x1004)
 #define NVME_LBA_BYTES UINT64_C(512)
+#define DISKFS_V4_POOL_BASE_LBA UINT64_C(400)
+#define DISKFS_V4_POOL_SECTORS UINT64_C(1408)
 #define WRITE_PROOF_LBA UINT64_C(2047)
 #define WRITE_PROOF_LEN UINT64_C(512)
 #define WRITE_PROOF_MAGIC UINT64_C(0x3156455449525753)
@@ -85,9 +110,40 @@ NvmeIoState;
 typedef struct {
   uint32_t hot_log_budget;
   NvmeIoState nvme_io_state;
+  DmaLeasePool dma_pool;
+  DmaDeviceEpoch dma_device;
+  DmaLease read_lease;
+  DmaLease write_lease;
+  bool leases_ready;
+  bool dma_ready;
+  bool reset_rebuild_pending;
+  bool reset_recovery_pending;
+  bool dma_probe_injected;
+  bool dma_probe_recovery_pending;
+  uint32_t reset_count;
 }
 SexdriveState;
 static SexdriveState sexdrive_state;
+static uint64_t block_buffer_view(uint32_t caller, uint64_t length, uint64_t rights) {
+  if (caller == 0 || (length == 0 || length > BLOCK_MAX_XFER)) return UINT64_MAX;
+  MemoryRegionReply info = sexos_memory_region_info(SLOT_BUF_LEND);
+  if (info.status != 0 || (info.value0 < length || info.value2 != caller)) return UINT64_MAX;
+  MemoryRegionReply view = sexos_memory_region_view(SLOT_BUF_LEND, 0, length, REGION_QUERY | rights);
+  return view.status == 0 ? view.value0 : UINT64_MAX;
+}
+static bool block_writer_claim(uint32_t caller, RegionWriterReceipt *out) {
+  if (caller == 0) return false;
+  RegionWriterReceipt query = sexos_region_writer_query(SLOT_BUF_LEND);
+  if (query.status != REGION_WRITER_OK || (query.current != caller || (query.peer == 0 || query.job == 0))) return false;
+  RegionWriterReceipt claimed = sexos_region_writer_change(SLOT_BUF_LEND, REGION_WRITER_CLAIM, query.revision, query.job);
+  if (claimed.status != REGION_WRITER_OK || (claimed.current != query.peer || claimed.job != query.job)) return false;
+  *out = claimed;
+  return true;
+}
+static bool block_writer_release(uint32_t caller, const RegionWriterReceipt *claimed) {
+  RegionWriterReceipt released = sexos_region_writer_change(SLOT_BUF_LEND, REGION_WRITER_RELEASE, claimed->revision, claimed->job);
+  return released.status == REGION_WRITER_OK && (released.current == caller && released.job == 0);
+}
 static void sexdrive_state_init(SexdriveState *s) {
   memset(s, 0, sizeof *s);
   s->hot_log_budget = 240;
@@ -101,11 +157,43 @@ static bool hot_log(void) {
   }
   return false;
 }
+static inline void nvme_wait_turn(uint32_t poll) {
+  if (NVME_INTERRUPT_MODE_ENABLED && (poll & 0xfffu) == 0u) sexos_yield();
+}
+static bool sexdrive_dma_init(void) {
+  if (!SEXOS_CURRENT_REGION_WRITER) return true;
+  MemoryRegionReply info = sexos_memory_region_info(SLOT_DMA_REGION);
+  if (info.status != 0 || (info.value1 != (REGION_QUERY | (REGION_READ | (REGION_WRITE | REGION_DMA))) || (info.value2 != 0 || info.value3 != 3))) return false;
+  MemoryRegionReply view = sexos_memory_region_view(SLOT_DMA_REGION, 0, info.value0, REGION_QUERY | (REGION_READ | (REGION_WRITE | REGION_DMA)));
+  if (view.status != 0 || (view.value0 == 0 || view.value2 == 0)) return false;
+  DmaLeaseRegion region = (DmaLeaseRegion) {
+    .region_id = (uint32_t) view.value3,.virtual_address = view.value0,.physical_address = view.value2,.length = view.value1
+  };
+  sexdrive_state.dma_ready = dma_lease_pool_init(region, &sexdrive_state.dma_pool) == DMA_LEASE_OK;
+  if (!sexdrive_state.dma_ready) return false;
+  sexdrive_state.dma_device = dma_device_epoch_init(SLOT_NVME_HOST);
+  if (!dma_device_epoch_active(&sexdrive_state.dma_device)) return false;
+  DmaLeaseResult read_buffer = dma_lease_reserve(&sexdrive_state.dma_pool, PAGE_SIZE);
+  DmaLeaseResult write_buffer = dma_lease_reserve(&sexdrive_state.dma_pool, PAGE_SIZE);
+  if (read_buffer.status != DMA_LEASE_OK || write_buffer.status != DMA_LEASE_OK) return false;
+  sexdrive_state.read_lease = dma_lease_init(read_buffer.buffer, &sexdrive_state.dma_device);
+  sexdrive_state.write_lease = dma_lease_init(write_buffer.buffer, &sexdrive_state.dma_device);
+  sexdrive_state.leases_ready = true;
+  return sexdrive_state.dma_ready;
+}
 static inline uint64_t sys_alloc_phys(uint64_t size) {
+  if (SEXOS_CURRENT_REGION_WRITER) {
+    DmaLeaseResult result = dma_lease_reserve(&sexdrive_state.dma_pool, size);
+    return result.status == DMA_LEASE_OK ? result.buffer.physical_address : UINT64_MAX;
+  }
   return sexos_allocate_memory(size);
 }
 static inline uint64_t sys_map_phys(uint64_t phys, uint64_t size) {
-  return sexos_map_memory(phys, size);
+  if (SEXOS_CURRENT_REGION_WRITER) {
+    const DmaLeaseRegion *region = &sexdrive_state.dma_pool.region;
+    if (!sexdrive_state.dma_ready || (phys < region->physical_address || (phys > region->physical_address + region->length || size > region->physical_address + region->length - phys))) return UINT64_MAX;
+    return region->virtual_address + (phys - region->physical_address);
+  } else return sexos_map_memory(phys, size);
 }
 static uint64_t nvme_read_into_bounce(uint64_t offset, uint64_t size) {
   if (size == 0 || (size > BLOCK_MAX_XFER || (size > PAGE_SIZE || (offset % NVME_LBA_BYTES != 0 || size % NVME_LBA_BYTES != 0)))) {
@@ -163,6 +251,7 @@ static uint64_t nvme_read_into_bounce(uint64_t offset, uint64_t size) {
   uint32_t last_dw3 = 0;
   if (hot_log()) sexos_line("[sexdrive.nvme.poll.begin] path=typed cid=%llu cq_head=%llu phase=%llu max_polls=%llu", (unsigned long long) cid, (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) max_polls);
   for (uint32_t p = 0; p < max_polls; ++p) {
+    nvme_wait_turn(p);
     polls += 1u;
     const uint32_t *cqe_ptr = (const uint32_t *)(uintptr_t)(io_cq_va + (uint64_t) cq_head * 16ULL);
     uint32_t rd_dw2 = sexos_volatile_read32(cqe_ptr + 2);
@@ -224,13 +313,26 @@ static uint64_t nvme_read_into_mapped_va(uint64_t offset, uint64_t size, uint64_
   uint32_t cq_phase = sexdrive_state.nvme_io_state.cq_phase;
   uint16_t cid = sexdrive_state.nvme_io_state.next_cid;
   sexdrive_state.nvme_io_state.next_cid = (uint16_t)(cid + 1u);
-  uint64_t data_phys = sys_alloc_phys(PAGE_SIZE);
+  bool leased = false;
+  uint64_t data_phys = 0;
+  uint64_t data_va = 0;
+  if (SEXOS_CURRENT_REGION_WRITER) {
+    DmaLeaseResult prepared = dma_lease_prepare(&sexdrive_state.read_lease, &sexdrive_state.dma_device, (uint64_t) cid);
+    if (prepared.status != DMA_LEASE_OK) return BLOCK_ERR_NO_DEVICE;
+    leased = true;
+    data_phys = prepared.buffer.physical_address;
+    data_va = prepared.buffer.virtual_address;
+  } else {
+    data_phys = sys_alloc_phys(PAGE_SIZE);
+    data_va = sys_map_phys(data_phys, PAGE_SIZE);
+  }
   if (data_phys == 0 || (data_phys == UINT64_MAX || data_phys % PAGE_SIZE != 0)) {
+    if (leased)(void) dma_lease_uncertain(&sexdrive_state.read_lease, (uint64_t) cid, false);
     sexos_line("[sexdrive.block.read.handoff.err] reason=data_alloc_invalid phys=%#llx", (unsigned long long) data_phys);
     return BLOCK_ERR_NO_DEVICE;
   }
-  uint64_t data_va = sys_map_phys(data_phys, PAGE_SIZE);
   if (data_va == 0 || data_va == UINT64_MAX) {
+    if (leased)(void) dma_lease_uncertain(&sexdrive_state.read_lease, (uint64_t) cid, false);
     sexos_line("[sexdrive.block.read.handoff.err] reason=data_map_failed va=%#llx", (unsigned long long) data_va);
     return BLOCK_ERR_NO_DEVICE;
   }
@@ -253,6 +355,10 @@ static uint64_t nvme_read_into_mapped_va(uint64_t offset, uint64_t size, uint64_
   sexos_volatile_write32(sqe_ptr + 12, (uint32_t)(nlb & 0xFFFFULL));
   if (hot_log()) sexos_line("[sexdrive.nvme.cmd.shape] path=typed op=READ cid=%llu nsid=%llu slba=%llu nlb=%llu bytes=%llu prp1=%#llx prp2=%#llx buf_va=%#llx buf_phys=%#llx buffer_cap=%#llx buffer_kind=memlend last_lba=%llu", (unsigned long long) cid, 1ULL, (unsigned long long) slba, (unsigned long long) nlb, (unsigned long long) size, (unsigned long long) data_phys, 0ULL, (unsigned long long) dst_va, (unsigned long long) data_phys, (unsigned long long) SLOT_BUF_LEND, (unsigned long long) last_lba);
   sexos_compiler_fence_seq_cst();
+  if (leased && dma_lease_submit(&sexdrive_state.read_lease, (uint64_t) cid) != DMA_LEASE_OK) {
+    (void) dma_lease_uncertain(&sexdrive_state.read_lease, (uint64_t) cid, false);
+    return BLOCK_ERR_NO_DEVICE;
+  }
   if (hot_log()) sexos_line("[sexdrive.nvme.submit.detail] path=typed op=READ cid=%llu sq_tail_before=%llu sq_tail_after=%llu cq_head=%llu cq_phase=%llu lba=%llu bytes=%llu", (unsigned long long) cid, (unsigned long long) sq_tail, (unsigned long long)((sq_tail + 1u) % 16u), (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) slba, (unsigned long long) size);
   sq_tail = (sq_tail + 1u) % 16u;
   sexos_volatile_write32((uint32_t *)(uintptr_t)(map_va + sq1tdbl), sq_tail);
@@ -265,6 +371,7 @@ static uint64_t nvme_read_into_mapped_va(uint64_t offset, uint64_t size, uint64_
   uint32_t last_dw3 = 0;
   if (hot_log()) sexos_line("[sexdrive.nvme.poll.begin] path=typed cid=%llu cq_head=%llu phase=%llu max_polls=%llu", (unsigned long long) cid, (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) max_polls);
   for (uint32_t p = 0; p < max_polls; ++p) {
+    nvme_wait_turn(p);
     polls += 1u;
     const uint32_t *cqe_ptr = (const uint32_t *)(uintptr_t)(io_cq_va + (uint64_t) cq_head * 16ULL);
     uint32_t rd_dw2 = sexos_volatile_read32(cqe_ptr + 2);
@@ -282,8 +389,18 @@ static uint64_t nvme_read_into_mapped_va(uint64_t offset, uint64_t size, uint64_
   }
   if (hot_log()) sexos_line("[sexdrive.nvme.poll.end] path=typed cid=%llu found=%llu status=%llu cq_head=%llu phase=%llu polls=%llu", (unsigned long long) cid, (unsigned long long)(done ? 1ULL : 0ULL), (unsigned long long)(dw3 >> 17 & 0x7FFFu), (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) polls);
   if (!done) {
+    if (leased) {
+      (void) dma_lease_uncertain(&sexdrive_state.read_lease, (uint64_t) cid, true);
+      sexdrive_state.nvme_io_state.ready = false;
+      sexos_line("[sexdrive.dma.quarantine] ready=0 reason=unresolved_submission");
+    }
     sexos_line("[sexdrive.block.read.handoff.err] reason=cqe_timeout cid=%llu head=%llu phase=%llu", (unsigned long long) cid, (unsigned long long) cq_head, (unsigned long long) cq_phase);
     sexos_line("[sexdrive.nvme.poll.timeout.detail] path=typed cid=%llu expected_cid=%llu seen_cid=%llu seen_status=%llu seen_phase=%llu cq_head=%llu phase=%llu polls=%llu", (unsigned long long) cid, (unsigned long long) cid, (unsigned long long)(last_dw3 & 0xFFFFu), (unsigned long long)(last_dw3 >> 17 & 0x7FFFu), (unsigned long long)(last_dw3 >> 16 & 0x1u), (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) polls);
+    return BLOCK_ERR_NO_DEVICE;
+  }
+  if (leased && dma_lease_complete_observed(&sexdrive_state.read_lease, (uint64_t) cid, (uint64_t)(dw3 & 0xFFFFu), cq_phase, dw3 >> 16 & 1u) != DMA_LEASE_OK) {
+    sexdrive_state.nvme_io_state.ready = false;
+    sexos_line("[sexdrive.dma.quarantine] ready=0 reason=completion_identity");
     return BLOCK_ERR_NO_DEVICE;
   }
   uint32_t sf = dw3 >> 17 & 0x7FFFu;
@@ -328,7 +445,10 @@ static bool write_guard_allows(uint64_t offset, uint64_t size, uint64_t buf_cap)
   uint64_t sexfs_obj_end = SEXFS_V0_OBJECT_END_LBA * NVME_LBA_BYTES;
   bool allow_sexfs_meta = proof_mode && (size == WRITE_PROOF_LEN && (offset % NVME_LBA_BYTES == 0 && (offset >= sexfs_meta_start && offset <= sexfs_meta_end)));
   bool allow_sexfs_obj = proof_mode && (size == WRITE_PROOF_LEN && (offset % NVME_LBA_BYTES == 0 && (offset >= sexfs_obj_start && offset <= sexfs_obj_end)));
-  bool allow = allow_proof || (allow_manifest || (allow_object || (allow_linen || (allow_quil || (allow_sexfs_meta || allow_sexfs_obj)))));
+  uint64_t pool_start = DISKFS_V4_POOL_BASE_LBA * NVME_LBA_BYTES;
+  uint64_t pool_end = (DISKFS_V4_POOL_BASE_LBA + DISKFS_V4_POOL_SECTORS) * NVME_LBA_BYTES;
+  bool allow_pool_bulk = proof_mode && (size > WRITE_PROOF_LEN && (size <= PAGE_SIZE && (size % NVME_LBA_BYTES == 0 && (offset % NVME_LBA_BYTES == 0 && (offset >= pool_start && (offset <= pool_end && size <= pool_end - offset))))));
+  bool allow = allow_proof || (allow_manifest || (allow_object || (allow_linen || (allow_quil || (allow_sexfs_meta || (allow_sexfs_obj || allow_pool_bulk))))));
   sexos_line("[sexdrive.write.guard.config] proof_lba=%llu proof_offset=%#llx manifest_lba=%llu object_lba_start=%llu object_lba_end=%llu proof_len=%llu magic=%#llx sexfs_meta=%llu-%llu sexfs_obj=%llu-%llu", (unsigned long long) WRITE_PROOF_LBA, (unsigned long long) expected_offset, (unsigned long long) MANIFEST_LBA, (unsigned long long) PROOF_OBJECT_START_LBA, (unsigned long long) PROOF_OBJECT_END_LBA, (unsigned long long) WRITE_PROOF_LEN, (unsigned long long) WRITE_PROOF_MAGIC, (unsigned long long) SEXFS_V0_META_START_LBA, (unsigned long long) SEXFS_V0_META_END_LBA, (unsigned long long) SEXFS_V0_OBJECT_START_LBA, (unsigned long long) SEXFS_V0_OBJECT_END_LBA);
   sexos_line("[sexdrive.write.guard.begin] offset=%#llx size=%llu buf_cap=%#llx proof_mode=%llu", (unsigned long long) offset, (unsigned long long) size, (unsigned long long) buf_cap, (unsigned long long)(proof_mode ? 1ULL : 0ULL));
   uint64_t lba = offset / NVME_LBA_BYTES;
@@ -339,7 +459,7 @@ static bool write_guard_allows(uint64_t offset, uint64_t size, uint64_t buf_cap)
   return allow;
 }
 static uint64_t nvme_write_one_block(uint64_t offset, uint64_t size, uint64_t src_va) {
-  if (size != WRITE_PROOF_LEN || (src_va == 0 || src_va == UINT64_MAX)) {
+  if (size == 0 || (size > PAGE_SIZE || (size > BLOCK_MAX_XFER || (size % NVME_LBA_BYTES != 0 || (offset % NVME_LBA_BYTES != 0 || (offset > (WRITE_PROOF_LBA + 1) * NVME_LBA_BYTES || (size > (WRITE_PROOF_LBA + 1) * NVME_LBA_BYTES - offset || (src_va == 0 || src_va == UINT64_MAX)))))))) {
     sexos_line("[sexdrive.nvme.write.err] reason=bad_args offset=%#llx size=%llu src_va=%#llx", (unsigned long long) offset, (unsigned long long) size, (unsigned long long) src_va);
     return BLOCK_ERR_BAD_LEN;
   }
@@ -357,21 +477,35 @@ static uint64_t nvme_write_one_block(uint64_t offset, uint64_t size, uint64_t sr
   uint32_t cq_phase = sexdrive_state.nvme_io_state.cq_phase;
   uint16_t write_cid = sexdrive_state.nvme_io_state.next_cid;
   sexdrive_state.nvme_io_state.next_cid = (uint16_t)(write_cid + 1u);
-  uint64_t write_phys = sys_alloc_phys(PAGE_SIZE);
-  uint64_t write_va = sys_map_phys(write_phys, PAGE_SIZE);
-  if (write_phys == 0 || (write_phys == UINT64_MAX || (write_phys % PAGE_SIZE != 0 || (write_va == 0 || write_va == UINT64_MAX)))) {
+  bool leased = false;
+  uint64_t write_phys = 0;
+  uint64_t write_va = 0;
+  uint64_t write_length = PAGE_SIZE;
+  if (SEXOS_CURRENT_REGION_WRITER) {
+    DmaLeaseResult prepared = dma_lease_prepare(&sexdrive_state.write_lease, &sexdrive_state.dma_device, (uint64_t) write_cid);
+    if (prepared.status != DMA_LEASE_OK) return BLOCK_ERR_NO_DEVICE;
+    leased = true;
+    write_phys = prepared.buffer.physical_address;
+    write_va = prepared.buffer.virtual_address;
+    write_length = prepared.buffer.length;
+  } else {
+    write_phys = sys_alloc_phys(PAGE_SIZE);
+    write_va = sys_map_phys(write_phys, PAGE_SIZE);
+  }
+  if (write_length < size || (write_phys == 0 || (write_phys == UINT64_MAX || (write_phys % PAGE_SIZE != 0 || (write_va == 0 || write_va == UINT64_MAX))))) {
+    if (leased)(void) dma_lease_uncertain(&sexdrive_state.write_lease, (uint64_t) write_cid, false);
     sexos_line("[sexdrive.nvme.write.err] reason=write_buf_invalid phys=%#llx va=%#llx", (unsigned long long) write_phys, (unsigned long long) write_va);
     return BLOCK_ERR_NO_DEVICE;
   }
   uint8_t *write_ptr = (uint8_t *)(uintptr_t) write_va;
   const uint8_t *src_ptr = (const uint8_t *)(uintptr_t) src_va;
   for (size_t i = 0; i < (size_t) PAGE_SIZE; ++i) sexos_volatile_write8(write_ptr + i, 0u);
-  for (size_t i = 0; i < (size_t) WRITE_PROOF_LEN; ++i) sexos_volatile_write8(write_ptr + i, sexos_volatile_read8(src_ptr + i));
+  for (size_t i = 0; i < (size_t) size; ++i) sexos_volatile_write8(write_ptr + i, sexos_volatile_read8(src_ptr + i));
   uint64_t slba = offset / NVME_LBA_BYTES;
-  uint32_t nlb = 0u;
+  uint32_t nlb = (uint32_t)(size / NVME_LBA_BYTES - 1);
   uint64_t max_lba = WRITE_PROOF_LBA;
-  uint64_t last_lba = slba;
-  uint64_t range_ok = slba <= max_lba ? 1ULL : 0ULL;
+  uint64_t last_lba = slba + (uint64_t) nlb;
+  uint64_t range_ok = last_lba <= max_lba ? 1ULL : 0ULL;
   if (hot_log()) sexos_line("[sexdrive.nvme.cmd.range] path=typed slba=%llu nlb=%llu max_lba=%llu ok=%llu", (unsigned long long) slba, (unsigned long long) nlb, (unsigned long long) max_lba, (unsigned long long) range_ok);
   uint32_t *sqe_ptr = (uint32_t *)(uintptr_t)(io_sq_va + (uint64_t) sq_tail * 64ULL);
   for (size_t i = 0; i < 16; ++i) sexos_volatile_write32(sqe_ptr + i, 0u);
@@ -382,11 +516,15 @@ static uint64_t nvme_write_one_block(uint64_t offset, uint64_t size, uint64_t sr
   sexos_volatile_write32(sqe_ptr + 10, (uint32_t)(slba & 0xFFFFFFFFULL));
   sexos_volatile_write32(sqe_ptr + 11, (uint32_t)(slba >> 32));
   sexos_volatile_write32(sqe_ptr + 12, nlb);
-  sexos_line("[sexdrive.nvme.write.submit] cid=%llu nsid=1 slba=%llu nlb=0 prp1=%#llx sq_tail=%llu", (unsigned long long) write_cid, (unsigned long long) slba, (unsigned long long) write_phys, (unsigned long long) sq_tail);
-  sexos_line("[sexdrive.block.write.api.nvme.submit] cid=%llu nsid=1 slba=%llu nlb=0 prp1=%#llx", (unsigned long long) write_cid, (unsigned long long) slba, (unsigned long long) write_phys);
+  sexos_line("[sexdrive.nvme.write.submit] cid=%llu nsid=1 slba=%llu nlb=%llu prp1=%#llx sq_tail=%llu", (unsigned long long) write_cid, (unsigned long long) slba, (unsigned long long) nlb, (unsigned long long) write_phys, (unsigned long long) sq_tail);
+  sexos_line("[sexdrive.block.write.api.nvme.submit] cid=%llu nsid=1 slba=%llu nlb=%llu prp1=%#llx", (unsigned long long) write_cid, (unsigned long long) slba, (unsigned long long) nlb, (unsigned long long) write_phys);
   if (hot_log()) sexos_line("[sexdrive.nvme.cmd.shape] path=typed op=WRITE cid=%llu nsid=%llu slba=%llu nlb=%llu bytes=%llu prp1=%#llx prp2=%#llx buf_va=%#llx buf_phys=%#llx buffer_cap=%#llx buffer_kind=memlend last_lba=%llu", (unsigned long long) write_cid, 1ULL, (unsigned long long) slba, (unsigned long long) nlb, (unsigned long long) size, (unsigned long long) write_phys, 0ULL, (unsigned long long) src_va, (unsigned long long) write_phys, (unsigned long long) SLOT_BUF_LEND, (unsigned long long) last_lba);
   if (hot_log()) sexos_line("[sexdrive.nvme.submit.detail] path=typed op=WRITE cid=%llu sq_tail_before=%llu sq_tail_after=%llu cq_head=%llu cq_phase=%llu lba=%llu bytes=%llu", (unsigned long long) write_cid, (unsigned long long) sq_tail, (unsigned long long)((sq_tail + 1u) % 16u), (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) slba, (unsigned long long) size);
   sexos_compiler_fence_seq_cst();
+  if (leased && dma_lease_submit(&sexdrive_state.write_lease, (uint64_t) write_cid) != DMA_LEASE_OK) {
+    (void) dma_lease_uncertain(&sexdrive_state.write_lease, (uint64_t) write_cid, false);
+    return BLOCK_ERR_NO_DEVICE;
+  }
   sq_tail = (sq_tail + 1u) % 16u;
   sexos_volatile_write32((uint32_t *)(uintptr_t)(map_va + sq1tdbl), sq_tail);
   if (hot_log()) sexos_line("[sexdrive.nvme.doorbell] path=typed qid=1 tail=%llu", (unsigned long long) sq_tail);
@@ -397,6 +535,7 @@ static uint64_t nvme_write_one_block(uint64_t offset, uint64_t size, uint64_t sr
   uint32_t last_dw3 = 0;
   if (hot_log()) sexos_line("[sexdrive.nvme.poll.begin] path=typed cid=%llu cq_head=%llu phase=%llu max_polls=%llu", (unsigned long long) write_cid, (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) max_polls);
   for (uint32_t p = 0; p < max_polls; ++p) {
+    nvme_wait_turn(p);
     polls += 1u;
     const uint32_t *cqe_ptr = (const uint32_t *)(uintptr_t)(io_cq_va + (uint64_t) cq_head * 16ULL);
     uint32_t rd_dw2 = sexos_volatile_read32(cqe_ptr + 2);
@@ -414,8 +553,18 @@ static uint64_t nvme_write_one_block(uint64_t offset, uint64_t size, uint64_t sr
   }
   if (hot_log()) sexos_line("[sexdrive.nvme.poll.end] path=typed cid=%llu found=%llu status=%llu cq_head=%llu phase=%llu polls=%llu", (unsigned long long) write_cid, (unsigned long long)(done ? 1ULL : 0ULL), (unsigned long long)(dw3 >> 17 & 0x7FFFu), (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) polls);
   if (!done) {
+    if (leased) {
+      (void) dma_lease_uncertain(&sexdrive_state.write_lease, (uint64_t) write_cid, true);
+      sexdrive_state.nvme_io_state.ready = false;
+      sexos_line("[sexdrive.dma.quarantine] ready=0 reason=unresolved_submission");
+    }
     sexos_line("[sexdrive.nvme.write.err] reason=cqe_timeout cid=%llu head=%llu phase=%llu", (unsigned long long) write_cid, (unsigned long long) cq_head, (unsigned long long) cq_phase);
     sexos_line("[sexdrive.nvme.poll.timeout.detail] path=typed cid=%llu expected_cid=%llu seen_cid=%llu seen_status=%llu seen_phase=%llu cq_head=%llu phase=%llu polls=%llu", (unsigned long long) write_cid, (unsigned long long) write_cid, (unsigned long long)(last_dw3 & 0xFFFFu), (unsigned long long)(last_dw3 >> 17 & 0x7FFFu), (unsigned long long)(last_dw3 >> 16 & 0x1u), (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) polls);
+    return BLOCK_ERR_NO_DEVICE;
+  }
+  if (leased && dma_lease_complete_observed(&sexdrive_state.write_lease, (uint64_t) write_cid, (uint64_t)(dw3 & 0xFFFFu), cq_phase, dw3 >> 16 & 1u) != DMA_LEASE_OK) {
+    sexdrive_state.nvme_io_state.ready = false;
+    sexos_line("[sexdrive.dma.quarantine] ready=0 reason=completion_identity");
     return BLOCK_ERR_NO_DEVICE;
   }
   uint32_t sf = dw3 >> 17 & 0x7FFFu;
@@ -507,6 +656,7 @@ static uint64_t nvme_write_readback_proof(uint64_t offset, uint64_t size, uint64
   uint32_t last_dw3 = 0;
   if (hot_log()) sexos_line("[sexdrive.nvme.poll.begin] path=selftest cid=%llu cq_head=%llu phase=%llu max_polls=%llu", (unsigned long long) write_cid, (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) max_polls);
   for (uint32_t p = 0; p < max_polls; ++p) {
+    nvme_wait_turn(p);
     polls += 1u;
     const uint32_t *cqe_ptr = (const uint32_t *)(uintptr_t)(io_cq_va + (uint64_t) cq_head * 16ULL);
     uint32_t rd_dw2 = sexos_volatile_read32(cqe_ptr + 2);
@@ -576,6 +726,7 @@ static uint64_t nvme_write_readback_proof(uint64_t offset, uint64_t size, uint64
   last_dw3 = 0;
   if (hot_log()) sexos_line("[sexdrive.nvme.poll.begin] path=selftest cid=%llu cq_head=%llu phase=%llu max_polls=%llu", (unsigned long long) read_cid, (unsigned long long) cq_head, (unsigned long long) cq_phase, (unsigned long long) max_polls);
   for (uint32_t p = 0; p < max_polls; ++p) {
+    nvme_wait_turn(p);
     polls += 1u;
     const uint32_t *cqe_ptr = (const uint32_t *)(uintptr_t)(io_cq_va + (uint64_t) cq_head * 16ULL);
     uint32_t rd_dw2 = sexos_volatile_read32(cqe_ptr + 2);
@@ -767,7 +918,8 @@ static uint64_t nvme_flush(void) {
   sexos_volatile_write32((uint32_t *)(uintptr_t)(map_va + sq1tdbl), sq_tail);
   bool done = false;
   uint32_t dw3 = 0;
-  for (uint32_t _poll = 0; _poll < 1000u; ++_poll) {
+  for (uint32_t _poll = 0; _poll < 1000000u; ++_poll) {
+    nvme_wait_turn(_poll);
     const uint32_t *cqe_ptr = (const uint32_t *)(uintptr_t)(io_cq_va + (uint64_t) cq_head * 16ULL);
     uint32_t rd_dw3 = sexos_volatile_read32(cqe_ptr + 3);
     uint32_t cid_now = rd_dw3 & 0xFFFFu;
@@ -781,6 +933,7 @@ static uint64_t nvme_flush(void) {
     sexos_spin_loop_hint();
   }
   if (!done) {
+    sexdrive_state.nvme_io_state.ready = false;
     sexos_line("[sexdrive.nvme.flush.err] reason=cqe_timeout cid=%llu head=%llu phase=%llu", (unsigned long long) flush_cid, (unsigned long long) cq_head, (unsigned long long) cq_phase);
     return BLOCK_ERR_NO_DEVICE;
   }
@@ -931,12 +1084,13 @@ static void nvme_probe_bar(void) {
   uint32_t cap_to = (uint32_t)(nvme_cap >> 24 & 0xFFULL);
   sexos_line("[sexdrive.nvme.reprovision.begin] old_cc=%#llx old_csts=%#llx old_aqa=%#llx old_asq=%#llx old_acq=%#llx cap_to=%llu dstrd=%llu", (unsigned long long) old_cc, (unsigned long long) old_csts, (unsigned long long) old_aqa, (unsigned long long) old_asq, (unsigned long long) old_acq, (unsigned long long) cap_to, (unsigned long long) cap_dstrd);
   sexos_line("[sexdrive.nvme.reprovision.disable.begin] cc_old=%#llx csts_old=%#llx", (unsigned long long) old_cc, (unsigned long long) old_csts);
-  uint32_t cc_disabled = old_cc & ~1u;
+  uint32_t cc_disabled = (old_cc & 0xFF00FFFEu) | 0x00460000u;
   sexos_volatile_write32((uint32_t *)(uintptr_t)(map_va + 0x0014ULL), cc_disabled);
   uint32_t disable_poll_limit = cap_to == 0u ? 1000000u : cap_to * 20000u > 200000u ? cap_to * 20000u : 200000u;
   uint32_t disable_polls = 0u;
   bool rdy0 = false;
   while (disable_polls < disable_poll_limit) {
+    nvme_wait_turn(disable_polls);
     uint32_t csts_now = sexos_volatile_read32((const uint32_t *)(uintptr_t)(map_va + 0x001CULL));
     if ((csts_now & 0x1u) == 0u) {
       rdy0 = true;
@@ -986,6 +1140,7 @@ static void nvme_probe_bar(void) {
   uint32_t enable_polls = 0u;
   bool rdy1 = false;
   while (enable_polls < enable_poll_limit) {
+    nvme_wait_turn(enable_polls);
     uint32_t csts_now = sexos_volatile_read32((const uint32_t *)(uintptr_t)(map_va + 0x001CULL));
     if ((csts_now & 0x1u) != 0u) {
       rdy1 = true;
@@ -1078,6 +1233,7 @@ static void nvme_probe_bar(void) {
   uint32_t ig_dw3 = 0u;
   uint32_t ig_phase = 0u;
   while (cqe_polls < 1000000u) {
+    nvme_wait_turn(cqe_polls);
     uint32_t acq0_dw0 = sexos_volatile_read32(acq0_ptr + 0);
     uint32_t acq0_dw1 = sexos_volatile_read32(acq0_ptr + 1);
     uint32_t acq0_dw2 = sexos_volatile_read32(acq0_ptr + 2);
@@ -1171,14 +1327,16 @@ static void nvme_probe_bar(void) {
   sexos_volatile_write32(cq_sqe_ptr + 6, (uint32_t)(io_cq_phys & 0xFFFFFFFFULL));
   sexos_volatile_write32(cq_sqe_ptr + 7, (uint32_t)(io_cq_phys >> 32));
   sexos_volatile_write32(cq_sqe_ptr + 10, 1u | 15u << 16);
-  sexos_volatile_write32(cq_sqe_ptr + 11, 1u);
-  sexos_line("[sexdrive.nvme.ioq.create_cq.submit] cid=%llu opc=%#llx qid=%llu qsize=%llu prp1=%#llx cdw11=%#llx", (unsigned long long) create_cq_cid, 0x05ULL, 1ULL, 15ULL, (unsigned long long) io_cq_phys, 1ULL);
+  uint32_t cq_flags = NVME_INTERRUPT_MODE_ENABLED ? 3u : 1u;
+  sexos_volatile_write32(cq_sqe_ptr + 11, cq_flags);
+  sexos_line("[sexdrive.nvme.ioq.create_cq.submit] cid=%llu opc=%#llx qid=%llu qsize=%llu prp1=%#llx cdw11=%#llx", (unsigned long long) create_cq_cid, 0x05ULL, 1ULL, 15ULL, (unsigned long long) io_cq_phys, (unsigned long long) cq_flags);
   sexos_compiler_fence_seq_cst();
   admin_sq_tail = (admin_sq_tail + 1u) % q_entries;
   sexos_volatile_write32((uint32_t *)(uintptr_t)(map_va + NVME_SQ0TDBL), admin_sq_tail);
   bool cq_done = false;
   uint32_t cq_cqe_dw3 = 0u;
   for (uint32_t _poll = 0; _poll < 1000000u; ++_poll) {
+    nvme_wait_turn(_poll);
     const uint32_t *cqe_ptr = (const uint32_t *)(uintptr_t)(acq_owned_va + (uint64_t) admin_cq_head * 16ULL);
     uint32_t dw2 = sexos_volatile_read32(cqe_ptr + 2);
     uint32_t dw3 = sexos_volatile_read32(cqe_ptr + 3);
@@ -1221,6 +1379,7 @@ static void nvme_probe_bar(void) {
   bool sq_done = false;
   uint32_t sq_cqe_dw3 = 0u;
   for (uint32_t _poll = 0; _poll < 1000000u; ++_poll) {
+    nvme_wait_turn(_poll);
     const uint32_t *cqe_ptr = (const uint32_t *)(uintptr_t)(acq_owned_va + (uint64_t) admin_cq_head * 16ULL);
     uint32_t dw3 = sexos_volatile_read32(cqe_ptr + 3);
     uint32_t cid_now = dw3 & 0xFFFFu;
@@ -1259,6 +1418,53 @@ static void nvme_probe_bar(void) {
   sexdrive_state.nvme_io_state.sq_tail = 0u;
   sexdrive_state.nvme_io_state.cq_head = 0u;
   sexdrive_state.nvme_io_state.cq_phase = 1u;
+  if (NVME_INTERRUPT_MODE_ENABLED) {
+    sexos_volatile_write32((uint32_t *)(uintptr_t)(map_va + 0x0010ULL), 1u);
+    sexos_line("[sexdrive.nvme.interrupt.ready] vector=34 iv=0 ien=1 intmc=1");
+  }
+  if (SEXOS_CURRENT_REGION_WRITER && sexdrive_state.reset_rebuild_pending) {
+    uint64_t old_generation = sexdrive_state.dma_device.generation;
+    DeviceResetReceipt kernel_resume = sexos_device_reset(SLOT_NVME_HOST, DEVICE_RESET_RESUME, old_generation, true);
+    if (kernel_resume.status != DEVICE_RESET_OK || (kernel_resume.phase != DEVICE_RESET_ACTIVE || kernel_resume.generation != old_generation + 1ULL)) {
+      sexdrive_state.nvme_io_state.ready = false;
+      sexos_line("[sexdrive.dma.reset.failed] reason=kernel_resume status=%llu generation=%llu phase=%llu", (unsigned long long) kernel_resume.status, (unsigned long long) kernel_resume.generation, (unsigned long long) kernel_resume.phase);
+      return;
+    }
+    if (dma_device_resume(&sexdrive_state.dma_device, true) != DMA_LEASE_OK) {
+      sexdrive_state.nvme_io_state.ready = false;
+      sexos_line("[sexdrive.dma.reset.failed] reason=device_resume");
+      return;
+    }
+    sexdrive_state.reset_rebuild_pending = false;
+    sexdrive_state.reset_count += 1u;
+    sexos_line("[sexdrive.dma.reset.resumed] generation=%llu resets=%llu ready=1 read_generation=%llu write_generation=%llu", (unsigned long long) sexdrive_state.dma_device.generation, (unsigned long long) sexdrive_state.reset_count, (unsigned long long) sexdrive_state.read_lease.generation, (unsigned long long) sexdrive_state.write_lease.generation);
+    return;
+  }
+  if (DMA_QUARANTINE_PROBE_ENABLED && !sexdrive_state.dma_probe_injected) {
+    sexdrive_state.dma_probe_injected = true;
+    sexos_line("[sexdrive.dma.probe.arm] next_cid=%llu read_phys=%#llx", (unsigned long long) sexdrive_state.nvme_io_state.next_cid, (unsigned long long) sexdrive_state.read_lease.buffer.physical_address);
+    sexos_spin_loop_count(DMA_PROBE_HANDSHAKE_SPINS);
+    uint64_t dst_phys = sys_alloc_phys(PAGE_SIZE);
+    uint64_t dst_va = sys_map_phys(dst_phys, PAGE_SIZE);
+    if (dst_phys == 0ULL || (dst_phys == UINT64_MAX || (dst_va == 0ULL || dst_va == UINT64_MAX))) {
+      sexos_line("[sexdrive.dma.probe.failed] reason=destination");
+      return;
+    }
+    uint64_t first = nvme_read_into_mapped_va(0ULL, NVME_LBA_BYTES, dst_va);
+    uint64_t second = UINT64_MAX;
+    uint64_t third = UINT64_MAX;
+    if (sexdrive_state.nvme_io_state.ready) second = nvme_read_into_mapped_va(0ULL, NVME_LBA_BYTES, dst_va);
+    if (sexdrive_state.nvme_io_state.ready) third = nvme_read_into_mapped_va(0ULL, NVME_LBA_BYTES, dst_va);
+    if (!dma_lease_is_quarantined(&sexdrive_state.read_lease)) {
+      sexos_line("[sexdrive.dma.probe.failed] reason=no_quarantine first=%llu second=%llu third=%llu", (unsigned long long) first, (unsigned long long) second, (unsigned long long) third);
+      return;
+    }
+    uint64_t cid_before_retry = (uint64_t) sexdrive_state.nvme_io_state.next_cid;
+    uint64_t retry = nvme_read_into_mapped_va(0ULL, NVME_LBA_BYTES, dst_va);
+    uint64_t cid_after_retry = (uint64_t) sexdrive_state.nvme_io_state.next_cid;
+    sexos_line("[sexdrive.dma.probe.fault] first=%llu second=%llu third=%llu retry=%llu phase=%llu tag=%llu ready=%llu cid_before_retry=%llu cid_after_retry=%llu read_phys=%#llx", (unsigned long long) first, (unsigned long long) second, (unsigned long long) third, (unsigned long long) retry, (unsigned long long) sexdrive_state.read_lease.phase, (unsigned long long) sexdrive_state.read_lease.tag, (unsigned long long)(sexdrive_state.nvme_io_state.ready ? 1ULL : 0ULL), (unsigned long long) cid_before_retry, (unsigned long long) cid_after_retry, (unsigned long long) sexdrive_state.read_lease.buffer.physical_address);
+    return;
+  }
   uint64_t ap3_buf_phys = sys_alloc_phys(PAGE_SIZE);
   uint64_t ap3_buf_va = sys_map_phys(ap3_buf_phys, PAGE_SIZE);
   if (ap3_buf_phys == 0ULL || (ap3_buf_phys == UINT64_MAX || (ap3_buf_phys % PAGE_SIZE != 0ULL || (ap3_buf_va == 0ULL || ap3_buf_va == UINT64_MAX)))) sexos_line("[sexdrive.storage100.rw.fail] reason=ap3_buf_alloc_invalid");
@@ -1317,6 +1523,7 @@ static void nvme_probe_bar(void) {
     uint32_t rd_dw2 = 0u;
     uint32_t rd_dw3 = 0u;
     for (uint32_t _poll = 0; _poll < 1000000u; ++_poll) {
+      nvme_wait_turn(_poll);
       const uint32_t *cqe_ptr = (const uint32_t *)(uintptr_t)(io_cq_va + (uint64_t) io_cq_head * 16ULL);
       uint32_t dw0 = sexos_volatile_read32(cqe_ptr + 0);
       uint32_t dw1 = sexos_volatile_read32(cqe_ptr + 1);
@@ -1358,6 +1565,110 @@ static void nvme_probe_bar(void) {
     sexdrive_state.nvme_io_state.cq_phase = io_cq_phase;
   } else sexos_line("[sexdrive.storage100.io_read_probe.skip] reason=not_requested");
 }
+static bool dma_lease_generation_compatible(const DmaLease *lease, const DmaDeviceEpoch *device) {
+  return lease != NULL && (device != NULL && (device->phase == DMA_DEVICE_QUIESCENT && (device->generation < UINT64_MAX && (lease->device_id == device->device_id && (lease->generation == device->generation && (lease->phase == DMA_AVAILABLE || lease->phase == DMA_QUARANTINED))))));
+}
+static DmaLeaseStatus dma_lease_advance_generation(DmaLease *lease, const DmaDeviceEpoch *device) {
+  if (lease->phase == DMA_QUARANTINED) return dma_lease_retire_quarantined(lease, device);
+  return dma_lease_rebind_available(lease, device);
+}
+static bool nvme_recover_controller(void) {
+  if (!SEXOS_CURRENT_REGION_WRITER) return false;
+  if (sexdrive_state.nvme_io_state.ready || sexdrive_state.reset_count >= DMA_RESET_LIMIT) return false;
+  if (!dma_lease_is_quarantined(&sexdrive_state.read_lease) && !dma_lease_is_quarantined(&sexdrive_state.write_lease)) return false;
+  uint64_t map_va = sexdrive_state.nvme_io_state.map_va;
+  if (map_va == 0ULL || map_va == UINT64_MAX) return false;
+  uint64_t generation = sexdrive_state.dma_device.generation;
+  if (sexdrive_state.dma_device.phase == DMA_DEVICE_ACTIVE) {
+    DeviceResetReceipt kernel_begin = sexos_device_reset(SLOT_NVME_HOST, DEVICE_RESET_BEGIN, generation, false);
+    if (kernel_begin.status != DEVICE_RESET_OK || (kernel_begin.generation != generation || kernel_begin.phase != DEVICE_RESET_RESETTING)) {
+      sexos_line("[sexdrive.dma.reset.failed] reason=kernel_begin status=%llu generation=%llu phase=%llu", (unsigned long long) kernel_begin.status, (unsigned long long) kernel_begin.generation, (unsigned long long) kernel_begin.phase);
+      return false;
+    }
+    if (dma_device_reset_begin(&sexdrive_state.dma_device) != DMA_LEASE_OK) sexos_fail();
+  } else if (sexdrive_state.dma_device.phase != DMA_DEVICE_RESETTING) return false;
+  uint64_t cap = sexos_volatile_read64((const uint64_t *)(uintptr_t)(map_va + 0x0000ULL));
+  uint32_t cap_to = (uint32_t)(cap >> 24 & 0xFFULL);
+  uint32_t cc_old = sexos_volatile_read32((const uint32_t *)(uintptr_t)(map_va + 0x0014ULL));
+  uint32_t cc_disabled = cc_old & ~1u;
+  sexos_line("[sexdrive.dma.reset.begin] generation=%llu resets=%llu cc=%#llx", (unsigned long long) sexdrive_state.dma_device.generation, (unsigned long long) sexdrive_state.reset_count, (unsigned long long) cc_old);
+  sexos_volatile_write32((uint32_t *)(uintptr_t)(map_va + 0x0014ULL), cc_disabled);
+  uint32_t poll_limit = cap_to == 0u ? 1000000u : cap_to * 20000u > 200000u ? cap_to * 20000u : 200000u;
+  uint32_t polls = 0u;
+  bool rdy0 = false;
+  while (polls < poll_limit) {
+    nvme_wait_turn(polls);
+    uint32_t csts = sexos_volatile_read32((const uint32_t *)(uintptr_t)(map_va + 0x001CULL));
+    if ((csts & 1u) == 0u) {
+      rdy0 = true;
+      break;
+    }
+    polls += 1u;
+  }
+  if (!rdy0) {
+    sexos_line("[sexdrive.dma.reset.failed] reason=rdy0_timeout polls=%llu", (unsigned long long) polls);
+    return false;
+  }
+  uint32_t cc_now = sexos_volatile_read32((const uint32_t *)(uintptr_t)(map_va + 0x0014ULL));
+  uint32_t csts_now = sexos_volatile_read32((const uint32_t *)(uintptr_t)(map_va + 0x001CULL));
+  DeviceResetReceipt kernel_quiescent = sexos_device_reset(SLOT_NVME_HOST, DEVICE_RESET_OBSERVE_QUIESCENT, generation, false);
+  if (kernel_quiescent.status != DEVICE_RESET_OK || (kernel_quiescent.phase != DEVICE_RESET_QUIESCENT || (kernel_quiescent.generation != generation || ((kernel_quiescent.cc & 1u) != 0u || (kernel_quiescent.csts & 1u) != 0u)))) {
+    sexos_line("[sexdrive.dma.reset.failed] reason=kernel_quiescence status=%llu generation=%llu phase=%llu cc=%#llx csts=%#llx", (unsigned long long) kernel_quiescent.status, (unsigned long long) kernel_quiescent.generation, (unsigned long long) kernel_quiescent.phase, (unsigned long long) kernel_quiescent.cc, (unsigned long long) kernel_quiescent.csts);
+    return false;
+  }
+  if (dma_device_observe_quiescent(&sexdrive_state.dma_device, (cc_now & 1u) != 0u, (csts_now & 1u) != 0u) != DMA_LEASE_OK) sexos_fail();
+  if (!dma_lease_generation_compatible(&sexdrive_state.read_lease, &sexdrive_state.dma_device) || !dma_lease_generation_compatible(&sexdrive_state.write_lease, &sexdrive_state.dma_device)) {
+    sexos_line("[sexdrive.dma.reset.failed] reason=lease_generation");
+    return false;
+  }
+  if (dma_lease_advance_generation(&sexdrive_state.read_lease, &sexdrive_state.dma_device) != DMA_LEASE_OK || dma_lease_advance_generation(&sexdrive_state.write_lease, &sexdrive_state.dma_device) != DMA_LEASE_OK) {
+    sexos_line("[sexdrive.dma.reset.failed] reason=lease_retirement");
+    return false;
+  }
+  sexdrive_state.reset_rebuild_pending = true;
+  sexos_line("[sexdrive.dma.reset.quiescent] generation=%llu next_generation=%llu polls=%llu read_phase=%llu write_phase=%llu", (unsigned long long) sexdrive_state.dma_device.generation, (unsigned long long)(sexdrive_state.dma_device.generation + 1ULL), (unsigned long long) polls, (unsigned long long) sexdrive_state.read_lease.phase, (unsigned long long) sexdrive_state.write_lease.phase);
+  if (DMA_QUARANTINE_PROBE_ENABLED) sexos_spin_loop_count(DMA_PROBE_HANDSHAKE_SPINS);
+  nvme_probe_bar();
+  bool recovered = !sexdrive_state.reset_rebuild_pending && (sexdrive_state.nvme_io_state.ready && (dma_device_epoch_active(&sexdrive_state.dma_device) && (sexdrive_state.read_lease.generation == sexdrive_state.dma_device.generation && sexdrive_state.write_lease.generation == sexdrive_state.dma_device.generation)));
+  if (!recovered) sexos_line("[sexdrive.dma.reset.failed] reason=rebuild");
+  return recovered;
+}
+static bool nvme_recovery_maybe_start(void) {
+  if (sexdrive_state.nvme_io_state.ready || (!dma_lease_is_quarantined(&sexdrive_state.read_lease) && !dma_lease_is_quarantined(&sexdrive_state.write_lease))) {
+    sexdrive_state.reset_recovery_pending = false;
+    return false;
+  }
+  uint64_t generation = sexdrive_state.dma_device.generation;
+  DeviceResetReceipt snapshot = sexos_device_reset(SLOT_NVME_HOST, DEVICE_RESET_QUERY, generation, false);
+  if (snapshot.status != DEVICE_RESET_OK || snapshot.generation != generation) {
+    sexdrive_state.reset_recovery_pending = false;
+    sexos_line("[sexdrive.dma.reset.failed] reason=kernel_query status=%llu generation=%llu phase=%llu", (unsigned long long) snapshot.status, (unsigned long long) snapshot.generation, (unsigned long long) snapshot.phase);
+    return false;
+  }
+  if (snapshot.interrupt_revision != snapshot.acknowledged_revision) {
+    sexdrive_state.reset_recovery_pending = true;
+    sexos_line("[sexdrive.dma.reset.deferred] generation=%llu produced=%llu acknowledged=%llu", (unsigned long long) generation, (unsigned long long) snapshot.interrupt_revision, (unsigned long long) snapshot.acknowledged_revision);
+    return false;
+  }
+  sexdrive_state.reset_recovery_pending = false;
+  return nvme_recover_controller();
+}
+static void dma_probe_finish_recovery(void) {
+  if (!sexdrive_state.dma_probe_recovery_pending) return;
+  sexdrive_state.dma_probe_recovery_pending = false;
+  if (!sexdrive_state.nvme_io_state.ready) {
+    sexos_line("[sexdrive.dma.probe.failed] reason=recovery");
+    return;
+  }
+  uint64_t dst_phys = sys_alloc_phys(PAGE_SIZE);
+  uint64_t dst_va = sys_map_phys(dst_phys, PAGE_SIZE);
+  if (dst_phys == 0ULL || (dst_phys == UINT64_MAX || (dst_va == 0ULL || dst_va == UINT64_MAX))) {
+    sexos_line("[sexdrive.dma.probe.failed] reason=recovered_destination");
+    return;
+  }
+  uint64_t status = nvme_read_into_mapped_va(0ULL, NVME_LBA_BYTES, dst_va);
+  sexos_line("[sexdrive.dma.probe.recovered] status=%llu phase=%llu generation=%llu device_generation=%llu ready=%llu read_phys=%#llx resets=%llu", (unsigned long long) status, (unsigned long long) sexdrive_state.read_lease.phase, (unsigned long long) sexdrive_state.read_lease.generation, (unsigned long long) sexdrive_state.dma_device.generation, (unsigned long long)(sexdrive_state.nvme_io_state.ready ? 1ULL : 0ULL), (unsigned long long) sexdrive_state.read_lease.buffer.physical_address, (unsigned long long) sexdrive_state.reset_count);
+}
 static void xhci_probe_mmio(void) {
   uint64_t map_va = sexos_map_pci_bar(SLOT_USB_HOST, 0ULL, 0x1000ULL);
   if (map_va == UINT64_MAX || map_va == 0ULL) {
@@ -1375,13 +1686,31 @@ static void xhci_probe_mmio(void) {
 void sexdrive_main(void) {
   sexdrive_state_init(&sexdrive_state);
   sexos_line("[sexdrive.init.start]");
-  nvme_probe_bar();
+  if (sexdrive_dma_init()) nvme_probe_bar();
+  else sexos_line("[sexdrive.dma.region.err] ready=0");
+  if (DMA_QUARANTINE_PROBE_ENABLED && sexdrive_state.dma_probe_injected) {
+    sexdrive_state.dma_probe_recovery_pending = true;
+    if (nvme_recovery_maybe_start()) dma_probe_finish_recovery();
+    else if (!sexdrive_state.reset_recovery_pending) dma_probe_finish_recovery();
+  }
   xhci_probe_mmio();
-  for (uint32_t _spin = 0; _spin < 10000000u; ++_spin) sexos_spin_loop_hint();
+  if (SEXOS_CURRENT_REGION_WRITER) sexos_spin_loop_count(10000000u);
+  else {
+    for (uint32_t _spin = 0; _spin < 10000000u; ++_spin) sexos_spin_loop_hint();
+  }
   uint64_t fb_size = 1024ULL * 768ULL * 4ULL;
-  uint64_t shared_addr = sexos_alloc_shared_buffer(fb_size, 1ULL);
-  if (shared_addr == 0ULL) while (1) sexos_spin_loop_hint();
-  (void) sexos_pdx_call(SLOT_SHELL, OP_SHELL_BIND_BUFFER, shared_addr, 0ULL, 0ULL);
+  uint64_t shared_addr = 0;
+  if (SEXOS_CURRENT_REGION_WRITER) {
+    MemoryRegionReply frame_view = sexos_memory_region_view(SLOT_FRAME_REGION, 0, fb_size, REGION_QUERY | REGION_WRITE);
+    shared_addr = frame_view.status == 0 ? frame_view.value0 : UINT64_MAX;
+    if (shared_addr == 0 || shared_addr == UINT64_MAX) {
+      sexos_line("[sexdrive.frame.region.err] slot=%llu", (unsigned long long) SLOT_FRAME_REGION);
+      sexos_spin_forever();
+    }
+  } else {
+    shared_addr = sexos_alloc_shared_buffer(fb_size, 1ULL);
+    if (shared_addr == 0ULL) sexos_spin_forever();
+  }(void) sexos_pdx_call(SLOT_SHELL, OP_SHELL_BIND_BUFFER, shared_addr, 0ULL, 0ULL);
   uint32_t frame = 0u;
   if (hot_log()) sexos_line("[sexdrive.ready]");
   while (1) {
@@ -1398,6 +1727,19 @@ void sexdrive_main(void) {
       uint64_t lba = BLOCK_SECTOR_SIZE != 0ULL ? offset / BLOCK_SECTOR_SIZE : 0ULL;
       uint64_t submit_cid_snapshot = (uint64_t) sexdrive_state.nvme_io_state.next_cid;
       uint64_t submit_tail_snapshot = (uint64_t) sexdrive_state.nvme_io_state.sq_tail;
+      if (SEXOS_CURRENT_REGION_WRITER && cmd == 0xFFULL) {
+        uint64_t generation = sexdrive_state.dma_device.generation;
+        DeviceResetReceipt interrupt_ack = offset == 0x22ULL && (size != 0ULL && _buf_cap == generation) ? sexos_device_interrupt_ack(SLOT_NVME_HOST, generation, size) : (DeviceResetReceipt) {
+          .status = DEVICE_RESET_INVALID
+        };
+        sexos_line("[sexdrive.interrupt.ack] vector=%llu revision=%llu generation=%llu status=%llu acknowledged=%llu", (unsigned long long) offset, (unsigned long long) size, (unsigned long long) _buf_cap, (unsigned long long) interrupt_ack.status, (unsigned long long) interrupt_ack.acknowledged_revision);
+        if (interrupt_ack.status == DEVICE_RESET_OK) if (!sexdrive_state.nvme_io_state.ready) if (dma_lease_is_quarantined(&sexdrive_state.read_lease) || dma_lease_is_quarantined(&sexdrive_state.write_lease)) {
+          sexdrive_state.reset_recovery_pending = true;
+          if (nvme_recovery_maybe_start()) dma_probe_finish_recovery();
+          else if (sexdrive_state.dma_probe_recovery_pending && !sexdrive_state.reset_recovery_pending) dma_probe_finish_recovery();
+        }
+        continue;
+      }
       if (hot_log()) sexos_line("[sexdrive.block.typed.recv] cmd=%llu offset=%#llx size=%llu buf_cap=%#llx caller=%u", (unsigned long long) cmd, (unsigned long long) offset, (unsigned long long) size, (unsigned long long) _buf_cap, (unsigned) msg.caller_pd);
       if (cmd == BLOCK_READ || cmd == BLOCK_WRITE) if (hot_log()) sexos_line("[sexdrive.block.req] op=%s ready=%llu lba=%llu bytes=%llu buffer_cap=%#llx device_cap=%#llx", op, (unsigned long long) ready_snapshot, (unsigned long long) lba, (unsigned long long) size, (unsigned long long) _buf_cap, (unsigned long long) SLOT_NVME_HOST);
       uint64_t reply_val = 0ULL;
@@ -1416,15 +1758,24 @@ void sexdrive_main(void) {
           sexos_line("[sexdrive.block.read.handoff.err] reason=bad_len_phase_b size=%llu expect=512", (unsigned long long) size);
           reply_val = BLOCK_ERR_BAD_LEN;
         } else {
-          uint64_t fill_va = sexos_map_mem_lend(SLOT_BUF_LEND);
-          if (fill_va == 0ULL || fill_va == UINT64_MAX) {
-            sexos_line("[sexdrive.block.read.handoff.err] reason=map_failed va=%#llx", (unsigned long long) fill_va);
-            if (hot_log()) sexos_line("[sexdrive.nvme.cmd.shape.err] path=typed reason=memlend_map_failed buffer_cap=%#llx", (unsigned long long) SLOT_BUF_LEND);
+          RegionWriterReceipt writer = {
+            0
+          };
+          if (!block_writer_claim(msg.caller_pd, &writer)) {
+            sexos_line("[sexdrive.block.read.handoff.err] reason=writer_claim_failed");
             reply_val = BLOCK_ERR_NO_DEVICE;
           } else {
-            if (hot_log()) sexos_line("[sexdrive.bufcap.map.ok] fill_va=%#llx", (unsigned long long) fill_va);
-            if (hot_log()) sexos_line("[sexdrive.block.nvme.submit] op=%s lba=%llu bytes=%llu cid=%llu tail=%llu ready=%llu", op, (unsigned long long) lba, (unsigned long long) size, (unsigned long long) submit_cid_snapshot, (unsigned long long) submit_tail_snapshot, (unsigned long long) ready_snapshot);
-            reply_val = nvme_read_into_mapped_va(offset, size, fill_va);
+            uint64_t fill_va = block_buffer_view(msg.caller_pd, size, REGION_READ | REGION_WRITE);
+            if (fill_va == 0ULL || fill_va == UINT64_MAX) {
+              sexos_line("[sexdrive.block.read.handoff.err] reason=map_failed va=%#llx", (unsigned long long) fill_va);
+              if (hot_log()) sexos_line("[sexdrive.nvme.cmd.shape.err] path=typed reason=memlend_map_failed buffer_cap=%#llx", (unsigned long long) SLOT_BUF_LEND);
+              reply_val = BLOCK_ERR_NO_DEVICE;
+            } else {
+              if (hot_log()) sexos_line("[sexdrive.bufcap.map.ok] fill_va=%#llx", (unsigned long long) fill_va);
+              if (hot_log()) sexos_line("[sexdrive.block.nvme.submit] op=%s lba=%llu bytes=%llu cid=%llu tail=%llu ready=%llu", op, (unsigned long long) lba, (unsigned long long) size, (unsigned long long) submit_cid_snapshot, (unsigned long long) submit_tail_snapshot, (unsigned long long) ready_snapshot);
+              reply_val = nvme_read_into_mapped_va(offset, size, fill_va);
+            }
+            if (!block_writer_release(msg.caller_pd, &writer)) sexos_fail();
           }
         } else {
           sexos_line("[sexdrive.block.read.api.validate.ok] offset=%#llx size=%llu lba_bytes=%llu", (unsigned long long) offset, (unsigned long long) size, (unsigned long long) NVME_LBA_BYTES);
@@ -1436,7 +1787,7 @@ void sexdrive_main(void) {
       } else if (cmd == BLOCK_WRITE) {
         if (hot_log()) sexos_line("[sexdrive.block.write.api.recv] offset=%#llx size=%llu buf_cap=%#llx", (unsigned long long) offset, (unsigned long long) size, (unsigned long long) _buf_cap);
         if (write_guard_allows(offset, size, _buf_cap)) {
-          uint64_t fill_va = sexos_map_mem_lend(SLOT_BUF_LEND);
+          uint64_t fill_va = block_buffer_view(msg.caller_pd, size, REGION_READ);
           if (fill_va == 0ULL || fill_va == UINT64_MAX) {
             sexos_line("[sexdrive.nvme.write.err] reason=map_failed va=%#llx", (unsigned long long) fill_va);
             if (hot_log()) sexos_line("[sexdrive.nvme.cmd.shape.err] path=typed reason=memlend_map_failed buffer_cap=%#llx", (unsigned long long) SLOT_BUF_LEND);
@@ -1453,8 +1804,13 @@ void sexdrive_main(void) {
           reply_val = BLOCK_ERR_NO_DEVICE;
         }
       } else if (cmd == BLOCK_SYNC) {
-        sexos_line("[sexdrive.sync.recv] cmd=%llu honest=flush_not_emulated_by_qemu_nvme", (unsigned long long) cmd);
-        reply_val = BLOCK_ERR_NO_DEVICE;
+        if (SEXOS_SEXDRIVE_CURRENT_DURABILITY) {
+          reply_val = nvme_flush();
+          sexos_line("[sexdrive.sync.result] status=%llu actual_nvme_flush=1", (unsigned long long) reply_val);
+        } else {
+          sexos_line("[sexdrive.sync.recv] cmd=%llu honest=flush_not_emulated_by_qemu_nvme", (unsigned long long) cmd);
+          reply_val = BLOCK_ERR_NO_DEVICE;
+        }
       } else {
         sexos_line("[sexdrive.block.typed] cmd=%llu ERR_BAD_CMD unknown", (unsigned long long) cmd);
         reply_val = BLOCK_ERR_BAD_CMD;
@@ -1472,6 +1828,10 @@ void sexdrive_main(void) {
           if (hot_log()) sexos_line("[sexdrive.block.reply] op=%s status=4 reason=%s ready=%llu", op, reason, (unsigned long long) ready_snapshot);
         } else if (hot_log()) sexos_line("[sexdrive.block.reply] op=%s status=%llu reason=other ready=%llu", op, (unsigned long long) reply_val, (unsigned long long) ready_snapshot);
       }
+    }
+    if (SEXOS_CURRENT_REGION_WRITER) if (!sexdrive_state.nvme_io_state.ready) if (dma_lease_is_quarantined(&sexdrive_state.read_lease) || dma_lease_is_quarantined(&sexdrive_state.write_lease)) {
+      sexdrive_state.reset_recovery_pending = true;
+      if (nvme_recovery_maybe_start()) dma_probe_finish_recovery();
     }
     frame += 1u;
     uint32_t *ptr = (uint32_t *)(uintptr_t) shared_addr;

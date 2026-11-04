@@ -1,0 +1,6 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "start_sha256": "123f46152b713f1e393c7e958757d07acb4455fd062923a9e40c2980ae9bc01a",
+  "covered": ["scalar static defaults", "two reference windows", "base two-tab frame", "Proofs-B root dispatcher", "authenticated display readiness", "boot surfaces", "bounded startup inbox", "runtime polling loop", "current SexInput HID identity", "SexDrive buffer sender", "stale app rejection", "document READY and OPEN_LINEN", "scene settings persistence and replies"],
+  "remaining": ["lifecycle hint receiver", "clipboard receiver", "Spindle history receiver", "close-declined receiver", "desktop-text receiver", "full inline HID/helper equivalence", "remaining extended root cases", "exact UI-IR behavior"]
+}

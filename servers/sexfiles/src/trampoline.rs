@@ -18,6 +18,8 @@ fn hot_log() -> bool {
 #[no_mangle]
 pub extern "C" fn trampoline_main() {
     serial_println!("[sexfiles.trampoline.enter] ok=1");
+    assert!(crate::proof::run_memory_authority_negative_proof(),
+        "SEXFILES_MEMORY_AUTHORITY_NEGATIVE_FAILED");
     // SLOT_STORAGE is statically assigned; no dynamic registration call is used here.
     serial_println!("[sexfiles.trampoline.before_register] slot=1 ok=1");
     // Optional RamFS proof run (compile-time flag).
@@ -226,7 +228,14 @@ pub extern "C" fn trampoline_main() {
     serial_println!("[sexfiles.init.ready] slot=1 ok=1");
     serial_println!("[sexfiles.trampoline.loop.enter] ok=1");
 
+    let mut app_custody=sex_pdx::app_lifecycle::ServiceCustody::new();
+    static mut DOCUMENTS:crate::document::Service=crate::document::Service::new();
+    let documents=unsafe{&mut DOCUMENTS};
+    let mut probes=crate::spindle_probe::Service::new();
+    let mut history=crate::spindle_history::Service::new();
+    let mut durable_history=crate::history_disk::Durable::new();
     loop {
+        history.poll(pdx_reply);probes.poll(pdx_reply);documents.poll(pdx_reply);
         static mut SEXFILES_TRAMP_LISTEN_BUDGET: u32 = 8;
         unsafe {
             if SEXFILES_TRAMP_LISTEN_BUDGET > 0 {
@@ -241,7 +250,7 @@ pub extern "C" fn trampoline_main() {
                 d
             } else {
                 // Listen on slot 0 (self message ring — all servers use this pattern).
-                let m = pdx_listen_raw(0);
+                let m = if history.pending()||probes.pending()||documents.pending(){match sex_pdx::pdx_try_listen_raw(0){Some(m)=>m,None=>{documents.progress(&mut vfs::DocumentBackend);sex_pdx::sys_yield();continue}}}else{pdx_listen_raw(0)};
                 (m.type_id, m.caller_pd, m.arg0, m.arg1, m.arg2)
             };
         let msg = crate::pdx::ReplayMsg {
@@ -249,6 +258,21 @@ pub extern "C" fn trampoline_main() {
             arg0: msg_a0, arg1: msg_a1, arg2: msg_a2,
         };
         let caller = msg.caller_pd;
+        if msg.type_id==sex_pdx::app_lifecycle::OP_APP_EXIT {
+            if let Some((notice,acked))=app_custody.receive(&mut sex_pdx::app_lifecycle::KernelAuthority,
+                msg.type_id,msg.caller_pd as u64,[msg.arg0,msg.arg1,msg.arg2],|notice| {
+                    history.retire(notice.target_pd);probes.retire(notice.target_pd);
+                    assert!(documents.retire(notice.target_pd,&mut vfs::DocumentBackend),"DOCUMENT_SNAPSHOT_RETIRE_SCRUB");
+                    let (closed,revoked)=vfs::retire_app_subject(notice.target_pd);
+                    sex_pdx::serial_record!("[files.app.cleanup] target={} task={} handles={} caps={} saved_data=retained selection=0",
+                        notice.target_pd,notice.task_id,closed,revoked);
+                }) {
+                sex_pdx::serial_record!("[files.app.cleanup.ack] target={} task={} ok={}",notice.target_pd,notice.task_id,acked as u8);
+            }
+            continue;
+        }
+        if app_custody.is_retired(caller) { continue; }
+
         if hot_log() { serial_println!(
             "[sexfiles.trampoline.after_listen] type={:#x} caller={} a0={:#x} a1={:#x}",
             msg.type_id, caller, msg.arg0, msg.arg1
@@ -257,6 +281,22 @@ pub extern "C" fn trampoline_main() {
             "[sexfiles.route.recv] type={:#x} caller={} a0={:#x} a1={:#x}",
             msg.type_id, caller, msg.arg0, msg.arg1
         ); }
+
+        if msg.type_id==sex_pdx::document::OP{
+            if let Some(r)=sex_pdx::document::Request::decode(msg.arg0,msg.arg1,msg.arg2){
+                let live=document_caller_live(caller);
+                if let Some(v)=documents.handle(caller,live,r,&mut vfs::DocumentBackend){pdx_reply(caller,v);}
+            }continue;
+        }
+        if msg.type_id==sex_pdx::spindle_probe::OP{
+            if let Some(r)=sex_pdx::spindle_probe::Request::decode(msg.arg0,msg.arg1,msg.arg2){
+                if let Some(v)=probes.handle(caller,crate::spindle_history::live(caller),r,&mut vfs::SpindleProbeBackend){pdx_reply(caller,v);}
+            }continue;
+        }
+        if msg.type_id==sex_pdx::spindle_history::OP {
+            if let Some(value)=history.handle(&vfs::RAMFS,caller,crate::spindle_history::live(caller),msg.arg0,msg.arg1,msg.arg2,&mut durable_history){pdx_reply(caller,value);}
+            continue;
+        }
 
         // Route message type_id to VFS handler, passing caller PD for namespace/cap check
         let reply = vfs::handle_vfs_message(msg.type_id, msg.arg0, msg.arg1, msg.arg2, caller);
@@ -272,4 +312,25 @@ pub extern "C" fn trampoline_main() {
             pdx_reply(caller, reply);
         }
     }
+}
+
+/// The message authenticates a PD. Only its immutable kernel lifecycle grant
+/// supplies the task identity; a document request carries no replacement task.
+fn document_caller_live(caller:u32)->bool {
+    const _:()=assert!(sex_pdx::app_catalog::DOCUMENT_COUNT<=64);
+    let Some(i)=sex_pdx::app_catalog::by_target(caller).filter(|i|i.app!=sex_pdx::app_catalog::App::Spindle)else{return false};
+    let Some(index)=sex_pdx::app_catalog::DOCUMENT_TARGETS.iter().position(|target|*target==caller)else{return false};
+    let(slot,surface)=(i.lifecycle_slot,i.surface);
+    let Ok(c)=sex_pdx::app_lifecycle::catalog(slot)else{return false};
+    let browser=i.app==sex_pdx::app_catalog::App::Browser;
+    if !c.is_subject(caller,surface,3)||(browser&&c.task_id!=i.target){return false}
+    let live=sex_pdx::app_lifecycle::info(slot)==Err(sex_pdx::app_lifecycle::LIVE);
+    if browser&&live{
+        static AUDITED:core::sync::atomic::AtomicU64=core::sync::atomic::AtomicU64::new(0);
+        let bit=1u64<<index;
+        if AUDITED.fetch_or(bit,core::sync::atomic::Ordering::Relaxed)&bit==0{
+            sex_pdx::serial_record!("[files.browser.import.profile] target={} task={} slot={} surface={} create_only=1 held_storage_route=1 runtime_mint=0",c.target_pd,c.task_id,slot,c.surface_id);
+        }
+    }
+    live
 }

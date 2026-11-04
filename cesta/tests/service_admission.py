@@ -32,6 +32,23 @@ def main():
              '-o',work/(stem+'.h'),'--plan',declared])
         assert actual.read_bytes()==declared.read_bytes(),('compiled import differs from admitted module',stem)
     print('actual RPC, RX and TX imports equal the independently admitted module plans')
+    for stem,modules in (('kernel_rpc',('kernel_reply_protocol','kernel_poll_protocol')),
+                         ('kernel_domains',('kernel_ring_push_protocol','kernel_ring_protocol','kernel_input_protocol')),
+                         ('kernel_paging',('kernel_page_install_protocol','kernel_page_reclaim_protocol','kernel_page_cleanup_protocol')),
+                         ('kernel_apps',('kernel_app_handover_protocol','kernel_app_activation_protocol')),
+                         ('kernel_pci',('kernel_pci_command_protocol',)),
+                         ('kernel_region_writer',('kernel_region_writer_protocol',))):
+        actual=work/(stem+'.actual.plan')
+        run([args.cesta,'export-c','--plan',actual,'src/'+stem+'.cesta','--',
+             '-Igenerated/include','-Iruntime/kernel'])
+        expected=[]
+        for name in modules:
+            declared=work/(name+'.module.plan')
+            run([args.cesta,'protocol','export','interfaces/'+name+'.module','Protocols',
+                 '-o',work/(name+'.h'),'--plan',declared])
+            expected.extend(parse(declared.read_bytes()))
+        assert parse(actual.read_bytes())==expected,('kernel import differs from admitted module',stem)
+    print('actual kernel reply, poll, ring, external-input, page, app-lifecycle, PCI-command and region-writer epoch imports equal independently admitted module plans')
     module=HERE/'interfaces/network_layouts.module'
     layout=run([args.cesta,'layout','check',module,'Layouts'])
     generated=run([args.cesta,'layout','functions',module,'Layouts'])

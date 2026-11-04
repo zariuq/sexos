@@ -137,7 +137,14 @@ SexosMessage sexos_listen(SexosListener *listener, uint64_t slot)
 {
     for (;;) {
         SexosMessage message = sexos_listen_once(slot);
-        if (!message.type_id) { sexos_yield(); continue; }
+        if (!message.type_id) {
+#if defined(SEXOS_PDX_SENDER_TASK) && SEXOS_PDX_SENDER_TASK
+            if (!slot) sexos_wait_self(); else sexos_yield();
+#else
+            sexos_yield();
+#endif
+            continue;
+        }
         if (listener->wrapper_budget) {
             --listener->wrapper_budget;
             sexos_line("[pdx.listen.raw.wrapper] type=%#llx caller=%u a0=%#llx a1=%#llx",

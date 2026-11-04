@@ -1,0 +1,208 @@
+#include "sexos_arm64_boot.h"
+
+#define P3_PAGE UINT64_C(0x1000)
+#define P3_BLOCK_2M UINT64_C(0x200000)
+#define P3_BLOCK_1G UINT64_C(0x40000000)
+#define P3_PL011 UINT64_C(0x09000000)
+#define P3_HHDM UINT64_C(0xffff800000000000)
+#define P3_USER_CODE UINT64_C(0x00400000)
+#define P3_USER_DATA UINT64_C(0x00410000)
+#define P3_USER_STACK UINT64_C(0x00420000)
+#define P3_USER_CODE2 UINT64_C(0x00430000)
+#define P3_KERNEL_BASE UINT64_C(0x40080000)
+#define P3_HHDM_MAGIC UINT64_C(0x5eed1a117e570003)
+#define P3_MAIR UINT64_C(0x000000000000ff00)
+#define P3_TCR UINT64_C(0x00000002b5103510)
+#define P3_SCTLR UINT64_C(0x30d8180d)
+#define P3_VALID_TABLE UINT64_C(3)
+#define P3_VALID_BLOCK UINT64_C(1)
+#define P3_AF (UINT64_C(1)<<10)
+#define P3_SH_INNER (UINT64_C(3)<<8)
+#define P3_AP_RW_EL1 (UINT64_C(0)<<6)
+#define P3_AP_RW_BOTH (UINT64_C(1)<<6)
+#define P3_AP_RO_EL1 (UINT64_C(2)<<6)
+#define P3_AP_RO_BOTH (UINT64_C(3)<<6)
+#define P3_UXN (UINT64_C(1)<<54)
+#define P3_PXN (UINT64_C(1)<<53)
+#define P3_NORMAL (UINT64_C(1)<<2)
+#define P3_DEVICE UINT64_C(0)
+typedef struct __attribute__((aligned(4096))){uint64_t entry[512];} Arm64Table;
+typedef struct __attribute__((aligned(4096))){uint8_t byte[4096];} Arm64Page;
+static Arm64Table arm64_tables[16];
+static size_t arm64_table_next;
+static uint64_t arm64_ttbr0,arm64_ttbr1;
+static Arm64Page arm64_user_code,arm64_user_data,arm64_user_stack;
+#if defined(ARM64_PHASE5) && ARM64_PHASE5
+static Arm64Page arm64_user_code2;
+#endif
+extern uint8_t __kernel_start,__kernel_end,__bss_start;
+extern uint8_t sex_arm_vectors;
+extern _Noreturn void sex_arm_el0_enter(uint64_t entry,uint64_t stack);
+static _Noreturn void phase3_fatal(const char *message)
+{
+    arm64_write_str(message);arm64_stop();
+}
+static Arm64Table *alloc_table(void)
+{
+    if(arm64_table_next>=16u)phase3_fatal("[sex.arm.mmu] FATAL table_pool_exhausted\n");
+    Arm64Table *table=&arm64_tables[arm64_table_next++];
+    for(size_t i=0;i<512u;i++)table->entry[i]=0;
+    return table;
+}
+static size_t index0(uint64_t va){return(size_t)((va>>39)&UINT64_C(0x1ff));}
+static size_t index1(uint64_t va){return(size_t)((va>>30)&UINT64_C(0x1ff));}
+static size_t index2(uint64_t va){return(size_t)((va>>21)&UINT64_C(0x1ff));}
+static size_t index3(uint64_t va){return(size_t)((va>>12)&UINT64_C(0x1ff));}
+static Arm64Table *next_table(Arm64Table *table,size_t index)
+{
+    uint64_t descriptor=table->entry[index];
+    if((descriptor&UINT64_C(3))==P3_VALID_TABLE)
+        return(Arm64Table *)(uintptr_t)(descriptor&UINT64_C(0x0000fffffffff000));
+    if(descriptor!=0)phase3_fatal("[sex.arm.mmu] FATAL table_shape\n");
+    Arm64Table *next=alloc_table();
+    table->entry[index]=(uint64_t)(uintptr_t)next|P3_VALID_TABLE;
+    return next;
+}
+static void map_page(Arm64Table *root,uint64_t va,uint64_t pa,uint64_t attrs)
+{
+    Arm64Table *l1=next_table(root,index0(va));
+    Arm64Table *l2=next_table(l1,index1(va));
+    Arm64Table *l3=next_table(l2,index2(va));
+    l3->entry[index3(va)]=(pa&UINT64_C(0x0000fffffffff000))|attrs|P3_VALID_TABLE;
+}
+static void map_block_1g(Arm64Table *l1,uint64_t va,uint64_t pa,uint64_t attrs)
+{
+    l1->entry[index1(va)]=(pa&UINT64_C(0x0000ffffc0000000))|attrs|P3_VALID_BLOCK;
+}
+static void require_map(Arm64MapRole role,uint64_t va,uint64_t pa,uint64_t bytes,
+                        bool el0,bool write,bool execute,bool device)
+{
+    Arm64MapContract contract={role,va,pa,bytes,el0,write,execute,device};
+    if(!arm64_phase3_map_valid(contract))phase3_fatal("[sex.arm.mmu] FATAL map_contract\n");
+}
+static void prepare_smoke(void)
+{
+    static const uint32_t payload[17]={
+        UINT32_C(0xd2a00829),UINT32_C(0xd2800020),UINT32_C(0xf9000120),
+        UINT32_C(0xd2a8010a),UINT32_C(0xf9400141),UINT32_C(0xd2800040),
+        UINT32_C(0xf9000120),UINT32_C(0xf9000140),UINT32_C(0xd2800060),
+        UINT32_C(0xf9000120),UINT32_C(0xd2a0082b),UINT32_C(0xd61f0160),
+        UINT32_C(0xd2800080),UINT32_C(0xf9000120),UINT32_C(0xd2aa000c),
+        UINT32_C(0xf9400181),UINT32_C(0x14000000)};
+    volatile uint32_t *code=(volatile uint32_t *)(void *)arm64_user_code.byte;
+    for(size_t i=0;i<17u;i++)code[i]=payload[i];
+    volatile uint64_t *mailbox=(volatile uint64_t *)(void *)arm64_user_data.byte;
+    mailbox[0]=0;mailbox[1]=P3_HHDM_MAGIC;
+#if defined(ARM64_PHASE5) && ARM64_PHASE5
+    static const uint32_t payload2[18]={
+        UINT32_C(0xd2a00829),UINT32_C(0xd2800020),UINT32_C(0xd2800521),UINT32_C(0xd4000001),
+        UINT32_C(0xf9000920),UINT32_C(0xd2800040),UINT32_C(0xd29bd5a1),UINT32_C(0xd4000001),
+        UINT32_C(0xf9000d20),UINT32_C(0xd2800040),UINT32_C(0xd2800541),UINT32_C(0xd4000001),
+        UINT32_C(0xf9001120),UINT32_C(0xd28000a0),UINT32_C(0xf9000120),UINT32_C(0xd2ac000c),
+        UINT32_C(0xf9400181),UINT32_C(0x14000000)};
+    volatile uint32_t *code2=(volatile uint32_t *)(void *)arm64_user_code2.byte;
+    for(size_t i=0;i<18u;i++)code2[i]=payload2[i];
+#endif
+}
+static void arm64_mmu_init(void)
+{
+    Arm64Table *t0=alloc_table();
+    uint64_t start=(uint64_t)(uintptr_t)&__kernel_start;
+    uint64_t split=(uint64_t)(uintptr_t)&__bss_start;
+    uint64_t end=(uint64_t)(uintptr_t)&__kernel_end;
+    require_map(ARM64_MAP_KERNEL_TEXT,start,start,split-start,false,false,true,false);
+    require_map(ARM64_MAP_KERNEL_DATA,split,split,end-split,false,true,false,false);
+    for(uint64_t at=start;at<end;at+=P3_PAGE){
+        uint64_t attrs=at<split?P3_AF|P3_SH_INNER|P3_AP_RO_EL1|P3_UXN|P3_NORMAL:
+            P3_AF|P3_SH_INNER|P3_AP_RW_EL1|P3_UXN|P3_PXN|P3_NORMAL;
+        map_page(t0,at,at,attrs);
+    }
+    require_map(ARM64_MAP_UART,P3_PL011,P3_PL011,P3_BLOCK_2M,false,true,false,true);
+    Arm64Table *uart_l1=next_table(t0,index0(P3_PL011));
+    Arm64Table *uart_l2=next_table(uart_l1,index1(P3_PL011));
+    uart_l2->entry[index2(P3_PL011)]=(P3_PL011&UINT64_C(0x0000ffffffe00000))|
+        P3_AF|P3_AP_RW_EL1|P3_UXN|P3_PXN|P3_DEVICE|P3_VALID_BLOCK;
+    uint64_t code_pa=(uint64_t)(uintptr_t)arm64_user_code.byte;
+    uint64_t data_pa=(uint64_t)(uintptr_t)arm64_user_data.byte;
+    uint64_t stack_pa=(uint64_t)(uintptr_t)arm64_user_stack.byte;
+    require_map(ARM64_MAP_USER_CODE,P3_USER_CODE,code_pa,P3_PAGE,true,false,true,false);
+    require_map(ARM64_MAP_USER_DATA,P3_USER_DATA,data_pa,P3_PAGE,true,true,false,false);
+    require_map(ARM64_MAP_USER_STACK,P3_USER_STACK,stack_pa,P3_PAGE,true,true,false,false);
+    map_page(t0,P3_USER_CODE,code_pa,P3_AF|P3_SH_INNER|P3_AP_RO_BOTH|P3_PXN|P3_NORMAL);
+    map_page(t0,P3_USER_DATA,data_pa,P3_AF|P3_SH_INNER|P3_AP_RW_BOTH|P3_UXN|P3_PXN|P3_NORMAL);
+    map_page(t0,P3_USER_STACK,stack_pa,P3_AF|P3_SH_INNER|P3_AP_RW_BOTH|P3_UXN|P3_PXN|P3_NORMAL);
+#if defined(ARM64_PHASE5) && ARM64_PHASE5
+    uint64_t code2_pa=(uint64_t)(uintptr_t)arm64_user_code2.byte;
+    require_map(ARM64_MAP_USER_CODE2,P3_USER_CODE2,code2_pa,P3_PAGE,true,false,true,false);
+    map_page(t0,P3_USER_CODE2,code2_pa,P3_AF|P3_SH_INNER|P3_AP_RO_BOTH|P3_PXN|P3_NORMAL);
+#endif
+    Arm64Table *t1=alloc_table();arm64_ttbr0=(uint64_t)(uintptr_t)t0;arm64_ttbr1=(uint64_t)(uintptr_t)t1;
+    Arm64Table *hhdm_l1=next_table(t1,index0(P3_HHDM));
+    require_map(ARM64_MAP_HHDM_DEVICE,P3_HHDM,0,P3_BLOCK_1G,false,true,false,true);
+    require_map(ARM64_MAP_HHDM_DRAM,P3_HHDM+P3_BLOCK_1G,P3_BLOCK_1G,P3_BLOCK_1G,false,true,false,false);
+    map_block_1g(hhdm_l1,P3_HHDM,0,P3_AF|P3_AP_RW_EL1|P3_UXN|P3_PXN|P3_DEVICE);
+    map_block_1g(hhdm_l1,P3_HHDM+P3_BLOCK_1G,P3_BLOCK_1G,
+        P3_AF|P3_SH_INNER|P3_AP_RW_EL1|P3_UXN|P3_PXN|P3_NORMAL);
+    arm64_write_str("[sex.arm.mmu] tables=ok\n");
+    __asm__ volatile("dsb sy"::: "memory");
+    __asm__ volatile("msr MAIR_EL1, %0"::"r"(P3_MAIR):"memory");
+    __asm__ volatile("msr TCR_EL1, %0"::"r"(P3_TCR):"memory");
+    __asm__ volatile("msr TTBR0_EL1, %0"::"r"((uint64_t)(uintptr_t)t0):"memory");
+    __asm__ volatile("msr TTBR1_EL1, %0\nisb"::"r"((uint64_t)(uintptr_t)t1):"memory");
+    __asm__ volatile("msr SCTLR_EL1, %0\nisb\nic iallu\ndsb sy\nisb"::"r"(P3_SCTLR):"memory");
+    uint64_t sctlr;__asm__ volatile("mrs %0, SCTLR_EL1":"=r"(sctlr));
+    if((sctlr&1u)==0)phase3_fatal("[sex.arm.mmu] FATAL mmu_not_enabled\n");
+    arm64_write_str("[sex.arm.mmu] on=1\n");
+    if((sctlr&(UINT64_C(1)<<19))==0)phase3_fatal("[sex.arm.mmu] FATAL wxn_clear\n");
+    arm64_write_str("[sex.arm.mmu] wx=1\n");
+    uint64_t probe=*(volatile const uint64_t *)(uintptr_t)(P3_HHDM+data_pa+8u);
+    if(probe!=P3_HHDM_MAGIC)phase3_fatal("[sex.arm.mmu] FATAL hhdm_mismatch\n");
+    arm64_write_str("[sex.arm.mmu] hhdm=ok\nSEX_ARM_MMU_OK\n");
+}
+uint32_t arm64_phase3_warden_live(uint64_t esr,uint64_t far,uint64_t elr)
+{
+    uint32_t tag=*(volatile const uint32_t *)(void *)arm64_user_data.byte;
+    Arm64FaultAction action=arm64_phase3_fault_decide((Arm64FaultObservation){tag,(uint8_t)((esr>>26)&63u),far});
+    if(action==ARM64_FAULT_HALT){
+        arm64_write_str("[sex.arm.neg] MISMATCH tag=");arm64_write_dec(tag);
+        arm64_write_str(" ec=0x");arm64_write_hex((esr>>26)&63u);
+        arm64_write_str(" far=0x");arm64_write_hex(far);
+        arm64_write_str(" elr=0x");arm64_write_hex(elr);
+        arm64_write_str("\nSEX_ARM_PHASE3_FAIL\n");return(uint32_t)action;
+    }
+    if(tag==1u)arm64_write_str("[sex.arm.neg] el0_read_kernel=aborted\n");
+    else if(tag==2u)arm64_write_str("[sex.arm.neg] el0_write_ro=aborted\n");
+    else if(tag==3u)arm64_write_str("[sex.arm.neg] el0_exec_data=aborted\n");
+    else{arm64_write_str("[sex.arm.el0] done=1\nSEX_ARM_PHASE3_OK\n");}
+    return(uint32_t)action;
+}
+uint64_t arm64_phase3_ttbr0(void){return arm64_ttbr0;}
+uint64_t arm64_phase3_ttbr1(void){return arm64_ttbr1;}
+uint64_t arm64_phase3_mailbox(size_t index)
+{
+    return index<512u?((volatile const uint64_t *)(const void *)arm64_user_data.byte)[index]:0;
+}
+void arm64_phase3_install_vectors(void)
+{
+    uint64_t vectors=(uint64_t)(uintptr_t)&sex_arm_vectors;
+    __asm__ volatile("msr VBAR_EL1, %0\nisb"::"r"(vectors):"memory");
+    arm64_write_str("[sex.arm.exc] vbar=ok\n");
+}
+_Noreturn void arm64_phase3_main(uint64_t dtb,uint64_t entered_el)
+{
+    uint8_t current=arm64_current_el();bool magic_ok=false;
+    arm64_write_str("[sex.arm.entry] current_el=");arm64_write_dec(entered_el);arm64_write_byte('\n');
+    arm64_write_str("[sex.arm.el1] ok=");arm64_write_dec(current==1u);arm64_write_byte('\n');
+    if(!dtb)arm64_write_str("[sex.arm.dtb] x0=0 present=0 note=elf_boot_no_fdt\n");
+    else{arm64_write_str("[sex.arm.dtb] ptr=0x");arm64_write_hex(dtb);arm64_write_byte('\n');
+        if((dtb&7u)==0){uint32_t raw=*(volatile const uint32_t *)(uintptr_t)dtb;magic_ok=__builtin_bswap32(raw)==ARM64_DTB_MAGIC;}
+        arm64_write_str(magic_ok?"[sex.arm.dtb] magic=ok\n":"[sex.arm.dtb] magic=bad\n");}
+    Arm64BootStatus status=arm64_boot_validate((Arm64BootObservation){dtb,(uint8_t)entered_el,current,magic_ok});
+    if(status!=ARM64_BOOT_OK){arm64_write_str("[sex.arm.phase3.fail] code=");arm64_write_dec(status);arm64_write_byte('\n');arm64_stop();}
+    arm64_write_str("[sex.arm.uart] pl011=ok\nSEX_ARM_ALIVE\nSEX_ARM_PHASE2_OK\n");
+    prepare_smoke();arm64_mmu_init();arm64_phase3_install_vectors();
+    arm64_write_str("[sex.arm.el0] enter=1\n");
+    sex_arm_el0_enter(P3_USER_CODE,P3_USER_STACK+P3_PAGE);
+}
+
+

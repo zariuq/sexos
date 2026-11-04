@@ -1,0 +1,9 @@
+{
+  "pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "sources": [
+    {
+      "path": "crates/sex-net-config/src/lib.rs",
+      "sha256": "e6713f58f993f3254056f5e60b33fb2d7cb9b67d17409787577d82483be8a2fe"
+    }
+  ]
+}

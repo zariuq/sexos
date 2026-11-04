@@ -57,6 +57,20 @@ const CAP_RIGHT_OPEN_EXISTING: u8 =
 const CAP_MAX_RECORDS: usize = 256;
 
 impl RamFs {
+    /// Publish a complete owner-private snapshot in one service transition.
+    /// Failed validation/allocation before the swap cannot expose a partial file.
+    pub fn prepare_owned(&self,handle:u64,data:&[u8],caller:u32)->Result<Vec<u8>,i64>{
+        if data.len()>messages::RAMFS_MAX_FILE_SIZE{return Err(messages::ERR_OVERFLOW)}
+        let files=self.files.read();let entry=Self::find_active_by_handle(&files,handle).ok_or(messages::ERR_INVALID_HANDLE)?;
+        if caller==0||entry.owner_pd!=caller{return Err(messages::ERR_PERM_DENIED)}
+        let mut next=Vec::new();next.try_reserve_exact(data.len()).map_err(|_|messages::ERR_FULL)?;next.extend_from_slice(data);Ok(next)
+    }
+    pub fn publish_owned(&self,handle:u64,next:Vec<u8>,caller:u32)->Result<(),i64>{
+        if next.len()>messages::RAMFS_MAX_FILE_SIZE{return Err(messages::ERR_OVERFLOW)}
+        let mut files=self.files.write();let entry=Self::find_active_by_handle_mut(&mut files,handle).ok_or(messages::ERR_INVALID_HANDLE)?;
+        if caller==0||entry.owner_pd!=caller{return Err(messages::ERR_PERM_DENIED)}entry.data=next;Ok(())
+    }
+    pub fn replace_owned(&self,handle:u64,data:&[u8],caller:u32)->Result<(),i64>{let next=self.prepare_owned(handle,data,caller)?;self.publish_owned(handle,next,caller)}
     pub const fn new() -> Self {
         Self {
             files: RwLock::new(Vec::new()),
@@ -64,6 +78,26 @@ impl RamFs {
             next_object_id: AtomicU64::new(1),
             next_handle: AtomicU64::new(1),
         }
+    }
+
+    /// Release a terminal subject's volatile leases, preserving saved bytes and
+    /// valid leases held by other live subjects. Lock order matches open/write.
+    pub fn retire_subject(&self, subject: u32) -> (usize,usize) {
+        let mut files=self.files.write();
+        let mut caps=self.caps.write();
+        let mut revoked=0;
+        for cap in caps.iter_mut() {
+            if cap.valid && cap.subject_pd==subject { cap.valid=false; revoked+=1; }
+        }
+        let mut closed=0;
+        for file in files.iter_mut() {
+            if file.active && file.owner_pd==subject && !caps.iter().any(|c|
+                c.valid && c.object_id==file.object_id && c.generation==file.cap_generation
+                && c.subject_pd!=subject && c.rights & CAP_RIGHT_OPEN_EXISTING!=0) {
+                file.active=false; closed+=1;
+            }
+        }
+        (closed,revoked)
     }
 
     /// Find an active entry by handle.

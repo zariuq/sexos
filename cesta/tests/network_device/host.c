@@ -112,7 +112,19 @@ int main(int argc,char **argv)
         TxContext bad={.device=&device,.frame={frame,sizeof frame},.held=true,.identity=device.tx_page+1,.budget=1};
         (void)network_tx_run(&bad);abort();
     }
-    if(!strcmp(argv[1],"timeout")) {
+    if(!strcmp(argv[1],"permit")) {
+        TxContext once={.device=&device,.frame={frame,sizeof frame}};
+        assert(tx_valid(&once) && tx_acquire(&once) && tx_submit(&once));
+        assert(once.attempted && !tx_permit(&once) && !tx_valid(&once));
+        while(!tx_ready(&once)) assert(!tx_failed(&once));
+        tx_transfer(&once);
+        assert(!tx_submit(&once) && tx_count==1 && !pending);
+        TxContext failed={.device=&device,.frame={frame,sizeof frame}};
+        device.tx_busy=true;
+        assert(!tx_submit(&failed) && failed.attempted);
+        device.tx_busy=false;
+        assert(!tx_valid(&failed) && !tx_submit(&failed) && tx_count==1);
+    } else if(!strcmp(argv[1],"timeout")) {
         completion_delay=UINT32_MAX;
         assert(!network_device_send(&device,(cesta_read_bytes){frame,sizeof frame}));
         assert(device.failed && device.tx_busy && device.failure==NET_TIMEOUT);

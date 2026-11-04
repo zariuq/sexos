@@ -1,5 +1,4 @@
-use x86_64::VirtAddr;
-use core::sync::atomic::{AtomicU32, Ordering, AtomicPtr, AtomicBool};
+use core::sync::atomic::{AtomicU32, Ordering, AtomicPtr};
 use crate::cheri::SexCapability;
 use core::ptr;
 use alloc::collections::{BTreeMap, VecDeque};
@@ -9,7 +8,7 @@ use spin::Mutex;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapabilityKind {
     Memory, DMA, IPC, Interrupt, Domain, Node, Spawn, Pci, Network, Socket, MemLend, RemoteProxy, VfsNode,
-    InputRing, MessageQueue,
+    InputRing, MessageQueue, Region, FramePool, PagerMapping, DemandRegion, AppLifecycle, EntropySource, ClockSource, TrustPolicy,
 }
 
 #[repr(C, align(64))]
@@ -30,7 +29,7 @@ pub struct MemLendCapData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct IpcCapData { pub node_id: u32, pub target_pd_id: u32, pub entry_point: VirtAddr }
+pub struct IpcCapData { pub node_id: u32, pub target_pd_id: u32 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryCapData { pub cheri_cap: SexCapability, pub pku_key: u8 }
@@ -45,7 +44,12 @@ pub struct NodeCapData { pub node_id: u32, pub sexdrive_pd_id: u32, pub inode_id
 pub struct SpawnCapData { pub max_pds: u32, pub allowed_pku_keys: u32 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PciCapData { pub bus: u8, pub dev: u8, pub func: u8, pub vendor_id: u16, pub device_id: u16 }
+pub struct PciCapData { pub bus: u8, pub dev: u8, pub func: u8, pub vendor_id: u16, pub device_id: u16,
+    /// Immutable BAR0 view assigned before capability sealing.
+    pub bar0_view: Option<sex_pdx::memory_region::RegionGrant>,
+    /// Explicit BOOT-only command-bit permission; a BAR lease alone has none.
+    pub command: Option<sex_pdx::pci_command::Grant>,
+}
 
 pub struct DisplayHardwareLease {
     pub domain: u16,
@@ -84,6 +88,16 @@ pub enum CapabilityData {
     Domain(u32), Node(NodeCapData), Spawn(SpawnCapData), Pci(PciCapData),
     Network(NetworkCapData), Socket(SocketCapData), MemLend(MemLendCapData), RemoteProxy(GlobalCapId),
     VfsNode(VfsNodeCapData),
+    Region(sex_pdx::memory_region::RegionGrant),
+    FramePool(crate::paging_state::FramePoolGrant),
+    PagerMapping(crate::paging_state::PagerMappingGrant),
+    DemandRegion(crate::paging_state::DemandRegionGrant),
+    AppLifecycle(crate::app_resource_state::LifecycleGrant),
+    AppActivation(crate::app_resource_state::ActivationGrant),
+    HistoryRecovery(sex_pdx::history_recovery::Grant),
+    EntropySource(sex_pdx::entropy_source::Grant),
+    ClockSource(sex_pdx::clock_source::Grant),
+    TrustPolicy(sex_pdx::trust_source::Grant),
     InputRing, MessageQueue,
 }
 
@@ -95,74 +109,7 @@ pub struct Capability {
     pub cheri_meta: u64,
 }
 
-/// A Lock-Free, Wait-Free Capability Table using an Atomic Array.
-#[repr(align(4096))]
-pub struct CapabilityTable {
-    pub slots: [AtomicPtr<Capability>; 1024],
-    next_slot: AtomicU32,
-    sealed: AtomicBool,
-}
-
-impl CapabilityTable {
-    pub const fn new() -> Self {
-        const INIT: AtomicPtr<Capability> = AtomicPtr::new(ptr::null_mut());
-        Self {
-            slots: [INIT; 1024],
-            next_slot: AtomicU32::new(0),
-            sealed: AtomicBool::new(false),
-        }
-    }
-
-    pub fn seal(&self) {
-        self.sealed.store(true, Ordering::SeqCst);
-    }
-
-    pub fn insert(&self, data: CapabilityData) -> u32 {
-        if self.sealed.load(Ordering::Acquire) {
-            panic!("UCGM: Attempted to insert capability into sealed table");
-        }
-        let slot = self.next_slot.fetch_add(1, Ordering::SeqCst) % 1024;
-        let id = slot + 1;
-        let cap = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Capability { id, data, cheri_meta: 0 }));
-        let old = self.slots[slot as usize].swap(cap, Ordering::AcqRel);
-        if !old.is_null() {
-            // RCU reclamation omitted for brevity
-        }
-        id
-    }
-
-    pub fn insert_at(&self, id: u32, data: CapabilityData) {
-        if self.sealed.load(Ordering::Acquire) {
-            panic!("UCGM: Attempted to insert_at into sealed table");
-        }
-        if id == 0 || id > 1024 { return; }
-        let slot = (id - 1) as usize;
-        let cap = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(Capability { id, data, cheri_meta: 0 }));
-        let old = self.slots[slot].swap(cap, Ordering::AcqRel);
-        if !old.is_null() {
-            // RCU reclamation omitted
-        }
-    }
-
-    pub fn find(&self, id: u32) -> Option<Capability> {
-        if id == 0 || id > 1024 { return None; }
-        let slot = (id - 1) as usize;
-        let ptr = self.slots[slot].load(Ordering::Acquire);
-        if ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(*ptr) }
-        }
-    }
-
-    /// Formal Verification Hook: Revocation Invariant
-    /// Asserts that all capabilities covering target range are invalidated.
-    pub fn verify_revocation(&self, _addr: u64, _len: u64) -> bool {
-        // [Verified in DESIGN_PHASE14]
-        // Invariant: No slot in CapabilityTable points to memory covering [_addr, _addr+_len).
-        true 
-    }
-}
+pub use crate::capability_table::CapabilityTable;
 
 use crate::ipc_ring::RingBuffer;
 use crate::ipc::messages::MessageType;
@@ -179,10 +126,7 @@ pub enum PkruValue {
 impl PkruValue {
     /// Computes the standard PKRU mask for a Protection Domain.
     /// Opens PKEY 0 (Kernel) and the target pkey.
-    /// Shared memory (PKEY 14) is mapped statically:
-    /// - Domain 2 (SexDrive/Producer): RW
-    /// - Domain 1 (SexDisplay/Consumer): RO
-    /// - Others: No Access
+    /// Shared regions use separately mapped aliases tagged with each holder's key.
     pub fn for_domain(pkey: u8) -> u32 {
         let mut mask: u32 = 0xFFFF_FFFF;
         // Open PKEY 0 (Default/Kernel)
@@ -191,25 +135,6 @@ impl PkruValue {
         // Open target PKEY (Self) as RW
         if pkey < 16 {
             mask &= !(0b11 << (pkey * 2));
-        }
-
-        // Handle PKEY 14 (SHARED) via Hard-coded Identity Assertions
-        let shared_pkey = 14;
-        let shift = shared_pkey * 2;
-        mask &= !(0b11 << shift); // Clear bits first
-
-        if pkey == 2 {
-            // Producer (SexDrive): RW (0b00)
-            mask |= 0b00 << shift;
-            debug_assert!((mask >> shift) & 0b11 == 0b00);
-        } else if pkey == 1 {
-            // Consumer (SexDisplay): RO (0b10)
-            mask |= 0b10 << shift;
-            debug_assert!((mask >> shift) & 0b11 == 0b10);
-        } else {
-            // Others: No Access (0b11)
-            mask |= 0b11 << shift;
-            debug_assert!((mask >> shift) & 0b11 == 0b11);
         }
 
         mask
@@ -228,6 +153,8 @@ pub struct ProtectionDomain {
     pub main_task: AtomicPtr<crate::scheduler::Task>,
     pub trampoline_task: AtomicPtr<crate::scheduler::Task>,
     pub incoming_replies: Mutex<VecDeque<crate::ipc::messages::IpcReply>>,
+    /// Replies this domain owes, granted only by accepted invocations.
+    pub reply_credits: Mutex<crate::ipc::reply_credit::ReplyCredits>,
 }
 
 impl ProtectionDomain {
@@ -245,10 +172,11 @@ impl ProtectionDomain {
             main_task: AtomicPtr::new(ptr::null_mut()),
             trampoline_task: AtomicPtr::new(ptr::null_mut()),
             incoming_replies: Mutex::new(VecDeque::with_capacity(1)),
+            reply_credits: Mutex::new(crate::ipc::reply_credit::ReplyCredits::new()),
         };
 
-        // Static Binding: Slot 0 is ALWAYS the PD's own message ring.
-        pd.grant_capability(0, CapabilityData::MessageQueue);
+        // Slot 0 is an explicit syscall bridge, not an entry in this
+        // one-indexed capability table. PDX_LISTEN handles the self ring.
         pd
     }
 
@@ -257,7 +185,9 @@ impl ProtectionDomain {
     }
 
     pub fn grant_capability(&self, slot: u64, data: CapabilityData) {
-        unsafe { (*self.cap_table).insert_at(slot as u32, data) }
+        if let Some(slot) = crate::capability_slot::decode_capability_slot(slot) {
+            unsafe { (*self.cap_table).insert_at(slot, data) }
+        }
     }
 
     pub fn find_capability(&self, id: u32) -> Option<Capability> {

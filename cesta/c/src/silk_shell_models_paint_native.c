@@ -1,0 +1,9 @@
+#include "silk_shell_models_paint.h"
+size_t shell_models_peer_object_count(const ShellLinenRenderContext *ctx)
+{
+ size_t count=0;
+ for(size_t i=0;i<LINEN_MAX_OBJECTS;++i)if(ctx->shell.models->LINEN_OBJECTS[i].present)++count;
+ return count;
+}
+
+

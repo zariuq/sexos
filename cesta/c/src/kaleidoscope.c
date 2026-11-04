@@ -1,4 +1,10 @@
 #include "sexos_client.h"
+#include "kaleidoscope_body.h"
+#include "kaleidoscope_html.h"
+#if !defined(SEXOS_KALEIDOSCOPE_CURRENT)
+#define SEXOS_KALEIDOSCOPE_CURRENT 0
+
+#endif
 #define KALEIDO_SURFACE_ID UINT64_C(300)
 #define TEXT_COLOR UINT32_C(0x00CDD6F4)
 static size_t receive_text(SexosListener *listener, uint8_t *destination, size_t capacity, bool body) {
@@ -72,6 +78,47 @@ static void initialize_browser(SexosListener *listener) {
   sexos_line("[browser.visible.polish.begin] sid=%llu", (unsigned long long) KALEIDO_SURFACE_ID);
   sexos_pdx_call(SEXOS_SLOT_display, SEXOS_DISPLAY_create_surface, KALEIDO_SURFACE_ID, 120ull << 32 | 80ull, 120ull << 32 | 520ull);
   sexos_line("[browser.render.buffer.ready] virt=surface pfn=surface sid=%llu", (unsigned long long) KALEIDO_SURFACE_ID);
+#if SEXOS_KALEIDOSCOPE_CURRENT
+{
+  bool rendered_html = false;
+  if (body_length > 0 && kaleidoscope_html_looks_like(body_text, body_length)) {
+    static KaleidoscopeHtmlWorkspace html_workspace = {
+      0
+    };
+    static uint8_t html_text[KALEIDOSCOPE_BODY_CAPACITY] = {
+      0
+    };
+    KaleidoscopeHtmlConverted converted = {
+      0
+    };
+    if (kaleidoscope_html_convert(body_text, body_length, html_text, sizeof html_text, &html_workspace, &converted) == 0) {
+      send_text(html_text, converted.len, 0);
+      sexos_line("[browser.html.converted] source_bytes=%zu text_bytes=%zu links=%zu truncated=%u scripts_run=%u scripts_refused=%u", body_length, converted.len, converted.links, (unsigned) converted.truncated, (unsigned) converted.scripts_run, (unsigned) converted.scripts_refused);
+      rendered_html = true;
+    }
+  }
+  if (!rendered_html) {
+    KaleidoscopeBodySource body_source = {
+      0
+    };
+    KaleidoscopeBodySource summary_source = {
+      0
+    };
+    body_source.len = body_length;
+    summary_source.len = live_length;
+    for (size_t i = 0; i < body_length; ++i) body_source.bytes[i] = body_text[i];
+    for (size_t i = 0; i < live_length; ++i) summary_source.bytes[i] = live_text[i];
+    KaleidoscopeBodyPreview preview = {
+      0
+    };
+    kaleidoscope_body_build(&body_source, &summary_source, &preview);
+    send_text(preview.bytes, preview.len, 0);
+    sexos_line("[browser.preview.layout] bytes=%zu newline=1 cached_or_sample=1", preview.len);
+  }
+  if (body_length > 0) sexos_line("[browser.body.render.done]");
+}
+#else
+{
   static const uint8_t title[] = "Kaleidoscope";
   send_text(title, sizeof title - 1, 0);
   sexos_line("[browser.visible.polish.text] line=0 len=%zu", sizeof title - 1);
@@ -84,6 +131,8 @@ static void initialize_browser(SexosListener *listener) {
     send_text(body_text, body_length, 64);
     sexos_line("[browser.body.render.done]");
   }
+}
+#endif
   sexos_line("[browser.render.draw_text] live=1 len=%zu", live_length);
   sexos_pdx_call(SEXOS_SLOT_display, SEXOS_DISPLAY_commit, KALEIDO_SURFACE_ID, 50, 100);
   sexos_line("[browser.render.commit.request] window=%llu", (unsigned long long) KALEIDO_SURFACE_ID);

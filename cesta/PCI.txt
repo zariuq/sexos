@@ -1,0 +1,77 @@
+PCI COMMAND AND NETWORK CONFIGURATION
+
+Current syscalls68/69/71 operate on an actually held PCI capability. Request
+integers select command bits or a read-only operation; they cannot select a
+BDF, configuration offset, mapping, DMA address or new grant.
+
+PCI command policy
+------------------
+
+pci_policy.cesta checks the exact subject and BOOT BDF/vendor/product tuple,
+nonzero bounded selectors, full-width bit masks and disjoint set/clear bits.
+The held register view must have its exact derived region ID, valid mapping
+metadata, QUERY|READ|WRITE rights, no DMA/peer authority, and a length spanning
+the supported NIC registers. An enabling bus-master request additionally needs
+the held region32: exact region2,256KiB,all required permissions and no peer.
+Querying or disabling command bits remains possible without DMA authority.
+
+The checked transition reads hardware identity, reads the command, optionally
+writes the expected command and verifies readback. The write is16-bit at the
+command register; neighboring W1C status bits are preserved. An identity or
+readback mismatch returns IO with cleared data, representing uncertainty rather
+than permission to retry a mutation. Every denied result clears all data words.
+
+The processor adapter has exclusive config-address/data access on the current
+BSP syscall lane, with interrupts masked and every Limine AP permanently parked
+before user entry. Parallel AP execution requires a shared
+transaction lock. Policy records are data; only lookup in the real holder's
+typed table supplies authority. The BOOT audit validates the actual held NIC
+command/DMA tuple and MMIO PTEs before user entry.
+
+The display's PCI lease has no register view or command grant, following the
+upstream framebuffer-lease boundary. Unsupported, invalid or already-occupied
+NIC slots do not publish a successful grant diagnostic.
+
+Network metadata
+----------------
+
+network_config.cesta implements the shared configuration crate's constructors,
+validity, subnet membership, endpoint checks, static hostname, TLS endpoint and
+canonical four-word codec. IPv4 scalars have network-order numeric significance
+regardless of host memory byte order. Invalid prefixes never reach a shift;
+reserved bits, unknown versions/profiles, unusable addresses and invalid port
+namespaces are rejected. Configured endpoints may be off-link when the gateway
+remains a usable on-link neighbor. Encoding does not sanction constructed data.
+
+BOOT validates and seeds the immutable controlled descriptor once. Runtime
+configuration queries validate the held device before checking the descriptor's
+owner. Addresses, names, ports and copied configuration words confer no route,
+memory, device or endpoint authority. The public controlled TLS profile is not
+a general Internet trust store.
+
+Checks and evidence boundaries
+------------------------------
+
+tests/network_config.py compiles the actual Rust crate, compares validity,
+membership, names, TLS metadata and complete codec results under GCC/Clang and
+sanitizers, and adds independent subnet controls and semantic mutations.
+
+tests/kernel_pci.py compiles the real Rust kernel adapter, policy modules and
+unmodified apply_command body against scripted configuration providers. It
+compares complete five-word replies, final hardware state and ordered port
+operations with the real Cesta adapter. Controls include full-width aliases,
+wrong subjects/kinds, mismatched identities/views, missing/malformed DMA,
+uncertain writes, preservation of unrelated bits and owner-scoped metadata.
+The emitted ownership plans have a separate Lean admission gate.
+
+tests/pci_boot.py executes the normal kernel entry and real configuration-port
+instructions on absent/e1000/e1000e q35 fixtures. It checks held metadata and
+command readback through query, enable, disable, re-enable and repeated no-op;
+all other admitted callers must receive cleared failures. Inert probe payloads
+replace applications. This is PCI-mechanism evidence; packet/DMA transfers,
+interrupt delivery, complete userland and physical isolation remain separate
+qualification obligations.
+
+interfaces/pci_policy.source.json and network_config.source.json record the
+source cohort and exact Rust input hashes. A newer source import requires new
+qualification rather than relabeling older evidence.

@@ -1,0 +1,17 @@
+(cesta native-c/1 compact-c/2 (unit (native "#ifndef SEXOS_SHELL_MODELS_LINEN_H
+#define SEXOS_SHELL_MODELS_LINEN_H
+#include \"silk_shell.h\"
+#include \"shell_linen_runtime.h\"
+typedef struct ShellLinenModelsContext {SilkShellModelsState *models;ShellLinenRuntime *linen;} ShellLinenModelsContext;
+ShellLinenRuntime shell_models_linen_new(void);
+void shell_models_fetch_remote_snapshot(ShellLinenModelsContext *ctx);
+void shell_models_queue_open(ShellLinenModelsContext *ctx,uint64_t object,uint64_t choice);
+void shell_models_linen_async_poll(ShellLinenModelsContext *ctx);
+bool shell_models_linen_async_reply(ShellLinenModelsContext *ctx,const SexosMessage *message);
+void shell_models_remote_object(LinenObject *out,const ShellLinenObject *source);
+bool shell_models_publish_snapshot_checked(SilkShellModelsState *models,ShellLinenRuntime *linen,const ShellLinenSnapshot *snapshot,const LinenObject (*seeds)[6],bool legacy_seed_empty);
+void shell_models_publish_snapshot(ShellLinenModelsContext *ctx);
+void shell_models_publish_capture_snapshot(ShellLinenModelsContext *ctx);
+void shell_models_peer_paint_fast(ShellLinenModelsContext *ctx);
+#endif
+")))

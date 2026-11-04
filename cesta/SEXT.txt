@@ -1,0 +1,96 @@
+SEXT: CURRENT PAGER PORT
+
+The service follows upstreamb7cef540b6b3c55a572bf0e7d6e079ec33c36682.
+Its pager/allocator/service bodies retain their behavior; the catalog now
+supplies app capacity.
+Each qualification records its exact kernel, source and executable cohort.
+interfaces/sext.source.json pins its Rust source and shared protocol inputs.
+
+Build and export
+----------------
+
+    cesta build sext
+    cesta build --checked-hints sext
+    make export CESTA=cesta
+    make -C c build/sext/sext
+
+GNUmakefile is the canonical exported recipe. The older generated Makefile
+forwards to it so explicit -f Makefile builds cannot use stale target lists.
+
+The target is freestanding, static PIE and uses current PDX sender-task metadata.
+Historical userland targets retain their declared legacy transport mode until
+reconciled. A zero task field in that mode is unavailable provenance, not an
+authenticated application identity. The historical Cesta kernel retains the
+frozen ABI. The current kernel runs the real Sext service in CPU paging probes
+(PAGING.txt); ordinary whole-image lifecycle qualification remains separate.
+
+Structure and obligations
+-------------------------
+
+src/sext.cesta contains the wire codecs, bounded allocator and pager policy.
+src/sext_service.cesta contains two-client scheduling, retained work/replies,
+cleanup notices, current app-catalog checks and retired workspace admission.
+Both units enable native ownership checking over every function body. Their
+calls carry parameter permissions; syscall effects remain explicit obligations.
+
+src/sext_workspace.cesta is the native memory boundary. Its caller holds the
+completed kernel retirement grant for the entire alias and unique workspace
+custody. It zeros and verifies the actual pool, rotates scrubbed 24-byte records,
+preserves record count across rewind and fails on count overflow.
+runtime/sext_native.c implements the current register-only paging and lifecycle
+interfaces, including checked narrowing of kernel output fields.
+
+The allocator does not reuse reserved backing after an uncertain commit.
+Only confirmed reclaim or permanent target closure permits reuse. Cleanup
+replay never applies a historical bitmap to another owner's current frames.
+The service retains pending ACKs under reply backpressure and processes each
+client once per turn. A wait with no actionable local work sleeps on its own
+inbox; notification and scheduler progress remain separate obligations.
+
+Scope of checking
+-----------------
+
+The boot profile has eight frames, quota four per client, two demand clients
+and seventeen BOOT app-lifecycle slots, including the expanded eight-incarnation
+Quil and Spindle lineages. Service arrays and lookup share the catalog-derived count;
+every Rust catalog row is checked, including a stale-six-entry mutation.
+The core also tests zero, one and 65-frame
+configurations; zero frames uses one inactive C storage element rather than
+a nonstandard zero-length array.
+
+Ownership admission establishes the declared permission/control properties.
+Rust differential tests establish agreement on observed component executions.
+Native register interception tests adapter marshalling; actual guest boots
+exercise kernel entry, mappings, detach and reuse. These are separate evidence
+layers. None is a whole-C refinement proof or whole-system epoch/replay proof.
+
+Checks
+------
+
+    make check-sext CESTA=cesta
+    make qualify-sext CESTA=cesta CESTA_SOURCE=... LEAN_ROOT=...
+
+The differential oracle compiles the pinned Rust bodies with read-only state
+observers and scripted backend effects. It compares complete declared allocator
+and pager state plus calls and memory effects. Inner documentation comments are
+removed only to embed the original bodies in a host module.
+
+Workspace tests compare full aligned memory buffers, including prefix/suffix
+guards, rotation, rewind, malformed sizes and record-counter overflow.
+Native tests execute the compiled adapters with their syscall instruction
+replaced by an assembly register provider. Compiler/export paths use GCC and
+Clang, sanitizers, source refusals and deliberately changed implementations.
+
+To check a frozen current Rust image and the service replacement:
+
+    python3 tests/sext_boot.py \
+      --reference-iso ../sexos-v1.0.0.iso --reference-tree ../iso_root \
+      --candidate build/sext/sext --limine ../limine \
+      --work build/sext-boot
+
+Provide a matching, qualified reference image/tree. The gate records their
+hashes and verifies that packaging changes only servers/sext. Paging uses the
+upstream two-client checker. Retirement uses actual keyboard input, all five
+service ACKs, kernel detach, pool zero/reuse and surviving Linen input/rescan.
+It tests a component swap on the current Rust kernel, not an all-Cesta image.
+

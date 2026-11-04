@@ -1,0 +1,46 @@
+#include "sexos_arm64_boot.h"
+
+#define ARM64_PL011_BASE UINT64_C(0x09000000)
+#define ARM64_PL011_DR UINT64_C(0x00)
+#define ARM64_PL011_FR UINT64_C(0x18)
+#define ARM64_PL011_TXFF (UINT32_C(1)<<5)
+uint32_t arm64_mmio_read32(uint64_t address)
+{
+    return *(volatile const uint32_t *)(uintptr_t)address;
+}
+void arm64_mmio_write32(uint64_t address,uint32_t value)
+{
+    *(volatile uint32_t *)(uintptr_t)address=value;
+}
+void arm64_write_byte(uint8_t byte)
+{
+    while((arm64_mmio_read32(ARM64_PL011_BASE+ARM64_PL011_FR)&ARM64_PL011_TXFF)!=0)
+        __asm__ volatile("yield");
+    arm64_mmio_write32(ARM64_PL011_BASE+ARM64_PL011_DR,byte);
+}
+void arm64_write_str(const char *text)
+{
+    while(*text)arm64_write_byte((uint8_t)*text++);
+}
+void arm64_write_hex(uint64_t value)
+{
+    static const char hex[]="0123456789abcdef";
+    for(int shift=60;shift>=0;shift-=4)arm64_write_byte((uint8_t)hex[(value>>(unsigned)shift)&15u]);
+}
+void arm64_write_dec(uint64_t value)
+{
+    uint8_t digits[20];size_t at=sizeof digits;
+    do{digits[--at]=(uint8_t)('0'+value%10u);value/=10u;}while(value);
+    while(at<sizeof digits)arm64_write_byte(digits[at++]);
+}
+uint8_t arm64_current_el(void)
+{
+    uint64_t value;__asm__ volatile("mrs %0, CurrentEL":"=r"(value));
+    return(uint8_t)((value>>2)&3u);
+}
+_Noreturn void arm64_stop(void)
+{
+    for(;;)__asm__ volatile("wfe"::: "memory");
+}
+
+

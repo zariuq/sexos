@@ -411,7 +411,7 @@ def main():
         harnesses = []
         for compiler in ("gcc", "clang"):
             obj = work / f"quil-{compiler}-{tag}.o"
-            run([cesta, "cc", "--cc", compiler, "-std=c11", "-O2", *warnings, *(f"-D{n}" for n in variant), *sanitizers, *include,
+            run([cesta, "cc", "--cc", compiler, "-std=c11", "-O2", *warnings, "-DSEXOS_QUIL_CURRENT_KEYS=0", *(f"-D{n}" for n in variant), *sanitizers, *include,
                  "-c", HERE / "src/quil.cesta", "-o", obj])
             harness = work / f"harness-{compiler}-{tag}"
             run([compiler, "-std=c11", "-O2", "-DSEXOS_HOST", *sanitizers, *include, work / "provider.c", work / "main.c", obj,
@@ -436,13 +436,59 @@ def main():
         assert translation.count(old_text) == 1, old_text
         mutant = work / f"quil-mutant-{number}.cesta"
         mutant.write_text(translation.replace(old_text, new_text))
-        run([cesta, "cc", "--cc", "gcc", "-std=c11", "-O2", *(f"-D{n}" for n in variant), *include, "-c", mutant, "-o", work / "mutant.o"])
+        run([cesta, "cc", "--cc", "gcc", "-std=c11", "-O2", "-DSEXOS_QUIL_CURRENT_KEYS=0", *(f"-D{n}" for n in variant), *include, "-c", mutant, "-o", work / "mutant.o"])
         run(["gcc", "-std=c11", "-O2", "-DSEXOS_HOST", *include, work / "provider.c", work / "main.c", work / "mutant.o", *runtime,
              "-o", work / "mutant-harness"])
         if not any(run([work / "mutant-harness", *case]).stdout != references[variant, index] for index, case in enumerate(cases)):
             raise SystemExit(f"mutation not detected: {old_text} -> {new_text}")
+    # Current upstream control chords are intentionally newer than the pinned
+    # Rust cohort. Exercise the actual modifier dispatcher independently.
+    current_case = [1, 10, 0, 0, 0]
+    current_outputs = []
+    for compiler in ("gcc", "clang"):
+        obj = work / f"quil-current-{compiler}.o"
+        harness = work / f"current-{compiler}"
+        run([cesta, "cc", "--cc", compiler, "-std=c11", "-O2", *warnings,
+             "-DSEXOS_QUIL_CURRENT_KEYS_PROOF=1", "-DSEXOS_QUIL_CURRENT_DOCUMENT=0", *sanitizers, *include,
+             "-c", HERE / "src/quil.cesta", "-o", obj])
+        run([compiler, "-std=c11", "-O2", "-DSEXOS_HOST", "-Wno-unused-function",
+             *sanitizers, *include, work / "provider.c", work / "main.c", obj,
+             *runtime, "-o", harness])
+        output = run([harness, *current_case]).stdout
+        assert b"[quil.current.keys.proof.done] ok=1 len=2 cursor=2 control=0 goto=0 find=0" in output
+        assert b"[quil.text.stats] bytes=20 lines=2 words=4 chars=20 cursor=20 ok=1" in output
+        assert b"[quil.goto.line] line=2 old=20 new=8 ok=1 reason=found" in output
+        assert b"[quil.find.nav] dir=prev old=19 new=13 count=2 ok=1" in output
+        assert b"[quil.replace] start=14 old_bytes=5 new_bytes=1 applied=1" in output
+        assert b"[quil.replace.all] count=1 applied=1 len=12" in output
+        current_outputs.append(output)
+    assert current_outputs[0] == current_outputs[1]
+    current_mutations = [
+        ("(if (== code 0x1D)", "(if (== code 0x1C)"),
+        ("(= next (call word_right_at q old))", "(= next (call word_left_at q old))"),
+        ("(call remove_range q start bytes)", "(call remove_range q start (- bytes 1))"),
+        ("(call count_words q) (call count_chars q)", "(call count_words q) (call count_words q)"),
+        ("(if (== scancode 0x22)", "(if (== scancode 0x23)"),
+        ("(- (cast uint32_t code) 1)", "(- (cast uint32_t code) 2)"),
+        ("(if (== scancode 0x21)", "(if (== scancode 0x20)"),
+        ("(call replace_span q start (-> q sel_end)", "(call replace_span q (+ start 1) (-> q sel_end)"),
+        ("(if event_shift (cast void (call find_prev q)) (cast void (call find_next q)))",
+         "(if event_shift (cast void (call find_next q)) (cast void (call find_next q)))"),
+    ]
+    for number, (old_text, new_text) in enumerate(current_mutations):
+        assert translation.count(old_text) == 1, old_text
+        mutant = work / f"quil-current-mutant-{number}.cesta"
+        mutant.write_text(translation.replace(old_text, new_text))
+        obj = work / f"quil-current-mutant-{number}.o"
+        harness = work / f"current-mutant-{number}"
+        run([cesta, "cc", "--cc", "gcc", "-std=c11", "-O2",
+             "-DSEXOS_QUIL_CURRENT_KEYS_PROOF=1", "-DSEXOS_QUIL_CURRENT_DOCUMENT=0", *include, "-c", mutant, "-o", obj])
+        run(["gcc", "-std=c11", "-O2", "-DSEXOS_HOST", *include,
+             work / "provider.c", work / "main.c", obj, *runtime, "-o", harness])
+        assert run([harness, *current_case]).stdout != current_outputs[0], ("current mutation survived", number)
     print(f"quil: Cesta translation equals the Rust server on {compared} trace lines ({args.cases} scenarios x {len(variants)} "
-          f"build variants, GCC and Clang, address and UB sanitizers); {len(mutations)} mutations detected")
+          f"build variants, GCC and Clang, address and UB sanitizers); {len(mutations)} frozen and "
+          f"{len(current_mutations)} current-key mutations detected")
 
 
 if __name__ == "__main__":

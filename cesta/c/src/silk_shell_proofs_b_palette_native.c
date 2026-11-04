@@ -1,0 +1,34 @@
+#include "silk_shell_proofs_b_palette.h"
+#include "silk_shell_surfaces.h"
+#include "silk_shell_models_bell.h"
+#include "silk_shell_atlas.h"
+static void proofs_b_palette_binding(const ShellInputContext *ctx)
+{
+ if(ctx && ctx->shell.chrome==&SILK_SHELL_STATE.chrome && ctx->shell.models==&SILK_SHELL_STATE.models && ctx->shell.apps==&SILK_SHELL_STATE.apps && ctx->shell.input==&SILK_SHELL_STATE.input && ctx->shell.proofs_a==&SILK_SHELL_STATE.proofs_a && ctx->atlas==&SILK_SHELL_STATE.atlas && ctx->surfaces==&SILK_SHELL_STATE.surfaces)return;
+ sexos_fail();for(;;){}
+}
+static ShellSurfacesContext proofs_b_surfaces(ShellInputContext *ctx){return(ShellSurfacesContext){ctx->shell,ctx->surfaces};}
+size_t shell_proofs_b_palette_command_count(ShellInputContext *ctx){proofs_b_palette_binding(ctx);return shell_surfaces_command_count();}
+uint8_t shell_proofs_b_palette_command_code(ShellInputContext *ctx,size_t index){proofs_b_palette_binding(ctx);return shell_surfaces_command_code(index);}
+ShellPaletteString shell_proofs_b_palette_command_label(ShellInputContext *ctx,size_t index){proofs_b_palette_binding(ctx);return shell_surfaces_command_label(index);}
+ShellPaletteStatus shell_proofs_b_palette_status(ShellInputContext *ctx,uint8_t command){proofs_b_palette_binding(ctx);ShellSurfacesContext view=proofs_b_surfaces(ctx);return shell_surfaces_palette_item_status(&view,command);}
+bool shell_proofs_b_palette_toggle(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellSurfacesContext view=proofs_b_surfaces(ctx);return shell_surfaces_toggle_command_palette(&view);}
+void shell_proofs_b_palette_render(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellSurfacesContext view=proofs_b_surfaces(ctx);shell_surfaces_palette_render_list(&view);}
+bool shell_proofs_b_palette_execute(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellSurfacesContext view=proofs_b_surfaces(ctx);return shell_surfaces_palette_execute_selected(&view);}
+void shell_proofs_b_palette_next(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellSurfacesContext view=proofs_b_surfaces(ctx);shell_surfaces_palette_select_next(&view);}
+void shell_proofs_b_palette_previous(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellSurfacesContext view=proofs_b_surfaces(ctx);shell_surfaces_palette_select_prev(&view);}
+size_t shell_proofs_b_linen_selected_index(ShellInputContext *ctx){proofs_b_palette_binding(ctx);return linen_selected_index();}
+size_t shell_proofs_b_bell_ring_count(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellBellModelsContext view={ctx->shell.models};return shell_models_bell_ring_count(&view);}
+uint8_t shell_proofs_b_bell_visible_count(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellSurfacesContext view=proofs_b_surfaces(ctx);return shell_surfaces_bell_visible_event_count(&view);}
+void shell_proofs_b_bell_next(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellSurfacesContext view=proofs_b_surfaces(ctx);shell_surfaces_bell_select_next_row(&view);}
+void shell_proofs_b_atlas_toggle(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellAtlasContext view={ctx->atlas,ctx->shell.chrome,ctx->shell.models};shell_atlas_atlas_toggle(&view);}
+void shell_proofs_b_atlas_switch_scene(ShellInputContext *ctx,uint8_t scene){proofs_b_palette_binding(ctx);ShellAtlasContext view={ctx->atlas,ctx->shell.chrome,ctx->shell.models};shell_atlas_switch_scene(&view,scene);}
+void shell_proofs_b_atlas_collect_snapshot(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellAtlasContext view={ctx->atlas,ctx->shell.chrome,ctx->shell.models};shell_atlas_collect_atlas_snapshot(&view);}
+void shell_proofs_b_yield(ShellInputContext *ctx){proofs_b_palette_binding(ctx);sexos_yield();}
+const char *shell_proofs_b_registry_name(ShellInputContext *ctx,size_t index){proofs_b_palette_binding(ctx);if(index>=LINEN_MAX_OBJECTS || !ctx->shell.models->LINEN_OBJECTS[index].present)return NULL;return ctx->shell.models->LINEN_OBJECTS[index].display_name;}
+ShellProofsBFrame shell_proofs_b_first_minimized_frame(ShellInputContext *ctx){proofs_b_palette_binding(ctx);uint32_t frame=0;bool present=shell_chrome_first_minimized_frame_id(&ctx->shell,&frame);return(ShellProofsBFrame){present,frame};}
+ShellProofsBFrame shell_proofs_b_frame_for_surface(ShellInputContext *ctx,uint64_t surface){proofs_b_palette_binding(ctx);uint32_t frame=0;bool present=shell_chrome_frame_for_surface(&ctx->shell,surface,&frame);return(ShellProofsBFrame){present,frame};}
+bool shell_proofs_b_minimize_frame(ShellInputContext *ctx,uint32_t frame){proofs_b_palette_binding(ctx);return shell_chrome_minimize_frame(&ctx->shell,frame);}
+uint64_t shell_proofs_b_browser_active_frame(ShellInputContext *ctx){proofs_b_palette_binding(ctx);ShellSurfacesContext view=proofs_b_surfaces(ctx);ShellSurfaceSubject subject=shell_surfaces_browser_active_frame(&view);return subject.present?subject.frame:0;}
+
+

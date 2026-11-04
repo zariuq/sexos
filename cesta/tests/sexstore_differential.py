@@ -9,11 +9,15 @@ with its syscall routed to the provider.
 
 The durable part runs the pinned durable_* functions and the Cesta durable
 layer (over the checked page codec) on the same seeded regions: empty, one
-valid page, two pages with chosen sequence numbers (ties and the u32 wrap),
+valid page, two pages with chosen sequence numbers in one non-wrapping window,
 random bit flips, and damage to some or all records under a recomputed page
 checksum. Each
 case loads into a seeded table, writes snapshots back, and prints the logs,
 the loaded table and the whole region.
+
+The pinned Rust has a recovery defect at sequence wraparound. Full-width
+cyclic histories are therefore checked against an independent logical-clock
+oracle in sexstore_versions.py, including an explicit legacy regression.
 
 The server part runs both servers against seeded callers: PUT, GET and DEL
 from silk-shell and from other domains, keys across the invalid, shell and
@@ -197,7 +201,7 @@ fn random_table() -> [KvSlot; 16] {
 }
 fn choose_seq() -> u32 {
     let pick = rng() % 6;
-    if pick < 5 { [1u32, 2, 7, u32::MAX, u32::MAX - 1][pick as usize] } else { rng() as u32 }
+    if pick < 5 { [1u32, 2, 7, 1000, 999][pick as usize] } else { (rng() % 1024) as u32 }
 }
 fn dump(label: &str, t: &[KvSlot; 16]) {
     let mut line = String::from(label);
@@ -267,8 +271,8 @@ static KvTable random_table(void) {
 }
 static uint32_t choose_seq(void) {
     uint64_t pick = next() % 6;
-    const uint32_t seqs[5] = {1, 2, 7, UINT32_MAX, UINT32_MAX - 1};
-    return pick < 5 ? seqs[pick] : (uint32_t)next();
+    const uint32_t seqs[5] = {1, 2, 7, 1000, 999};
+    return pick < 5 ? seqs[pick] : (uint32_t)(next() % 1024);
 }
 static void dump(const char *label, const KvTable *t) {
     printf("%s", label);
@@ -355,9 +359,10 @@ def main():
     parser.add_argument("--cesta", default="cesta")
     parser.add_argument("--cases", type=int, default=24)
     parser.add_argument("--durable-cases", type=int, default=3000)
+    parser.add_argument("--output", type=Path, default=HERE / "build/sexstore-differential")
     args = parser.parse_args()
     cesta = shutil.which(args.cesta) or args.cesta
-    work = HERE / "build/sexstore-differential"
+    work = args.output
     if work.exists():
         shutil.rmtree(work)
     work.mkdir(parents=True)
@@ -438,9 +443,8 @@ def main():
         ("durable", "sexstore_pages", "(u16 32773)", "(u16 32771)"),
         ("durable", "sexstore_pages", "(slice tail read page (usize 12) (usize 500))", "(slice tail read page (usize 13) (usize 499))"),
         ("durable", "sexstore_pages", "(return (le (at page (add offset (usize 8))) (u8 2)))", "(return (le (at page (add offset (usize 8))) (u8 3)))"),
-        ("durable", "sexstore_durable", "(var size_t target (?: (>= seq_a seq_b) DURABLE_PAGE_B_OFFSET DURABLE_PAGE_A_OFFSET))",
-                                        "(var size_t target (?: (> seq_a seq_b) DURABLE_PAGE_B_OFFSET DURABLE_PAGE_A_OFFSET))"),
-        ("durable", "sexstore_durable", "(if (== next_seq 0) (= next_seq 1))", "(if (== next_seq 0) (= next_seq 2))"),
+        ("durable", "sexstore_durable", "(if (|| (== second 0) (== first second)) (return true))",
+                                        "(if (== first second) (return false)) (if (== second 0) (return true))"),
         ("server", "sexstore", "(if (<= key 0x0F) (return 1))", "(if (<= key 0x0E) (return 1))"),
         ("server", "sexstore", "(if (!= ([] b 7) (& chk 0x7F)) (return false))", "(if (!= ([] b 7) (& chk 0xFF)) (return false))"),
         ("server", "sexstore", "(= (. log_get_reject) 16)", "(= (. log_get_reject) 15)"),

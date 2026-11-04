@@ -1,0 +1,7 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "command_path": "apps/spindle/src/sextime_command.rs",
+  "command_sha256": "5a5117ddf81cf19f5ac51769bc91a05bd2bf52b6d1d86b36baa42d86b959dca6",
+  "time_path": "crates/sex-time/src/lib.rs",
+  "time_sha256": "c732e5b60bd6fbc15c8ddf5454ba340d55b03bac5f8af329cce22847046030d8"
+}

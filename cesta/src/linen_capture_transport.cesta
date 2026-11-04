@@ -1,0 +1,44 @@
+(cesta native-c/1 compact-c/2
+ (unit
+ (include "linen_capture_transport.h")
+ (ownership (check-all)
+  (foreign linen_capture_client_action (obligation "Returns the checked value action for this client; borrows only for this call."))
+  (foreign linen_capture_client_sent (obligation "Installs a fresh nonzero kernel request id for this client's logical job."))
+  (foreign linen_capture_client_reply (obligation "Consumes only the client's matching attempt; stale completions leave it unchanged."))
+  (foreign linen_capture_client_retry (obligation "Retains the logical job and capture cleanup responsibility while retiring this transport attempt."))
+  (foreign linen_capture_client_cancel (obligation "Preserves required capture cleanup until its end reply; it does not undo admitted effects."))
+  (foreign sexos_rpc_begin (obligation "The correlated kernel checks the caller's immutable BOOT route, allocates a fresh request id and leaves unrelated reply slots intact. A refused admission enqueues nothing."))
+  (foreign sexos_rpc_poll (obligation "Consumes only the named request on completion. The authenticated kernel is the authority for its designated peer; busy leaves the request intact."))
+  (foreign sexos_rpc_cancel (obligation "Retires only the caller's named request. Zero means cancellation succeeded; invalid means no such live request remains. It does not undo a server action.")))
+ (native "
+LinenCaptureStep linen_capture_transport_step(LinenCaptureClient *state,uint64_t slot)
+{
+ LinenCaptureStep step={0};
+ if(state->request!=0){
+  uint64_t request=state->request;SexosReply reply=sexos_rpc_poll(request);step.status=reply.status;
+  if(reply.status==0)step.event=linen_capture_client_reply(state,request,reply.value);
+  return step;
+ }
+ LinenCaptureAction action=linen_capture_client_action(state);
+ if(!action.present)return step;
+ SexosReply admission=sexos_rpc_begin(slot,action.opcode,action.job,action.arg1,action.arg2);
+ step.status=admission.status;
+ if(admission.status!=0)return step;
+ if(!linen_capture_client_sent(state,admission.value)){
+  (void)sexos_rpc_cancel(admission.value);step.status=SEXOS_RPC_INVALID;return step;
+ }
+ step.admitted=true;return step;
+}
+bool linen_capture_transport_retry(LinenCaptureClient *state)
+{
+ if(state->request==0)return true;
+ uint64_t request=state->request;uint64_t result=sexos_rpc_cancel(request);
+ if(result!=0 && result!=SEXOS_RPC_INVALID)return false;
+ return linen_capture_client_retry(state,request);
+}
+bool linen_capture_transport_cancel(LinenCaptureClient *state)
+{
+ if(!linen_capture_transport_retry(state))return false;
+ return linen_capture_client_cancel(state);
+}
+")))

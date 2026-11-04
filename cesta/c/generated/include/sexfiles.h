@@ -9,6 +9,16 @@
 
 #include "packed_words.h"
 
+#include "sexos_rpc.h"
+
+#include "sexos_document_service_transport.h"
+
+#include "sexos_document_journal.h"
+
+#include "sexos_document_snapshot.h"
+
+#include "sexos_document_growth.h"
+
 void *memcpy(void *destination, const void *source, size_t count);
 
 void *memset(void *destination, int value, size_t count);
@@ -296,11 +306,7 @@ int memcmp(const void *first, const void *second, size_t count);
 #define JOURNAL_KIND_TX_COMMIT ((uint16_t)3)
 
 typedef struct DeferEntry {
-  uint64_t type_id;
-  uint32_t caller_pd;
-  uint64_t a0;
-  uint64_t a1;
-  uint64_t a2;
+  SexosRequest request;
 }
 DeferEntry;
 
@@ -437,6 +443,21 @@ typedef struct V4Cache {
 }
 V4Cache;
 
+typedef struct DocumentBackendJob {
+  bool active;
+  bool loading;
+  uint32_t caller;
+  uint8_t object;
+  uint32_t identity;
+  DocumentJournalLoad load;
+  DocumentJournalSave save;
+  DocumentGrowthPlan growth;
+  uint64_t growth_buffer;
+  V4Entry growth_entry;
+  V4Extent growth_extents[DISKFS_V4_MAX_EXTENTS];
+}
+DocumentBackendJob;
+
 typedef struct SexfilesState {
   SexosListener listener;
   uint32_t trampoline_hot_log_budget;
@@ -455,6 +476,7 @@ typedef struct SexfilesState {
   uint64_t diskfs_next_object_id;
   uint64_t ipc_ops_total;
   uint64_t diskfs_bridge_buf_va;
+  uint64_t diskfs_writer_job_next;
   uint64_t diskfs_manifest_ready;
   uint64_t diskfs_selected_path_id[DISKFS_CLIENT_SLOTS];
   uint64_t diskfs_select_used;
@@ -464,6 +486,8 @@ typedef struct SexfilesState {
   uint64_t v4_generation;
   uint64_t v4_bitmap[3];
   V4Cache v4_extent_cache;
+  DocumentServiceTransport documents;
+  DocumentBackendJob document_job;
 }
 SexfilesState;
 
@@ -473,7 +497,7 @@ void sexfiles_state_init(SexfilesState *s);
 
 bool sexfiles_take_budget(uint32_t *budget);
 
-bool defer_stash(uint64_t type_id, uint32_t caller_pd, uint64_t a0, uint64_t a1, uint64_t a2);
+bool defer_stash(SexosRequest request);
 
 bool defer_pop(DeferEntry *out);
 

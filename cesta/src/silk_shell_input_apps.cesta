@@ -1,0 +1,37 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "silk_shell_input.h")
+    (include "silk_shell_surfaces.h")
+    (ownership
+      (check-all)
+      (record ShellChromeContext (field input (borrow write)) (field chrome (borrow write))
+        (field models (borrow write)) (field apps (borrow write)) (field proofs_a (borrow write)))
+      (record ShellInputContext (field atlas (borrow write)) (field surfaces (borrow write)))
+      (record ShellSurfacesContext (field surfaces (borrow write)))
+      (foreign shell_surfaces_app_activation_info
+        (obligation "Calls the checked activation query using the scoped state; returns the attested status and values without retaining a borrow."))
+      (foreign shell_custody_catalog_find
+        (obligation "Reads the immutable BOOT app catalog, which confers no authority.")))
+    (native "
+bool shell_input_peer_quil_has_focus(ShellInputContext *ctx)
+{
+    if(ctx->shell.chrome->FOCUSED_SURFACE_ID==SURFACE_ID_QUIL)return true;
+    ShellActivationResult result={0};
+    {ShellSurfacesContext view={.shell=ctx->shell,.surfaces=ctx->surfaces};
+     result=shell_surfaces_app_activation_info(&view,SHELL_APP_QUIL,false);}
+    if(result.status || result.info.state!=2)return false;
+    uint64_t focused=ctx->shell.chrome->FOCUSED_SURFACE_ID;
+    return focused==result.info.surface;
+}
+bool shell_input_peer_spindle_has_focus(ShellInputContext *ctx)
+{
+    if(ctx->shell.chrome->FOCUSED_SURFACE_ID==SURFACE_ID_SPINDLE)return true;
+    ShellActivationResult result={0};
+    {ShellSurfacesContext view={.shell=ctx->shell,.surfaces=ctx->surfaces};
+     result=shell_surfaces_app_activation_info(&view,SHELL_APP_SPINDLE,false);}
+    if(result.status || result.info.state!=2)return false;
+    uint64_t focused=ctx->shell.chrome->FOCUSED_SURFACE_ID;
+    ShellAppCatalogRow row=shell_custody_catalog_find(result.info.successor,result.info.surface);
+    return row.present && focused==(row.shell_surface?row.shell_surface:row.surface);
+}
+")))

@@ -1,0 +1,696 @@
+{
+  "pin": "e30715434551de373f459123375c642d09cd345c",
+  "source_sha256": "fb36d2e89eeca1f450b5f8b825bc31bda30c7d50c5aa04f4821b6d52edd8030a",
+  "functions": [
+    {
+      "name": "collect_atlas_snapshot",
+      "start": 8116,
+      "end": 8205,
+      "sha256": "3e7f392c414d336a7a7f2f69ad480afbd8f7cb18c290c39de923153abd319078",
+      "changed_from_4a": false,
+      "lines": 90,
+      "c_prototype": "void collect_atlas_snapshot(void);",
+      "diagnostics": []
+    },
+    {
+      "name": "surface_in_active_scene",
+      "start": 11556,
+      "end": 11578,
+      "sha256": "033aaa2b51b05a6f780aa1dcfedf80c28fe49046829597fd5761f5c965bc911c",
+      "changed_from_4a": true,
+      "lines": 23,
+      "c_prototype": "bool surface_in_active_scene(uint64_t sid);",
+      "diagnostics": []
+    },
+    {
+      "name": "surface_scene_id",
+      "start": 11583,
+      "end": 11596,
+      "sha256": "cb935dbebf8ce3ece338e1036ff6074a2b0cd0d322256edaf6ad6d779ee9b2ee",
+      "changed_from_4a": false,
+      "lines": 14,
+      "c_prototype": "bool surface_scene_id(uint64_t sid, uint8_t *out_scene_id);",
+      "diagnostics": []
+    },
+    {
+      "name": "clear_focus_if_wrong_scene",
+      "start": 11600,
+      "end": 11626,
+      "sha256": "550ac8d8a86d907cbaae6b6247f218a5b71db886be80b1b11f53cd37d13885d6",
+      "changed_from_4a": false,
+      "lines": 27,
+      "c_prototype": "void clear_focus_if_wrong_scene(void);",
+      "diagnostics": []
+    },
+    {
+      "name": "sync_lifecycle_scene_visibility",
+      "start": 11632,
+      "end": 11662,
+      "sha256": "50b0030ec39a3f3b51480d45d379f4ce7951d44c95d2561652822052c20aa839",
+      "changed_from_4a": false,
+      "lines": 31,
+      "c_prototype": "void sync_lifecycle_scene_visibility(void);",
+      "diagnostics": [
+        {
+          "name": "SCENE_LIFECYCLE_VIS_BUDGET",
+          "value": 8,
+          "field": "sync_lifecycle_scene_visibility__SCENE_LIFECYCLE_VIS_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "sync_scene_visibility",
+      "start": 11666,
+      "end": 11695,
+      "sha256": "e7091d71ed4b391dc6ab301f957c4ffd46978dbeb8e18ec8e06aa70a5e05408e",
+      "changed_from_4a": true,
+      "lines": 30,
+      "c_prototype": "void sync_scene_visibility(void);",
+      "diagnostics": [
+        {
+          "name": "SCENE_VISIBILITY_BUDGET",
+          "value": 8,
+          "field": "sync_scene_visibility__SCENE_VISIBILITY_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "atlas_default_label",
+      "start": 11710,
+      "end": 11720,
+      "sha256": "ce5faada99d40668d8aa289619c5dc5a6c3d1738b5b5a1f867e452fd17b1e76c",
+      "changed_from_4a": false,
+      "lines": 11,
+      "c_prototype": "void atlas_default_label(uint32_t scene_id, uint8_t *out_label);",
+      "diagnostics": []
+    },
+    {
+      "name": "scene_init_all",
+      "start": 11724,
+      "end": 11758,
+      "sha256": "8f239351bb9ec27da4cf43c5db08d94bc4799b9e821a7bf36d21da83bda24413",
+      "changed_from_4a": false,
+      "lines": 35,
+      "c_prototype": "void scene_init_all(void);",
+      "diagnostics": [
+        {
+          "name": "SETTINGS_INIT_BUDGET",
+          "value": 4,
+          "field": "scene_init_all__SETTINGS_INIT_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "scene_update_flags",
+      "start": 11761,
+      "end": 11800,
+      "sha256": "1e0bda27369d69aa902b7a3c813c5330494ac2ae0571c07a570a81a5668a1702",
+      "changed_from_4a": false,
+      "lines": 40,
+      "c_prototype": "void scene_update_flags(uint8_t scene_idx);",
+      "diagnostics": []
+    },
+    {
+      "name": "validate_scene_id",
+      "start": 11805,
+      "end": 11807,
+      "sha256": "5c9d13a20f522a8276327c2969ec647719f6cc3b954e7164b133bd7e55f3f910",
+      "changed_from_4a": false,
+      "lines": 3,
+      "c_prototype": "bool validate_scene_id(uint8_t scene_id);",
+      "diagnostics": []
+    },
+    {
+      "name": "scene_accent_token",
+      "start": 11811,
+      "end": 11820,
+      "sha256": "9661a82eb16bf32689e58c9c366d91229d816058bfa29540088bb7d0ff1d59d5",
+      "changed_from_4a": false,
+      "lines": 10,
+      "c_prototype": "uint8_t scene_accent_token(uint8_t scene_id);",
+      "diagnostics": [
+        {
+          "name": "SETTINGS_REJECT_BUDGET",
+          "value": 8,
+          "field": "scene_accent_token__SETTINGS_REJECT_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "scene_is_pinned",
+      "start": 11824,
+      "end": 11836,
+      "sha256": "52208799b9d6528314ea6fd3a09199379b18585a736a0369c6f69335d862472f",
+      "changed_from_4a": false,
+      "lines": 13,
+      "c_prototype": "bool scene_is_pinned(uint8_t scene_id);",
+      "diagnostics": [
+        {
+          "name": "SETTINGS_REJECT_BUDGET",
+          "value": 8,
+          "field": "scene_is_pinned__SETTINGS_REJECT_BUDGET"
+        },
+        {
+          "name": "SETTINGS_READ_BUDGET",
+          "value": 32,
+          "field": "scene_is_pinned__SETTINGS_READ_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "scene_label_token",
+      "start": 11840,
+      "end": 11849,
+      "sha256": "ede1607de9c1a7f9d57b72f2fc1086a3b1ed434a12029ab30bc5354694baf7f0",
+      "changed_from_4a": false,
+      "lines": 10,
+      "c_prototype": "void scene_label_token(uint8_t scene_id, uint8_t *out_label);",
+      "diagnostics": [
+        {
+          "name": "SETTINGS_REJECT_BUDGET",
+          "value": 8,
+          "field": "scene_label_token__SETTINGS_REJECT_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "atlas_capture_snapshot",
+      "start": 11855,
+      "end": 11966,
+      "sha256": "8cc7bb3e0e872fefab2a16349f88a05e7466962ada950a9fa1051c25046f8eb9",
+      "changed_from_4a": false,
+      "lines": 112,
+      "c_prototype": "void atlas_capture_snapshot(void);",
+      "diagnostics": [
+        {
+          "name": "ATLAS_CAPTURE_BUDGET",
+          "value": 8,
+          "field": "atlas_capture_snapshot__ATLAS_CAPTURE_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "atlas_is_enabled",
+      "start": 11971,
+      "end": 11973,
+      "sha256": "44873708cb6835b159c9919f9004c0021c986a3219702cc64d4d189bd623e017",
+      "changed_from_4a": false,
+      "lines": 3,
+      "c_prototype": "bool atlas_is_enabled(void);",
+      "diagnostics": []
+    },
+    {
+      "name": "atlas_toggle",
+      "start": 11979,
+      "end": 12003,
+      "sha256": "a26030fd71238158e5638c68d7d3d7fb1d57fc5776c916dbc2d8793d705a8e25",
+      "changed_from_4a": false,
+      "lines": 25,
+      "c_prototype": "void atlas_toggle(void);",
+      "diagnostics": [
+        {
+          "name": "ATLAS_EXIT_BUDGET",
+          "value": 4,
+          "field": "atlas_toggle__ATLAS_EXIT_BUDGET"
+        },
+        {
+          "name": "ATLAS_ENTER_BUDGET",
+          "value": 4,
+          "field": "atlas_toggle__ATLAS_ENTER_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "atlas_exit",
+      "start": 12007,
+      "end": 12015,
+      "sha256": "d723c288df04c8a64b1686092fb8851b468d88ebdea0caca7e2f9a75d2805bc2",
+      "changed_from_4a": false,
+      "lines": 9,
+      "c_prototype": "void atlas_exit(void);",
+      "diagnostics": [
+        {
+          "name": "ATLAS_EXIT_BUDGET",
+          "value": 4,
+          "field": "atlas_exit__ATLAS_EXIT_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "atlas_card_pos",
+      "start": 12022,
+      "end": 12038,
+      "sha256": "26b588c4ffc92d30db546782239807c7d37fd4144a1a55c4a82e0e50d617c40e",
+      "changed_from_4a": false,
+      "lines": 17,
+      "c_prototype": "void atlas_card_pos(size_t scene_idx, uint32_t cw, int32_t *out_x, int32_t *out_y, uint32_t *out_w, uint32_t *out_h);",
+      "diagnostics": []
+    },
+    {
+      "name": "atlas_scene_at_point",
+      "start": 12045,
+      "end": 12058,
+      "sha256": "b07f60461c0f20a118fe1ae0eb34797dcfa44dbd47cf5dd4811805317c41f49b",
+      "changed_from_4a": true,
+      "lines": 14,
+      "c_prototype": "bool atlas_scene_at_point(int32_t px, int32_t py, uint8_t *out_scene_id);",
+      "diagnostics": []
+    },
+    {
+      "name": "handle_atlas_keyboard",
+      "start": 12066,
+      "end": 12283,
+      "sha256": "8a482942d59561be8fce924110ae1e11e9e4d46b956976cdef69a89d38479963",
+      "changed_from_4a": false,
+      "lines": 218,
+      "c_prototype": "bool handle_atlas_keyboard(uint8_t scancode);",
+      "diagnostics": [
+        {
+          "name": "ATLAS_CONFIRM_BUDGET",
+          "value": 4,
+          "field": "handle_atlas_keyboard__ATLAS_CONFIRM_BUDGET_L11526"
+        },
+        {
+          "name": "ATLAS_KEY_BUDGET",
+          "value": 4,
+          "field": "handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11546"
+        },
+        {
+          "name": "ATLAS_KEY_BUDGET",
+          "value": 4,
+          "field": "handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11562"
+        },
+        {
+          "name": "ATLAS_KEY_BUDGET",
+          "value": 4,
+          "field": "handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11576"
+        },
+        {
+          "name": "ATLAS_KEY_BUDGET",
+          "value": 4,
+          "field": "handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11591"
+        },
+        {
+          "name": "ATLAS_CONFIRM_BUDGET",
+          "value": 4,
+          "field": "handle_atlas_keyboard__ATLAS_CONFIRM_BUDGET_L11622"
+        },
+        {
+          "name": "ATLAS_CANCEL_BUDGET",
+          "value": 4,
+          "field": "handle_atlas_keyboard__ATLAS_CANCEL_BUDGET"
+        },
+        {
+          "name": "ATLAS_ACCENT_BUDGET",
+          "value": 16,
+          "field": "handle_atlas_keyboard__ATLAS_ACCENT_BUDGET_L11649"
+        },
+        {
+          "name": "ATLAS_UI_REJECT_BUDGET",
+          "value": 8,
+          "field": "handle_atlas_keyboard__ATLAS_UI_REJECT_BUDGET_L11653"
+        },
+        {
+          "name": "ATLAS_ACCENT_BUDGET",
+          "value": 16,
+          "field": "handle_atlas_keyboard__ATLAS_ACCENT_BUDGET_L11666"
+        },
+        {
+          "name": "ATLAS_UI_REJECT_BUDGET",
+          "value": 8,
+          "field": "handle_atlas_keyboard__ATLAS_UI_REJECT_BUDGET_L11670"
+        },
+        {
+          "name": "ATLAS_PIN_BUDGET",
+          "value": 16,
+          "field": "handle_atlas_keyboard__ATLAS_PIN_BUDGET"
+        },
+        {
+          "name": "ATLAS_UI_REJECT_BUDGET",
+          "value": 8,
+          "field": "handle_atlas_keyboard__ATLAS_UI_REJECT_BUDGET_L11705"
+        },
+        {
+          "name": "ATLAS_KEY_BUDGET",
+          "value": 4,
+          "field": "handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11711"
+        }
+      ]
+    },
+    {
+      "name": "atlas_render_stub",
+      "start": 12288,
+      "end": 12498,
+      "sha256": "cf4b633620d022537c4e51cfe301f1fc0919831726a340992d92b7c7a5621a5c",
+      "changed_from_4a": true,
+      "lines": 211,
+      "c_prototype": "void atlas_render_stub(void);",
+      "diagnostics": [
+        {
+          "name": "ATLAS_ACCENT_VISUAL_BUDGET",
+          "value": 8,
+          "field": "atlas_render_stub__ATLAS_ACCENT_VISUAL_BUDGET"
+        },
+        {
+          "name": "ATLAS_VISUAL_REJECT_BUDGET",
+          "value": 8,
+          "field": "atlas_render_stub__ATLAS_VISUAL_REJECT_BUDGET"
+        },
+        {
+          "name": "ATLAS_PIN_VISUAL_BUDGET",
+          "value": 8,
+          "field": "atlas_render_stub__ATLAS_PIN_VISUAL_BUDGET"
+        },
+        {
+          "name": "ATLAS_FOCUS_MARKER_BUDGET",
+          "value": 8,
+          "field": "atlas_render_stub__ATLAS_FOCUS_MARKER_BUDGET"
+        },
+        {
+          "name": "ATLAS_TILE_COUNT_BUDGET",
+          "value": 8,
+          "field": "atlas_render_stub__ATLAS_TILE_COUNT_BUDGET"
+        },
+        {
+          "name": "ATLAS_POLISH_BUDGET",
+          "value": 8,
+          "field": "atlas_render_stub__ATLAS_POLISH_BUDGET"
+        },
+        {
+          "name": "ATLAS_RENDER_BUDGET",
+          "value": 4,
+          "field": "atlas_render_stub__ATLAS_RENDER_BUDGET"
+        },
+        {
+          "name": "ATLAS_PREVIEW_REFRESH_BUDGET",
+          "value": 4,
+          "field": "atlas_render_stub__ATLAS_PREVIEW_REFRESH_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "atlas_clear_stub",
+      "start": 12503,
+      "end": 12520,
+      "sha256": "6e0756e12e33460239f5ea2812cc8b5a98a81c1848fe0652dfde12ce098006af",
+      "changed_from_4a": false,
+      "lines": 18,
+      "c_prototype": "void atlas_clear_stub(void);",
+      "diagnostics": [
+        {
+          "name": "ATLAS_CLEAR_BUDGET",
+          "value": 4,
+          "field": "atlas_clear_stub__ATLAS_CLEAR_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "atlas_apply_scene_accent_to_chrome",
+      "start": 12526,
+      "end": 12555,
+      "sha256": "0945121427b5600353d8eb959f5f61a9fc39189060605665406ee65913699582",
+      "changed_from_4a": false,
+      "lines": 30,
+      "c_prototype": "void atlas_apply_scene_accent_to_chrome(uint8_t scene_idx);",
+      "diagnostics": []
+    },
+    {
+      "name": "switch_scene",
+      "start": 12559,
+      "end": 12594,
+      "sha256": "fed4460070d23df31740b8c8bb422a0227d73ff7c7aed5dd6671ae8de671a1a9",
+      "changed_from_4a": false,
+      "lines": 36,
+      "c_prototype": "void switch_scene(uint8_t scene_idx);",
+      "diagnostics": [
+        {
+          "name": "SCENE_SWITCH_SHORTCUT_BUDGET",
+          "value": 4,
+          "field": "switch_scene__SCENE_SWITCH_SHORTCUT_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "next_scene",
+      "start": 12597,
+      "end": 12600,
+      "sha256": "0c9f72e3146285f467646e6d76b9ccc9939bdeefc510411dac60009dfa0b20b9",
+      "changed_from_4a": false,
+      "lines": 4,
+      "c_prototype": "void next_scene(void);",
+      "diagnostics": []
+    },
+    {
+      "name": "prev_scene",
+      "start": 12603,
+      "end": 12606,
+      "sha256": "a9338975312d6ce2db76758370569d94881bd25978c8f0c008acf2be313150fc",
+      "changed_from_4a": false,
+      "lines": 4,
+      "c_prototype": "void prev_scene(void);",
+      "diagnostics": []
+    },
+    {
+      "name": "atlas_cycle_scene",
+      "start": 12612,
+      "end": 12665,
+      "sha256": "9c1025ba3025505c88117ef06b2bb32d9fc9e1d21c055b6ead83c4af6e6e6ee8",
+      "changed_from_4a": false,
+      "lines": 54,
+      "c_prototype": "bool atlas_cycle_scene(int32_t delta, const char *reason);",
+      "diagnostics": []
+    },
+    {
+      "name": "next_frame_in_scene",
+      "start": 12670,
+      "end": 12740,
+      "sha256": "637a6639ab21d21c050e0ec6d1a1376aa960fb305981eb2f7f894fc160d24057",
+      "changed_from_4a": false,
+      "lines": 71,
+      "c_prototype": "bool next_frame_in_scene(uint32_t start_frame_id, bool forward, uint32_t *out_frame_id);",
+      "diagnostics": []
+    },
+    {
+      "name": "focus_next_frame",
+      "start": 12743,
+      "end": 12754,
+      "sha256": "8c2eaef58ec60442b1def12a6540e078b72cb9e8680f0a00a73b263354d0bc76",
+      "changed_from_4a": false,
+      "lines": 12,
+      "c_prototype": "void focus_next_frame(void);",
+      "diagnostics": [
+        {
+          "name": "FOCUS_NEXT_FRAME_BUDGET",
+          "value": 4,
+          "field": "focus_next_frame__FOCUS_NEXT_FRAME_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "focus_prev_frame",
+      "start": 12757,
+      "end": 12768,
+      "sha256": "45381751447e6037072d8c03eb3143cc4c9668d1861ffbb10cfa65c1ed73e8dd",
+      "changed_from_4a": false,
+      "lines": 12,
+      "c_prototype": "void focus_prev_frame(void);",
+      "diagnostics": [
+        {
+          "name": "FOCUS_PREV_FRAME_BUDGET",
+          "value": 4,
+          "field": "focus_prev_frame__FOCUS_PREV_FRAME_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "focus_next_tab",
+      "start": 12772,
+      "end": 12792,
+      "sha256": "beb29b930b4c17e2de74db4951c96520a524490e34c39bba7f1d2f2a5c6a872e",
+      "changed_from_4a": false,
+      "lines": 21,
+      "c_prototype": "void focus_next_tab(void);",
+      "diagnostics": [
+        {
+          "name": "FOCUS_NEXT_TAB_BUDGET",
+          "value": 4,
+          "field": "focus_next_tab__FOCUS_NEXT_TAB_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "focus_prev_tab",
+      "start": 12796,
+      "end": 12815,
+      "sha256": "f204a3d3474da060953d393469b061a6a6cf366f7b85efe3da694cd49570b70b",
+      "changed_from_4a": false,
+      "lines": 20,
+      "c_prototype": "void focus_prev_tab(void);",
+      "diagnostics": [
+        {
+          "name": "FOCUS_PREV_TAB_BUDGET",
+          "value": 4,
+          "field": "focus_prev_tab__FOCUS_PREV_TAB_BUDGET"
+        }
+      ]
+    },
+    {
+      "name": "toggle_minimize_focused_frame",
+      "start": 12820,
+      "end": 12830,
+      "sha256": "3ec92765a67800263e69d4238976ba40937d609ee67de5fae8a1089bd7ba99f1",
+      "changed_from_4a": false,
+      "lines": 11,
+      "c_prototype": "bool toggle_minimize_focused_frame(void);",
+      "diagnostics": []
+    },
+    {
+      "name": "toggle_zoom_focused_frame",
+      "start": 12834,
+      "end": 12840,
+      "sha256": "7ac47ed3572b695f20dcdf0d9337fcc7093808c363877dec6e700b9fcd4295f9",
+      "changed_from_4a": false,
+      "lines": 7,
+      "c_prototype": "bool toggle_zoom_focused_frame(void);",
+      "diagnostics": []
+    },
+    {
+      "name": "close_focused_tab_or_frame_safe",
+      "start": 12845,
+      "end": 12859,
+      "sha256": "6710d77cc8fb7b167373c80767dea97c9e3df4e13c2c9df7c116c066f6dd3c95",
+      "changed_from_4a": false,
+      "lines": 15,
+      "c_prototype": "bool close_focused_tab_or_frame_safe(void);",
+      "diagnostics": []
+    },
+    {
+      "name": "atlas_same_scene_drop_noop",
+      "start": 17835,
+      "end": 17846,
+      "sha256": "9ae5bb64809e1c5c42ccdb7aea1771be822839e8d7a08210ac26122deaa186ce",
+      "changed_from_4a": false,
+      "lines": 12,
+      "c_prototype": "bool atlas_same_scene_drop_noop(uint32_t frame_id, uint8_t source_scene, uint8_t target_scene);",
+      "diagnostics": []
+    },
+    {
+      "name": "reparent_frame_to_scene",
+      "start": 17870,
+      "end": 17962,
+      "sha256": "6495069e62cf4cde2fcaf32db7325cd7d1abbbcf711575dd1f7cf6f9bb57d9c5",
+      "changed_from_4a": true,
+      "lines": 93,
+      "c_prototype": "bool reparent_frame_to_scene(uint32_t frame_id, uint8_t target_scene, const char *reason);",
+      "diagnostics": []
+    },
+    {
+      "name": "atlas_pointer_drag_begin_at",
+      "start": 18706,
+      "end": 18754,
+      "sha256": "73c94df33e210e2193a7a19b9ab3ad64248d644f45950d47db67caaf6af0b4c4",
+      "changed_from_4a": false,
+      "lines": 49,
+      "c_prototype": "bool atlas_pointer_drag_begin_at(int32_t px, int32_t py);",
+      "diagnostics": []
+    },
+    {
+      "name": "atlas_pointer_drop_at",
+      "start": 18756,
+      "end": 18837,
+      "sha256": "87747246fd2ffd3eda031ca0bde826b6669d4619be0572bbeb37bfe525c14da5",
+      "changed_from_4a": false,
+      "lines": 82,
+      "c_prototype": "bool atlas_pointer_drop_at(int32_t px, int32_t py);",
+      "diagnostics": []
+    },
+    {
+      "name": "atlas_pointer_drag_cancel",
+      "start": 18839,
+      "end": 18849,
+      "sha256": "dc80049a315a82411e1552869288dbbb11d67662e76efd6396940ee94ebd34d2",
+      "changed_from_4a": false,
+      "lines": 11,
+      "c_prototype": "bool atlas_pointer_drag_cancel(const char *reason);",
+      "diagnostics": []
+    },
+    {
+      "name": "snap_compute_checksum",
+      "start": 23853,
+      "end": 23863,
+      "sha256": "356b16ab805504a42f7936dcbfb9d9ba023cf35c2a457c76f0b6bd64e6d88f53",
+      "changed_from_4a": false,
+      "lines": 11,
+      "c_prototype": "uint8_t snap_compute_checksum(const SceneLayoutSnapshot *snap);",
+      "diagnostics": []
+    },
+    {
+      "name": "snap_capture_layout",
+      "start": 23867,
+      "end": 23914,
+      "sha256": "6e4ee8f5c20801e80f9aeefde024b85b92f4fd337cd25c136348760cdfcd340d",
+      "changed_from_4a": false,
+      "lines": 48,
+      "c_prototype": "void snap_capture_layout(void);",
+      "diagnostics": []
+    },
+    {
+      "name": "snap_validate",
+      "start": 23919,
+      "end": 23937,
+      "sha256": "2c97f0d11450fe200f42de3bcb903121f1d6f5093f293e4ac84ee6014182bcd4",
+      "changed_from_4a": false,
+      "lines": 19,
+      "c_prototype": "bool snap_validate(const SceneLayoutSnapshot *snap);",
+      "diagnostics": []
+    },
+    {
+      "name": "snap_restore_layout",
+      "start": 23942,
+      "end": 24020,
+      "sha256": "6828e2d62d4334b16ccba1d9db28e5c3211f9c744ec4105cf633fb29960334f3",
+      "changed_from_4a": false,
+      "lines": 79,
+      "c_prototype": "bool snap_restore_layout(void);",
+      "diagnostics": [
+        {
+          "name": "SNAP_RESTORE_REJECT_BUDGET",
+          "value": 1,
+          "field": "snap_restore_layout__SNAP_RESTORE_REJECT_BUDGET"
+        },
+        {
+          "name": "SNAP_RESTORE_EMPTY_BUDGET",
+          "value": 1,
+          "field": "snap_restore_layout__SNAP_RESTORE_EMPTY_BUDGET"
+        },
+        {
+          "name": "SNAP_RESTORE_OK_BUDGET",
+          "value": 1,
+          "field": "snap_restore_layout__SNAP_RESTORE_OK_BUDGET"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "path": "crates/silkbar-model/src/lib.rs",
+      "sha256": "09814965887cbe47a4a6d21e31c92028b8330211dc616c9a10ac7344a3240c06"
+    },
+    {
+      "path": "crates/sex-pdx/src/lib.rs",
+      "sha256": "8374398a5fcb70566f146a0b4a4d3f709f73737b34be600254b593781ac3b6f6"
+    },
+    {
+      "path": "crates/sex-pdx/src/app_catalog.rs",
+      "sha256": "b64e70fd3e9d813b20edd479bab9c68edbd1485f0af382fdc0f0d9424a2c2f0c"
+    },
+    {
+      "path": "servers/silk-shell/src/app_custody.rs",
+      "sha256": "07847af51c94ddd5c9dac06214beef38287697d72a919c34185ee6598ed2abd0"
+    },
+    {
+      "path": "crates/sex-pdx/src/app_lifecycle.rs",
+      "sha256": "95b5404b95fe2fa12107f960c022f2544191ab461db9acda2469095decee9e00"
+    }
+  ]
+}

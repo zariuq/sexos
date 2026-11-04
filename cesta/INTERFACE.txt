@@ -1,9 +1,15 @@
 SexOS client port through Cesta
 ==============================
 
-The Rust implementation at 4a040a86 remains unchanged as the reference.
-Fourteen boot-image programs have Cesta targets; silk-shell has one translated
-models unit and still runs as Rust. The experimental sexos-kernel target is
+The Rust implementation at 4a040a86 remains the historical reference; current
+source cohorts are tracked separately (UPSTREAM.txt). Fifteen of the sixteen
+current boot-image programs have Cesta targets, mostly historical. Silk-shell
+has models, input and Atlas implementation units and still runs as Rust.
+The input and Atlas units and their ABI adapters build as separate archives.
+Shell custody, Chrome, Surfaces and the first live diagnostic helpers have
+checked archive targets too. CHROME.txt, SURFACES.txt and DIAGNOSTICS.txt record
+their coverage and remaining current-source reconciliation and subsystem joins.
+The experimental sexos-kernel target is
 described in KERNEL.txt. Native Cesta code is not a completed Rust safety system:
 general ownership, borrows and concurrency obligations remain separate work.
 
@@ -26,9 +32,9 @@ control-flow permissions are checked in Cesta and admitted into Lean.
 runtime/ contains the explicit native boundary: x86-64 register traps,
 freestanding memory functions and bounded line assembly. The main client and
 this boundary are ordinary structured C; they are not yet accepted by the
-checked byte-buffer fragment as a whole. General record ownership, variants,
-try, owned globals and concurrent borrowing are still required for the full
-port's checked systems core.
+checked byte-buffer fragment as a whole. Selected native bodies now check
+ownership, borrowed views and reference fields; see OWNERSHIP.txt. Dependent
+extents, variants, try and concurrent borrowing remain work for the full port.
 
 c/ is a self-contained readable-C export with a Makefile. It builds with GCC
 or Clang alone. Neither Cesta nor Rust is needed to build that export.

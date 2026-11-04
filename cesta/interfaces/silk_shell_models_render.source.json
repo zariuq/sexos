@@ -1,0 +1,69 @@
+{
+  "pin": "c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321",
+  "functions": [
+    {
+      "name": "linen_render_object_list",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "8bf2923d0f0e327cb8726fa317dfdae81e9981d9d45b59d00c60edef3d414a96"
+    },
+    {
+      "name": "linen_render_static_ui",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "dcde082b93cd891b985787bd963ee616357c55056bd5b3bc3bcf23059164cdd4"
+    },
+    {
+      "name": "linen_queue_text",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "3e8f1d53f16ffc6a571efffc7844f26c4a506f340265224f4bf17154200d28f6"
+    },
+    {
+      "name": "list",
+      "path": "servers/silk-shell/src/desktop_content.rs",
+      "sha256": "68338692083be4fa005d69db0509af97ba34da703e37abfd1df18e32670d011b"
+    },
+    {
+      "name": "linen_paint_surface",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "e16819fa3132c5b41bda5a7fb7c65e9abc464e78477125563fff8153030bbcaa"
+    },
+    {
+      "name": "linen_paint_surface_fast",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "8c01b2365b62d0a9880fc5ac1b4b53603e343b7e7133dc537e5d06147240fdbd"
+    },
+    {
+      "name": "linen_fetch_remote_snapshot",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "3f3e55f02097d8d5f0c059e6dcdca4436929159d1cdfa9f07b91f8cab90f6162"
+    },
+    {
+      "name": "linen_async_poll",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "3b4fa2beea1c8228a93a70cae76ced0572bab70d86deddb03f10eaa43540673c"
+    },
+    {
+      "name": "linen_async_reply",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "f3f34a915344996b556b820151585a889353716f988ead93d6f0f7410a9685da"
+    },
+    {
+      "name": "linen_select_first_valid_object",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "d2df46dfa22df77800d41f7b44074ce0d450fc0d1050978176c733ffea80df7f"
+    },
+    {
+      "name": "linen_object_count",
+      "path": "servers/silk-shell/src/main.rs",
+      "sha256": "7d125808b228ed1bd3faad29135e0e25e5f5b680114ea42fa706e3b838a98bb6"
+    }
+  ],
+  "intended_deviations": [
+    {
+      "name": "static_fallback_text_gaps",
+      "original": "NUL-filled gaps are rejected by the atomic UTF-8 text validator, triggering the queue assertion.",
+      "replacement": "Space-filled gaps preserve twenty-column labels and pass the existing validator.",
+      "control": "tests/silk_shell_models_render.py reproduces the original assertion and checks exact replacement bytes independently."
+    }
+  ],
+  "scope": "Current object/static renderers, paint/fast-paint with startup FIFO ordering, asynchronous snapshot publication and actual atomic text outbox. Chrome and display are scripted; global Models/Core integration and pixel evidence remain pending."
+}

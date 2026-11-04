@@ -1,0 +1,25 @@
+
+#ifndef SEXOS_NVME_MSIX_H
+#define SEXOS_NVME_MSIX_H
+#include <stdint.h>
+#include <stdbool.h>
+typedef enum {
+    NVME_MSIX_OK,
+    NVME_MSIX_INVALID,
+    NVME_MSIX_UNSUPPORTED,
+    NVME_MSIX_BOUNDS
+} NvmeMsixStatus;
+typedef struct {
+    NvmeMsixStatus status;
+    uint8_t capability_offset,vector,destination;
+    uint16_t table_entries;
+    uint32_t table_offset,pba_offset;
+    uint32_t address_low,address_high,message_data;
+    uint32_t vector_masked,vector_enabled;
+    uint32_t config_masked,config_enabled;
+} NvmeMsixPlan;
+NvmeMsixPlan nvme_msix_plan(uint8_t capability_offset,uint32_t capability,
+    uint32_t table,uint32_t pba,uint64_t bar_length,uint8_t vector,uint8_t destination);
+bool nvme_msix_observed(const NvmeMsixPlan *plan,uint32_t capability,
+    uint32_t address_low,uint32_t address_high,uint32_t message_data,uint32_t vector_control);
+#endif

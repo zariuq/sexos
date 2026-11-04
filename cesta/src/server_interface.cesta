@@ -4,6 +4,8 @@
       (then
         (define SEXOS_CESTA_SERVER_H "1")
         (include "sexos_client.h")
+        (include "sexos_memory_regions.h")
+        (include "sexos_region_writer.h")
         (comment "Server-side calls of crates/sex-pdx beyond the client interface.")
         (comment "Capability error sentinels; must match kernel/src/ipc.rs.")
         (define SEXOS_ERR_SERVICE_NOT_READY "UINT64_C(0xFFFFFFFFFFFFFFFE)")
@@ -36,6 +38,8 @@
         (var void (function sexfiles_main void))
         (comment "core::hint::spin_loop: one pause, a hint to the processor inside a busy wait.")
         (var void (function sexos_spin_loop_hint void))
+        (comment "A counted inline pause loop, avoiding one external C call per Rust spin-loop hint.")
+        (var void (function sexos_spin_loop_count (uint64_t count)))
         (comment "A Rust panic handler that spins: never returns.")
         (var (_Noreturn void) (function sexos_spin_forever void)))
   )))

@@ -1,0 +1,73 @@
+(cesta native-c/1 compact-c/2
+  (unit (native "
+#include \"sexos_client.h\"
+#include \"sexos_source_policy.h\"
+#include \"sexos_source_profile.h\"
+/* This payload exercises the normal kernel's real syscall/processor boundary.
+ * Every initially active payload is replaced; no application result is claimed. */
+static SourceReply probe_call(uint64_t number,uint64_t slot,uint64_t kind,uint64_t reserved)
+{
+    register uint64_t a __asm__(\"rax\")=number,b __asm__(\"rsi\")=kind;
+    register uint64_t c __asm__(\"rdx\")=reserved,d __asm__(\"r10\")=0,e __asm__(\"r8\")=0;
+    __asm__ volatile(\"syscall\":\"+a\"(a),\"+S\"(b),\"+d\"(c),\"+r\"(d),\"+r\"(e):\"D\"(slot):\"rcx\",\"r11\",\"memory\",\"cc\");
+    return (SourceReply){a,b,c,d,e};
+}
+static _Noreturn void failed(uint64_t stage)
+{
+    sexos_line(\"[source.probe.failed] stage=%llu\",(unsigned long long)stage);
+    for(;;)sexos_yield();
+}
+static void require(bool ok,uint64_t stage){if(!ok)failed(stage);}
+static void denied(SourceReply r,uint64_t stage)
+{
+    require(r.status==SOURCE_DENIED && !(r.value0|r.value1|r.value2|r.value3),stage);
+}
+static void clock_read(uint64_t role)
+{
+    SourceReply r=probe_call(73,61,SOURCE_READ,0);
+    require(!r.status && r.value0>=SOURCE_MIN_SECONDS && r.value0<=SOURCE_MAX_SECONDS &&
+        r.value1>=1 && r.value1<=4 && r.value2==1 && !r.value3,20+role);
+    sexos_line(\"[source.probe.clock] role=%llu seconds=%llu attempts=%llu\",
+        (unsigned long long)role,(unsigned long long)r.value0,(unsigned long long)r.value1);
+}
+void source_probe_main(void)
+{
+    SourceReply entropy=probe_call(72,60,SOURCE_INFO,0);
+    SourceReply clock=probe_call(73,61,SOURCE_INFO,0);
+    SourceReply trust=probe_call(74,62,SOURCE_INFO,0);
+    denied(probe_call(72,(UINT64_C(1)<<32)|60,SOURCE_INFO,0),1);
+    denied(probe_call(73,(UINT64_C(1)<<32)|61,SOURCE_INFO,0),2);
+    denied(probe_call(74,(UINT64_C(1)<<32)|62,SOURCE_INFO,0),3);
+    denied(probe_call(72,60,SOURCE_INFO,UINT64_C(1)<<32),4);
+    denied(probe_call(73,61,SOURCE_INFO,UINT64_C(1)<<32),5);
+    denied(probe_call(74,62,SOURCE_INFO,UINT64_C(1)<<32),6);
+    if(!entropy.status){
+        require(entropy.value0==1 && entropy.value1>>32==15 && (uint32_t)entropy.value1 &&
+            entropy.value2==8 && entropy.value3<=1,7);
+        require(!clock.status && clock.value0==1 && clock.value1==entropy.value1 &&
+            clock.value2==4 && clock.value3==1,8);
+        uint64_t consumer=(entropy.value1>>32)|((uint64_t)(uint32_t)entropy.value1<<32);
+        require(!trust.status && trust.value0==SOURCE_TRUST_PROFILE && trust.value1==consumer &&
+            trust.value2==SOURCE_TRUST_ROOT_BYTES && trust.value3==SOURCE_TRUST_VERSION,9);
+        SourceReply r=probe_call(72,60,SOURCE_READ,0);
+        if(entropy.value3)require(!r.status && r.value1>=1 && r.value1<=8 && !(r.value2|r.value3),10);
+        else require(r.status==SOURCE_UNAVAILABLE && !(r.value0|r.value1|r.value2|r.value3),11);
+        sexos_line(\"[source.probe.entropy] supported=%llu sampled=%llu private=1\",
+            (unsigned long long)entropy.value3,(unsigned long long)(r.status==0));
+        sexos_line(\"[source.probe.trust] profile=%llu root_bytes=%llu version=%llu consumer=%llu task=%llu\",
+            (unsigned long long)trust.value0,(unsigned long long)trust.value2,(unsigned long long)trust.value3,
+            (unsigned long long)(uint32_t)trust.value1,(unsigned long long)(trust.value1>>32));
+        clock_read(13);sexos_line(\"[source.probe.done] role=13\");
+    }else if(!clock.status){
+        denied(entropy,12);denied(trust,13);
+        require(clock.value0==1 && clock.value1==(UINT64_C(6)<<32|6) && clock.value2==4 && clock.value3==1,14);
+        clock_read(6);sexos_line(\"[source.probe.done] role=6\");
+    }else{
+        denied(entropy,15);denied(clock,16);denied(trust,17);
+        denied(probe_call(72,60,SOURCE_READ,0),18);
+        denied(probe_call(73,61,SOURCE_READ,0),19);
+        sexos_line(\"[source.probe.unheld] rejected=1 data_zero=1\");
+    }
+    for(;;){while(sexos_listen_once(0).type_id){};sexos_wait_self();}
+}
+")))

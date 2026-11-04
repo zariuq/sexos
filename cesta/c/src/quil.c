@@ -1,4 +1,6 @@
 #include "sexos_server.h"
+#include "sexos_document_client_transport.h"
+#include "quil_autosave.h"
 /*Quil text editor server, translated from servers/quil/src/main.rs. The Rust statics (the document, the reload staging copy, the undo ring, cursor, selection, find and clipboard state, the HID stash and the log budgets) and the palette locals of _start are fields of one Quil state in static storage: the document, staging copy and undo ring take about 96 KiB, more than a protection domain's 64 KiB stack. The Rust installs an allocator that always fails and defines memcpy, memset, memmove and memcmp; the runtime provides those here. Each startup proof runs once, so the Rust's per-proof done flags, which nothing reads afterwards, have no counterpart, and neither has its dead code (pad_text_line, an uncalled physical-keyboard setup).*/
 /*Build-time proof profiles: option_env! in the Rust source, and the cfg! gate sexfiles_quil_persistence_proof (rustc --cfg).*/
 #if defined(SEXOS_STORAGE_CAP_PROOF)
@@ -29,6 +31,19 @@
 #define KEYBOARD_NAV_PROOF_ENABLED 0
 
 #endif
+#if !defined(SEXOS_QUIL_CURRENT_KEYS)
+#define SEXOS_QUIL_CURRENT_KEYS 1
+
+#endif
+#if !defined(SEXOS_QUIL_CURRENT_DOCUMENT)
+#define SEXOS_QUIL_CURRENT_DOCUMENT SEXOS_QUIL_CURRENT_KEYS
+
+#endif
+#if !defined(SEXOS_QUIL_CURRENT_KEYS_PROOF)
+#define SEXOS_QUIL_CURRENT_KEYS_PROOF 0
+
+#endif
+#define CURRENT_KEYS_PROOF_ENABLED SEXOS_QUIL_CURRENT_KEYS_PROOF
 #if defined(SEXOS_QUIL_KEYBOARD_BUFFER_PROOF)
 #define KEYBOARD_BUFFER_PROOF_ENABLED 1
 
@@ -340,6 +355,9 @@ typedef struct Quil {
   size_t sel_start;
   size_t sel_end;
   bool shift_held;
+  bool control_held;
+  bool goto_active;
+  uint32_t goto_line_value;
 /*The edit flag of the selection and dirty proofs, apart from dirty.*/
   bool edited;
   uint8_t find_query[32];
@@ -347,6 +365,10 @@ typedef struct Quil {
   size_t find_matches[16];
   uint8_t find_count;
   uint8_t find_cur;
+  bool find_active;
+  bool find_replacement_field;
+  uint8_t find_replacement[32];
+  size_t find_rlen;
   uint8_t clipboard[256];
   size_t clipboard_len;
 /*DISKFS_V4: one whole buffer per level; six levels keep the ring near 72 KiB.*/
@@ -381,6 +403,13 @@ typedef struct Quil {
 /*Liveness feedback for unmapped keys: a full-surface color toggle.*/
   bool palette_color_toggle;
   bool text_color_toggle;
+  DocumentClient document;
+  DocumentClientTransport document_transport;
+  QuilAutosave autosave;
+  uint64_t revision;
+  bool delete_armed;
+  uint8_t delete_object;
+  uint64_t delete_revision;
 }
 Quil;
 static Quil quil_state;
@@ -402,7 +431,38 @@ static void quil_init(Quil *q) {
   q->listen_log = 8;
   q->route_log = 8;
   q->unknown_log = 8;
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+document_client_init(&q->document);
+
+document_client_transport_init(&q->document_transport);
+
+quil_autosave_init(&q->autosave);
+
+DocumentSnapshotRegion snapshot;
+
+if (!document_snapshot_resolve_client(&snapshot)) sexos_fail();
+
+if (!document_client_set_snapshot(&q->document, snapshot)) sexos_fail();
+
+#endif
 }
+static void quil_mark_edited(Quil *q) {
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+if (q->revision == UINT64_MAX) sexos_fail();
+
+q->revision += 1;
+
+q->delete_armed = false;
+
+#endif
+  q->dirty = true;
+}
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+static void quil_current_delete(Quil *q);
+static bool quil_current_step(Quil *q);
+
+
+#endif
 /*A budget allows its line while it lasts.*/
 static bool take(uint32_t *budget) {
   if (*budget == 0) return false;
@@ -517,6 +577,32 @@ static void draw_text_lines(Quil *q, const uint8_t *buf, size_t len) {
     for (size_t i = 0; i < 6; ++i) line_buf[sp ++] = (uint8_t) prompt[i];
     for (size_t i = 0; i < q->name_len; ++i) line_buf[sp ++] = q->name_buf[i];
     line_buf[sp ++] = 0x23;
+    line_buf[sp ++] = 0x0A;
+  } else if (SEXOS_QUIL_CURRENT_KEYS && q->find_active) {
+    const char *prompt = q->find_replacement_field ? "With: " : "Find: ";
+    for (size_t i = 0; i < 6; ++i) line_buf[sp ++] = (uint8_t) prompt[i];
+    const uint8_t *field = q->find_replacement_field ? q->find_replacement : q->find_query;
+    size_t field_len = q->find_replacement_field ? q->find_rlen : q->find_qlen;
+    for (size_t i = 0; i < field_len; ++i) line_buf[sp ++] = field[i];
+    line_buf[sp ++] = 0x0A;
+  } else if (SEXOS_QUIL_CURRENT_KEYS && q->goto_active) {
+    const char *prompt = "Go to line: ";
+    for (size_t i = 0; i < 12; ++i) line_buf[sp ++] = (uint8_t) prompt[i];
+    uint32_t value = q->goto_line_value;
+    if (value == 0) line_buf[sp ++] = '0';
+    else {
+      uint8_t digits[10] = {
+        0
+      };
+      size_t count = 0;
+      while (value > 0) {
+        digits[count ++] = (uint8_t)('0' + value % 10);
+        value /= 10;
+      } while (count > 0) {
+        count -= 1;
+        line_buf[sp ++] = digits[count];
+      }
+    }
     line_buf[sp ++] = 0x0A;
   } else {
     size_t n = quil_doc_name_len(q);
@@ -783,6 +869,10 @@ static bool text_buffer_undo(Quil *q) {
   q->undo_head = q->undo_head == 0 ? UNDO_DEPTH - 1 : q->undo_head - 1;
   q->undo_count -= 1;
   restore_level(q, q->undo_head);
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+quil_mark_edited(q);
+
+#endif
   sexos_line("[quil.undo.apply] old_len=%zu new_len=%zu ok=1", old_len, q->buffer_len);
   return true;
 }
@@ -791,6 +881,10 @@ static bool text_buffer_redo(Quil *q) {
   if (q->undo_redo_count == 0) return false;
   size_t old_len = q->buffer_len;
   restore_level(q, q->undo_head);
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+quil_mark_edited(q);
+
+#endif
   q->undo_head = (q->undo_head + 1) % UNDO_DEPTH;
   q->undo_count += 1;
   q->undo_redo_count -= 1;
@@ -805,7 +899,7 @@ static void insert_at_cursor(Quil *q, uint8_t ch) {
   q->buffer_len += 1;
   q->cursor_pos += 1;
   q->goal_col = SIZE_MAX;
-  q->dirty = true;
+  quil_mark_edited(q);
 }
 /*Type a character at the cursor; control characters other than newline are dropped (after the undo push, as in the Rust).*/
 static bool text_buffer_append(Quil *q, uint8_t ch) {
@@ -833,7 +927,7 @@ static bool text_buffer_backspace(Quil *q) {
   q->cursor_pos -= 1;
   q->buffer[q->buffer_len] = 0;
   q->goal_col = SIZE_MAX;
-  q->dirty = true;
+  quil_mark_edited(q);
   sexos_line("[quil.text.backspace] old=%zu new=%zu at=%zu ok=1", old, q->buffer_len, q->cursor_pos);
   return true;
 }
@@ -860,7 +954,7 @@ static bool text_buffer_delete_char(Quil *q) {
   if (q->cursor_pos >= q->buffer_len) return false;
   size_t old = q->buffer_len;
   remove_range(q, q->cursor_pos, 1);
-  q->dirty = true;
+  quil_mark_edited(q);
   sexos_line("[quil.text.delete] mode=char old=%zu new=%zu ok=1", old, q->buffer_len);
   return true;
 }
@@ -874,7 +968,7 @@ static bool text_buffer_delete_to_eol(Quil *q) {
   if (count == 0) return false;
   size_t old = q->buffer_len;
   remove_range(q, q->cursor_pos, count);
-  q->dirty = true;
+  quil_mark_edited(q);
   sexos_line("[quil.text.delete] mode=to_eol old=%zu new=%zu ok=1", old, q->buffer_len);
   return true;
 }
@@ -889,6 +983,10 @@ static bool text_buffer_delete_line(Quil *q) {
   if (line_end < q->buffer_len) line_end += 1;
   size_t old = q->buffer_len;
   remove_range(q, line_start, line_end - line_start);
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+quil_mark_edited(q);
+
+#endif
   if (q->cursor_pos > q->buffer_len) q->cursor_pos = q->buffer_len;
   sexos_line("[quil.text.delete] mode=line old=%zu new=%zu ok=1", old, q->buffer_len);
   return true;
@@ -910,26 +1008,58 @@ static size_t text_buffer_find(const Quil *q, const char *text, uint8_t *count) 
   }
   return first;
 }
-/*Word moves: spaces delimit words.*/
+/*Current upstream word navigation treats ASCII letters, digits, underscore and every non-ASCII byte as word bytes. Separators are skipped before the adjacent word.*/
+static bool word_byte(uint8_t byte) {
+  return (byte >= '0' && byte <= '9') || (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') || (byte == '_' || byte >= 0x80);
+}
+static size_t word_left_at(const Quil *q, size_t at) {
+  size_t i = min_size(at, q->buffer_len);
+  while (i > 0 && !word_byte(q->buffer[i - 1])) i -= 1;
+  while (i > 0 && word_byte(q->buffer[i - 1])) i -= 1;
+  return i;
+}
+static size_t word_right_at(const Quil *q, size_t at) {
+  size_t i = min_size(at, q->buffer_len);
+  while (i < q->buffer_len && !word_byte(q->buffer[i])) i += 1;
+  while (i < q->buffer_len && word_byte(q->buffer[i])) i += 1;
+  return i;
+}
 static void cursor_word_left(Quil *q) {
   size_t old = q->cursor_pos;
-  while (q->cursor_pos > 0 && q->buffer[q->cursor_pos - 1] == 0x20) q->cursor_pos -= 1;
-  while (q->cursor_pos > 0 && q->buffer[q->cursor_pos - 1] != 0x20) q->cursor_pos -= 1;
+#if SEXOS_QUIL_CURRENT_KEYS
+q->cursor_pos = word_left_at(q, q->cursor_pos);
+
+#else
+while (q->cursor_pos > 0 && q->buffer[q->cursor_pos - 1] == 0x20) q->cursor_pos -= 1;
+
+while (q->cursor_pos > 0 && q->buffer[q->cursor_pos - 1] != 0x20) q->cursor_pos -= 1;
+
+#endif
   sexos_line("[quil.word.move] old=%zu new=%zu dir=left ok=1", old, q->cursor_pos);
 }
 static void cursor_word_right(Quil *q) {
   size_t old = q->cursor_pos;
-  while (q->cursor_pos < q->buffer_len && q->buffer[q->cursor_pos] != 0x20) q->cursor_pos += 1;
-  while (q->cursor_pos < q->buffer_len && q->buffer[q->cursor_pos] == 0x20) q->cursor_pos += 1;
+#if SEXOS_QUIL_CURRENT_KEYS
+q->cursor_pos = word_right_at(q, q->cursor_pos);
+
+#else
+while (q->cursor_pos < q->buffer_len && q->buffer[q->cursor_pos] != 0x20) q->cursor_pos += 1;
+
+while (q->cursor_pos < q->buffer_len && q->buffer[q->cursor_pos] == 0x20) q->cursor_pos += 1;
+
+#endif
   sexos_line("[quil.word.move] old=%zu new=%zu dir=right ok=1", old, q->cursor_pos);
 }
-/*Words, delimited by spaces and newlines.*/
+static bool ascii_whitespace(uint8_t byte) {
+  return byte == 0x20 || (byte >= 0x09 && byte <= 0x0D);
+}
+/*Words, delimited by ASCII whitespace.*/
 static size_t count_words(const Quil *q) {
   size_t words = 0;
   bool in_word = false;
   for (size_t i = 0; i < q->buffer_len; ++i) {
     uint8_t b = q->buffer[i];
-    if (b == 0x20 || b == 0x0A) in_word = false;
+    if (ascii_whitespace(b)) in_word = false;
     else if (!in_word) {
       words += 1;
       in_word = true;
@@ -937,6 +1067,13 @@ static size_t count_words(const Quil *q) {
   }
   return words;
 }
+#if SEXOS_QUIL_CURRENT_KEYS
+static size_t count_chars(const Quil *q) {
+  size_t chars = 0;
+  for (size_t i = 0; i < q->buffer_len; ++i) if ((q->buffer[i] & 0xC0) != 0x80) chars += 1;
+  return chars;
+}
+#endif
 /*Find navigation: remember the query and up to 16 match positions.*/
 static void find_collect_matches(Quil *q, const char *text) {
   const uint8_t *query = (const uint8_t *) text;
@@ -963,6 +1100,12 @@ static bool find_next(Quil *q) {
     break;
   }
   q->find_cur = at;
+#if SEXOS_QUIL_CURRENT_KEYS
+q->sel_end = q->cursor_pos;
+
+q->sel_start = q->sel_end - q->find_qlen;
+
+#endif
   sexos_line("[quil.find.nav] dir=next old=%zu new=%zu count=%u ok=1", old, q->cursor_pos, (unsigned) q->find_count);
   return true;
 }
@@ -970,14 +1113,27 @@ static bool find_next(Quil *q) {
 static bool find_prev(Quil *q) {
   if (q->find_count == 0) return false;
   size_t old = q->cursor_pos;
+  size_t before = old;
+#if SEXOS_QUIL_CURRENT_KEYS
+if (q->sel_start < q->sel_end && q->sel_end <= q->buffer_len) before = q->sel_start;
+
+#endif
   uint8_t at = q->find_count - 1;
   q->cursor_pos = q->find_matches[at];
-  for (uint8_t i = q->find_count; i > 0; --i) if (q->find_matches[i - 1] < old) {
+  for (uint8_t i = q->find_count; i > 0; --i) if (q->find_matches[i - 1] < before) {
     at = i - 1;
     q->cursor_pos = q->find_matches[at];
     break;
   }
   q->find_cur = at;
+#if SEXOS_QUIL_CURRENT_KEYS
+q->sel_start = q->cursor_pos;
+
+q->sel_end = q->sel_start + q->find_qlen;
+
+q->cursor_pos = q->sel_end;
+
+#endif
   sexos_line("[quil.find.nav] dir=prev old=%zu new=%zu count=%u ok=1", old, q->cursor_pos, (unsigned) q->find_count);
   return true;
 }
@@ -992,6 +1148,10 @@ static bool delete_selection(Quil *q) {
   if (q->cursor_pos > q->buffer_len) q->cursor_pos = q->buffer_len;
   sexos_line("[quil.selection.delete] start=%zu end=%zu old=%zu new=%zu ok=1", q->sel_start, q->sel_end, old_len, q->buffer_len);
   q->edited = true;
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+quil_mark_edited(q);
+
+#endif
   return true;
 }
 /*Copy at most 256 selected bytes into the clipboard.*/
@@ -1019,7 +1179,30 @@ static bool paste_clipboard(Quil *q) {
   for (size_t i = 0; i < n; ++i) q->buffer[q->cursor_pos + i] = q->clipboard[i];
   q->buffer_len += n;
   q->cursor_pos += n;
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+quil_mark_edited(q);
+
+#endif
   sexos_line("[quil.clipboard.paste] len=%zu old_len=%zu new_len=%zu ok=1 reason=pasted_at_cursor", n, old_len, q->buffer_len);
+  return true;
+}
+static bool replace_span(Quil *q, size_t start, size_t end, const uint8_t *incoming, size_t incoming_len) {
+  if (start > end || end > q->buffer_len || incoming_len > 31) return false;
+  size_t removed = end - start;
+  if (incoming_len > QUIL_BUFFER_MAX_LEN - (q->buffer_len - removed)) return false;
+  text_buffer_undo_push(q);
+  size_t old_len = q->buffer_len;
+  size_t tail = old_len - end;
+  if (incoming_len > removed) for (size_t i = tail; i > 0; --i) q->buffer[start + incoming_len + (i - 1)] = q->buffer[end + (i - 1)];
+  else for (size_t i = 0; i < tail; ++i) q->buffer[start + incoming_len + i] = q->buffer[end + i];
+  for (size_t i = 0; i < incoming_len; ++i) q->buffer[start + i] = incoming[i];
+  q->buffer_len = old_len - removed + incoming_len;
+  for (size_t i = q->buffer_len; i < old_len; ++i) q->buffer[i] = 0;
+  q->cursor_pos = start + incoming_len;
+  q->sel_start = q->cursor_pos;
+  q->sel_end = q->cursor_pos;
+  quil_mark_edited(q);
+  q->goal_col = SIZE_MAX;
   return true;
 }
 /*Replace every FROM (1 to 32 bytes) with TO (at most 32), building the result in a 512-byte buffer that truncates longer documents. Returns the count, a u8 that wraps.*/
@@ -1052,10 +1235,10 @@ static uint8_t replace_all(Quil *q, const char *from_text, const char *to_text) 
   return count;
 }
 /*To the start of line LINE (from 1); past the last line the cursor stays put. The line counter is a u8 that wraps.*/
-static bool goto_line(Quil *q, uint8_t line) {
+static bool goto_line(Quil *q, uint32_t line) {
   if (line == 0 || q->buffer_len == 0) return false;
   size_t old = q->cursor_pos;
-  uint8_t current = 1;
+  uint32_t current = 1;
   size_t pos = 0;
   while (pos < q->buffer_len && current < line) {
     if (q->buffer[pos] == 0x0A) current += 1;
@@ -1066,7 +1249,199 @@ static bool goto_line(Quil *q, uint8_t line) {
   return true;
 }
 static void emit_text_stats(const Quil *q) {
-  sexos_line("[quil.text.stats] bytes=%zu lines=%zu words=%zu cursor=%zu ok=1", q->buffer_len, text_buffer_line_count(q->buffer, q->buffer_len), count_words(q), q->cursor_pos);
+#if SEXOS_QUIL_CURRENT_KEYS
+sexos_line("[quil.text.stats] bytes=%zu lines=%zu words=%zu chars=%zu cursor=%zu ok=1", q->buffer_len, text_buffer_line_count(q->buffer, q->buffer_len), count_words(q), count_chars(q), q->cursor_pos);
+
+#else
+sexos_line("[quil.text.stats] bytes=%zu lines=%zu words=%zu cursor=%zu ok=1", q->buffer_len, text_buffer_line_count(q->buffer, q->buffer_len), count_words(q), q->cursor_pos);
+
+#endif
+}
+static void control_move(Quil *q, uint64_t scancode) {
+  size_t old = q->cursor_pos;
+  size_t next = old;
+  if (scancode == 0x4B) next = word_left_at(q, old);
+  if (scancode == 0x4D) next = word_right_at(q, old);
+  if (scancode == 0x47) next = 0;
+  if (scancode == 0x4F) next = q->buffer_len;
+  q->cursor_pos = next;
+  q->sel_start = next;
+  q->sel_end = next;
+  q->goal_col = SIZE_MAX;
+  sexos_line("[quil.cursor.move] old=%zu new=%zu len=%zu dir=%s ok=1", old, next, q->buffer_len, scancode == 0x4B ? "word_left" : scancode == 0x4D ? "word_right" : scancode == 0x47 ? "doc_start" : "doc_end");
+  redraw(q);
+}
+static void control_select_line(Quil *q) {
+  size_t a = q->sel_start;
+  size_t b = q->sel_end;
+  bool whole = selection_valid(q) && ((a == 0 || q->buffer[a - 1] == 0x0A) && (b == q->buffer_len || q->buffer[b - 1] == 0x0A));
+  size_t start = a;
+  size_t end = b;
+  if (whole) {
+    start = a;
+    end = b;
+    while (end < q->buffer_len && q->buffer[end] != 0x0A) end += 1;
+    if (end < q->buffer_len) end += 1;
+  } else {
+    start = min_size(q->cursor_pos, q->buffer_len);
+    while (start > 0 && q->buffer[start - 1] != 0x0A) start -= 1;
+    end = start;
+    while (end < q->buffer_len && q->buffer[end] != 0x0A) end += 1;
+    if (end < q->buffer_len) end += 1;
+  }
+  q->sel_start = start;
+  q->sel_end = end;
+  q->cursor_pos = end;
+  q->goal_col = SIZE_MAX;
+  sexos_line("[quil.select.line] start=%zu end=%zu extended=%u ok=1", start, end, (unsigned) whole);
+  redraw(q);
+}
+static bool control_word_delete(Quil *q, uint64_t scancode) {
+  size_t start = q->sel_start;
+  size_t end = q->sel_end;
+  if (!selection_valid(q)) {
+    start = q->cursor_pos;
+    end = q->cursor_pos;
+    if (scancode == 0x0E) start = word_left_at(q, q->cursor_pos);
+    else end = word_right_at(q, q->cursor_pos);
+  }
+  if (start == end) {
+    sexos_line("[quil.word.delete] dir=%s bytes=0 changed=0 len=%zu", scancode == 0x0E ? "back" : "forward", q->buffer_len);
+    return false;
+  }
+  text_buffer_undo_push(q);
+  size_t bytes = end - start;
+  remove_range(q, start, bytes);
+  q->cursor_pos = start;
+  q->sel_start = start;
+  q->sel_end = start;
+  q->goal_col = SIZE_MAX;
+  quil_mark_edited(q);
+  sexos_line("[quil.word.delete] dir=%s bytes=%zu changed=1 len=%zu", scancode == 0x0E ? "back" : "forward", bytes, q->buffer_len);
+  redraw(q);
+  return true;
+}
+static bool control_text_key(Quil *q, uint64_t scancode) {
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+if (scancode == 0x20) {
+  quil_current_delete(q);
+  return true;
+}
+#endif
+  if (scancode == 0x21) {
+    q->find_active = true;
+    q->find_replacement_field = false;
+    q->find_qlen = 0;
+    q->find_rlen = 0;
+    for (size_t i = 0; i < 32; ++i) {
+      q->find_query[i] = 0;
+      q->find_replacement[i] = 0;
+    }
+    sexos_line("[quil.find.mode] on=1");
+    redraw(q);
+    return true;
+  }
+  if (scancode == 0x17) {
+    emit_text_stats(q);
+    redraw(q);
+    return true;
+  }
+  if (scancode == 0x22) {
+    q->goto_active = true;
+    q->goto_line_value = 0;
+    sexos_line("[quil.goto.mode] on=1");
+    redraw(q);
+    return true;
+  }
+  if (scancode == 0x4B || scancode == 0x4D || (scancode == 0x47 || scancode == 0x4F)) {
+    control_move(q, scancode);
+    return true;
+  }
+  if (scancode == 0x26) {
+    control_select_line(q);
+    return true;
+  }
+  if (scancode == 0x0E || scancode == 0x53) {
+    (void) control_word_delete(q, scancode);
+    return true;
+  }
+  return false;
+}
+static void find_rebuild_current(Quil *q) {
+  q->find_count = 0;
+  for (size_t i = 0; i < 16; ++i) q->find_matches[i] = 0xFFFF;
+  if (q->find_qlen == 0) return;
+  for (size_t i = 0; i + q->find_qlen <= q->buffer_len && q->find_count < 16; ++i) if (buffer_matches(q, i, q->find_query, q->find_qlen)) {
+    q->find_matches[q->find_count] = i;
+    q->find_count += 1;
+  }
+  q->find_cur = 0;
+}
+static bool find_selection_matches_current(const Quil *q) {
+  return selection_valid(q) && (q->sel_end - q->sel_start == q->find_qlen && buffer_matches(q, q->sel_start, q->find_query, q->find_qlen));
+}
+static bool find_replace_next_current(Quil *q) {
+  if (!find_selection_matches_current(q)) {
+    find_rebuild_current(q);
+    return find_next(q);
+  }
+  size_t start = q->sel_start;
+  size_t old_bytes = q->sel_end - start;
+  bool applied = replace_span(q, start, q->sel_end, q->find_replacement, q->find_rlen);
+  sexos_line("[quil.replace] start=%zu old_bytes=%zu new_bytes=%zu applied=%u", start, old_bytes, q->find_rlen, (unsigned) applied);
+  find_rebuild_current(q);
+  if (applied)(void) find_next(q);
+  return applied;
+}
+static bool find_mode_key(Quil *q, uint64_t code, bool event_shift) {
+  if (!q->find_active) return false;
+  if (q->control_held) {
+    if (code == 0x1C && q->find_replacement_field) {
+      uint8_t count = replace_all(q, (const char *) q->find_query, (const char *) q->find_replacement);
+      sexos_line("[quil.replace.all] count=%u applied=%u len=%zu", (unsigned) count, (unsigned)(count != 0), q->buffer_len);
+      find_rebuild_current(q);
+      redraw(q);
+      return true;
+    } else {
+      q->find_active = false;
+      sexos_line("[quil.find.mode] on=0 reason=chord");
+      return false;
+    }
+  }
+  if (code == 0x01) {
+    q->find_active = false;
+    sexos_line("[quil.find.mode] on=0 reason=escape");
+  } else if (code == 0x0E) if (q->find_replacement_field) {
+    if (q->find_rlen > 0) q->find_rlen -= 1;
+    q->find_replacement[q->find_rlen] = 0;
+  } else {
+    if (q->find_qlen > 0) q->find_qlen -= 1;
+    q->find_query[q->find_qlen] = 0;
+  } else if (code == 0x50) q->find_replacement_field = true;
+  else if (code == 0x48) q->find_replacement_field = false;
+  else if (code == 0x1C) {
+    find_rebuild_current(q);
+    if (q->find_replacement_field)(void) find_replace_next_current(q);
+    else if (event_shift)(void) find_prev(q);
+    else(void) find_next(q);
+  } else {
+    uint8_t ch = 0;
+    if (scancode_to_char(code, event_shift, &ch)) {
+      if (q->find_replacement_field) {
+        if (q->find_rlen < 31) {
+          q->find_replacement[q->find_rlen ++] = ch;
+          q->find_replacement[q->find_rlen] = 0;
+        }
+      } else {
+        if (q->find_qlen < 31) {
+          q->find_query[q->find_qlen ++] = ch;
+          q->find_query[q->find_qlen] = 0;
+        }
+      }
+    }
+  }
+  redraw(q);
+  return true;
 }
 /*Keep a HID event for replay; false when the stash is full.*/
 static bool stash_hid(Quil *q, uint64_t code, uint64_t value, uint64_t mod) {
@@ -1082,7 +1457,22 @@ static int64_t pdx_storage_call(Quil *q, uint64_t opcode, uint64_t arg0, uint64_
   SexosReply sent = sexos_pdx_call(SEXOS_SLOT_storage, opcode, arg0, arg1, arg2);
   if (sent.status != 0) return wrap_i64(sent.status);
   while (1) {
-    SexosMessage msg = sexos_listen(&q->listener, 0);
+    SexosMessage msg;
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+(void) quil_current_step(q);
+
+SexosRequest request = sexos_rpc_listen_once(0);
+
+msg = request.message;
+
+if (msg.type_id == 0) {
+  sexos_yield();
+  continue;
+}
+#else
+msg = sexos_listen(&q->listener, 0);
+
+#endif
     if (msg.type_id == 1) {
       if (is_negative(msg.arg0)) return wrap_i64(msg.arg0);
       *value = msg.arg0;
@@ -1443,6 +1833,51 @@ static void pack_bytes(const uint8_t *bytes, size_t len, uint64_t *lo, uint64_t 
   for (size_t i = 0; i < len && i < 16; ++i) if (i < 8) *lo |= (uint64_t) bytes[i] << i * 8;
   else *hi |= (uint64_t) bytes[i] << (i - 8) * 8;
 }
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+
+static bool quil_current_utf8(const uint8_t *bytes,size_t length)
+{
+ size_t i=0;while(i<length){uint8_t c=bytes[i++];if(c<0x80)continue;size_t need=0;uint32_t value=0,minimum=0;if((c&0xe0)==0xc0){need=1;value=c&0x1f;minimum=0x80;}else if((c&0xf0)==0xe0){need=2;value=c&15;minimum=0x800;}else if((c&0xf8)==0xf0){need=3;value=c&7;minimum=0x10000;}else return false;if(need>length-i)return false;for(size_t k=0;k<need;k++){uint8_t d=bytes[i++];if((d&0xc0)!=0x80)return false;value=(value<<6)|(d&0x3f);}if(value<minimum||value>0x10ffff||(value>=0xd800&&value<=0xdfff))return false;}return true;
+}
+static bool quil_current_save(Quil *q,bool create)
+{
+ if(document_client_busy(&q->document)){if(quil_autosave_pending(&q->autosave))q->autosave.queued_save=create?1:0;return false;}
+ uint8_t name[16]={0};if(create){if(!q->name_len)return false;for(size_t i=0;i<q->name_len&&i<16;i++)name[i]=q->name_buf[i];}else for(size_t i=0;i<16;i++)name[i]=q->doc_title[i];
+ bool has_object=!create&&q->doc_id>=2&&q->doc_id<15;if(!document_client_save(&q->document,has_object,(uint8_t)(has_object?q->doc_id:0),name,q->buffer,q->buffer_len,q->revision))return false;
+ q->name_mode=false;sexos_line("[quil.document.begin] kind=save object=%llu revision=%llu bytes=%zu",(unsigned long long)(has_object?q->doc_id:0),(unsigned long long)q->revision,q->buffer_len);return true;
+}
+static bool quil_current_load(Quil *q)
+{
+ uint64_t target=q->doc_id!=UINT64_MAX?q->doc_id:q->last_doc_id;if(target<2||target>=15||document_client_busy(&q->document)||q->revision==UINT64_MAX)return false;q->revision++;q->delete_armed=false;
+ if(!document_client_load(&q->document,(uint8_t)target,q->revision))return false;
+ sexos_line("[quil.document.begin] kind=load object=%llu revision=%llu",(unsigned long long)target,(unsigned long long)q->revision);return true;
+}
+static void quil_current_autosave_start(Quil *q)
+{
+ QuilAutosaveTitle title={0};for(size_t i=0;i<16;i++)title.bytes[i]=q->doc_title[i];QuilAutosaveName name=quil_autosave_name(&q->autosave,&title);uint8_t draft=0;bool has=quil_autosave_target(&q->autosave,&draft);
+ if(document_client_save(&q->document,has,draft,name.bytes,q->buffer,q->buffer_len,q->revision)){sexos_line("[quil.autosave.begin] draft=%u revision=%llu bytes=%zu document=%llu document_unchanged=1",(unsigned)(has?draft:0),(unsigned long long)q->revision,q->buffer_len,(unsigned long long)q->doc_id);}
+ else (void)quil_autosave_finish(&q->autosave,false,0,q->revision,SEXOS_DOCUMENT_BUSY);
+}
+static void quil_current_event(Quil *q,DocumentClientEvent event)
+{
+ if(quil_autosave_pending(&q->autosave)){bool saved=event.outcome==DOCUMENT_OUTCOME_SAVED;QuilAutosaveDone done=quil_autosave_finish(&q->autosave,saved,event.object,event.revision,event.error);sexos_line("[quil.autosave.result] outcome=%u result=%u revision=%llu dirty=%u document=%llu",(unsigned)event.outcome,(unsigned)done.kind,(unsigned long long)q->revision,(unsigned)q->dirty,(unsigned long long)q->doc_id);int8_t queued=q->autosave.queued_save;if(queued>=0){q->autosave.queued_save=-1;(void)quil_current_save(q,queued!=0);}redraw(q);return;}
+ if(event.outcome==DOCUMENT_OUTCOME_SAVED){q->doc_id=event.object;q->last_doc_id=event.object;for(size_t i=0;i<16;i++)q->doc_title[i]=q->document.name.bytes[i];q->dirty=event.revision!=q->revision;sexos_line("[quil.document.saved] object=%u saved_revision=%llu revision=%llu dirty=%u",(unsigned)event.object,(unsigned long long)event.revision,(unsigned long long)q->revision,(unsigned)q->dirty);}
+ else if(event.outcome==DOCUMENT_OUTCOME_LOADED&&event.revision==q->revision){if(!quil_current_utf8(q->document.payload.bytes,q->document.payload.len)){sexos_line("[quil.document.unsupported] object=%u bytes=%zu buffer_retained=1",(unsigned)event.object,q->document.payload.len);}else{for(size_t i=0;i<q->document.payload.len;i++)q->buffer[i]=q->document.payload.bytes[i];for(size_t i=q->document.payload.len;i<QUIL_BUFFER_MAX_LEN;i++)q->buffer[i]=0;q->buffer_len=q->document.payload.len;q->cursor_pos=q->buffer_len;q->doc_id=event.object;q->last_doc_id=event.object;for(size_t i=0;i<16;i++)q->doc_title[i]=q->document.name.bytes[i];q->dirty=false;q->view_top=0;q->revision=0;quil_autosave_reset(&q->autosave);sexos_line("[quil.document.loaded] object=%u bytes=%zu",(unsigned)event.object,q->buffer_len);}}
+ else if(event.outcome==DOCUMENT_OUTCOME_DELETED){sexos_line("[quil.document.deleted] object=%u current=%u text_kept=%zu",(unsigned)event.object,(unsigned)(q->doc_id==event.object),q->buffer_len);if(q->doc_id==event.object){q->doc_id=UINT64_MAX;static const uint8_t untitled[8]={'U','N','T','I','T','L','E','D'};for(size_t i=0;i<16;i++)q->doc_title[i]=i<8?untitled[i]:0;q->revision=0;quil_autosave_reset(&q->autosave);q->dirty=q->buffer_len>0;}}
+ else sexos_line("[quil.document.result] outcome=%u error=%u requested_revision=%llu revision=%llu buffer_retained=1",(unsigned)event.outcome,(unsigned)event.error,(unsigned long long)event.revision,(unsigned long long)q->revision);
+ redraw(q);
+}
+static void quil_current_delete(Quil *q)
+{
+ if(q->doc_id<3||q->doc_id>=15){sexos_line("[quil.document.delete.refused] reason=no_saved_document");return;}if(q->delete_armed&&q->delete_object==q->doc_id&&q->delete_revision==q->revision){q->delete_armed=false;if(document_client_delete(&q->document,(uint8_t)q->doc_id,q->revision))sexos_line("[quil.document.begin] kind=delete object=%llu",(unsigned long long)q->doc_id);else sexos_line("[quil.document.busy] kind=delete object=%llu",(unsigned long long)q->doc_id);}else{q->delete_armed=true;q->delete_object=(uint8_t)q->doc_id;q->delete_revision=q->revision;sexos_line("[quil.document.delete.ask] object=%llu revision=%llu",(unsigned long long)q->doc_id,(unsigned long long)q->revision);}
+}
+static bool quil_current_step(Quil *q)
+{
+ bool ready=!document_client_busy(&q->document)&&!q->name_mode&&!q->palette_active&&q->buffer_len>0;if(quil_autosave_due(&q->autosave,sexos_get_ticks(),q->dirty,q->revision,ready))quil_current_autosave_start(q);DocumentClientEvent event={0};(void)document_client_transport_step(&q->document,&q->document_transport,&event);if(event.present)quil_current_event(q,event);return document_client_busy(&q->document)||quil_autosave_armed(&q->autosave);
+}
+
+
+#endif
 /*QUIL_DOC_V1: create the named object and save into it; the document becomes that object. On failure (-8: the name exists) name entry and dirty state remain.*/
 static void quil_doc_create_and_save(Quil *q) {
   uint64_t lo = 0;
@@ -1481,6 +1916,19 @@ static void palette_enter(Quil *q) {
   sexos_line("[quil.palette.action] row=%u cmd=%u", (unsigned) row, (unsigned) cmd);
   if (cmd == CMD_SAVE_DOCUMENT) {
     sexos_line("[quil.open.request] buffer_id=%u ok=1 reason=save_via_ramfs", (unsigned) cmd);
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+if (q->buffer_proof_active) sexos_line("[quil.palette.save.skip] reason=buffer_proof_active");
+else if (q->doc_id == UINT64_MAX) {
+  q->name_mode = true;
+  q->name_len = 0;
+  q->palette_active = false;
+  redraw(q);
+  sexos_line("[quil.name.mode] on=1");
+} else(void) quil_current_save(q, false);
+
+return;
+
+#endif
     if (q->buffer_proof_active) sexos_line("[quil.palette.save.skip] reason=buffer_proof_active");
     else if (q->doc_id == UINT64_MAX) {
 /*QUIL_DOC_V1: an untitled document asks for a name; Enter creates its object.*/
@@ -1499,6 +1947,13 @@ static void palette_enter(Quil *q) {
   }
   if (cmd == CMD_LOAD_DOCUMENT) {
     sexos_line("[quil.open.request] buffer_id=%u ok=1 reason=load_via_ramfs", (unsigned) cmd);
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+if (q->buffer_proof_active) sexos_line("[quil.palette.load.skip] reason=buffer_proof_active");
+else(void) quil_current_load(q);
+
+return;
+
+#endif
     if (q->buffer_proof_active) sexos_line("[quil.palette.load.skip] reason=buffer_proof_active");
     else {
 /*QUIL_PERSIST_V1: the DiskFS copy is authoritative; RamFS is a same-session fallback, which the boot buffer proof seeds on every boot, so trying it first would mask the disk copy after a reboot.*/
@@ -1519,6 +1974,16 @@ static void palette_enter(Quil *q) {
     q->dirty = false;
     q->view_top = 0;
     q->doc_id = UINT64_MAX;
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+if (document_client_busy(&q->document))(void) document_client_cancel(&q->document);
+
+q->revision = 0;
+
+q->delete_armed = false;
+
+quil_autosave_reset(&q->autosave);
+
+#endif
     static const char untitled[] = "UNTITLED";
     for (size_t i = 0; i < 16; ++i) q->doc_title[i] = i < 8 ? (uint8_t) untitled[i] : 0;
     draw_text_lines(q, q->buffer, 0);
@@ -1529,36 +1994,37 @@ static void palette_enter(Quil *q) {
   sexos_line("[quil.palette.stub] cmd=%u", (unsigned) cmd);
 }
 /*Text-mode keys that are not palette actions: Backspace, the arrows, Home, End and Delete, then printable characters; anything else toggles the liveness color.*/
-static void text_key(Quil *q, uint64_t scancode) {
-  if (scancode == 0x0E) {
+static void text_key(Quil *q, uint64_t scancode, bool event_shift) {
+  uint64_t code = scancode & 0xFF;
+  if (code == 0x0E) {
     sexos_line("[quil.text.recv] code=14 ch=8");
     (void) text_buffer_backspace(q);
     redraw(q);
     return;
   }
-  if (scancode == 0x4B) {
+  if (code == 0x4B) {
     move_cursor_logged(q, q->cursor_pos > 0 ? q->cursor_pos - 1 : 0, "left");
     return;
   }
-  if (scancode == 0x4D) {
+  if (code == 0x4D) {
     move_cursor_logged(q, q->cursor_pos < q->buffer_len ? q->cursor_pos + 1 : q->cursor_pos, "right");
     return;
   }
-  if (scancode == 0x47) {
+  if (code == 0x47) {
     move_cursor_logged(q, 0, "home");
     return;
   }
-  if (scancode == 0x4F) {
+  if (code == 0x4F) {
     move_cursor_logged(q, q->buffer_len, "end");
     return;
   }
-  if (scancode == 0x53) {
+  if (code == 0x53) {
     (void) text_buffer_delete_char(q);
     redraw(q);
     return;
   }
   uint8_t ch = 0;
-  if (scancode_to_char(scancode, q->shift_held, &ch)) {
+  if (scancode_to_char(code, event_shift, &ch)) {
     sexos_line("[quil.text.recv] code=%llu ch=%u", (unsigned long long) scancode, (unsigned) ch);
     (void) text_buffer_append(q, ch);
     redraw(q);
@@ -1571,7 +2037,16 @@ static void text_key(Quil *q, uint64_t scancode) {
 static void name_key(Quil *q, uint64_t scancode, uint64_t value) {
   if (value != 1 || scancode == 0x2A || scancode == 0xAA) return;
   if (scancode == 0x1C) {
-    if (q->name_len > 0) quil_doc_create_and_save(q);
+    if (q->name_len > 0)
+#if SEXOS_QUIL_CURRENT_DOCUMENT
+{
+  if (false) quil_doc_create_and_save(q);
+  (void) quil_current_save(q, true);
+}
+#else
+quil_doc_create_and_save(q);
+
+#endif
     else sexos_line("[quil.name.reject] reason=empty");
     return;
   }
@@ -1593,19 +2068,49 @@ static void name_key(Quil *q, uint64_t scancode, uint64_t value) {
     redraw(q);
   }
 }
-/*One key event, from the serving loop or a stash replay. Shift (0x2A) only tracks its state; on a press the palette, when shown, takes Up, Down, Enter and Esc, and text mode moves the cursor, inserts newlines and edits.*/
-static void quil_dispatch_palette_key(Quil *q, uint64_t scancode, uint64_t value) {
+/*One key event, from the serving loop or a stash replay. Shift and Control track their press/release state. Current upstream control chords operate on the text document before ordinary palette/text dispatch.*/
+static void quil_dispatch_palette_key(Quil *q, uint64_t scancode, uint64_t value, uint64_t modifiers) {
   if (q->name_mode) {
     name_key(q, scancode, value);
     return;
   }
-  if (take(&q->key_log)) sexos_line("[quil.key.recv] scancode=%#llx val=%llu", (unsigned long long) scancode, (unsigned long long) value);
-  if (scancode == 0x2A) {
+  uint64_t raw_scancode = scancode;
+  uint64_t code = scancode & 0xFF;
+  bool event_shift = q->shift_held;
+  (void) modifiers;
+  if (take(&q->key_log)) sexos_line("[quil.key.recv] scancode=%#llx val=%llu", (unsigned long long) raw_scancode, (unsigned long long) value);
+  if (code == 0x2A) {
     q->shift_held = value == 1;
     return;
   }
+  if (code == 0x1D) {
+    q->control_held = value == 1;
+    return;
+  }
   if (value != 1) return;
-  uint8_t action = decode_palette_key(scancode);
+  if (SEXOS_QUIL_CURRENT_KEYS && find_mode_key(q, code, event_shift)) return;
+  if (SEXOS_QUIL_CURRENT_KEYS && q->goto_active) {
+    if (q->control_held) {
+      q->goto_active = false;
+      sexos_line("[quil.goto.mode] on=0 reason=chord");
+    } else {
+      if (code == 0x01) {
+        q->goto_active = false;
+        sexos_line("[quil.goto.mode] on=0 reason=escape");
+      } else if (code == 0x0E) q->goto_line_value /= 10;
+      else if (code == 0x1C) {
+        q->goto_active = false;
+        (void) goto_line(q, q->goto_line_value == 0 ? 1 : q->goto_line_value);
+      } else if (code >= 0x02 && code <= 0x0B) {
+        uint32_t digit = code == 0x0B ? 0 : (uint32_t) code - 1;
+        if (q->goto_line_value < 1000000) q->goto_line_value = q->goto_line_value * 10 + digit;
+      }
+      redraw(q);
+      return;
+    }
+  }
+  if (q->control_held && !q->palette_active && control_text_key(q, code)) return;
+  uint8_t action = decode_palette_key(code);
   if (take(&q->palette_key_log)) sexos_line("[quil.palette.key] scancode=%#llx action=%u", (unsigned long long) scancode, (unsigned) action);
   uint8_t old = q->selected_row;
   switch (action) {
@@ -1657,7 +2162,7 @@ static void quil_dispatch_palette_key(Quil *q, uint64_t scancode, uint64_t value
       if (q->palette_active) {
         toggle_color(&q->palette_color_toggle);
         sexos_line("[quil.palette.reject] action=key reason=unmapped");
-      } else text_key(q, scancode);
+      } else text_key(q, raw_scancode, event_shift);
       break;
     }
   }
@@ -1668,7 +2173,7 @@ static void replay_stash(Quil *q, bool logged) {
   for (size_t i = 0; i < count; ++i) {
     HidStashEntry e = q->hid_stash[i];
     if (logged) sexos_line("[quil.hid.replay] idx=%zu code=%#llx down=%llu mod=%llu", i, (unsigned long long) e.code, (unsigned long long) e.value, (unsigned long long) e.mod);
-    quil_dispatch_palette_key(q, e.code, e.value);
+    quil_dispatch_palette_key(q, e.code, e.value, e.mod);
   }
   q->hid_stash_count = 0;
 }
@@ -2330,6 +2835,62 @@ static void run_goto_line_proof(Quil *q) {
   (void) goto_line(q, 9);
   sexos_line("[quil.goto.line.proof.done] ok=1");
 }
+/*Current-upstream control-key path: exercise the real modifier dispatcher rather than calling the helpers directly.*/
+static void run_current_keys_proof(Quil *q) {
+  sexos_line("[quil.current.keys.proof.begin]");
+  q->buffer_len = 0;
+  q->cursor_pos = 0;
+  q->sel_start = 0;
+  q->sel_end = 0;
+  q->palette_active = false;
+  type_text(q, "one two\nthree three\n");
+  quil_dispatch_palette_key(q, 0x1D, 1, 0);
+  quil_dispatch_palette_key(q, 0x17, 1, 0);
+  quil_dispatch_palette_key(q, 0x22, 1, 0);
+  quil_dispatch_palette_key(q, 0x1D, 0, 0);
+  quil_dispatch_palette_key(q, 0x03, 1, 0);
+  quil_dispatch_palette_key(q, 0x1C, 1, 0);
+  quil_dispatch_palette_key(q, 0x1D, 1, 0);
+  quil_dispatch_palette_key(q, 0x21, 1, 0);
+  quil_dispatch_palette_key(q, 0x1D, 0, 0);
+  quil_dispatch_palette_key(q, 0x14, 1, 0);
+  quil_dispatch_palette_key(q, 0x23, 1, 0);
+  quil_dispatch_palette_key(q, 0x13, 1, 0);
+  quil_dispatch_palette_key(q, 0x12, 1, 0);
+  quil_dispatch_palette_key(q, 0x12, 1, 0);
+  quil_dispatch_palette_key(q, 0x1C, 1, 0);
+  quil_dispatch_palette_key(q, 0x2A, 1, 0);
+  quil_dispatch_palette_key(q, 0x1C, 1, 0);
+  quil_dispatch_palette_key(q, 0x2A, 0, 0);
+  quil_dispatch_palette_key(q, 0x1C, 1, 0);
+  quil_dispatch_palette_key(q, 0x50, 1, 0);
+  quil_dispatch_palette_key(q, 0x2D, 1, 0);
+  quil_dispatch_palette_key(q, 0x1C, 1, 0);
+  quil_dispatch_palette_key(q, 0x1D, 1, 0);
+  quil_dispatch_palette_key(q, 0x21, 1, 0);
+  quil_dispatch_palette_key(q, 0x1D, 0, 0);
+  quil_dispatch_palette_key(q, 0x14, 1, 0);
+  quil_dispatch_palette_key(q, 0x23, 1, 0);
+  quil_dispatch_palette_key(q, 0x13, 1, 0);
+  quil_dispatch_palette_key(q, 0x12, 1, 0);
+  quil_dispatch_palette_key(q, 0x12, 1, 0);
+  quil_dispatch_palette_key(q, 0x50, 1, 0);
+  quil_dispatch_palette_key(q, 0x15, 1, 0);
+  quil_dispatch_palette_key(q, 0x1D, 1, 0);
+  quil_dispatch_palette_key(q, 0x1C, 1, 0);
+  quil_dispatch_palette_key(q, 0x1D, 0, 0);
+  quil_dispatch_palette_key(q, 0x01, 1, 0);
+  quil_dispatch_palette_key(q, 0x1D, 1, 0);
+  quil_dispatch_palette_key(q, 0x47, 1, 0);
+  quil_dispatch_palette_key(q, 0x4D, 1, 0);
+  quil_dispatch_palette_key(q, 0x26, 1, 0);
+  quil_dispatch_palette_key(q, 0x53, 1, 0);
+  quil_dispatch_palette_key(q, 0x4F, 1, 0);
+  quil_dispatch_palette_key(q, 0x0E, 1, 0);
+  quil_dispatch_palette_key(q, 0x1D, 0, 0);
+  bool ok = q->buffer_len == 2 && q->cursor_pos == 2 && !q->goto_active && !q->find_active && (!q->control_held && buffer_matches(q, 0, (const uint8_t *) "y ", 2));
+  sexos_line("[quil.current.keys.proof.done] ok=%u len=%zu cursor=%zu control=%u goto=%u find=%u", (unsigned) ok, q->buffer_len, q->cursor_pos, (unsigned) q->control_held, (unsigned) q->goto_active, (unsigned) q->find_active);
+}
 /*Storage Phase A and B1: producer and SexFiles markers, synthetic (no transaction correlation, no durability).*/
 static void run_storage_phasea_proof(void) {
   sexos_line("[storage.phasea.proof.begin]");
@@ -2498,6 +3059,7 @@ void quil_main(void) {
   if (PASTE_PROOF_ENABLED) run_paste_proof(q);
   if (REPLACE_PROOF_ENABLED) run_replace_proof(q);
   if (GOTO_LINE_PROOF_ENABLED) run_goto_line_proof(q);
+  if (CURRENT_KEYS_PROOF_ENABLED) run_current_keys_proof(q);
   if (STORAGE_PHASEA_PROOF_ENABLED) run_storage_phasea_proof();
   if (PERSISTENCE_PROOF_ENABLED) run_persistence_proof(q);
   else run_legacy_save_load_proof(q);
@@ -2545,7 +3107,7 @@ void quil_main(void) {
 /*The physical keyboard proof routes keys to the text while it runs, with the palette shown again afterwards.*/
         bool saved_palette = q->palette_active;
         if (q->physical_keyboard_active && q->palette_active) q->palette_active = false;
-        quil_dispatch_palette_key(q, msg.arg0, msg.arg1);
+        quil_dispatch_palette_key(q, msg.arg0, msg.arg1, msg.arg2);
         check_physical_keyboard_proof(q, msg.arg0);
         if (q->physical_keyboard_active && saved_palette) q->palette_active = true;
         break;

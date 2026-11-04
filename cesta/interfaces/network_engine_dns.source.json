@@ -1,0 +1,7 @@
+{
+  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "library_path": "crates/sex-net/src/lib.rs",
+  "library_sha256": "ab5223d3e2e13b88fb4beca4f0c26b074b5676d7f0f8beaf5218ca9264ce4525",
+  "tests_path": "crates/sex-net/src/tests.rs",
+  "tests_sha256": "a88169ec0e254d9c0958d80661386b4f1d196ebf9aa65bfd7890832dd30496cc"
+}

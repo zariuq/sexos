@@ -2,8 +2,11 @@ Experimental single-address-space kernel
 =======================================
 
 sexos-kernel is the x86-64 Cesta kernel target. The original Rust at 4a040a86
-remains the reference. Fourteen userland targets are translated; silk-shell
-still uses its Rust binary. The Cesta sources use native-c/1, not the checked
+remains the reference. Its historical boot uses fourteen translated userland targets and the Rust
+silk-shell binary. Current upstream has sixteen programs; Sext is now ported
+and qualified in current-image fixtures using both kernels (SEXT.txt). The Cesta
+kernel's current-image integration includes paging, retirement and NVMe history
+recovery joins; complete current-userland migration is in progress. The Cesta sources use native-c/1, not the checked
 byte-buffer core as a whole.
 
 Build and export
@@ -55,6 +58,12 @@ Intentional differences from the reference
   pages and explicitly makes those pages non-executable. A map-split log
   records the original page size.
 - A user fault stops its domain; a kernel fault stops the kernel.
+- Boot capability installation is sealed before scheduling any domain. After
+  sealing, boot setters cannot replace a slot or add a communication edge.
+  Runtime memory lending remains a separate operation: it can install only a
+  page grant after checking the lender's authority, allocation and vacant slot.
+- Ring cursors include a non-wrapping revision, so restoring the same head and
+  count cannot revive an old cursor. Mutation refuses revision exhaustion.
 - Per-domain serial assembly keeps complete bounded lines together. Grant
   logging includes the network grant to kaleidoscope, and its handoff uses
   its name instead of unknown. The in-kernel e1000/HTTP demonstration is not
@@ -103,8 +112,28 @@ invariant follows from the kernel's proved step invariant. There is no C
 refinement proof here. Assembly, ELF loading, page tables, the hardware memory
 model, DMA, shared buffers and scheduling are not covered by those theorems.
 Allocation/mapping failure may leave consumed frames or partial mappings;
-transactional rollback remains work. General checked ownership and borrows
-are also unfinished.
+transactional rollback remains work. Selected userland ownership is checked;
+the kernel's complete memory graph is not yet inside that checking envelope.
+
+The reply, poll and ring transitions import checked protocols. Reply completion
+invalidates its heard-call certificate; polling consumes readiness before
+publishing the copied value; ring advancement invalidates the cursor snapshot.
+The native helpers also check the corresponding state and revision themselves.
+
+BootAuthority proves sealed installation and initial-slot construction laws.
+DelegationPolicy admits restricted delegation traces into the general core;
+its source-grant policy also restricts copying use-only authority. SharedCalls
+proves that observing a shared result cannot restart its spent call identity.
+WakeTicket proves once-only notification and acknowledgement under completion
+and timeout interleavings. Processing a due timeout is an explicit event;
+these laws do not establish scheduler fairness.
+
+The declared snapshot -> transform -> swap -> commit architecture remains a
+larger execution change. Sealing and invalidation support it but do not provide
+whole-system epochs or deterministic replay. Eligible non-present user data faults now follow the bounded pager
+transaction (PAGING.txt); other domain faults stop that domain. Existing memory lending can leave writable aliases in two domains;
+single-writer frame ownership and rollback of unpublished state remain work.
+Committed IPC and hardware effects cannot be treated as ordinary rollback.
 
 Boot comparison
 ---------------
@@ -172,3 +201,82 @@ weaken the compositor's own memory-confinement theorem.
 check-services and qualify-services exercise the actual correlated kernel units,
 HTTP parser and packet/descriptor adapters. Their implementation/model comparisons
 remain tests. The original fixed-call model gate above retains its original scope.
+
+Current-upstream transport migration
+------------------------------------
+
+The sexos-kernel-current development target selects SEXOS_KERNEL_CURRENT_PDX=1.
+It adopts the typed transport contract at 174f684d: task provenance comes from
+an attached, currently scheduled main task independently of domain identity;
+accepted calls add a domain-level reply credit before enqueue when the counter
+has room; a failed enqueue rolls back only that added credit. A full reply slot preserves the earlier
+value and the unspent obligation. Successful publication captures the sender's
+domain/task; consumption clears all stored reply data. Hearing a call cannot
+create a second obligation. Internal kernel events carry task zero. Task IDs
+never wrap or derive from domain numbers. Domain lookup also checks that the
+stored identity matches the requested slot; a mismatched record is refused.
+
+The historical sexos-kernel target retains the earlier hearing/slot behavior
+for the frozen Rust/Lean comparison. The current target uses64-bit per-domain
+counters and refuses before publication when a counter is full. Every accepted
+invocation retains exactly one consumable domain-level reply right. Failed
+enqueue returns its reserved right; full replies preserve earlier results.
+Correlated RPC retains its separate request identities and completion slots.
+
+    make check-kernel-transport
+
+This gate compiles the actual domain, syscall and correlated-call units under
+both compilers and sanitizers. An independent accepted-invocation history
+checks all returned lanes, queued-message counts, pending replies and remaining
+obligations. Directed controls cover full queues, exhausted counters/revisions,
+invalid selectors, missing/inconsistent/terminal task provenance, duplicate
+completion, kernel events and independent correlated-call authority. Semantic
+mutants must compile and then be detected.
+
+This is a transport migration, not a current-image boot qualification. The
+current target now has the full selector namespace, sparse BOOT storage,
+private hardware-key masks, checked region policy and per-holder construction
+helpers (REGIONS.txt). The current graph/MMIO construction, private-image
+capture/detachment, bounded paging and self-wait adapters are implemented and
+separately qualified (CURRENT_BOOT.txt, PAGING.txt). Typed entropy/clock/trust
+sources are implemented (SOURCES.txt). PCI command/config is implemented (PCI.txt). Retirement/workspace and CPU activation
+are implemented with separate mechanism/GUI scopes (RETIREMENT.txt). The history roster/query is implemented
+(HISTORY.txt); disk recovery remains open. Its one-main-task scheduler is smaller than the upstream task
+model. The historical genesis/Lean trace remains explicitly historical; it
+has not proved these new transport rules. Full-machine isolation and concurrent
+publication still need their own evidence.
+
+Memory-region construction and dispatch
+--------------------------------------
+
+REGIONS.txt specifies current syscalls54/55 and the idempotent BAR0 query,
+BOOT-only backing/alias construction, sparse metadata bounds and their tests.
+The current display bridge0xE6 authenticates the declared role; the old0xE3
+framebuffer disclosure is refused. ELF program-header decoding validates all
+arithmetic before reading and every loop propagates decoder failure. The full
+loader and machine-isolation qualification remain separate work.
+
+Current image construction stage
+--------------------------------
+
+CURRENT_BOOT.txt specifies the separate logical ID/layout/key descriptors,
+private manifests, dormant successor fences and current graph certificate.
+The QEMU audit target validates real construction and PTEs before user entry.
+CPU probes now execute paging, release/reuse, self-wait and terminal cleanup
+through this kernel and Sext. Ordinary current userland executes with the source
+grants and passes scoped Browser/civil-time pixel controls. Complete device and service equivalence remain open. Root metadata and kernel stacks
+remain allocated while private user payload may later be retired.
+
+Current lifecycle queries
+---------------------------
+
+Current syscalls63/64 use only an actually held AppLifecycle grant and the
+captured target task. Catalog mode returns immutable target/task/surface/
+coordinator metadata. Status and service ACK require terminal detached custody;
+wide task aliases, missing/wrong-kind grants and wrong roles are refused. ACK
+sets exactly its declared service bit and duplicate ACK is idempotent. All
+failed query outputs are cleared. Activation66 now validates the fixed lineage and completed predecessor
+custody, checks actual old private leaves are absent, and restores every saved
+successor leaf before ready-queue publication. Its spent receipt replays without
+restoring an exited incarnation. Retirement65, delayed workspace exposure and retryable exit notifications
+are implemented with separate CPU and GUI qualification scopes (RETIREMENT.txt).

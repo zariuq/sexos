@@ -1,0 +1,7 @@
+{
+  "pin": "44053ea9b017fe89008413f7cc8a6b1a4d28d015",
+  "paths": {
+    "crates/sex-pdx/src/document_buffer.rs": "6773260a02f6744a97698a04b0f65157dc75fa3c0b93a32f8f11a057e533401e",
+    "crates/sex-pdx/src/document_snapshot.rs": "e1f3cce03e827c1b7d2f3f67d1b70e28a40b05c584415ac37c12630846ab0ddc"
+  }
+}

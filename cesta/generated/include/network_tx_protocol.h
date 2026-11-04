@@ -1,4 +1,4 @@
-/* Generated from cesta-protocol/1. Declare the context and native hooks first. */
+/* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
 
 #ifdef CESTA_PROTOCOL_network_tx_run_DEFINED
 #error "duplicate protocol definition"
@@ -28,6 +28,7 @@
     defined(tx_release) || \
     defined(tx_transfer) || \
     defined(tx_frame_fact) || \
+    defined(tx_permit) || \
     defined(tx_submitted) || \
     defined(tx_complete) || \
     defined(tx_binding) || \
@@ -170,6 +171,12 @@ network_tx_run(TxContext *ctx)
     }
 #endif
 #if network_tx_run_CHECKED
+    if (!tx_permit(ctx)) {
+        network_tx_run_CHECK_FAILURE(ctx, "fact", "effect_permit", 1);
+        for (;;) {}
+    }
+#endif
+#if network_tx_run_CHECKED
     if (!tx_binding(ctx)) {
         network_tx_run_CHECK_FAILURE(ctx, "fact", "binding", 1);
         for (;;) {}
@@ -247,6 +254,12 @@ network_tx_run(TxContext *ctx)
 #if network_tx_run_CHECKED
                 if (tx_owned(ctx)) {
                     network_tx_run_CHECK_FAILURE(ctx, "own", "frame", 0);
+                    for (;;) {}
+                }
+#endif
+#if network_tx_run_CHECKED
+                if (!tx_complete(ctx)) {
+                    network_tx_run_CHECK_FAILURE(ctx, "fact", "complete", 1);
                     for (;;) {}
                 }
 #endif
@@ -336,12 +349,6 @@ network_tx_run(TxContext *ctx)
                 }
 #endif
 #if network_tx_run_CHECKED
-                if (!tx_frame_fact(ctx)) {
-                    network_tx_run_CHECK_FAILURE(ctx, "fact", "valid_frame", 1);
-                    for (;;) {}
-                }
-#endif
-#if network_tx_run_CHECKED
                 if (!tx_submitted(ctx)) {
                     network_tx_run_CHECK_FAILURE(ctx, "fact", "submitted", 1);
                     for (;;) {}
@@ -358,12 +365,6 @@ network_tx_run(TxContext *ctx)
 #if network_tx_run_CHECKED
             if (!tx_binding(ctx)) {
                 network_tx_run_CHECK_FAILURE(ctx, "fact", "binding", 1);
-                for (;;) {}
-            }
-#endif
-#if network_tx_run_CHECKED
-            if (!tx_frame_fact(ctx)) {
-                network_tx_run_CHECK_FAILURE(ctx, "fact", "valid_frame", 1);
                 for (;;) {}
             }
 #endif

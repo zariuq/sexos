@@ -25,6 +25,8 @@ snapshotted once per phase. A query gives that budget separately to admission
 and reply waiting; it is not a whole-query instruction or wall-clock limit.
 A notification retries only queue-full refusal before enqueue;
 a successful enqueue is never retried. Exhaustion is an explicit result.
+Answered exits require an established completion fact. These bounded polling
+protocols do not suspend or claim that a scheduler has registered a wakeup.
 
 interfaces/network_rx_protocol.module borrows a completed receive descriptor
 and the caller's output byte buffer. Copying finishes before returning the
@@ -33,6 +35,9 @@ receives carry no stale length. The caller supplies an initialized device and
 a private writable output frame. Native mapping and pointer validity remain
 separate obligations. The provider immediately overwrites a returned DMA page,
 so a premature descriptor return is detected rather than hidden by timing.
+Copying and discarding invalidate the descriptor's availability certificate.
+A nonblocking no-data result is returned as pending, rather than a suspension
+without a registered wake source.
 
 interfaces/network_tx_protocol.module declares the transmit-buffer obligation.
 A successful submit commits it to the device; completion transfers it back,
@@ -40,6 +45,10 @@ while timeout transfers it into the failed driver's quarantine. No timed-out
 buffer is reused. Pure validators check the identity and symbolic ownership at
 the generated boundaries. Their truth and the hardware ordering are native
 obligations, exercised with controlled descriptor providers.
+Each transmit context also carries one submission permit. An attempt spends
+it before invoking the native device operation, even when submission fails.
+Revalidating the frame cannot recreate that permit. Completion polling may
+repeat; the device submission for that context cannot.
 
 Correlated ABI
 --------------
@@ -122,3 +131,29 @@ payload, empty, non-200, chunked, binary and maximum-length bodies, truncation,
 unsupported encoding, over-capacity and a refused connection. --display-denied
 is the explicit negative control for kernels without the extra display grant;
 it requires presentation failure and does not count as a successful render.
+LINEN CAPTURE COMPONENTS
+
+The linen-capture archive contains the bounded capture codec, server lifecycle,
+nonblocking correlated client, kernel transport adapter and retained-answer
+adapter. The declaration in interfaces/linen_capture.schema.json generates the
+layout header and a Lean layout instance. Regeneration checks preserve those
+artifacts. Frames are canonical little-endian values of at most 574 bytes;
+payload chunks and errors have disjoint tags.
+
+A capture is bound to an authenticated caller domain/task and a logical job.
+Its public table is copied once, without storage I/O. Retries use new kernel
+request IDs for the same job. Delayed end requests cannot end a newer capture;
+future end requests cannot advance the retirement watermark. Requests and
+pending answers retain the full correlated envelope. Polling touches only the
+named request, leaving unrelated replies and inbox messages intact.
+
+The adapters require the correlated Cesta-kernel ABI. They never fall back to
+legacy after admission. The existing Rust-compatible shell client is a separate
+path. These components are not yet connected to Linen's serving loop or the
+shell's publication/presentation lifecycle. Their current qualification is the
+actual current kernel and adapters on a host boundary, not a QEMU protocol probe
+or a completed Cesta shell. Storage rescan, task restart and crash recovery are
+separate obligations.
+
+Native trap, compiler, CPU-entry and hardware conformance remain explicit.
+Ownership-plan admission is not a proof of whole-C functional refinement.

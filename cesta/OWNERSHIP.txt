@@ -1,4 +1,7 @@
-BELL'S CHECKED OWNERSHIP ENVELOPE
+CHECKED OWNERSHIP ENVELOPES
+
+Bell
+----
 
 src/sexbell.cesta enables Cesta's native ownership check for every function
 body. Bell's mutable state remains one local Sexbell record containing inline
@@ -37,10 +40,114 @@ states, and actual function plans are joined by a proved module admission rule.
 
 This is a permission/control proof. C-to-plan projection, ABI calculation,
 printing, compilation, native calls and hardware remain separate tested or
-conditional boundaries. The native surface does not yet admit reference-
-bearing aggregate fields or all dynamic bounds, and this port is not a proof
-of arbitrary C or whole-system memory safety.
+conditional boundaries. The native surface admits declared reference fields
+and bounded buffer views; arbitrary reference arrays, aggregate reference
+results and all dynamic bounds are not yet supported. This port is not a
+proof of arbitrary C or whole-system memory safety.
 
 The ordinary build remains cesta build. Its readable C export builds without
 Cesta. The existing Rust differential, sanitizer, plain-C identity and boot
 checks remain necessary alongside ownership admission.
+
+Sexstore
+--------
+
+The durable-page wrapper uses the same native permission model. Its page_view
+returns an exact pointer/length view into its argument, and page_write_view
+returns an exclusive view. Checked byte functions consume those views through
+declared call signatures. Page offsets are guarded explicitly before indexing.
+tests/sexstore_ownership.py checks actual GCC/Clang plans, the byte-codec plan,
+source mutations and boundary executions.
+
+Shell input
+-----------
+
+The input unit has eighteen entry functions from current pinned Rust.
+ShellInputContext embeds the canonical ShellChromeContext and borrows Atlas
+and Surfaces separately. The shell root owns app custody, desktop dimensions
+and delivery state. Selecting a Linen object uses the existing Models view;
+there is no second exclusive pointer into the same Models object. Helpers pass
+scoped subviews through typed calls. Keyboard routing, motion and button
+handling remain separate functions with the same externally observed order.
+
+Remaining legacy adapters bind every context field to the corresponding shell
+state subobject and reject a mismatched binding. Thirteen diagnostic bindings
+and the two app-focus helpers instead use actual checked scoped contexts.
+Activation queries may change state; focus is observed after the query, matching
+Rust's evaluation order. Peer implementations preserve references and do not
+retain usable loans. Snapshot publication retains the
+legacy address-word ABI; an address is not a memory grant. The current display
+server has no handler for that snapshot opcode, so the host descriptor test
+does not establish cross-domain snapshot delivery.
+
+tests/silk_shell_input_differential.py executes the eighteen current Rust
+bodies plus the real focus and dimension helpers. Custody predicates and atomic
+acquire adapters are real; activation replies, desktop shortcuts and remaining
+subsystem operations are scripted. It compares output, state, interaction
+payloads, custody records, tombstones and descriptors, including the remaining
+legacy ABI bindings. All sixteen Input feature combinations are supported.
+The declared profile bounds the window table at 64 and
+the published snapshot at 16 descriptors. Stable partition replaces the
+temporary vector and sort while preserving order for unique window identities.
+The tombstone insertion checks its cursor before indexing. Separate corrupted-
+cursor controls require the defined failure path, including with sanitizers;
+removing the guard must be detected. Independent controls check that a full
+cursor queue retains only the latest coordinates, fatal rejection ends retry,
+failed admission does not advance the send counters, pending custody rejects
+input, wide successor bounds do not overflow, and failed palette execution
+keeps the palette open. A query that changes focus detects stale observations.
+Dynamic dimension subtraction uses defined Rust-compatible wrapping. Invalid
+clamp bounds follow the defined failure path, including zero and negative
+dimensions; INT32_MIN subtraction is exercised under the sanitizers. The root
+initializer must set the current desktop defaults (1280 by 800) before Input
+is used, then accept dimensions through the validated display path.
+The private dimension getter takes a read-only atomic-word view. A getter
+that accepts the whole mutable Input context grants many unrelated regions;
+narrow views keep its declared permission footprint equal to its actual read.
+
+tests/silk_shell_input_ownership.py checks the actual permission plans and
+refuses read-only fields used for writes, a stored local address, aliasing
+under an exclusive field borrow and an uninitialized nested context. Lean admission
+is enabled by the same qualify-ownership command as Bell and Sexstore.
+
+Shell Atlas
+-----------
+
+The current Atlas unit has forty-four entry functions and eight shared helpers.
+ShellAtlasContext carries exclusive references to Atlas, Chrome and Models.
+Labels return as fixed-size value records. Context references are neither stored
+in those values nor replaced by temporary local addresses. Native adapters bind
+the references to the corresponding shell state records; the compatibility
+label-output ABI still requires its declared sixteen-byte destination.
+
+tests/silk_shell_atlas_ownership.py checks both compiler plans, all current
+entries and the same read-only, dangling-field, exclusive-alias and uninitialized
+context controls. Optional admission uses the actual emitted plan. The native
+peer contracts remain separate obligations. Runtime state/effect comparisons
+and independent malformed-snapshot controls are described in ATLAS.txt.
+
+Shell custody and Chrome
+------------------------
+
+The custody archive checks eighteen functions against a generated immutable
+BOOT association table. Entries carry scalar identities and inline metadata;
+queries return fixed-size values, not references to temporary lookup records.
+Read-only receivers and exclusive mutation receivers remain distinct at calls.
+The native binding to held kernel custody is still an external obligation.
+
+The Chrome archive checks ninety-five current functions, the two Rect
+methods and fifty-two helpers. SilkBar geometry adds two checked functions. Its context has explicit reference fields for Chrome,
+Models, Input, proof state and app custody. The native atomic adapters and remaining subsystem
+peers are declared obligations. Corrected generation behavior, its retained-
+identity theorem and remaining caller obligations are recorded in CHROME.txt.
+
+tests/silk_shell_custody_ownership.py and tests/silk_shell_chrome_ownership.py
+check both compiler plans and their source refusal controls. Their Lean mode
+admits the actual emitted function plans. They do not turn the remaining
+unchecked shell callers or native hooks into a whole-system ownership proof.
+
+The viewport module admits its actual delivery, layout and geometry plans.
+Document and Spindle queues use distinct value-record types around shared
+state. Captured notices are data; the native held-route send remains an
+explicit obligation. Queue mutation during a live exclusive loan and writes
+through a read-only receiver are refused.

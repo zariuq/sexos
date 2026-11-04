@@ -1,0 +1,18 @@
+(cesta native-c/1 compact-c/2
+ (unit
+ (include "silk_shell.h")
+ (include "shell_linen_snapshot.h")
+ (ownership (check-all)
+  (record LinenObject (field display_name (static nullable))))
+ (native "
+void shell_models_remote_object(LinenObject *out,const ShellLinenObject *source)
+{
+ out->present=true;out->object_id=source->id;
+ out->kind=source->kind==1?LINEN_OBJ_KIND_PROJECT:LINEN_OBJ_KIND_DOCUMENT;
+ out->state=LINEN_OBJ_STATE_SAVED;out->parent_id=0;out->project_id=0;
+ out->grant_ref=0;out->linked_surface_id=0;out->flags=0;
+ out->display_name=\"[linen.remote]\";
+ for(size_t i=0;i<24;++i)out->name[i]=source->name[i];
+ out->name_len=source->len;out->disk_path=source->disk;
+}
+")))

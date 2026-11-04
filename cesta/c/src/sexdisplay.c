@@ -1,6 +1,15 @@
 #include "sexos_server.h"
 #include "silkbar_model.h"
 /*SexDisplay compositor, translated from servers/sexdisplay/src/main.rs. The Rust statics, global and function-local, are fields of one owned Sexdisplay state; its two 500 KiB glass buffers exceed the 64 KiB stack, so that one value lives in static storage and only sexdisplay_main takes its address. Every index the Rust bounds-checks is checked here too, and a failed check stops the server as Rust's panic handler does.*/
+#define OP_DISPLAY_READY UINT64_C(0x101)
+#define DISPLAY_READY_VERSION UINT64_C(1)
+#define DISPLAY_READY_SLOT_SHELL UINT64_C(6)
+#define DISPLAY_READY_SLOT_SILKBAR UINT64_C(7)
+#if !defined(SEXOS_DISPLAY_READY_PUBLISHER)
+#define SEXOS_DISPLAY_READY_PUBLISHER 1
+
+#endif
+#define DISPLAY_READY_PUBLISHER_ENABLED (((SEXOS_DISPLAY_READY_PUBLISHER) != 0))
 /*Build-time proof profiles (option_env! in the Rust source).*/
 #if defined(SEXOS_SILKBAR_PHASE3_RECEIVE_PROOF)
 #define SILKBAR_PHASE3_RECEIVE_PROOF_ENABLED 1
@@ -50,7 +59,12 @@
 #define FALLBACK_H UINT32_C(800)
 #define MAX_FB_W ((size_t)8192)
 #define MAX_FB_H ((size_t)4320)
-#define DRAIN_MAX ((size_t)16)
+/*Text arrives eight bytes per message. Applying up to 256 messages per frame prevents the current upstream display inbox from falling seconds behind without making the drain unbounded. Frozen-reference qualification selects its historical value explicitly.*/
+#if !defined(SEXOS_DISPLAY_DRAIN_MAX)
+#define SEXOS_DISPLAY_DRAIN_MAX 256u
+
+#endif
+#define DRAIN_MAX ((size_t)SEXOS_DISPLAY_DRAIN_MAX)
 /*Atlas Phase C cards: flat 2-pixel teal-cyan outlines around active surfaces below the bar.*/
 #define ATLAS_CARD_BORDER_COLOR UINT32_C(0x0089DCE6)
 #define ATLAS_CARD_BORDER_PX ((size_t)2)
@@ -2154,8 +2168,25 @@ void sexdisplay_main(void) {
   }
   sexos_line("[silk.de.frame_lights.current_tier.pass] visual=1 keyboard=1 pointer_destructive=0 deferred=1");
   sexos_line("[sexdisplay.ready]");
+  uint8_t ready_pending = 3;
 /*2. Listen for the framebuffer handoff and SilkBar updates.*/
   while (1) {
+    if (DISPLAY_READY_PUBLISHER_ENABLED) {
+      if ((ready_pending & 1) != 0) {
+        SexosReply ready_reply = sexos_pdx_call(DISPLAY_READY_SLOT_SHELL, OP_DISPLAY_READY, DISPLAY_READY_VERSION, 0, 0);
+        if (ready_reply.status == 0) {
+          ready_pending &= (uint8_t) ~1;
+          sexos_line("[display.ready.sent] to=silk-shell version=1");
+        }
+      }
+      if ((ready_pending & 2) != 0) {
+        SexosReply ready_reply = sexos_pdx_call(DISPLAY_READY_SLOT_SILKBAR, OP_DISPLAY_READY, DISPLAY_READY_VERSION, 0, 0);
+        if (ready_reply.status == 0) {
+          ready_pending &= (uint8_t) ~2;
+          sexos_line("[display.ready.sent] to=silkbar version=1");
+        }
+      }
+    }
     l.display_loop_counter += 1;
     l.needs_surface_redraw = false;
     l.needs_top_strip_redraw = false;

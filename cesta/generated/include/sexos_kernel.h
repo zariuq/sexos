@@ -15,17 +15,121 @@
 
 #include "kernel_genesis.h"
 
+#include "sexos_memory_regions.h"
+
+#include "sexos_region_writer.h"
+
+#include "sexos_device_reset.h"
+
+#include "sexos_nvme_msix.h"
+
+#include "sexos_app_private.h"
+
+#include "sexos_pager_state.h"
+
+#include "sexos_source_policy.h"
+
+#include "sexos_source_profile.h"
+
+#include "sexos_network_config.h"
+
+#include "sexos_pci_policy.h"
+
+#include "sexos_history_recovery.h"
+
+#include "sexos_smp_park.h"
+
+#include "kernel_current.h"
+
+#define COUNT_CURRENT_APP(...) +1
+#define COUNT_CURRENT_DOMAIN(...) +1
+#define COUNT_CURRENT_ROUTE(...) +1
+#define COUNT_CURRENT_SOURCE(...) +1
+#define COUNT_CURRENT_ACTIVE(p_id,p_name,p_module,p_log,p_key,p_layout,p_active) +(p_active?1:0)
+#define COUNT_CURRENT_QUIL(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) +(p_logical==CURRENT_PD_quil?1:0)
+enum { KERNEL_CURRENT_APPS=0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_APP),
+       KERNEL_CURRENT_DOMAINS=0 SEXOS_CURRENT_DOMAIN_ROWS(COUNT_CURRENT_DOMAIN),
+       KERNEL_CURRENT_ACTIVE=0 SEXOS_CURRENT_DOMAIN_ROWS(COUNT_CURRENT_ACTIVE),
+       KERNEL_CURRENT_ROUTES=0 SEXOS_CURRENT_ROUTE_ROWS(COUNT_CURRENT_ROUTE),
+       KERNEL_CURRENT_SOURCE_CAPS=0 SEXOS_CURRENT_SOURCE_ROWS(COUNT_CURRENT_SOURCE),
+       KERNEL_CURRENT_QUILS=0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_QUIL),
+       KERNEL_CURRENT_DORMANT=KERNEL_CURRENT_DOMAINS-KERNEL_CURRENT_ACTIVE,
+       KERNEL_CURRENT_BACKINGS=8+KERNEL_CURRENT_QUILS };
+#undef COUNT_CURRENT_APP
+#undef COUNT_CURRENT_DOMAIN
+#undef COUNT_CURRENT_ROUTE
+#undef COUNT_CURRENT_SOURCE
+#undef COUNT_CURRENT_ACTIVE
+#undef COUNT_CURRENT_QUIL
+
+
 /*Shared interface of the SexOS kernel, translated from kernel/src. The kernel's state is one owned record (Kernel); every table in it has a declared bound, and nothing is allocated after boot except page frames.*/
 
-/*Bounds. Domain ids are 1 to 15 (14 is kept for the shared key); slots 0 to 31 cover the ABI's slots 0 to 19.*/
+/*The current user-domain namespace is 1..1023 and capability selectors are 1..1024. BOOT metadata has its own finite budget, independent of logical identity and hardware keys. Historical bounds remain selectable for the frozen reference.*/
 
+#if !defined(SEXOS_KERNEL_CURRENT_PDX)
+#define SEXOS_KERNEL_CURRENT_PDX 0
+
+#endif
+
+_Static_assert(SEXOS_KERNEL_CURRENT_PDX == 0 || SEXOS_KERNEL_CURRENT_PDX == 1, "PDX source cohort");
+
+
+#if !defined(SEXOS_KERNEL_CURRENT_FPU)
+#define SEXOS_KERNEL_CURRENT_FPU SEXOS_KERNEL_CURRENT_PDX
+
+#endif
+
+_Static_assert(SEXOS_KERNEL_CURRENT_FPU == 0 || SEXOS_KERNEL_CURRENT_FPU == 1, "FPU source cohort");
+
+
+#if !defined(SEXOS_FPU_CONTEXT_CORRUPT_PROBE)
+#define SEXOS_FPU_CONTEXT_CORRUPT_PROBE 0
+
+#endif
+
+_Static_assert(SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 0 || SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 1, "FPU context mutation control");
+
+
+#if SEXOS_KERNEL_CURRENT_PDX
+#define KERNEL_MAX_DOMAINS 1024u
+
+#define KERNEL_CAP_SLOTS 1025u
+
+#define KERNEL_BOOT_DOMAINS 32u
+
+#define KERNEL_STACK_RECORDS 32u
+
+#else
 #define KERNEL_MAX_DOMAINS 16u
 
 #define KERNEL_CAP_SLOTS 32u
 
+#define KERNEL_STACK_RECORDS KERNEL_MAX_DOMAINS
+
+#endif
+
+#if !defined(SEXOS_KERNEL_BOOT_AUDIT)
+#define SEXOS_KERNEL_BOOT_AUDIT 0
+
+#endif
+
+#if !defined(SEXOS_KERNEL_CURRENT_SMP)
+#define SEXOS_KERNEL_CURRENT_SMP 0
+
+#endif
+
+#define KERNEL_BOOT_CAPS 1024u
+
+#define KERNEL_BOOT_REGIONS 64u
+
+#define KERNEL_BOOT_REGION_ALIASES 2u
+
 #define KERNEL_RING_CAPACITY 256u
 
 #define KERNEL_INPUT_CAPACITY 512u
+
+#define KERNEL_EPOCH_EVENT_CAPACITY 8192u
 
 #define KERNEL_RUN_QUEUE_CAPACITY 32u
 
@@ -53,7 +157,7 @@
 
 #define USER_RFLAGS UINT64_C(0x202)
 
-/*Protection keys: each domain's key is its domain id; key 14 is the shared producer/consumer key, key 0 the default key no user page carries.*/
+/*Hardware keys are independent of logical domain IDs. The current profile gives key 14 to Sext; the frozen profile retains its shared-buffer policy. Key 0 is closed to users.*/
 
 #define KEY_SHARED 14u
 
@@ -119,7 +223,7 @@ _Static_assert(sizeof(TrapFrame) == 176 && offsetof(TrapFrame, rax) == 112 && of
 /*What a capability names. MESSAGE_QUEUE is the domain's own ring (listen); DOMAIN a domain's ring (call, lend); PCI a device lease; MEM_LEND a lent frame.*/
 
 typedef enum CapKind {
-  CAP_NONE, CAP_DOMAIN, CAP_INPUT_RING, CAP_MESSAGE_QUEUE, CAP_PCI, CAP_MEM_LEND
+  CAP_NONE, CAP_DOMAIN, CAP_INPUT_RING, CAP_MESSAGE_QUEUE, CAP_PCI, CAP_MEM_LEND, CAP_REGION, CAP_APP_LIFECYCLE, CAP_APP_ACTIVATION, CAP_FRAME_POOL, CAP_PAGER_MAPPING, CAP_DEMAND_REGION, CAP_ENTROPY_SOURCE, CAP_CLOCK_SOURCE, CAP_TRUST_POLICY, CAP_HISTORY_RECOVERY
 }
 CapKind;
 
@@ -139,8 +243,26 @@ typedef struct Cap {
   uint8_t lend_key;
   uint8_t permissions;
   uint32_t source;
+  MemoryRegionCapability region;
+  AppLifecycleGrant lifecycle;
+  AppActivationGrant activation;
+  PciCommandGrant command;
+  PgFramePool pool;
+  PgMapping mapping;
+  PgDemand demand;
+  SourceGrant source_grant;
+  HistoryGrant history;
 }
 Cap;
+
+#if SEXOS_KERNEL_CURRENT_PDX
+typedef const Cap *DomainCaps[KERNEL_CAP_SLOTS];
+typedef struct { Cap entries[KERNEL_BOOT_CAPS]; uint32_t count; } CapabilityStorage;
+#else
+typedef Cap DomainCaps[KERNEL_CAP_SLOTS];
+typedef struct { uint8_t unused; } CapabilityStorage;
+#endif
+
 
 /*A ring entry holds exactly what listen returns: the type word, the reported caller and three arguments. from_call marks an IpcCall, whose receiver may then reply once to its sender.*/
 
@@ -151,15 +273,51 @@ typedef struct RingEntry {
   uint64_t arg1;
   uint64_t arg2;
   uint32_t sender;
+  uint32_t caller_task;
   bool from_call;
   uint64_t request_id;
 }
 RingEntry;
 
+typedef enum KernelEpochEventKind {
+  KERNEL_EPOCH_RING_PUSH = 1, KERNEL_EPOCH_RING_POP = 2, KERNEL_EPOCH_INPUT_PUSH = 3, KERNEL_EPOCH_INPUT_POP = 4, KERNEL_EPOCH_PAGE_RECLAIM = 5, KERNEL_EPOCH_PAGE_INSTALL = 6, KERNEL_EPOCH_PAGE_CLEANUP = 7, KERNEL_EPOCH_APP_HANDOVER = 8, KERNEL_EPOCH_APP_ACTIVATION = 9, KERNEL_EPOCH_PCI_COMMAND = 10, KERNEL_EPOCH_REGION_WRITER = 11, KERNEL_EPOCH_DEVICE_RESET = 12
+}
+KernelEpochEventKind;
+
+typedef struct KernelEpochEvent {
+  uint64_t epoch;
+  uint32_t subject;
+  uint32_t peer;
+  uint8_t kind;
+  uint8_t scancode;
+  uint8_t rights;
+  uint8_t key;
+  uint8_t source_key;
+  uint64_t revision;
+  uint64_t address;
+  uint64_t token;
+  uint64_t frame;
+  uint64_t bitmap;
+  uint64_t pages;
+  uint32_t device;
+  uint32_t device_identity;
+  uint32_t device_expected_identity;
+  uint16_t device_before;
+  uint16_t device_expected;
+  uint16_t device_after;
+  bool device_attempted;
+  uint64_t device_status;
+  RingEntry message;
+}
+KernelEpochEvent;
+
+/*A cursor certificate includes a non-reused revision. Exhaustion refuses mutation rather than wrapping into an old certificate.*/
+
 typedef struct Ring {
   RingEntry entries[KERNEL_RING_CAPACITY];
   uint32_t head;
   uint32_t count;
+  uint64_t revision;
 }
 Ring;
 
@@ -185,7 +343,7 @@ typedef struct RpcSlot {
 RpcSlot;
 
 typedef enum TaskState {
-  TASK_NONE, TASK_READY, TASK_RUNNING, TASK_EXITED
+  TASK_NONE, TASK_READY, TASK_RUNNING, TASK_EXITED, TASK_DORMANT, TASK_WAIT_IO, TASK_WAIT_FAULT
 }
 TaskState;
 
@@ -194,22 +352,34 @@ TaskState;
 typedef struct Domain {
   bool live;
   uint32_t id;
-/*Protection key and the key register value for user mode: its own key open, key 0 closed, key 14 per the shared policy.*/
+/*Hardware key and user-mode enforcement mask. Current masks open only the holder's key; frozen-profile sharing remains explicit.*/
   uint8_t key;
+  uint8_t layout;
   uint32_t mask;
   const char *name;
-  Cap caps[KERNEL_CAP_SLOTS];
+  DomainCaps caps;
+  uint16_t storage_index;
   Ring ring;
 /*The one-deep reply slot, as in the reference.*/
   bool reply_ready;
   uint64_t reply_value;
-/*Reply rights: calls heard from each domain and not yet answered.*/
+  uint32_t reply_caller;
+  uint32_t reply_task;
+/*Reply obligations by caller domain. The historical cohort grants at hearing; current transport reserves before accepted publication.*/
   uint64_t reply_rights[KERNEL_MAX_DOMAINS];
 /*Opt-in calls retain a distinct slot until consumption or cancellation. Identities never wrap or reuse a cancelled call.*/
   bool rpc_enabled;
   uint64_t rpc_next;
   RpcSlot rpc[KERNEL_RPC_CAPACITY];
+  uint32_t task_id;
   uint8_t task_state;
+  bool queued;
+  bool wake_pending;
+  uint64_t wait_deadline;
+  uint64_t wait_count;
+  uint64_t expired_count;
+  bool exit_notice;
+  PgFaultState fault;
   TrapFrame *frame;
   uint64_t kstack_top;
 /*The domain's serial output up to its next newline: each line reaches the serial port whole, so lines of different domains never interleave.*/
@@ -223,6 +393,32 @@ typedef struct Domain {
   uint64_t entry;
 }
 Domain;
+
+#if SEXOS_KERNEL_CURRENT_PDX
+typedef struct { Domain *slots[KERNEL_MAX_DOMAINS]; Domain records[KERNEL_BOOT_DOMAINS]; uint32_t count; } DomainRegistry;
+#else
+typedef Domain DomainRegistry[KERNEL_MAX_DOMAINS];
+#endif
+
+
+typedef struct BootRegionAlias {
+  uint32_t holder;
+  uint64_t virtual_base;
+  uint8_t key;
+  bool writer_eligible;
+}
+BootRegionAlias;
+
+typedef struct BootBacking {
+  uint32_t region_id;
+  uint64_t physical;
+  uint64_t length;
+  uint64_t reserved;
+  BootRegionAlias aliases[KERNEL_BOOT_REGION_ALIASES];
+  uint8_t alias_count;
+  RegionWriterState writer;
+}
+BootBacking;
 
 /*A block of frames given to a domain by ALLOCATE_MEMORY; the domain may map exactly these frames.*/
 
@@ -349,28 +545,88 @@ typedef struct LimineRequest {
 }
 LimineRequest;
 
+typedef struct LimineMpInfo LimineMpInfo;
+typedef void (*LimineMpEntry)(LimineMpInfo *);
+struct LimineMpInfo {
+    uint32_t processor_id,lapic_id;
+    uint64_t reserved;
+    LimineMpEntry goto_address;
+    uint64_t extra_argument;
+};
+typedef struct LimineMpResponse {
+    uint64_t revision;
+    uint32_t flags,bsp_lapic_id;
+    uint64_t cpu_count;
+    LimineMpInfo **cpus;
+} LimineMpResponse;
+
+
 _Static_assert(offsetof(LimineFile, path) == 24 && offsetof(LimineFramebuffer, edid_size) == 48 && offsetof(LimineRequest, response) == 40, "Limine 7 layouts");
 
 
+_Static_assert(sizeof(LimineMpInfo) == 32 && offsetof(LimineMpInfo, goto_address) == 16 && sizeof(LimineMpResponse) == 32, "Limine 7 MP layouts");
+
+
 extern volatile LimineRequest limine_framebuffer_request, limine_memmap_request, limine_hhdm_request, limine_rsdp_request, limine_module_request;
+#if SEXOS_KERNEL_CURRENT_SMP
+extern volatile LimineRequest limine_mp_request;
+bool kernel_smp_park_boot(void);
+bool kernel_smp_epoch_current(uint64_t expected);
+bool kernel_smp_epoch_advance(uint64_t expected,uint64_t next);
+#endif
+
+
+typedef struct KernelAppPrivate {
+    uint32_t target,task,predecessor,pager,coordinator;
+    uint8_t key,acked;
+    bool captured,ready,dormant,retired,activated,kicked;
+    uint8_t hinted;uint64_t last_hint[6];
+    uint64_t surface,pool;
+    AppIncarnation identity;
+    AppPrivatePages image,workspace;
+} KernelAppPrivate;
+
+
+typedef struct { bool initialized; uint32_t pager; PgFramePool pool; PgMapping mappings[PG_CLIENTS]; uint8_t keys[PG_CLIENTS]; uint64_t physical,leaves[PG_CLIENTS][PG_PAGES],last_token; PgLedger ledger; } KernelPaging;
 
 
 /*The kernel's state.*/
 
 typedef struct Kernel {
-  Domain domains[KERNEL_MAX_DOMAINS];
+  DomainRegistry domains;
+  KernelAppPrivate apps[KERNEL_CURRENT_APPS];
+  uint32_t app_count;
+  KernelPaging paging;
+  CapabilityStorage cap_storage;
+  BootBacking boot_backings[KERNEL_BOOT_REGIONS];
+  uint32_t boot_backing_count;
 /*Run queue of domain ids, first in first out, as the reference's single-core work-stealing queue behaves.*/
   uint32_t run_queue[KERNEL_RUN_QUEUE_CAPACITY];
   uint32_t run_head;
   uint32_t run_count;
 /*The running domain; 0 before the first switch and while idle.*/
   uint32_t current;
+  uint32_t display_pd;
+  uint32_t shell_pd;
+  uint32_t input_pd;
   bool scheduler_running;
   bool first_scheduled_logged;
+  bool idle_timed_logged;
+/*The boot authority graph is fixed before the first user domain runs. Later page lending cannot add or replace a communication capability.*/
+  bool genesis_sealed;
+/*Bounded committed causal prefix. No effect may advance after this ledger or the global epoch exhausts.*/
+  KernelEpochEvent epoch_events[KERNEL_EPOCH_EVENT_CAPACITY];
+  uint32_t epoch_event_count;
+  uint64_t epoch;
+  DeviceResetState device_reset;
+  uint64_t vector_revision[256];
+  uint64_t vector_heard_revision[256];
+  uint64_t vector_ack_revision[256];
 /*Scancodes from the PS/2 keyboard, for the holder of the input-ring capability.*/
   uint8_t input[KERNEL_INPUT_CAPACITY];
   uint32_t input_head;
   uint32_t input_count;
+  uint64_t input_revision;
   bool keyboard_ready;
   uint64_t ticks;
 /*Hardware-interrupt routes: the domain told of each vector.*/
@@ -394,6 +650,11 @@ typedef struct Kernel {
 /*Log budgets for refusals.*/
   uint32_t reply_refused_log;
   uint32_t map_refused_log;
+  uint64_t entropy_samples;
+  uint64_t clock_samples;
+  bool network_config_present;
+  uint32_t network_config_owner;
+  NetConfig network_config;
 }
 Kernel;
 
@@ -461,17 +722,141 @@ uint32_t pci_scan(PciFunction *out, uint32_t max);
 
 /*kernel_domains: spawning, the genesis grants, the scheduler, traps and system calls.*/
 
+bool kernel_epoch_current(uint64_t epoch);
+
+void kernel_epoch_record_page(uint64_t expected, uint8_t kind, uint32_t subject, uint64_t address, uint64_t token, uint64_t frame, uint8_t rights);
+
+void kernel_epoch_record_page_key(uint64_t expected, uint8_t kind, uint32_t subject, uint64_t address, uint64_t token, uint64_t frame, uint8_t rights, uint8_t key);
+
+void kernel_epoch_record_cleanup(uint64_t expected, uint32_t subject, uint64_t address, uint64_t task, uint64_t bitmap, uint8_t key);
+
+void kernel_epoch_record_handover(uint64_t expected, uint32_t subject, uint64_t task, uint64_t pool, uint64_t pages, uint8_t source_key, uint8_t key);
+
+void kernel_epoch_record_activation(uint64_t expected, uint32_t predecessor, uint32_t successor, uint64_t task, uint64_t surface, uint64_t pages, uint8_t key);
+
+void kernel_epoch_record_pci(uint64_t expected, uint32_t subject, uint64_t slot, uint64_t set, uint64_t clear, PciCommandGrant grant, PciApplyTrace trace);
+
+void kernel_epoch_record_writer(uint64_t expected, uint32_t subject, uint32_t peer, uint32_t region, uint64_t revision, uint64_t job, uint64_t pages, uint8_t source_key, uint8_t target_key, uint8_t action);
+
+void kernel_epoch_record_device_reset(uint64_t expected, uint32_t subject, uint64_t slot, uint32_t device, uint32_t identity, uint8_t vector, uint8_t action, uint64_t generation, uint64_t interrupt_revision, uint32_t cc, uint32_t csts);
+
 void kernel_main(void);
 
 void domains_boot(void);
 
+void domains_boot_current(void);
+
+void kernel_paging_boot(void);
+
+void kernel_sources_boot(void);
+
+void kernel_source_syscall(Domain *d, TrapFrame *frame, uint64_t number);
+
+void kernel_history_boot(void);
+
+void kernel_history_query(Domain *d, TrapFrame *frame);
+
+bool kernel_history_boot_valid(void);
+
+void kernel_pci_boot(void);
+
+bool kernel_pci_boot_valid(Domain *d, uint64_t slot);
+
+void kernel_pci_syscall(Domain *d, TrapFrame *frame, uint64_t number);
+
+void kernel_region_writer_syscall(Domain *d, TrapFrame *frame);
+
+void kernel_device_reset_syscall(Domain *d, TrapFrame *frame);
+
+bool kernel_device_reset_owner_dead(Domain *dead);
+
+bool kernel_region_writer_expected_write(uint32_t region, uint32_t holder, bool granted);
+
+bool kernel_region_writer_recover_dead(Domain *dead);
+
+void kernel_paging_syscall(Domain *d, TrapFrame *frame, uint64_t number);
+
+bool kernel_pager_forward(Domain *d, TrapFrame *frame, uint64_t address);
+
+void kernel_task_wake(Domain *d);
+
+void kernel_task_poll(void);
+
+void kernel_idle_observe(void);
+
+TrapFrame *kernel_task_block(Domain *d, TrapFrame *frame, uint64_t ticks);
+
+TrapFrame *kernel_task_finish(Domain *d, TrapFrame *frame);
+
+TrapFrame *kernel_dispatch_blocked(void);
+
+bool kernel_paging_cleanup_complete(uint32_t target);
+
+void kernel_current_boot_audit(void);
+
+void kernel_current_catalog_publish(void);
+
+bool kernel_current_catalog_valid(void);
+
+void kernel_boot_display_lease(void);
+
+void kernel_boot_devices(void);
+
+void kernel_boot_framebuffer(void);
+
+void kernel_current_routes(void);
+
+void kernel_current_lifecycle_grants(void);
+
+bool kernel_boot_pci_region(Domain *d, uint64_t slot, const PciFunction *device, MemoryRegionCapability *out);
+
+bool kernel_nvme_msix_set_mask(const Cap *lease, bool masked);
+
 Domain *domain_get(uint32_t id);
+
+uint32_t domain_spawn_at(uint32_t id, uint8_t layout, uint8_t key, const char *name, const LimineFile *module);
+
+uint64_t page_leaf_address(uint64_t address);
+
+void kernel_apps_plan(void);
+
+void kernel_app_query(Domain *d, TrapFrame *frame, uint64_t number);
+
+void kernel_app_activation(Domain *d, TrapFrame *frame);
+
+KernelAppPrivate *kernel_app_get(uint32_t target);
+
+void kernel_apps_workspaces_boot(void);
+
+void kernel_app_retire(Domain *d, TrapFrame *frame);
+
+void kernel_app_poll(void);
+
+bool kernel_app_capture_range(Domain *d, uint64_t start, uint64_t length);
+
+bool kernel_app_finish_capture(Domain *d);
+
+bool kernel_app_reserve_successor(uint32_t predecessor, uint32_t successor);
+
+uint32_t kernel_current_task(Domain *d);
 
 uint32_t mask_for_key(uint8_t key);
 
 const Cap *cap_get(Domain *d, uint64_t slot);
 
 bool cap_set(Domain *d, uint64_t slot, Cap c);
+
+bool cap_install_lend(Domain *d, uint64_t slot, Cap c);
+
+bool cap_boot_available(uint32_t count);
+
+bool boot_backing_reserve(uint32_t id, uint64_t length, BootBacking *out);
+
+bool boot_region_map(uint32_t holder, const BootBacking *backing, bool writable, uint64_t *out);
+
+bool boot_region_dma(uint32_t holder, uint64_t slot, uint32_t id, uint64_t length);
+
+bool boot_region_pair(uint32_t first, uint32_t second, uint64_t first_slot, uint64_t second_slot, uint32_t id, uint64_t length, bool second_writable);
 
 bool domain_enqueue(Domain *d, RingEntry entry);
 
@@ -492,6 +877,8 @@ void run_push(uint32_t id);
 uint32_t run_pop(void);
 
 TrapFrame *switch_to(uint32_t id);
+
+void kernel_fpu_save_current(void);
 
 TrapFrame *resume_frame(TrapFrame *frame);
 

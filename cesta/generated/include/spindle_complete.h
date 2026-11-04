@@ -1,0 +1,18 @@
+#ifndef SEXOS_SPINDLE_COMPLETE_H
+#define SEXOS_SPINDLE_COMPLETE_H
+#include "sexos_client.h"
+#define SPINDLE_COMPLETE_WORD_MAX ((size_t)64)
+#define SPINDLE_COMPLETE_CANDIDATES_MAX ((size_t)96)
+typedef struct SpindleCompletion {
+    bool matched;
+    size_t matches,extra_len,candidates_len;
+    uint8_t extra[SPINDLE_COMPLETE_WORD_MAX];
+    uint8_t candidates[SPINDLE_COMPLETE_CANDIDATES_MAX];
+} SpindleCompletion;
+typedef struct SpindleCompleteWord {
+    uint8_t bytes[SPINDLE_COMPLETE_WORD_MAX];
+    size_t len;
+    bool too_long;
+} SpindleCompleteWord;
+SpindleCompletion spindle_complete(const SpindleCompleteWord *word);
+#endif

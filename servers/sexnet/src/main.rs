@@ -4,6 +4,187 @@
 use sex_pdx::{pdx_listen_raw, pdx_reply, serial_println};
 use spin::Mutex;
 use core::sync::atomic::{AtomicU8, Ordering};
+// One service-private protocol flow, backed by the existing BOOT-loaded image.
+static mut TRANSPORT_RX:[u8;sex_net::FLOW_BYTES]=[0;sex_net::FLOW_BYTES];
+static mut TRANSPORT_TX:[u8;sex_net::FLOW_BYTES]=[0;sex_net::FLOW_BYTES];
+static mut CLIENT_RX:[u8;sex_net::FLOW_BYTES]=[0;sex_net::FLOW_BYTES];
+static mut CLIENT_TX:[u8;sex_net::FLOW_BYTES]=[0;sex_net::FLOW_BYTES];
+static mut DNS_RX:[u8;sex_net::DNS_BYTES]=[0;sex_net::DNS_BYTES];
+static mut DNS_TX:[u8;sex_net::DNS_BYTES]=[0;sex_net::DNS_BYTES];
+static mut DNS_RX_META:[sex_net::DnsMetadata;1]=[sex_net::DnsMetadata::EMPTY];
+static mut DNS_TX_META:[sex_net::DnsMetadata;1]=[sex_net::DnsMetadata::EMPTY];
+static mut TRANSPORT_STORAGE:[sex_net::Storage<'static>;3]=[sex_net::Storage::EMPTY,sex_net::Storage::EMPTY,sex_net::Storage::EMPTY];
+mod nic;
+mod ethernet;
+mod arp;
+mod jobs;
+mod dns_jobs;
+mod entropy;
+mod certificate_time;
+mod trust_policy;
+mod source_denial;
+mod source_binding;
+// One BOOT Net main task owns this fixed error-only backing. No large stack
+// temporary or provider state is created while denying unsupported requests.
+static mut SOURCE_DENIALS:source_denial::Outbox=source_denial::Outbox::new();
+
+/// The held BOOT lifecycle grants establish exact current subject/task, never
+/// the app-supplied ticket. Err(LIVE) is the kernel's live-task attestation;
+/// successful info means terminal cleanup custody and cannot authorize work.
+fn network_owner(caller:u32)->Option<jobs::Identity>{
+    use sex_pdx::app_lifecycle as a;
+    for slot in a::SLOTS{
+        let Ok(c)=a::catalog(slot)else{continue;};
+        if c.target_pd==caller&&caller!=0&&c.task_id!=0&&a::info(slot)==Err(a::LIVE){
+            return Some(jobs::Identity{pd:caller,task:c.task_id});
+        }
+    }
+    None
+}
+/// Fresh requests must come from the actual kernel-stamped BOOT main task.
+/// Maintenance keeps using network_owner: it revalidates existing custody,
+/// rather than inventing an incoming request task from the domain identity.
+fn network_request_owner(caller:u32,caller_task:u32)->Option<jobs::Identity>{
+    if caller_task==0{return None;}
+    let owner=network_owner(caller)?;
+    if caller_task!=owner.task{return None;}
+    Some(owner)
+}
+// Every association is assembled before dispatch from this holder's actual
+// typed INFO and lifecycle queries. Slots and identities never come from wire.
+fn load_source_bindings()->[Option<source_binding::Binding>;sex_pdx::browser_sources::BROWSER_COUNT]{
+    core::array::from_fn(|index|{
+        let plan=sex_pdx::browser_sources::PLANS[index];
+        let binding=source_binding::Binding::from_held(plan,
+            (plan.lifecycle_slot(),sex_pdx::app_lifecycle::catalog(plan.lifecycle_slot())),
+            (plan.entropy_slot(),sex_pdx::entropy_info(plan.entropy_slot())),
+            (plan.clock_slot(),sex_pdx::clock_info(plan.clock_slot())),
+            (plan.trust_slot(),sex_pdx::trust_info(plan.trust_slot())));
+        sex_pdx::serial_record!("[sexnet.entropy.source] held={} available={} source=rdseed fallback=0 broker=private_seed32",binding.is_some()as u8,binding.is_some_and(|b|b.entropy_info().available)as u8);
+        sex_pdx::serial_record!("[sexnet.clock.source] held={} source=q35_cmos_utc no_ticks_fallback=1 precision=1",binding.is_some()as u8);
+        if let Some(b)=binding{
+            sex_pdx::serial_record!("[net.source.binding.held] target={} task={} surface={} lifecycle_slot={} entropy_slot={} clock_slot={} trust_slot={} before_dispatch=1 trust_profile={} trust_root_bytes={} trust_version={}",
+                b.target(),b.task(),b.plan().surface(),b.plan().lifecycle_slot(),b.entropy_slot(),b.clock_slot(),b.trust_slot(),b.trust_info().profile,b.trust_info().root_bytes,b.trust_info().version);
+        }else{sex_pdx::serial_record!("[net.source.binding.unavailable] target={} fallback=0",plan.target());}
+        binding
+    })
+}
+// This partitions retained receipt budgets; it grants no source authority.
+// Typed source INFO still authenticates the exact consumer/profile inside the
+// existing machines. The caller was already authenticated against held custody.
+fn source_receipt_member(owner:jobs::Identity)->bool{
+    owner.pd!=0 && owner.task!=0 && sex_pdx::browser_sources::by_target(owner.pd).is_some()
+}
+fn retain_source_denial(outbox:&mut source_denial::Outbox,kind:source_denial::Kind,owner:jobs::Identity,seq:u32)->bool{
+    if source_receipt_member(owner){return false;}
+    let retained=outbox.deny(kind,source_denial::Identity{pd:owner.pd,task:owner.task},seq);
+    sex_pdx::serial_record!("[net.source.denied] owner={} task={} kind={:?} seq={} retained={} source_effects=0 protected_fences=1",
+        owner.pd,owner.task,kind,seq,retained as u8);
+    true
+}
+// Contended or unavailable lifecycle queries are not terminal proof. Keep the
+// retained receipt/lease until a live send or exact held terminal observation.
+fn source_receipt_live(owner:source_denial::Identity)->Option<bool>{
+    use sex_pdx::app_lifecycle as a;
+    let row=sex_pdx::app_catalog::by_target(owner.pd)?;
+    for slot in a::SLOTS{
+        if slot!=row.lifecycle_slot{continue;}
+        let Ok(c)=a::catalog(slot)else{continue;};
+        if !c.is_sender(owner.pd,owner.task)||!c.is_subject(row.target,row.surface,3){continue;}
+        return match a::info(slot){
+            Err(a::LIVE)=>Some(true),
+            Ok(info) if info.target_pd==owner.pd && info.task_id==owner.task
+                && info.required_mask&a::ROLE_NET!=0=>Some(false),
+            _=>None,
+        };
+    }
+    None
+}
+fn poll_source_denials(outbox:&mut source_denial::Outbox){
+    if let Some((owner,word))=outbox.pending_reply(){
+        match source_receipt_live(owner){
+            Some(false)=>{outbox.retire(owner);},
+            Some(true) if pdx_reply(owner.pd,word)==0=>outbox.reply_accepted(),
+            _=>outbox.reply_deferred(),
+        }
+    }
+}
+/// Preserve the active source lease during uncertain lifecycle queries. Its
+/// original deadline still applies; uncertainty never permits provider work.
+fn maintain_seed_source(seed:&mut entropy::Machine,source_bindings:&[Option<source_binding::Binding>]){
+    let before_seed=seed.snapshot();
+    if let Some(owner)=seed.owner(){
+        match source_receipt_live(source_denial::Identity{pd:owner.pd,task:owner.task}){
+            Some(false)=>{seed.retire(owner);},
+            Some(true)=>seed.advance(sex_pdx::get_ticks(),||source_binding::lookup(source_bindings,owner.pd,owner.task).ok_or(sex_pdx::entropy_source::DENIED).and_then(|b|sex_pdx::entropy_word(b.entropy_slot())).map(|word|word.value)),
+            None=>{seed.maintain_lease(sex_pdx::get_ticks());},
+        }
+    }
+    let after_seed=seed.snapshot();
+    if before_seed!=after_seed{sex_pdx::serial_record!("[entropy.seed.progress] owner={:?} ticket={} state={:?} produced={} consumed={} failure={} private=1",after_seed.owner,after_seed.ticket,after_seed.state,after_seed.produced,after_seed.consumed,after_seed.failure);}
+}
+/// Every pending word keeps its original identity and source-machine floor.
+/// A delayed query/Full rotates; only exact held terminal proof retires it.
+fn poll_source_receipts(seed:&mut entropy::Machine,clock:&mut certificate_time::Machine,trust:&mut trust_policy::Machine){
+    // Queries can outlast a lease. Select only owner metadata first, then
+    // recheck current ticks after liveness and before copying any secret word.
+    if let Some(owner)=seed.pending_owner(){
+        let live=source_receipt_live(source_denial::Identity{pd:owner.pd,task:owner.task});
+        seed.maintain_lease(sex_pdx::get_ticks());
+        match live{
+            Some(false)=>{seed.retire(owner);},
+            Some(true)=>{
+                if let Some((target,word))=seed.pending_reply(){
+                    if target==owner && pdx_reply(owner.pd,word)==0{seed.reply_accepted();}
+                    else{seed.reply_deferred();}
+                }
+            },
+            None=>seed.reply_deferred(),
+        }
+    }else{seed.maintain_lease(sex_pdx::get_ticks());}
+    if let Some((owner,word))=clock.pending_reply(){
+        match source_receipt_live(source_denial::Identity{pd:owner.pd,task:owner.task}){
+            Some(false)=>{clock.retire(owner);},
+            Some(true) if pdx_reply(owner.pd,word)==0=>clock.reply_accepted(),
+            _=>clock.reply_deferred(),
+        }
+    }
+    if let Some((owner,word))=trust.pending_reply(){
+        match source_receipt_live(source_denial::Identity{pd:owner.pd,task:owner.task}){
+            Some(false)=>{trust.retire(owner);},
+            Some(true) if pdx_reply(owner.pd,word)==0=>trust.reply_accepted(),
+            _=>trust.reply_deferred(),
+        }
+    }
+}
+struct ClientWire<'e,'a>(Option<&'e mut sex_net::Engine<'a>>,bool);
+impl jobs::Wire for ClientWire<'_,'_>{
+    fn begin(&mut self,ticket:u32)->Result<(),u32>{let engine=self.0.as_mut().ok_or(sex_pdx::network_job::OFFLINE)?;let result=if self.1 {engine.begin_client_tls(ticket)}else{engine.begin_client(ticket)};result.map_err(|_|sex_pdx::network_job::IO)}
+    fn receive(&mut self,out:&mut[u8])->Result<usize,u32>{self.0.as_mut().ok_or(sex_pdx::network_job::OFFLINE)?.client_receive(out).map_err(|_|sex_pdx::network_job::IO)}
+    fn send(&mut self,data:&[u8])->Result<usize,u32>{self.0.as_mut().ok_or(sex_pdx::network_job::OFFLINE)?.client_send(data).map_err(|_|sex_pdx::network_job::IO)}
+    fn queued(&self)->usize{self.0.as_ref().map_or(0,|e|e.client_queued())}
+    fn link(&self)->jobs::Link{match self.0.as_ref().map(|e|e.client_state()){
+        Some(sex_net::State::SynSent|sex_net::State::SynReceived)=>jobs::Link::Opening,
+        Some(sex_net::State::Established|sex_net::State::FinWait1|sex_net::State::FinWait2)=>jobs::Link::Open,
+        Some(sex_net::State::CloseWait|sex_net::State::Closing|sex_net::State::LastAck|sex_net::State::TimeWait)=>jobs::Link::PeerFin,
+        _=>jobs::Link::Closed,
+    }}
+    fn finish_send(&mut self){if let Some(e)=self.0.as_mut(){e.client_finish();}}
+    fn abort(&mut self){if let Some(e)=self.0.as_mut(){e.client_abort();}}
+}
+
+struct DnsWire<'e,'a>(Option<&'e mut sex_net::Engine<'a>>);
+impl dns_jobs::Wire for DnsWire<'_,'_>{
+    fn begin(&mut self,ticket:u32)->Result<(),u32>{self.0.as_mut().ok_or(sex_pdx::network_dns::OFFLINE)?.begin_dns(ticket).map_err(|_|sex_pdx::network_dns::IO)}
+    fn receive(&mut self,out:&mut[u8;512])->Result<Option<usize>,u32>{self.0.as_mut().ok_or(sex_pdx::network_dns::OFFLINE)?.dns_receive(out).map_err(|_|sex_pdx::network_dns::IO)}
+    fn abort(&mut self){if let Some(e)=self.0.as_mut(){e.dns_abort();}}
+}
+fn packet_owned_live(packet:&sex_net::Frame,tcp:&jobs::Machine,dns:&dns_jobs::Machine,config:Option<&sex_pdx::network_config::Config>)->bool{
+    let Some(config)=config else{return false;};
+    if let Some(ticket)=packet.client_ticket(config){return tcp.can_transmit(ticket)&&tcp.owner().is_some_and(|o|network_owner(o.pd)==Some(o));}
+    if let Some(ticket)=packet.dns_ticket(config){return dns.can_transmit(ticket)&&dns.owner().is_some_and(|o|network_owner(o.pd)==Some(o));}
+    true // Existing service-owned ARP/listener traffic carries no app ticket.
+}
 
 // ── Phase M: source3 reliability multi-fetch compile gate ──
 const PHASE_M_RELIABILITY_ENABLED: bool =
@@ -11,7 +192,8 @@ const PHASE_M_RELIABILITY_ENABLED: bool =
 const DNS_SOURCE3_UDP_TX_ENABLED: bool =
     option_env!("SEXNET_DNS_SOURCE3_PROOF").is_some();
 
-/// Heavy proof profile gate: when unset, sexnet boots passive-only.
+/// Heavy historical proof profile gate. The normal path uses bounded NIC
+/// preparation while all IP/transport/application protocols remain offline.
 /// Default boot skips e1000 ring proofs, DNS/TCP/HTTP suites, and
 /// bounded poll loops (50M/100M iterations).
 /// Set SEXOS_SEXNET_PROOF_PROFILE=1 at build time to enable full NIC
@@ -36,6 +218,7 @@ const SEXNET_HTTP_PROOF_CHUNK: u64 = 0x208;
 const SEXNET_HTTP_BODY_LEN: u64 = 0x209;
 const SEXNET_HTTP_BODY_CHUNK: u64 = 0x20A;
 const SEXNET_DNS_RESOLVE: u64 = 0x20B;
+const SEXNET_ERR_UNSUPPORTED:u64=u64::MAX;
 const BODY_TEXT: &[u8] = b"Hello SexOS HTTP OK";
 static mut PROOF_BUF: [u8; 32] = [0u8; 32];
 static mut PROOF_LEN: usize = 0;
@@ -101,37 +284,23 @@ unsafe fn sys_net_diag(selector: u64) -> u64 {
     result
 }
 
-fn sys_alloc_phys(size: u64) -> u64 {
-    let result: u64;
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            in("rax") 31u64,
-            in("rdi") size,
-            lateout("rax") result,
-            lateout("rcx") _,
-            lateout("r11") _,
-            options(nostack),
-        );
+// The pool only subdivides this domain's immutable, pre-mapped boot DMA region.
+// Both addresses come from the same reservation; no physical address mapping API.
+fn reserve_dma(pool: &mut Option<sex_pdx::dma_pool::DmaRegionPool>, bytes: u64) -> (u64, u64) {
+    use sex_pdx::memory_region::{QUERY_VIEW, READ, WRITE, DMA_ADDRESS};
+    if pool.is_none() {
+        let Ok(view) = sex_pdx::memory_region_full_view(
+            sex_pdx::SLOT_DMA_REGION, QUERY_VIEW | READ | WRITE | DMA_ADDRESS,
+        ) else { return (u64::MAX, u64::MAX); };
+        let Ok(new_pool) = sex_pdx::dma_pool::DmaRegionPool::new(view)
+            else { return (u64::MAX, u64::MAX); };
+        sex_pdx::serial_record!("[sexnet.memory.dma.ready] region_id={} length={}", view.region_id, view.length);
+        *pool = Some(new_pool);
     }
-    result
-}
-
-fn sys_map_phys(phys: u64, size: u64) -> u64 {
-    let result: u64;
-    unsafe {
-        core::arch::asm!(
-            "syscall",
-            in("rax") 30u64,
-            in("rdi") phys,
-            in("rsi") size,
-            lateout("rax") result,
-            lateout("rcx") _,
-            lateout("r11") _,
-            options(nostack),
-        );
+    match pool.as_mut().unwrap().reserve(bytes) {
+        Ok(buffer) => (buffer.physical_address, buffer.virtual_address),
+        Err(_) => (u64::MAX, u64::MAX),
     }
-    result
 }
 
 unsafe fn proof_reset() {
@@ -601,44 +770,6 @@ unsafe fn dns_source3_try_parse_and_cache(pkt_buf: u64, rx_len: usize) -> u32 {
 }
 
 // --------------------------------------------------------------------------
-// AP entry (server-side; client uses silknet crate)
-// --------------------------------------------------------------------------
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct SexnetApEntry {
-    ssid:    [u8; 32],
-    rssi:    i8,
-    channel: u8,
-    flags:   u8,
-    _pad:    u8,
-}
-
-// --------------------------------------------------------------------------
-// State
-// --------------------------------------------------------------------------
-
-#[derive(Clone, Copy, PartialEq)]
-enum WifiState { Disconnected, Connected }
-
-#[derive(Clone, Copy, PartialEq)]
-enum VpnState { Down, Up }
-
-struct NetState {
-    wifi:          WifiState,
-    vpn:           VpnState,
-    link_speed_mbps: u16,
-    ipv4:          u32,
-}
-
-static STATE: Mutex<NetState> = Mutex::new(NetState {
-    wifi: WifiState::Disconnected,
-    vpn:  VpnState::Down,
-    link_speed_mbps: 0,
-    ipv4: 0,
-});
-
-// --------------------------------------------------------------------------
 // TCP state machine (Phase G)
 // --------------------------------------------------------------------------
 
@@ -655,13 +786,6 @@ static mut TCP_SYN_COUNT: u32 = 0;
 static mut TCP_ACK_COUNT: u32 = 0;
 static mut TCP_RST_COUNT: u32 = 0;
 static mut TCP_TIMEOUT_COUNT: u32 = 0;
-
-// Mock AP scan table — replaced by NIC ring in a real driver.
-static MOCK_APS: [SexnetApEntry; 3] = [
-    SexnetApEntry { ssid: *b"SexOS_Network\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", rssi: -45, channel: 6,  flags: 0b0010, _pad: 0 },
-    SexnetApEntry { ssid: *b"Silk_Hotspot\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", rssi: -68, channel: 11, flags: 0b0010, _pad: 0 },
-    SexnetApEntry { ssid: *b"OpenAP\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", rssi: -80, channel: 1,  flags: 0b0001, _pad: 0 },
-];
 
 // --------------------------------------------------------------------------
 // PDX dispatch
@@ -737,62 +861,15 @@ fn handle_call(syscall_id: u64, arg0: u64, arg1: u64) -> u64 {
                 serial_println!("[sexnet.body_text.chunk] idx={} bytes={}", idx, bytes);
                 return packed;
             }
-            let s = STATE.lock();
-            let flags: u64 = match s.wifi { WifiState::Connected => 1, _ => 0 }
-                | match s.vpn { VpnState::Up => 2, _ => 0 };
-            ((s.link_speed_mbps as u64) << 16) | flags
-        }
-
-        SEXNET_SCAN_WIFI => {
-            let out_ptr = arg0 as *mut SexnetApEntry;
-            let max = arg1 as usize;
-            if out_ptr.is_null() || max == 0 {
-                return u64::MAX;
-            }
-            let count = MOCK_APS.len().min(max);
-            unsafe {
-                core::ptr::copy_nonoverlapping(MOCK_APS.as_ptr(), out_ptr, count);
-            }
-            count as u64
-        }
-
-        SEXNET_CONNECT => {
-            let ssid_ptr = arg0 as *const u8;
-            let ssid_len = arg1 as usize;
-            if ssid_ptr.is_null() || ssid_len == 0 || ssid_len > 32 {
-                return 1;
-            }
-            let mut s = STATE.lock();
-            s.wifi = WifiState::Connected;
-            s.link_speed_mbps = 300;
-            s.ipv4 = u32::from_be_bytes([192, 168, 1, 100]);
+            // The normal service has no implemented connection control path.
+            // Cached/sample body bytes never establish transport connectivity.
             0
         }
 
-        SEXNET_DISCONNECT => {
-            let mut s = STATE.lock();
-            s.wifi = WifiState::Disconnected;
-            s.link_speed_mbps = 0;
-            s.ipv4 = 0;
-            0
-        }
-
-        SEXNET_VPN_UP => {
-            let mut s = STATE.lock();
-            if s.wifi != WifiState::Connected {
-                return 2;
-            }
-            s.vpn = VpnState::Up;
-            0
-        }
-
-        SEXNET_VPN_DOWN => {
-            let mut s = STATE.lock();
-            s.vpn = VpnState::Down;
-            0
-        }
-
-        SEXNET_GET_IP => STATE.lock().ipv4 as u64,
+        // Arguments are data, never authority to dereference a global address.
+        // These controls have no real implementation and cannot claim success.
+        SEXNET_SCAN_WIFI|SEXNET_CONNECT|SEXNET_DISCONNECT|SEXNET_VPN_UP|SEXNET_VPN_DOWN=>SEXNET_ERR_UNSUPPORTED,
+        SEXNET_GET_IP => 0,
         SEXNET_DNS_RESOLVE => {
             let host_id = arg0;
             if host_id != 1 {
@@ -837,8 +914,31 @@ fn handle_call(syscall_id: u64, arg0: u64, arg1: u64) -> u64 {
 // Entry
 // --------------------------------------------------------------------------
 
+fn command_probe() {
+    use sex_pdx::pci_command as w;
+    // Read-only normal-profile probe. No device activation, ring or DMA work.
+    for (slot,set,clear) in [(0,0,0),((1u64<<32)|sex_pdx::SLOT_NIC,2,4),
+        (sex_pdx::SLOT_NIC,1,0),(sex_pdx::SLOT_NIC,1u64<<32,0),
+        (sex_pdx::SLOT_NIC,w::MEMORY as u64,w::MEMORY as u64)] {
+        assert_eq!(sex_pdx::device_command(slot,set,clear),Err(w::DENIED),"NIC_COMMAND_AUTHORITY_PROBE");
+    }
+    match sex_pdx::device_command(sex_pdx::SLOT_NIC,0,0) {
+        Ok(r)=>{
+            assert!(r.before==r.after&&!r.changed,"NIC_COMMAND_QUERY_MUTATION");
+            sex_pdx::serial_record!("[sexnet.nic.command.ready] before={} after={} requested_bits=0 changed=0 denied=5 ok=1",r.before,r.after);
+        },
+        Err(error)=>sex_pdx::serial_record!("[sexnet.nic.command.unavailable] status={} requested_bits=0 denied=5 ok=1",error),
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    command_probe();
+    for slot in [0,(1u64<<32)|sex_pdx::SLOT_NIC,sex_pdx::SLOT_DMA_REGION,sex_pdx::SLOT_DISPLAY] {
+        assert_eq!(sex_pdx::device_identity(slot),Err(sex_pdx::pci_command::DENIED),"NIC_BOOT_IDENTITY_PROBE");
+    }
+    sex_pdx::serial_record!("[sexnet.nic.identity.denied] requests=4 output_zero=1 ok=1");
+    let mut dma_pool = None;
     let raw = unsafe { sys_net_diag(0) };
     let status = (raw >> 32) as u32;
     let source = ((raw >> 16) & 0xFF) as u8;
@@ -892,11 +992,15 @@ pub extern "C" fn _start() -> ! {
         }
     }
     serial_println!("[sexnet.boot] ok=1 reason=passive_spawn");
-    serial_println!("[sexnet.passive.ready] network=0 dns=0 tcp=0 http=0 tls=0 ok=1 reason=mock_status_only_no_nic");
+    serial_println!("[sexnet.passive.ready] network=0 dns=0 tcp=0 http=0 tls=0 ok=1 reason=app_connectivity_offline");
     serial_println!("[sexnet.passive.spawn.done] ok=1 spawned=1 browser_network=0");
     if SEXNET_PROOF_PROFILE_ENABLED {
         serial_println!("[sexnet.proof.profile] enabled=1 reason=SEXOS_SEXNET_PROOF_PROFILE_set");
-        let nic_va = sex_pdx::sys_map_pci_bar(sex_pdx::SLOT_NIC, 0, 0x10000);
+        let nic_va = sex_pdx::memory_region_full_view(
+            sex_pdx::SLOT_NIC, sex_pdx::memory_region::QUERY_VIEW
+                | sex_pdx::memory_region::READ | sex_pdx::memory_region::WRITE,
+        ).ok().filter(|view| view.length >= 0x5408)
+            .map(|view| view.virtual_address).unwrap_or(u64::MAX);
         if nic_va != u64::MAX {
             let ral = unsafe { core::ptr::read_volatile((nic_va + 0x5400) as *const u32) };
             let rah = unsafe { core::ptr::read_volatile((nic_va + 0x5404) as *const u32) };
@@ -978,10 +1082,10 @@ pub extern "C" fn _start() -> ! {
             };
             serial_println!("[sexnet.nic.rctl.disable_restore.proof.done] ok={}", proof_ok);
 
-            let desc_phys = sys_alloc_phys(4096);
-            let desc_va = sys_map_phys(desc_phys, 4096);
-            let pkt_phys = sys_alloc_phys(4096);
-            let pkt_va = sys_map_phys(pkt_phys, 4096);
+            let (desc_phys, desc_va) = reserve_dma(&mut dma_pool, 4096);
+
+            let (pkt_phys, pkt_va) = reserve_dma(&mut dma_pool, 4096);
+
             let alloc_ok = desc_phys != 0
                 && desc_phys != u64::MAX
                 && desc_va != 0
@@ -1144,8 +1248,8 @@ pub extern "C" fn _start() -> ! {
                 );
                 serial_println!("[sexnet.nic.rx.ring.program_restore.proof.done] ok={}", restore_ok);
 
-                let obs_desc_phys = sys_alloc_phys(4096);
-                let obs_desc_va = sys_map_phys(obs_desc_phys, 4096);
+                let (obs_desc_phys, obs_desc_va) = reserve_dma(&mut dma_pool, 4096);
+
                 let mut obs_pkt_phys = [0u64; 8];
                 let mut obs_pkt_va = [0u64; 8];
                 let mut obs_alloc_ok = obs_desc_phys != 0
@@ -1154,8 +1258,7 @@ pub extern "C" fn _start() -> ! {
                     && obs_desc_va != u64::MAX;
                 let mut oi = 0usize;
                 while oi < 8 {
-                    obs_pkt_phys[oi] = sys_alloc_phys(4096);
-                    obs_pkt_va[oi] = sys_map_phys(obs_pkt_phys[oi], 4096);
+                    (obs_pkt_phys[oi], obs_pkt_va[oi]) = reserve_dma(&mut dma_pool, 4096);
                     if obs_pkt_phys[oi] == 0
                         || obs_pkt_phys[oi] == u64::MAX
                         || obs_pkt_va[oi] == 0
@@ -1451,8 +1554,8 @@ pub extern "C" fn _start() -> ! {
 
                 serial_println!("[sexnet.nic.reset.proof.done] ok=1");
 
-                let perm_desc_phys = sys_alloc_phys(4096);
-                let perm_desc_va = sys_map_phys(perm_desc_phys, 4096);
+                let (perm_desc_phys, perm_desc_va) = reserve_dma(&mut dma_pool, 4096);
+
                 let mut perm_pkt_phys = [0u64; 8];
                 let mut perm_pkt_va = [0u64; 8];
                 let mut perm_alloc_ok = perm_desc_phys != 0
@@ -1461,8 +1564,7 @@ pub extern "C" fn _start() -> ! {
                     && perm_desc_va != u64::MAX;
                 let mut poi = 0usize;
                 while poi < 8 {
-                    perm_pkt_phys[poi] = sys_alloc_phys(4096);
-                    perm_pkt_va[poi] = sys_map_phys(perm_pkt_phys[poi], 4096);
+                    (perm_pkt_phys[poi], perm_pkt_va[poi]) = reserve_dma(&mut dma_pool, 4096);
                     if perm_pkt_phys[poi] == 0
                         || perm_pkt_phys[poi] == u64::MAX
                         || perm_pkt_va[poi] == 0
@@ -1648,10 +1750,10 @@ pub extern "C" fn _start() -> ! {
                 }
             }
 
-            let tx_desc_phys = sys_alloc_phys(4096);
-            let tx_desc_va = sys_map_phys(tx_desc_phys, 4096);
-            let tx_frame_phys = sys_alloc_phys(4096);
-            let tx_frame_va = sys_map_phys(tx_frame_phys, 4096);
+            let (tx_desc_phys, tx_desc_va) = reserve_dma(&mut dma_pool, 4096);
+
+            let (tx_frame_phys, tx_frame_va) = reserve_dma(&mut dma_pool, 4096);
+
             let tx_alloc_ok = tx_desc_phys != 0
                 && tx_desc_phys != u64::MAX
                 && tx_desc_va != 0
@@ -1818,10 +1920,10 @@ pub extern "C" fn _start() -> ! {
                 if rx_own != NIC_OWNER_SEXNET_RX {
                     serial_println!("[sexnet.nic.tx.permanent.skip] reason=rx_not_claimed ok=0");
                 } else {
-                    let txp_desc_phys = sys_alloc_phys(4096);
-                    let txp_desc_va = sys_map_phys(txp_desc_phys, 4096);
-                    let txp_frame_phys = sys_alloc_phys(4096);
-                    let txp_frame_va = sys_map_phys(txp_frame_phys, 4096);
+                    let (txp_desc_phys, txp_desc_va) = reserve_dma(&mut dma_pool, 4096);
+
+                    let (txp_frame_phys, txp_frame_va) = reserve_dma(&mut dma_pool, 4096);
+
                     let txp_alloc_ok = txp_desc_phys != 0
                         && txp_desc_phys != u64::MAX
                         && txp_desc_va != 0
@@ -5194,14 +5296,349 @@ pub extern "C" fn _start() -> ! {
         serial_println!("[boot.default.profile] proofs=light ok=1 reason=sexnet_proof_profile_not_set");
         serial_println!("[sexnet.passive.ready.fast] network=0 dns=0 tcp=0 http=0 tls=0 ok=1");
     }
+    // Ring3 probes execute the real self-only timed-wait frontend; invalid
+    // intervals and every spare field must fail before a task can park.
+    for (ticks,extra) in [(0,0),(65,0),(u64::MAX,0),(1,1),(1,2),(1,3),(1,4)]{
+        let result:u64;
+        unsafe{core::arch::asm!("syscall",inlateout("rax")70u64=>result,in("rdi")ticks,
+            in("rsi")if extra==1{15u64}else{0},in("rdx")if extra==2{15u64}else{0},
+            in("r10")if extra==3{15u64}else{0},in("r8")if extra==4{15u64}else{0},out("rcx")_,out("r11")_);}
+        assert_eq!(result,sex_pdx::ERR_CAP_INVALID,"SELF_WAIT_FRONTEND_PROBE");
+    }
+    sex_pdx::serial_record!("[sexnet.wait.authority] invalid_intervals=3 spare_arguments=4 ok=1");
+    for(slot,extra)in[(0,0),(sex_pdx::SLOT_NET,0),(sex_pdx::SLOT_NIC|(1u64<<32),0),(sex_pdx::SLOT_NIC,1),(sex_pdx::SLOT_NIC,2),(sex_pdx::SLOT_NIC,3),(sex_pdx::SLOT_NIC,4)]{
+        let(status,a,b,c,d):(u64,u64,u64,u64,u64);
+        unsafe{core::arch::asm!("syscall",inlateout("rax")sex_pdx::network_config::SYS_CONFIG=>status,in("rdi")slot,
+            inlateout("rsi")if extra==1{1u64}else{0}=>a,inlateout("rdx")if extra==2{1u64}else{0}=>b,
+            inlateout("r10")if extra==3{1u64}else{0}=>c,inlateout("r8")if extra==4{1u64}else{0}=>d,
+            out("rcx")_,out("r11")_);}
+        assert_eq!([status,a,b,c,d],[sex_pdx::pci_command::DENIED,0,0,0,0],"BOOT_NETWORK_FRONTEND_DENIAL");
+    }
+    sex_pdx::serial_record!("[sexnet.network.config.denied] requests=7 output_zero=1 ok=1");
+    let network_config_result=sex_pdx::device_network_config(sex_pdx::SLOT_NIC);
+    let network_config=network_config_result.ok();
+    if let Some(config)=network_config{let w=config.to_words();sex_pdx::serial_record!("[sexnet.network.config] words={:x},{:x},{:x},{:x} origin=held_boot_nic immutable=1 route=metadata",w[0],w[1],w[2],w[3]);}
+    else{sex_pdx::serial_record!("[sexnet.network.config.unavailable] network=0 fallback=0");}
+    let source_denials=unsafe { &mut SOURCE_DENIALS };
+    let denial_bytes=core::mem::size_of::<source_denial::Outbox>();
+    assert!(denial_bytes<4096,"SOURCE_DENIAL_STORAGE_BUDGET");
+    sex_pdx::serial_record!("[net.source.denial.storage] bytes={} owners={} slots={} bound=4096 public=1",denial_bytes,source_denial::OWNERS_PER_KIND,source_denial::TOTAL_SLOTS);
+    let mut app_custody=sex_pdx::app_lifecycle::ServiceCustody::new();
+    let mut outbound=jobs::Machine::new();
+    let mut outbound_changes=0u64;
+    let mut dns=dns_jobs::Machine::new();
+    let source_bindings=load_source_bindings();
+    let mut seed=entropy::Machine::new();
+    let mut clock=certificate_time::Machine::new();
+    let mut trust=trust_policy::Machine::new();
+    let mut dns_changes=0u64;
+    // Finite, non-reused job tickets retain their first submitted frame even
+    // after an earlier stream consumed the device's ordinary sample budget.
+    let mut last_job_egress=0u32;
+    let mut last_dns_egress=0u32;
+    // Exclusive profiles: never alias a normal driver and the historical proof
+    // driver's pool/queues over the same immutable BOOT device reservation.
+    let mut device = if SEXNET_PROOF_PROFILE_ENABLED {None} else if network_config.is_none(){
+        sex_pdx::serial_record!("[sexnet.nic.prepare.unavailable] status={} dma=0 packets=0",network_config_result.err().unwrap_or(sex_pdx::pci_command::DENIED));None
+    } else {
+        match nic::Live::open() {
+            Ok(hardware) => Some(nic::Device::new(hardware, sex_pdx::get_ticks())),
+            Err(status) => {
+                sex_pdx::serial_record!("[sexnet.nic.prepare.unavailable] status={} dma=0 packets=0",status);
+                None
+            },
+        }
+    };
+    let mut ethernet:Option<ethernet::Driver<nic::Live>>=None;
+    let mut pending_packet:Option<sex_net::Frame>=None;
+    let mut transport:Option<sex_net::Engine<'static>>=None;
+    let mut transport_changes=0u64;
+    let mut transfer_changes=0u64;
+    let mut timed_waits=0u64;
     loop {
-        let req = unsafe { pdx_listen_raw(0) };
+        let preparing = if let Some(dev) = device.as_mut() {
+            let before = dev.phase();
+            if dev.pending() { dev.advance(sex_pdx::get_ticks()); }
+            if dev.phase() != before {
+                sex_pdx::serial_record!("[sexnet.nic.prepare] from={:?} to={:?} failure={:?} status={} mac={:02x}{:02x}{:02x}{:02x}{:02x}{:02x} dma=0 packets=0",before,dev.phase(),dev.failure(),dev.status,dev.mac[0],dev.mac[1],dev.mac[2],dev.mac[3],dev.mac[4],dev.mac[5]);
+            }
+            dev.pending()
+        } else { false };
+        if device.as_ref().is_some_and(|dev|dev.phase()==nic::Phase::Quiescent) {
+            let (hardware,mac)=device.take().unwrap().into_quiescent().expect("NIC_PREPARATION_CUSTODY");
+            ethernet=Some(ethernet::Driver::new(hardware,mac,sex_pdx::get_ticks()));
+        }
+        let mut polling=false;
+        if let Some(owner)=outbound.owner(){
+            if network_owner(owner.pd)!=Some(owner){outbound.retire(owner,&mut ClientWire(transport.as_mut(),false));}
+        }
+        if let Some(owner)=dns.owner(){if network_owner(owner.pd)!=Some(owner){dns.retire(owner,&mut DnsWire(transport.as_mut()));}}
+        maintain_seed_source(&mut seed,&source_bindings);
+        // Released DNS observations retain no active socket. Check their exact
+        // live identities and nominal-tick expiry even on transport-offline turns.
+        dns.maintain_records(sex_pdx::get_ticks(),|owner|network_owner(owner.pd)==Some(owner));
+        if pending_packet.as_ref().is_some_and(|f|!packet_owned_live(f,&outbound,&dns,network_config.as_ref())){pending_packet=None;}
+        if let Some(driver)=ethernet.as_mut() {
+            let before=driver.phase();
+            let receive=transport.as_ref().is_none_or(|engine|engine.can_receive());
+            let event=driver.advance_with_receive(sex_pdx::get_ticks(),receive);
+            if driver.phase()!=before {
+                sex_pdx::serial_record!("[sexnet.ether.phase] from={:?} to={:?} failure={:?}",before,driver.phase(),driver.failure());
+                if driver.phase()==ethernet::Phase::Running {
+                    sex_pdx::serial_record!("[sexnet.ether.ready] model={:?} region=2 budget=262144 used=40960 descriptors=8 buffer=2048 polling=cooperative timing_verified={} network=0 dns=0 tcp=0 http=0 tls=0",driver.model(),driver.timing_verified as u8);
+                    let mut packet=sex_net::Frame{length:60,bytes:[0;sex_net::MAX_FRAME]};
+                    packet.bytes[..60].copy_from_slice(&arp::request_configured(driver.mac,&network_config.expect("BOOT_NETWORK_CONFIG")).expect("BOOT_ARP_CONFIG"));pending_packet=Some(packet);
+                    transport=Some(unsafe{sex_net::Engine::new(network_config.expect("BOOT_NETWORK_CONFIG"),driver.mac,sex_pdx::get_ticks(),0x7365786f735f3736,
+                        &mut TRANSPORT_RX,&mut TRANSPORT_TX,&mut CLIENT_RX,&mut CLIENT_TX,&mut DNS_RX_META,&mut DNS_RX,&mut DNS_TX_META,&mut DNS_TX,&mut TRANSPORT_STORAGE)}.expect("FIXED_TRANSPORT_CONFIG"));
+                    let gateway=network_config.expect("BOOT_NETWORK_CONFIG").gateway;
+                    sex_pdx::serial_record!("[sexnet.route.ready] gateway={}.{}.{}.{} default=1 routes=1 route_capacity={} neighbors={} discovery_ms=1000 expiry_ms=60000 heap=0 authority=held_boot_nic",gateway[0],gateway[1],gateway[2],gateway[3],sex_net::ROUTE_CAPACITY,sex_net::NEIGHBOR_CAPACITY);
+                    sex_pdx::serial_record!("[sexnet.transport.ready] implementation=smoltcp0.14.0 flows=1 rx=4096 tx=4096 turn=256 port=46076 no_std=1 heap=0 diagnostic_listener=1 predictable_seed=1 app_network=0 dns=0 http=0 tls=0");
+                    sex_pdx::serial_record!("[sexnet.dns.ready] jobs=1 host=probe.sexos.test peer_port=46079 datagram=512 retries=0 service_data=1");
+                    sex_pdx::serial_record!("[sexnet.jobs.ready] app_jobs=1 outbound_flows=1 rx=4096 tx=4096 client_port_base=48000 peer_port=46078 service_data=1");
+                }
+            }
+            match event {
+                Some(ethernet::Event::Received{sequence,index,frame})=>{
+                    if sequence<=64||sequence.is_power_of_two(){sex_pdx::serial_record!("[sexnet.ether.rx] sequence={} index={} length={} hash={:#x}",sequence,index,frame.length,ethernet::fingerprint(&frame.bytes[..frame.length]));}
+                    if let Some(engine)=transport.as_mut(){
+                        engine.submit_frame(&frame.bytes[..frame.length]).expect("PROTOCOL_RX_CUSTODY");
+                    }
+                },
+                Some(ethernet::Event::Transmitted{sequence,index,length,hash})=>{
+                    if sequence<=64||sequence.is_power_of_two(){sex_pdx::serial_record!("[sexnet.ether.tx.done] sequence={} index={} length={} hash={:#x}",sequence,index,length,hash);}
+                },
+                Some(ethernet::Event::Dropped{index,length,status,errors})=>{
+                    if driver.dropped<=64||driver.dropped.is_power_of_two(){sex_pdx::serial_record!("[sexnet.ether.rx.drop] index={} length={} status={} errors={} total={}",index,length,status,errors,driver.dropped);}
+                },None=>{},
+            }
+            if let Some(engine)=transport.as_mut(){
+                let before=engine.state();let stats=engine.statistics();let failure=engine.failure();
+                engine.advance(sex_pdx::get_ticks());let after=engine.statistics();
+                if engine.state()!=before {
+                    transport_changes=transport_changes.saturating_add(1);
+                    if transport_changes<=64||transport_changes.is_power_of_two(){sex_pdx::serial_record!("[sexnet.transport.state] from={:?} to={:?} flow={} received={} queued={} receive_hash={:#x} queue_hash={:#x}",before,engine.state(),after.flow,after.flow_received,after.flow_queued,after.flow_receive_hash,after.flow_queue_hash);}
+                }
+                if after.received!=stats.received||after.queued!=stats.queued {
+                    transfer_changes=transfer_changes.saturating_add(1);
+                    if transfer_changes<=64||transfer_changes.is_power_of_two(){sex_pdx::serial_record!("[sexnet.transport.bytes] flow={} received={} queued={} receive_hash={:#x} queue_hash={:#x} scope=private_custody_not_delivery",after.flow,after.flow_received,after.flow_queued,after.flow_receive_hash,after.flow_queue_hash);}
+                }
+                if engine.failure()!=failure{sex_pdx::serial_record!("[sexnet.transport.failed] error={:?}",engine.failure());}
+                let previous=outbound.snapshot();
+                let duplex=outbound.is_duplex();
+                outbound.advance(sex_pdx::get_ticks(),&mut ClientWire(Some(&mut *engine),duplex));
+                let current=outbound.snapshot();
+                if previous.state!=current.state{
+                    outbound_changes=outbound_changes.saturating_add(1);
+                    if outbound_changes<=64||outbound_changes.is_power_of_two(){sex_pdx::serial_record!("[net.job.state] owner={:?} ticket={} from={:?} to={:?} staged={} queued={} received={} scope=private_job",outbound.owner(),current.ticket,previous.state,current.state,current.staged,current.sent,current.received);}
+                }
+                let before_dns=dns.state();dns.advance(sex_pdx::get_ticks(),&mut DnsWire(Some(&mut *engine)));
+                if before_dns!=dns.state(){dns_changes=dns_changes.saturating_add(1);if dns_changes<=64||dns_changes.is_power_of_two(){sex_pdx::serial_record!("[net.dns.state] owner={:?} ticket={} from={:?} to={:?} scope=controlled_query",dns.owner(),dns.ticket(),before_dns,dns.state());}}
+                // Transport stop also revokes private egress already collected
+                // here. Submitted DMA remains in the driver's custody.
+                if engine.failure().is_some(){pending_packet=None;}
+                else if pending_packet.is_none(){pending_packet=engine.take_frame();}
+            }
+            if pending_packet.as_ref().is_some_and(|f|!packet_owned_live(f,&outbound,&dns,network_config.as_ref())){pending_packet=None;}
+            let transport_healthy=transport.as_ref().is_some_and(|engine|engine.failure().is_none());
+            if transport_healthy&&driver.phase()==ethernet::Phase::Running&&!driver.busy(){
+                if let Some(packet)=pending_packet.take(){
+                    match driver.send(&packet.bytes[..packet.length],sex_pdx::get_ticks()){
+                        Ok((sequence,index,length,hash))=>{
+                            let sampled=sequence<=64||sequence.is_power_of_two();
+                            if sampled{sex_pdx::serial_record!("[sexnet.ether.tx.submit] sequence={} index={} length={} hash={:#x}",sequence,index,length,hash);}
+                            if let Some(ticket)=network_config.as_ref().and_then(|c|packet.dns_ticket(c)){
+                                if sampled||ticket>last_dns_egress{sex_pdx::serial_record!("[net.dns.egress.submit] ticket={} sequence={} length={} hash={:#x} scope=dma_admission_not_response",ticket,sequence,length,hash);}
+                                last_dns_egress=last_dns_egress.max(ticket);
+                            }
+                            if let Some(ticket)=network_config.as_ref().and_then(|c|packet.client_ticket(c)){
+                                if sampled||ticket>last_job_egress{sex_pdx::serial_record!("[net.job.egress.submit] ticket={} sequence={} length={} hash={:#x} scope=dma_admission_not_delivery",ticket,sequence,length,hash);}
+                                last_job_egress=last_job_egress.max(ticket);
+                            }
+                        },
+                        Err(error)=>sex_pdx::serial_record!("[sexnet.ether.send.failed] error={:?} retry=0",error),
+                    }
+                }
+            }
+            polling=driver.active();
+            if !polling{pending_packet=None;if let Some(engine)=transport.as_mut(){engine.stop(sex_net::Error::Stopped);}}
+        }
+        if let Some((owner,word))=outbound.pending_reply(){
+            if network_owner(owner.pd)!=Some(owner){outbound.retire(owner,&mut ClientWire(transport.as_mut(),false));}
+            else if pdx_reply(owner.pd,word)==0{outbound.reply_accepted();}
+            else{outbound.reply_deferred();}
+        }
+        if let Some((owner,word))=dns.pending_reply(){
+            if network_owner(owner.pd)!=Some(owner){dns.retire(owner,&mut DnsWire(transport.as_mut()));}
+            else if pdx_reply(owner.pd,word)==0{dns.reply_accepted();}else{dns.reply_deferred();}
+        }
+        poll_source_receipts(&mut seed,&mut clock,&mut trust);
+        poll_source_denials(source_denials);
+        let reply_pending=outbound.pending_reply().is_some()||dns.pending_reply().is_some()||seed.pending_reply().is_some()||clock.pending_reply().is_some()||trust.pending_reply().is_some()||source_denials.pending_reply().is_some();
+        let pending=preparing||polling||reply_pending||seed.busy();
+        let req = if pending {
+            // One message per device turn; no startup polling loop can starve
+            // cleanup or ordinary service calls. try_listen yields when empty.
+            match sex_pdx::pdx_try_listen_raw(0) {
+                Some(req) => { sex_pdx::sys_yield(); req },
+                None => {
+                    // Existing try-listen yields once; then bounded own-task
+                    // wait retains IPC publication and guarantees a later poll.
+                    let before=sex_pdx::get_ticks();
+                    sex_pdx::sys_wait_self_ticks(2).expect("BOOT_SELF_WAIT_AUTHORITY");
+                    let after=sex_pdx::get_ticks();timed_waits=timed_waits.saturating_add(1);
+                    if timed_waits<=8||timed_waits.is_power_of_two(){sex_pdx::serial_record!("[sexnet.receive.wait] before={} after={} ticks=2 count={} kind=timer_assisted_poll irq=0 device={} reply_pending={}",before,after,timed_waits,(preparing||polling)as u8,reply_pending as u8);}
+                    continue;
+                },
+            }
+        } else { unsafe { pdx_listen_raw(0) } };
+        if req.type_id==sex_pdx::app_lifecycle::OP_APP_EXIT {
+            if let Some((n,acked))=app_custody.receive(&mut sex_pdx::app_lifecycle::KernelAuthority,
+                req.type_id,req.caller_pd as u64,[req.arg0,req.arg1,req.arg2],|notice| {
+                    outbound.retire(jobs::Identity{pd:notice.target_pd,task:notice.task_id},&mut ClientWire(transport.as_mut(),false));
+                    dns.retire(jobs::Identity{pd:notice.target_pd,task:notice.task_id},&mut DnsWire(transport.as_mut()));
+                    seed.retire(sex_pdx::entropy_seed::Identity{pd:notice.target_pd,task:notice.task_id});
+                    clock.retire(sex_pdx::clock_source::Identity{pd:notice.target_pd,task:notice.task_id});
+                    trust.retire(sex_pdx::trust_source::Identity{pd:notice.target_pd,task:notice.task_id});
+                    source_denials.retire(source_denial::Identity{pd:notice.target_pd,task:notice.task_id});
+                    sex_pdx::serial_record!("[trust.policy.retired] target={} task={} before_cleanup_ack=1",notice.target_pd,notice.task_id);
+                    sex_pdx::serial_record!("[certificate.time.retired] target={} task={} before_cleanup_ack=1 high_water_retained=1",notice.target_pd,notice.task_id);
+                    sex_pdx::serial_record!("[entropy.seed.retired] target={} task={} before_cleanup_ack=1 private_payload=erased",notice.target_pd,notice.task_id);
+                    if pending_packet.as_ref().is_some_and(|f|!packet_owned_live(f,&outbound,&dns,network_config.as_ref())){pending_packet=None;}
+                    sex_pdx::serial_record!("[net.dns.records.retired] target={} task={} remaining={} before_cleanup_ack=1",notice.target_pd,notice.task_id,dns.owned_records(jobs::Identity{pd:notice.target_pd,task:notice.task_id}));
+                }) {
+                // Private job custody and collected owner egress are gone before ACK.
+                // Already-submitted DMA and shared protocol caches stay service-owned.
+                sex_pdx::serial_record!("[net.app.cleanup.ack] target={} task={} client_leases=0 shared_cache=retained ok={}",n.target_pd,n.task_id,acked as u8);
+            }
+            continue;
+        }
+        if app_custody.is_retired(req.caller_pd) {continue}
+
+        if req.type_id==sex_pdx::trust_policy::OP{
+            let request=sex_pdx::trust_policy::Request::decode([req.arg0,req.arg1,req.arg2]);
+            if let (Some(owner),Ok(request))=(network_request_owner(req.caller_pd,req.caller_task),request){
+                if retain_source_denial(source_denials,source_denial::Kind::Trust,owner,request.seq){continue;}
+                let binding=source_binding::lookup(&source_bindings,owner.pd,owner.task).copied();
+                let identity=sex_pdx::trust_source::Identity{pd:owner.pd,task:owner.task};
+                let mut observed=None;
+                if !trust.handle(identity,request,||{
+                    let result=binding.map_or(Err(sex_pdx::trust_source::DENIED),|b|sex_pdx::trust_info(b.trust_slot()));
+                    observed=result.ok();result
+                }){
+                    sex_pdx::serial_record!("[trust.policy.backpressure] owner={} task={} seq={} effects=0",owner.pd,owner.task,request.seq);
+                }
+                if let Some(info)=observed.filter(|info|info.valid()&&info.consumer==identity){
+                    sex_pdx::serial_record!("[trust.policy.snapshot] owner={} task={} seq={} profile={} root_bytes={} origin=held_boot_grant",owner.pd,owner.task,request.seq,info.profile,info.root_bytes);
+                }
+            }else{
+                let seq=(req.arg0&sex_pdx::trust_policy::MAX_SEQ as u64)as u32;
+                if seq!=0{pdx_reply(req.caller_pd,sex_pdx::trust_policy::error(seq,sex_pdx::trust_policy::INVALID));}
+            }
+            continue;
+        }
+
+        if req.type_id==sex_pdx::certificate_time::OP{
+            let request=sex_pdx::certificate_time::Request::decode([req.arg0,req.arg1,req.arg2]);
+            if let (Some(owner),Ok(request))=(network_request_owner(req.caller_pd,req.caller_task),request){
+                if retain_source_denial(source_denials,source_denial::Kind::CertificateTime,owner,request.seq){continue;}
+                let binding=source_binding::lookup(&source_bindings,owner.pd,owner.task).copied();
+                let identity=sex_pdx::clock_source::Identity{pd:owner.pd,task:owner.task};
+                let before=clock.snapshot();let mut sampled=false;
+                if !clock.handle(identity,request,binding.map(|b|b.clock_info()),||{sampled=true;binding.map_or(Err(sex_pdx::clock_source::DENIED),|b|sex_pdx::clock_snapshot(b.clock_slot()))}){
+                    sex_pdx::serial_record!("[certificate.time.backpressure] owner={} task={} seq={} effects=0",owner.pd,owner.task,request.seq);
+                }
+                if sampled{
+                    if let Some((target,word))=clock.pending_reply(){
+                        if target==identity{if let Ok(seconds)=sex_pdx::certificate_time::decode_reply(word,request.seq){
+                            sex_pdx::serial_record!("[certificate.time.snapshot] owner={} task={} seq={} seconds={} source=q35_cmos_utc precision=1 receipt=retained",owner.pd,owner.task,request.seq,seconds);
+                        }}
+                    }
+                }
+                if !before.rollback&&clock.snapshot().rollback{sex_pdx::serial_record!("[certificate.time.rollback] owner={} task={} seq={} blocked_until_boot=1 last_good_fallback=0",owner.pd,owner.task,request.seq);}
+            }else{
+                let seq=(req.arg0&sex_pdx::certificate_time::MAX_SEQ as u64)as u32;
+                if seq!=0{pdx_reply(req.caller_pd,sex_pdx::certificate_time::error(seq,sex_pdx::certificate_time::INVALID));}
+            }
+            continue;
+        }
+
+        if req.type_id==sex_pdx::entropy_seed::OP{
+            let request=sex_pdx::entropy_seed::Request::decode([req.arg0,req.arg1,req.arg2]);
+            if let (Some(owner),Ok(request))=(network_request_owner(req.caller_pd,req.caller_task),request){
+                if retain_source_denial(source_denials,source_denial::Kind::Entropy,owner,request.seq){continue;}
+                let binding=source_binding::lookup(&source_bindings,owner.pd,owner.task).copied();
+                let before=seed.snapshot();
+                let identity=sex_pdx::entropy_seed::Identity{pd:owner.pd,task:owner.task};
+                if !seed.handle(identity,request,sex_pdx::get_ticks(),binding.map(|b|b.entropy_info())){sex_pdx::serial_record!("[entropy.seed.backpressure] owner={} task={} seq={} effects=0",owner.pd,owner.task,request.seq);}
+                let after=seed.snapshot();
+                if after.owner==Some(identity)&&before.ticket!=after.ticket{sex_pdx::serial_record!("[entropy.seed.admitted] owner={} task={} ticket={} bytes=32 source=held_boot_grant",owner.pd,owner.task,after.ticket);}
+                let released=seed.pending_reply().is_some_and(|(target,word)|target==identity&&sex_pdx::entropy_seed::decode_reply(word,request.seq)==Ok(0));
+                if request.kind==sex_pdx::entropy_seed::RELEASE&&before.owner==Some(identity)&&before.ticket==request.ticket&&after.owner.is_none()&&released{sex_pdx::serial_record!("[entropy.seed.released] owner={} task={} ticket={} service_payload=erased receipt=retained",owner.pd,owner.task,request.ticket);}
+            }else{
+                let seq=(req.arg0&sex_pdx::entropy_seed::MAX_SEQ as u64)as u32;
+                if seq!=0{pdx_reply(req.caller_pd,sex_pdx::entropy_seed::error(seq,sex_pdx::entropy_seed::INVALID));}
+            }
+            continue;
+        }
+
+        if req.type_id==sex_pdx::network_job::OP{
+            let request=sex_pdx::network_job::Request::decode([req.arg0,req.arg1,req.arg2]);
+            if let (Some(owner),Ok(request))=(network_request_owner(req.caller_pd,req.caller_task),request){
+                let now=sex_pdx::get_ticks();
+                // DNS is data under the held route. It cannot expand this fixed
+                // controlled endpoint policy or mint any communication authority.
+                let tls_admitted=request.kind!=sex_pdx::network_job::BEGIN_DUPLEX_RESOLVED||
+                    sex_pdx::trust_info(sex_pdx::trust_source::SLOT).is_ok_and(|info|info.valid()&&info.consumer==sex_pdx::trust_source::Identity{pd:owner.pd,task:owner.task})
+                    &&network_config.is_some_and(|config|config.tls_endpoint().is_some());
+                let admission=dns.resolved(owner,request.a as u32,now)
+                    .filter(|_|tls_admitted)
+                    .filter(|record|network_config.is_some_and(|config|record.address==config.http))
+                    .map(|r|jobs::Resolution{owner:r.owner,generation:r.generation,address:r.address,observed_tick:r.observed_tick,expires_tick:r.expires_tick})
+                    .ok_or(sex_pdx::network_job::DENIED);
+                let before=outbound.snapshot().ticket;
+                let before_state=outbound.snapshot().state;
+                let before_stream=outbound.stream_snapshot();
+                let duplex=outbound.is_duplex();
+                if !outbound.handle_resolved(owner,request,now,dns.owner().is_some(),admission,&mut ClientWire(transport.as_mut(),duplex)){
+                    // Valid clients serialize one request per receipt. A second
+                    // same-owner request cannot overwrite its reserved receipt.
+                    sex_pdx::serial_record!("[net.job.request.backpressure] owner={} seq={} effects=0 pending_receipt=retained",owner.pd,request.seq);
+                }
+                if before!=outbound.snapshot().ticket {
+                    if let Some(r)=outbound.resolution(){sex_pdx::serial_record!("[net.job.resolved.admitted] owner={} task={} ticket={} dns_generation={} observed={} expires={} now={} fixed=1 at_begin=1",owner.pd,owner.task,outbound.snapshot().ticket,r.generation,r.observed_tick,r.expires_tick,now);}
+                }
+                if request.kind==sex_pdx::network_job::BEGIN_DUPLEX_RESOLVED && before!=outbound.snapshot().ticket && outbound.is_duplex(){
+                    sex_pdx::serial_record!("[net.job.duplex.admitted] owner={} task={} ticket={} kind=10 ring=1024 tx_ring=4096 max_wire=32768 peer_port=46080 trust_profile=1 authority=held_boot_route",owner.pd,owner.task,outbound.snapshot().ticket);
+                }
+                if request.kind==sex_pdx::network_job::BEGIN_STREAM_RESOLVED && before!=outbound.snapshot().ticket && outbound.stream_snapshot().is_some() {
+                    sex_pdx::serial_record!("[net.job.stream.admitted] owner={} task={} ticket={} kind=9 ring={} max_wire={} total_ticks={} idle_ticks={} authority=held_route",owner.pd,owner.task,outbound.snapshot().ticket,sex_pdx::network_job::STREAM_RING_BYTES,sex_pdx::network_job::MAX_STREAM_BYTES,sex_pdx::network_job::STREAM_TOTAL_TICKS,sex_pdx::network_job::STREAM_IDLE_TICKS);
+                }
+                if let (Some(old),Some(new))=(before_stream,outbound.stream_snapshot()) {
+                    if new.consumed>old.consumed && (old.consumed==0 || old.consumed/1024!=new.consumed/1024) {
+                        sex_pdx::serial_record!("[net.job.stream.drain] owner={} task={} ticket={} produced={} consumed={} buffered={} ring={} state_before={:?} receipt=retained not_delivery=1",owner.pd,owner.task,outbound.snapshot().ticket,new.produced,new.consumed,new.buffered,sex_pdx::network_job::STREAM_RING_BYTES,before_state);
+                    }
+                }
+            }else{
+                // Invalid traffic cannot reserve/mutate a job. This rejection
+                // carries no effect receipt; a full reply queue remains bounded.
+                pdx_reply(req.caller_pd,sex_pdx::network_job::error((req.arg0&0xFFFFFF)as u32,sex_pdx::network_job::DENIED));
+            }
+            continue;
+        }
+        if req.type_id==sex_pdx::network_dns::OP{
+            let request=sex_pdx::network_dns::Request::decode([req.arg0,req.arg1,req.arg2]);
+            if let (Some(owner),Ok(request))=(network_request_owner(req.caller_pd,req.caller_task),request){
+                if !dns.handle(owner,request,sex_pdx::get_ticks(),outbound.owner().is_some(),&mut DnsWire(transport.as_mut())){sex_pdx::serial_record!("[net.dns.request.backpressure] owner={} seq={} effects=0 pending_receipt=retained",owner.pd,request.seq);}
+            }else{pdx_reply(req.caller_pd,sex_pdx::network_dns::error((req.arg0&0xFFFFFF)as u32,sex_pdx::network_dns::DENIED));}
+            continue;
+        }
         let result = handle_call(req.type_id, req.arg0, req.arg1);
         pdx_reply(req.caller_pd, result);
     }
 }
 
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {}
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    sex_pdx::serial_record!("[sexnet.fatal] {}",info);
+    loop {sex_pdx::sys_yield();}
 }

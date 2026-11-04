@@ -6,6 +6,10 @@
  * rcx rbx rax vector error rip cs rflags rsp ss (22 words, 176 bytes). The handlers return the frame to
  * resume, which may belong to another task, and every exit is the same pop and iretq. */
 
+#ifndef SEXOS_KERNEL_CURRENT_SMP
+#define SEXOS_KERNEL_CURRENT_SMP 0
+#endif
+
 /* The request block, word for word as the reference kernel declares it (Limine 7 protocol). */
 .section .limine_requests_start, "aw"
 .balign 8
@@ -31,6 +35,11 @@ limine_hhdm_request:
 .globl limine_rsdp_request
 limine_rsdp_request:
     .quad 0xc7b1dd30df4c8b88, 0x0a82e883a194f07b, 0xc5e77b6b397e7b43, 0x27637845accdcf3c, 0, 0
+#if SEXOS_KERNEL_CURRENT_SMP
+.globl limine_mp_request
+limine_mp_request:
+    .quad 0xc7b1dd30df4c8b88, 0x0a82e883a194f07b, 0x95a67b819a1b857e, 0xa0b61b723b6a73e0, 0, 0, 0
+#endif
 .globl limine_module_request
 limine_module_request:
     .quad 0xc7b1dd30df4c8b88, 0x0a82e883a194f07b, 0x3e7e279702be32af, 0xca1c4f3bd1280cee, 0, 0, 0, 0
@@ -52,6 +61,24 @@ _start:
     hlt
     jmp 1b
 .size _start, .-_start
+
+/* Leave a blocked or exited task's retained stack before enabling interrupts.
+ * This stack is kernel-owned and never part of app/pager reclamation. */
+.bss
+.balign 16
+kernel_idle_stack:
+    .skip 16384
+kernel_idle_stack_top:
+.text
+.globl kernel_idle
+.type kernel_idle, @function
+kernel_idle:
+    cli
+    lea kernel_idle_stack_top(%rip), %rsp
+    xor %ebp, %ebp
+    call kernel_idle_loop
+    ud2
+.size kernel_idle, .-kernel_idle
 
 /* cpu_load_gdt(pointer, code selector, data selector): load the GDT, the data segment registers, and
  * CS through a far return. */

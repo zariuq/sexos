@@ -1,0 +1,4 @@
+(cesta-tables/1
+  (Table Trust
+    (Columns (Column name Identifier) (Column value Nat)) (Key name)
+    (Rows (Row SOURCE_TRUST_PROFILE 1) (Row SOURCE_TRUST_VERSION 1) (Row SOURCE_TRUST_ROOT_BYTES 376))))

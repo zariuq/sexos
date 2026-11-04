@@ -260,5 +260,5 @@
         (?:
           (== outcome network_rx_run_answered)
           NET_READY
-          (?: (== outcome network_rx_run_suspended) NET_PENDING NET_FAILED))))
+          (?: (== outcome network_rx_run_done) NET_PENDING NET_FAILED))))
   ))

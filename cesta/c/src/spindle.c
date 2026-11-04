@@ -1,6 +1,16 @@
 #include "sexos_server.h"
+#include "spindle_calc.h"
+#include "spindle_complete.h"
+#include "spindle_sextime.h"
 /*Spindle command console server, translated from apps/spindle/src/main.rs. The Rust statics (scrollback, history, the 2x2 surface subgrid cache and the log budgets) and the locals of _start (the event ring and the vi-mode command line) are fields of one Spindle state in static storage (~116 KiB).*/
 /*Build-time proof profiles: option_env! in the Rust source.*/
+#if defined(SEXOS_SPINDLE_CURRENT)
+#define SPINDLE_CURRENT_ENABLED 1
+
+#else
+#define SPINDLE_CURRENT_ENABLED 0
+
+#endif
 #if defined(SEXOS_SPINDLE_APPS_REGISTRY_PROOF)
 #define APPS_REGISTRY_PROOF_ENABLED 1
 
@@ -342,6 +352,9 @@ typedef struct Spindle {
   uint32_t raw_budget;
   uint32_t key_recv_budget;
   uint32_t echo_budget;
+  bool calc_has_answer;
+  SpindleCalcInt calc_answer;
+  SpindleCalcEnv calc_env;
 }
 Spindle;
 static Spindle spindle_state;
@@ -691,6 +704,25 @@ static void scrollback_push(Scrollback *sb, ByteSlice line) {
 static void sb_push_cstr(Scrollback *sb, const char *s) {
   scrollback_push(sb, cstr_slice(s));
 }
+static bool complete_command(CmdLine *line, Scrollback *sb) {
+  if (line->len == 0 || line->cur != line->len) return false;
+  for (size_t i = 0; i < line->len; ++i) if (line->buf[i] == 32u) return false;
+  SpindleCompleteWord word = {
+    0
+  };
+  word.len = line->len;
+  if (word.len > SPINDLE_COMPLETE_WORD_MAX) word.too_long = true;
+  else for (size_t i = 0; i < word.len; ++i) word.bytes[i] = line->buf[i];
+  SpindleCompletion completion = spindle_complete(&word);
+  if (!completion.matched) return false;
+  if (completion.extra_len == 0 && completion.matches > 1) scrollback_push(sb, (ByteSlice) {
+    .ptr = completion.candidates,.len = completion.candidates_len
+  });
+  for (size_t i = 0; i < completion.extra_len; ++i) cmdline_insert_at(line, line->len, completion.extra[i]);
+  if (completion.matches == 1) cmdline_insert_at(line, line->len, 32u);
+  sexos_line("[spindle.complete] matches=%zu added=%zu len=%zu", completion.matches, completion.extra_len + (completion.matches == 1 ? 1 : 0), line->len);
+  return true;
+}
 static ByteSlice scrollback_get(const Scrollback *sb, size_t ring_idx) {
   const uint8_t *raw = sb->ring[ring_idx % MAX_SCROLLBACK];
   size_t len = 0;
@@ -953,18 +985,109 @@ static bool dispatch(Spindle *sp, ByteSlice line) {
   if (SPINDLE_ALIASES_PROOF_ENABLED) sexos_line("[spindle.alias.proof.summary] alias_count=6 ok=1");
   if (cmd.len == 0) return true;
   bool recognized = false;
+  if (slice_eq(cmd, "calc")) {
+    SpindleCalcInput input = {
+      0
+    };
+    if (args.len > SPINDLE_CALC_INPUT_MAX) input.too_long = true;
+    else {
+      input.len = args.len;
+      for (size_t i = 0; i < args.len; ++i) input.bytes[i] = args.ptr[i];
+    }
+    if (SPINDLE_CURRENT_ENABLED) {
+      SpindleCalcSessionResult session = spindle_calc_eval_session(&input, &sp->calc_env);
+      SpindleCalcRenderResult rendered = spindle_calc_render_session(session);
+      if (rendered.ok) {
+        ByteSlice output_slice = (ByteSlice) {
+          .ptr = rendered.line.bytes,.len = rendered.line.len
+        };
+        scrollback_push(sb, output_slice);
+        SliceText text = slice_to_text(output_slice);
+        sexos_line("[spindle.calc] expr_bytes=%zu result=%s ok=1", args.len, text.text);
+      } else {
+        const char *message = spindle_calc_error_text(rendered.error);
+        sb_push_cstr(sb, message);
+        sexos_line("[spindle.calc] expr_bytes=%zu error=%s ok=0", args.len, spindle_calc_error_name(rendered.error));
+      }
+    } else {
+      SpindleCalcResult result = spindle_calc_eval(&input, sp->calc_has_answer, sp->calc_answer);
+      if (result.ok) {
+        sp->calc_has_answer = true;
+        sp->calc_answer = result.value.scaled;
+        SpindleCalcLine output = spindle_calc_render(result.value);
+        ByteSlice output_slice = (ByteSlice) {
+          .ptr = output.bytes,.len = output.len
+        };
+        scrollback_push(sb, output_slice);
+        SliceText rendered = slice_to_text(output_slice);
+        sexos_line("[spindle.calc] expr_bytes=%zu result=%s ok=1", args.len, rendered.text);
+      } else {
+        const char *message = spindle_calc_error_text(result.error);
+        sb_push_cstr(sb, message);
+        sexos_line("[spindle.calc] expr_bytes=%zu error=%s ok=0", args.len, spindle_calc_error_name(result.error));
+      }
+    }
+    event_ring_push(ev, EV_CMD_OK, cmd);
+    return true;
+  }
+  if (slice_eq(cmd, "sextime")) {
+    SpindleSextimeInput input = {
+      0
+    };
+    if (args.len > SPINDLE_SEXTIME_INPUT_MAX) input.too_long = true;
+    else {
+      input.len = args.len;
+      for (size_t i = 0; i < args.len; ++i) input.bytes[i] = args.ptr[i];
+    }
+    int64_t unix_seconds = 0;
+    bool parsed = spindle_sextime_parse(&input, &unix_seconds);
+    SpindleSextimeLines lines = {
+      0
+    };
+    if (parsed) lines = spindle_sextime_render(unix_seconds);
+    if (parsed && lines.ok) {
+      for (size_t row = 0; row < 3; ++row) scrollback_push(sb, (ByteSlice) {
+        .ptr = lines.rows[row],.len = lines.lens[row]
+      });
+      SliceText first = slice_to_text((ByteSlice) {
+        .ptr = lines.rows[0],.len = lines.lens[0]
+      });
+      SliceText second = slice_to_text((ByteSlice) {
+        .ptr = lines.rows[1],.len = lines.lens[1]
+      });
+      SliceText third = slice_to_text((ByteSlice) {
+        .ptr = lines.rows[2],.len = lines.lens[2]
+      });
+      sexos_line("[spindle.sextime] %s | %s | %s ok=1", first.text, second.text, third.text);
+    } else {
+      sb_push_cstr(sb, "usage: sextime <unix-seconds>");
+      sb_push_cstr(sb, "Converts the number given; it does not read a clock.");
+      sexos_line("[spindle.sextime] ok=0 reason=usage");
+    }
+    event_ring_push(ev, EV_CMD_OK, cmd);
+    return true;
+  }
   if (slice_eq(cmd, "help")) {
-    sexos_line("[spindle.help.section] name=basics commands=6");
+    sexos_line("[spindle.help.section] name=basics commands=%llu", SPINDLE_CURRENT_ENABLED ? 9ULL : 8ULL);
     sb_push_cstr(sb, "--- Basics ---");
     sb_push_cstr(sb, "  help         show this help");
     sb_push_cstr(sb, "  clear        clear scrollback");
     sb_push_cstr(sb, "  echo <msg>   print message");
+    sb_push_cstr(sb, "  sextime <n>  Unix seconds as SexTime/UTC/Long Count");
+    if (SPINDLE_CURRENT_ENABLED) {
+      sb_push_cstr(sb, "  calc <expr>  exact + - * / % ** sqrt abs min max round floor ceil ans");
+      sb_push_cstr(sb, "  calc x = 2   name a value (up to 8)");
+      sb_push_cstr(sb, "  calc 255 in hex   also in bin / in oct");
+      sb_push_cstr(sb, "  Tab          complete a command name");
+    } else sb_push_cstr(sb, "  calc <expr>  exact decimal + - * / % ( ), ans");
     sb_push_cstr(sb, "  about        Spindle version + identity");
     sb_push_cstr(sb, "  route        input/surface route info");
     sb_push_cstr(sb, "  close        session lifecycle status");
     sexos_line("[spindle.help.command] name=help ok=1");
     sexos_line("[spindle.help.command] name=clear ok=1");
     sexos_line("[spindle.help.command] name=echo ok=1");
+    sexos_line("[spindle.help.command] name=sextime ok=1");
+    sexos_line("[spindle.help.command] name=calc ok=1");
     sexos_line("[spindle.help.command] name=about ok=1");
     sexos_line("[spindle.help.command] name=route ok=1");
     sexos_line("[spindle.help.command] name=close ok=1");
@@ -2235,7 +2358,7 @@ static bool dispatch(Spindle *sp, ByteSlice line) {
       sb_push_cstr(sb, "    Esc              toggle palette");
       sb_push_cstr(sb, "  Selection: range markers [start, end] tracked.");
       sb_push_cstr(sb, "  Palette: up/down nav, Enter execute, Esc dismiss.");
-      sb_push_cstr(sb, "Limitations: no shift, no visual cursor indicator.");
+      sb_push_cstr(sb, "Limitations: no visual cursor indicator.");
       sexos_line("[spindle.editor.command] name=edit-help ok=1 reason=keybindings_v2");
       recognized = true;
     } else if (slice_eq(cmd, "edit-status")) {
@@ -2749,6 +2872,33 @@ static bool scancode_to_ascii(uint8_t code, uint8_t *ch_out) {
     default: return false;
   }
 }
+static uint8_t shifted(uint8_t ch) {
+  if (ch >= 97u && ch <= 122u) return ch - 32u;
+  switch (ch) {
+    case 49u: return 33u;
+    case 50u: return 64u;
+    case 51u: return 35u;
+    case 52u: return 36u;
+    case 53u: return 37u;
+    case 54u: return 94u;
+    case 55u: return 38u;
+    case 56u: return 42u;
+    case 57u: return 40u;
+    case 48u: return 41u;
+    case 45u: return 95u;
+    case 61u: return 43u;
+    case 91u: return 123u;
+    case 93u: return 125u;
+    case 59u: return 58u;
+    case 39u: return 34u;
+    case 96u: return 126u;
+    case 92u: return 124u;
+    case 44u: return 60u;
+    case 46u: return 62u;
+    case 47u: return 63u;
+    default: return ch;
+  }
+}
 static void scrollback_page(Scrollback *sb, bool up) {
   uint32_t page = (uint32_t)(GRID_ROWS - 1);
   if (up) {
@@ -2759,7 +2909,7 @@ static void scrollback_page(Scrollback *sb, bool up) {
   } else sb->scroll_offset = sat_sub_u32(sb->scroll_offset, page);
   sexos_line("[spindle.page.nav] dir=%s offset=%u ok=1", up ? "up" : "down", sb->scroll_offset);
 }
-static void handle_key_insert(Spindle *sp, uint8_t scancode) {
+static void handle_key_insert(Spindle *sp, uint8_t scancode, bool shift) {
   CmdLine *line = &sp->line;
   History *hist = &sp->hist;
   switch (scancode) {
@@ -2807,12 +2957,13 @@ static void handle_key_insert(Spindle *sp, uint8_t scancode) {
       break;
     }
     case 0x0Fu: {
-      if (!ghost_accept(line, hist)) sexos_line("[spindle.key.tab] no_ghost");
+      if (!ghost_accept(line, hist) && (!SPINDLE_CURRENT_ENABLED || !complete_command(line, &sp->sb))) sexos_line("[spindle.key.tab] no_ghost");
       break;
     }
     default: {
       uint8_t ch = 0;
       if (scancode_to_ascii(scancode, &ch)) {
+        if (shift) ch = shifted(ch);
         cmdline_insert_at(line, line->cur, ch);
         line->has_hist_nav = false;
         CharText ct = char_text(ch);
@@ -2940,8 +3091,8 @@ static void handle_key_normal(Spindle *sp, uint8_t scancode) {
     }
   }
 }
-static void handle_key(Spindle *sp, uint8_t scancode) {
-  if (sp->line.mode == VI_INSERT) handle_key_insert(sp, scancode);
+static void handle_key(Spindle *sp, uint8_t scancode, bool shift) {
+  if (sp->line.mode == VI_INSERT) handle_key_insert(sp, scancode, shift);
   else handle_key_normal(sp, scancode);
 }
 static void run_command_history_proof(Spindle *sp) {
@@ -3302,7 +3453,9 @@ void spindle_main(void) {
     SexosMessage msg = sexos_listen(&sp->listener, 0);
     if (take(&sp->raw_budget)) sexos_line("[spindle.pdx.raw] type=%#llx a0=%#llx a1=%#llx a2=%#llx caller=%llu", (unsigned long long) msg.type_id, (unsigned long long) msg.arg0, (unsigned long long) msg.arg1, (unsigned long long) msg.arg2, (unsigned long long) msg.caller_pd);
     if (msg.type_id == 0x202u) {
-      uint8_t scancode = (uint8_t) msg.arg0;
+      uint64_t key_word = msg.arg0;
+      uint8_t scancode = (uint8_t) key_word;
+      bool shift = (key_word >> 8u & 1u) != 0u;
       uint64_t value = msg.arg1;
       if (take(&sp->key_recv_budget)) sexos_line("[spindle.key.recv] code=%u down=%llu mod=0", (unsigned) scancode, (unsigned long long) value);
       if (value != 1u) continue;
@@ -3329,7 +3482,7 @@ void spindle_main(void) {
         }
         sp->line.has_hist_nav = false;
       }
-      handle_key(sp, scancode);
+      handle_key(sp, scancode, shift);
       if (take(&sp->echo_budget)) sexos_line("[spindle.input.echo.ok] key=%u", (unsigned) scancode);
       content_render(sp);
     }

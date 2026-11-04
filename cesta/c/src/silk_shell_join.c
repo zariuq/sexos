@@ -1,0 +1,153 @@
+#include "silk_shell_core.h"
+#include "silk_shell_chrome.h"
+#include "silk_shell_input.h"
+#include "silk_shell_atlas.h"
+#include "silk_shell_surfaces.h"
+#include "silk_shell_models_bell.h"
+#include "silk_shell_models_root.h"
+#include "silk_shell_diagnostics_a.h"
+static ShellChromeContext join_chrome(void){return(ShellChromeContext){&SILK_SHELL_STATE.chrome,&SILK_SHELL_STATE.models,&SILK_SHELL_STATE.apps,&SILK_SHELL_STATE.input,&SILK_SHELL_STATE.proofs_a};}
+static ShellInputContext join_input(void){return(ShellInputContext){join_chrome(),&SILK_SHELL_STATE.atlas,&SILK_SHELL_STATE.surfaces};}
+static ShellAtlasContext join_atlas(void){return(ShellAtlasContext){&SILK_SHELL_STATE.atlas,&SILK_SHELL_STATE.chrome,&SILK_SHELL_STATE.models};}
+static ShellSurfacesContext join_surfaces(void){return(ShellSurfacesContext){join_chrome(),&SILK_SHELL_STATE.surfaces};}
+static void bind_chrome(const ShellChromeContext *ctx){if(ctx&&ctx->chrome==&SILK_SHELL_STATE.chrome&&ctx->models==&SILK_SHELL_STATE.models&&ctx->apps==&SILK_SHELL_STATE.apps&&ctx->input==&SILK_SHELL_STATE.input&&ctx->proofs_a==&SILK_SHELL_STATE.proofs_a)return;sexos_fail();}
+static void bind_surfaces(const ShellSurfacesContext *ctx){bind_chrome(&ctx->shell);if(ctx->surfaces!=&SILK_SHELL_STATE.surfaces)sexos_fail();}
+static ShellPaletteString join_text(const char *text){ShellPaletteString out={0};while(text&&text[out.len]&&out.len+1<sizeof out.bytes){out.bytes[out.len]=text[out.len];++out.len;}return out;}
+bool shell_custody_has_surface(uint64_t sid,bool terminal_only);
+int32_t desktop_width(void){ShellChromeContext ctx=join_chrome();return shell_chrome_desktop_width(&ctx);}
+int32_t desktop_height(void){ShellChromeContext ctx=join_chrome();return shell_chrome_desktop_height(&ctx);}
+bool active_surface_for_frame(uint32_t frame,uint64_t *out){ShellChromeContext ctx=join_chrome();return shell_chrome_active_surface_for_frame(&ctx,frame,out);}
+bool frame_for_surface(uint64_t surface,uint32_t *out){ShellChromeContext ctx=join_chrome();return shell_chrome_frame_for_surface(&ctx,surface,out);}
+bool first_minimized_frame_id(uint32_t *out){ShellChromeContext ctx=join_chrome();return shell_chrome_first_minimized_frame_id(&ctx,out);}
+bool selected_frame_id(uint32_t *out){ShellChromeContext ctx=join_chrome();return shell_chrome_selected_frame_id(&ctx,out);}
+bool lifecycle_state(uint64_t surface,uint8_t *out){ShellChromeContext ctx=join_chrome();return shell_chrome_lifecycle_state(&ctx,surface,out);}
+bool set_lifecycle_state(uint64_t surface,uint8_t state){ShellChromeContext ctx=join_chrome();return shell_chrome_set_lifecycle_state(&ctx,surface,state);}
+bool surface_generation(uint64_t surface,uint64_t *out){ShellChromeContext ctx=join_chrome();return shell_chrome_surface_generation(&ctx,surface,out);}
+bool make_focus_ref(uint64_t surface,FocusRef *out){ShellChromeContext ctx=join_chrome();return shell_chrome_make_focus_ref(&ctx,surface,out);}
+bool focus_ref_is_current(const FocusRef *ref){ShellChromeContext ctx=join_chrome();return shell_chrome_focus_ref_is_current(&ctx,ref);}
+bool try_set_focus(uint64_t surface){ShellChromeContext ctx=join_chrome();return shell_chrome_try_set_focus(&ctx,surface);}
+bool minimize_frame(uint32_t frame){ShellChromeContext ctx=join_chrome();return shell_chrome_minimize_frame(&ctx,frame);}
+bool restore_minimized_frame(uint32_t frame){ShellChromeContext ctx=join_chrome();return shell_chrome_restore_minimized_frame(&ctx,frame);}
+bool frame_is_minimized(uint32_t frame){ShellChromeContext ctx=join_chrome();return shell_chrome_frame_is_minimized(&ctx,frame);}
+bool toggle_zoom_frame(uint32_t frame){ShellChromeContext ctx=join_chrome();return shell_chrome_toggle_zoom_frame(&ctx,frame);}
+bool switch_to_tab(uint32_t frame,uint32_t tab){ShellChromeContext ctx=join_chrome();return shell_chrome_switch_to_tab(&ctx,frame,tab);}
+bool is_closeable_surface(uint64_t surface){ShellChromeContext ctx=join_chrome();return shell_chrome_is_closeable_surface(&ctx,surface);}
+bool close_surface_from_frame_light(uint64_t surface){ShellChromeContext ctx=join_chrome();return shell_chrome_close_surface_from_frame_light(&ctx,surface);}
+bool access_handle_keyboard_action(uint8_t action){ShellChromeContext ctx=join_chrome();return shell_chrome_access_handle_keyboard_action(&ctx,action);}
+const char *action_name(uint8_t action){ShellChromeContext ctx=join_chrome();return shell_chrome_action_name(&ctx,action);}
+bool scancode_to_action(uint8_t scan,uint8_t *out){ShellChromeContext ctx=join_chrome();return shell_chrome_scancode_to_action(&ctx,scan,out);}
+void clamp_position(int32_t x,int32_t y,uint32_t w,uint32_t h,int32_t *ox,int32_t *oy){ShellChromeContext ctx=join_chrome();shell_chrome_clamp_position(&ctx,x,y,w,h,ox,oy);}
+bool drag_move_focused(int32_t dx,int32_t dy){ShellChromeContext ctx=join_chrome();return shell_chrome_drag_move_focused(&ctx,dx,dy);}
+bool resize_accumulate_delta(int32_t dx,int32_t dy){ShellChromeContext ctx=join_chrome();return shell_chrome_resize_accumulate_delta(&ctx,dx,dy);}
+bool apply_resize_geometry(int32_t dx,int32_t dy){ShellChromeContext ctx=join_chrome();return shell_chrome_apply_resize_geometry(&ctx,dx,dy);}
+void clear_resize_if_dead(void){ShellChromeContext ctx=join_chrome();shell_chrome_clear_resize_if_dead(&ctx);}
+bool try_snap_on_drag_release(uint64_t sid,int32_t x,int32_t y){ShellChromeContext ctx=join_chrome();return shell_chrome_try_snap_on_drag_release(&ctx,sid,x,y);}
+HitTarget click_hit_test_and_focus(int32_t x,int32_t y,uint8_t buttons,bool *bar){ShellChromeContext ctx=join_chrome();ShellChromeClick click=shell_chrome_click_hit_test_and_focus(&ctx,x,y,buttons);if(bar)*bar=click.silkbar;return click.target;}
+const char *hit_target_label(HitTarget target,bool bar,uint64_t *out){ShellChromeContext ctx=join_chrome();return shell_chrome_hit_target_label(&ctx,target,bar,out);}
+void silk_drag_end_mark(uint64_t sid){ShellChromeContext ctx=join_chrome();shell_chrome_silk_drag_end_mark(&ctx,sid);}
+void try_transition(InteractionState next){ShellChromeContext ctx=join_chrome();shell_chrome_try_transition(&ctx,next);}
+bool toggle_top_bar_for_active_frame(void){ShellChromeContext ctx=join_chrome();return shell_chrome_toggle_top_bar_for_active_frame(&ctx);}
+bool surface_is_lifecycle_live(uint64_t sid){ShellChromeContext ctx=join_chrome();return shell_chrome_surface_is_lifecycle_live(&ctx,sid);}
+bool surface_is_lifecycle_focusable(uint64_t sid){ShellChromeContext ctx=join_chrome();return shell_chrome_surface_is_lifecycle_focusable(&ctx,sid);}
+void clear_hover_if_wrong_scene(void){uint32_t hovered=SILK_SHELL_STATE.chrome.HOVERED_FRAME_ID;if(!hovered)return;for(size_t i=0;i<MAX_FRAMES;++i)if(SILK_SHELL_STATE.chrome.FRAMES[i].present&&SILK_SHELL_STATE.chrome.FRAMES[i].frame_id==hovered){if(SILK_SHELL_STATE.chrome.FRAMES[i].scene_id==SILK_SHELL_STATE.chrome.ACTIVE_SCENE_IDX)return;break;}SILK_SHELL_STATE.chrome.HOVERED_FRAME_ID=0;SILK_SHELL_STATE.chrome.HOVERED_FRAME_LIGHT=0;SILK_SHELL_STATE.chrome.HOVER_KIND=0;}
+bool desktop_shortcut(uint8_t code,uint64_t value){ShellInputContext ctx=join_input();return shell_input_peer_desktop_shortcut(&ctx,code,value);}
+bool open_linen_in_active_scene(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_open_linen_in_active_scene(&ctx);}
+bool open_quil_in_active_scene(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_open_quil_in_active_scene(&ctx);}
+bool toggle_linen(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_toggle_linen(&ctx);}
+bool toggle_quil(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_toggle_quil(&ctx);}
+bool toggle_mesh(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_toggle_mesh(&ctx);}
+bool toggle_collar(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_toggle_collar(&ctx);}
+bool toggle_bell(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_toggle_bell(&ctx);}
+bool toggle_spindle(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_toggle_spindle(&ctx);}
+bool toggle_command_palette(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_toggle_command_palette(&ctx);}
+void palette_select_next(void){ShellSurfacesContext ctx=join_surfaces();shell_surfaces_palette_select_next(&ctx);}
+void palette_select_prev(void){ShellSurfacesContext ctx=join_surfaces();shell_surfaces_palette_select_prev(&ctx);}
+bool palette_execute_selected(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_palette_execute_selected(&ctx);}
+void bell_select_next_row(void){ShellSurfacesContext ctx=join_surfaces();shell_surfaces_bell_select_next_row(&ctx);}
+void bell_select_prev_row(void){ShellSurfacesContext ctx=join_surfaces();shell_surfaces_bell_select_prev_row(&ctx);}
+void bell_emit_selected_event_detail_proof(void){ShellSurfacesContext ctx=join_surfaces();shell_surfaces_bell_emit_selected_event_detail_proof(&ctx);}
+void bell_close_detail(void){ShellSurfacesContext ctx=join_surfaces();shell_surfaces_bell_close_detail(&ctx);}
+bool bell_cycle_lane(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_bell_cycle_lane(&ctx);}
+bool bell_is_visible_in_active_scene(void){ShellSurfacesContext ctx=join_surfaces();return shell_surfaces_bell_is_visible_in_active_scene(&ctx);}
+void bell_render_event_list(void){ShellSurfacesContext ctx=join_surfaces();shell_surfaces_bell_render_event_list(&ctx);}
+void tile_active_scene_frames(void){ShellAtlasContext ctx=join_atlas();shell_atlas_peer_tile_active_scene_frames(&ctx);}
+void launcher_focus_discard(void){SILK_SHELL_STATE.surfaces.LAUNCHER_FOCUS.present=false;}
+bool send_silkbar_phase2_update(uint32_t kind,uint64_t a,uint64_t b){return shell_diagnostics_send_silkbar_phase2_update(kind,a,b);}
+
+bool shell_chrome_peer_surface_is_alive(ShellChromeContext *ctx,uint64_t sid){bind_chrome(ctx);ShellInputContext input=join_input();return shell_input_surface_is_alive(&input,sid);}
+bool shell_chrome_peer_is_tombstoned(ShellChromeContext *ctx,uint64_t sid){bind_chrome(ctx);ShellInputContext input=join_input();return shell_input_is_tombstoned(&input,sid);}
+bool shell_chrome_peer_get_surface_bounds(ShellChromeContext *ctx,uint64_t sid,int32_t *x,int32_t *y,uint32_t *w,uint32_t *h){bind_chrome(ctx);ShellInputContext input=join_input();return shell_input_get_surface_bounds(&input,sid,x,y,w,h);}
+bool shell_chrome_peer_point_in_surface(ShellChromeContext *ctx,int32_t x,int32_t y,uint64_t sid){bind_chrome(ctx);ShellInputContext input=join_input();return shell_input_point_in_surface(&input,x,y,sid);}
+void shell_chrome_peer_clear_focus_if_dead(ShellChromeContext *ctx){bind_chrome(ctx);ShellInputContext input=join_input();shell_input_clear_focus_if_dead(&input);}
+void shell_chrome_peer_clear_drag_if_dead(ShellChromeContext *ctx){bind_chrome(ctx);ShellInputContext input=join_input();shell_input_clear_drag_if_dead(&input);}
+void shell_chrome_peer_clear_hover_if_dead(ShellChromeContext *ctx){bind_chrome(ctx);ShellInputContext input=join_input();shell_input_clear_hover_if_dead(&input);}
+void shell_chrome_peer_clear_drag_if_wrong_scene(ShellChromeContext *ctx){bind_chrome(ctx);ShellInputContext input=join_input();shell_input_clear_drag_if_wrong_scene(&input);}
+void shell_chrome_peer_clear_focus_if_wrong_scene(ShellChromeContext *ctx){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();shell_atlas_clear_focus_if_wrong_scene(&atlas);}
+void shell_chrome_peer_clamp_surface_size(ShellChromeContext *ctx,int32_t x,int32_t y,uint32_t w,uint32_t h,uint32_t *cw,uint32_t *ch){bind_chrome(ctx);ShellInputContext input=join_input();shell_input_clamp_surface_size(&input,x,y,w,h,cw,ch);}
+bool shell_chrome_peer_atlas_scene_at_point(ShellChromeContext *ctx,int32_t x,int32_t y,uint8_t *out){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();return shell_atlas_atlas_scene_at_point(&atlas,x,y,out);}
+void shell_chrome_peer_switch_scene(ShellChromeContext *ctx,uint8_t scene){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();shell_atlas_switch_scene(&atlas,scene);}
+void shell_chrome_peer_sync_scene_visibility(ShellChromeContext *ctx){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();shell_atlas_sync_scene_visibility(&atlas);}
+void shell_chrome_peer_atlas_capture_snapshot(ShellChromeContext *ctx){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();shell_atlas_atlas_capture_snapshot(&atlas);}
+void shell_chrome_peer_snap_capture_layout(ShellChromeContext *ctx){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();shell_atlas_snap_capture_layout(&atlas);}
+void shell_chrome_peer_next_scene(ShellChromeContext *ctx){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();shell_atlas_next_scene(&atlas);}
+void shell_chrome_peer_prev_scene(ShellChromeContext *ctx){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();shell_atlas_prev_scene(&atlas);}
+bool shell_chrome_peer_validate_scene_id(ShellChromeContext *ctx,uint8_t scene){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();return shell_atlas_validate_scene_id(&atlas,scene);}
+bool shell_chrome_peer_surface_scene_id(ShellChromeContext *ctx,uint64_t sid,uint8_t *out){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();return shell_atlas_surface_scene_id(&atlas,sid,out);}
+bool shell_chrome_peer_surface_in_active_scene(ShellChromeContext *ctx,uint64_t sid){bind_chrome(ctx);ShellAtlasContext atlas=join_atlas();return shell_atlas_surface_in_active_scene(&atlas,sid);}
+bool shell_chrome_peer_toggle_bell(ShellChromeContext *ctx){bind_chrome(ctx);ShellSurfacesContext surfaces=join_surfaces();return shell_surfaces_toggle_bell(&surfaces);}
+size_t shell_chrome_peer_bell_ring_count(ShellChromeContext *ctx){bind_chrome(ctx);ShellBellModelsContext bell={ctx->models};return shell_models_bell_ring_count(&bell);}
+bool shell_chrome_peer_send_silkbar_phase2_update(ShellChromeContext *ctx,uint32_t kind,uint64_t a,uint64_t b){bind_chrome(ctx);return shell_diagnostics_send_silkbar_phase2_update(kind,a,b);}
+SexosReply shell_chrome_peer_pdx_call(ShellChromeContext *ctx,uint64_t slot,uint64_t op,uint64_t a,uint64_t b,uint64_t c){bind_chrome(ctx);return sexos_pdx_call(slot,op,a,b,c);}
+void shell_chrome_peer_launcher_focus_discard(ShellChromeContext *ctx){bind_chrome(ctx);launcher_focus_discard();}
+size_t shell_chrome_peer_linen_object_count(ShellChromeContext *ctx){bind_chrome(ctx);return linen_object_count();}
+void shell_chrome_peer_linen_render_object_list(ShellChromeContext *ctx){bind_chrome(ctx);linen_render_object_list();}
+bool shell_chrome_peer_mesh_is_visible_in_active_scene(ShellChromeContext *ctx){bind_chrome(ctx);return mesh_is_visible_in_active_scene();}
+void shell_chrome_peer_mesh_render_pd_graph(ShellChromeContext *ctx){bind_chrome(ctx);mesh_render_pd_graph();}
+bool shell_chrome_peer_app_closeable(ShellChromeContext *ctx,uint64_t sid,bool *out){bind_chrome(ctx);for(size_t i=0;i<sizeof(APP_SURFACES)/sizeof(APP_SURFACES[0]);++i)if(APP_SURFACES[i].surface_id==sid){if(out)*out=APP_SURFACES[i].closeable;return true;}for(size_t i=0;i<SHELL_APP_COUNT;++i)if(ctx->apps->present[i]&&shell_custody_owns_surface(&ctx->apps->entries[i],sid)){ShellCustodyWord slot=shell_custody_close_slot(&ctx->apps->entries[i]);if(out)*out=slot.present;return true;}return false;}
+bool shell_chrome_peer_app_focusable(ShellChromeContext *ctx,uint64_t sid){bind_chrome(ctx);return shell_custody_has_surface(sid,false);}
+void shell_chrome_peer_shell_request_app_close(ShellChromeContext *ctx,uint64_t sid){bind_chrome(ctx);for(size_t i=0;i<SHELL_APP_COUNT;++i)if(ctx->apps->present[i]&&shell_custody_owns_surface(&ctx->apps->entries[i],sid)){(void)shell_custody_request_close(&ctx->apps->entries[i]);return;}}
+void shell_chrome_peer_record_tombstone_event(ShellChromeContext *ctx,uint64_t sid,uint8_t old,uint8_t next,uint8_t reason){bind_chrome(ctx);ShellInputContext input=join_input();shell_input_record_tombstone_event(&input,sid,old,next,reason);}
+bool shell_chrome_peer_desktop_ready(ShellChromeContext *ctx,uint64_t sid){bind_chrome(ctx);return shell_chrome_peer_surface_is_alive(ctx,sid);}
+ShellAccessLabel shell_chrome_peer_frame_label(ShellChromeContext *ctx,uint32_t frame){bind_chrome(ctx);ShellAccessLabel out={0};const char *name=frame==1?"Desktop":"Frame";for(size_t i=0;name[i]&&i<sizeof out.bytes;++i)out.bytes[i]=(uint8_t)name[i];return out;}
+const char *shell_chrome_peer_frame_name(ShellChromeContext *ctx,uint32_t id){bind_chrome(ctx);return id==1?"Desktop":"Frame";}
+void shell_chrome_peer_surface_input_lifetime_mark_click_target(ShellChromeContext *ctx,uint64_t sid,uint8_t live,uint8_t committed,uint8_t ok){bind_chrome(ctx);shell_diagnostics_surface_input_lifetime_mark_click_target(ctx->proofs_a,sid,live,committed,ok);}
+void shell_chrome_peer_surface_input_lifetime_mark_drag_target(ShellChromeContext *ctx,uint64_t sid,uint8_t live,const char *phase,uint8_t ok){bind_chrome(ctx);ShellDiagnosticLabel label={0};while(phase&&phase[label.len]&&label.len+1<sizeof label.bytes){label.bytes[label.len]=(uint8_t)phase[label.len];++label.len;}shell_diagnostics_surface_input_lifetime_mark_drag_target(ctx->proofs_a,sid,live,&label,ok);}
+void shell_chrome_peer_surface_input_lifetime_try_done(ShellChromeContext *ctx){bind_chrome(ctx);shell_diagnostics_surface_input_lifetime_try_done(ctx->proofs_a);}
+
+SexosReply shell_surfaces_peer_pdx_call(ShellSurfacesContext *ctx,uint64_t slot,uint64_t op,uint64_t a,uint64_t b,uint64_t c){bind_surfaces(ctx);return sexos_pdx_call(slot,op,a,b,c);}
+SexosReply shell_surfaces_peer_raw_pdx_call(ShellSurfacesContext *ctx,uint64_t slot,uint64_t op,uint64_t a,uint64_t b,uint64_t c){return shell_surfaces_peer_pdx_call(ctx,slot,op,a,b,c);}
+void shell_surfaces_peer_atlas_toggle(ShellSurfacesContext *ctx){bind_surfaces(ctx);ShellAtlasContext atlas=join_atlas();shell_atlas_atlas_toggle(&atlas);}
+bool shell_surfaces_peer_send_silkbar_phase2_update(ShellSurfacesContext *ctx,uint32_t kind,uint64_t a,uint64_t b){bind_surfaces(ctx);return shell_diagnostics_send_silkbar_phase2_update(kind,a,b);}
+void shell_surfaces_peer_snap_capture_layout(ShellSurfacesContext *ctx){bind_surfaces(ctx);ShellAtlasContext atlas=join_atlas();shell_atlas_snap_capture_layout(&atlas);}
+bool shell_surfaces_peer_surface_is_alive(ShellSurfacesContext *ctx,uint64_t sid){bind_surfaces(ctx);ShellInputContext input=join_input();return shell_input_surface_is_alive(&input,sid);}
+void shell_surfaces_peer_linen_refresh(ShellSurfacesContext *ctx,bool notify){bind_surfaces(ctx);(void)notify;linen_fetch_remote_snapshot();}
+void shell_surfaces_peer_linen_paint_surface(ShellSurfacesContext *ctx){bind_surfaces(ctx);linen_paint_surface();}
+void shell_surfaces_peer_linen_paint_surface_fast(ShellSurfacesContext *ctx){bind_surfaces(ctx);linen_paint_surface_fast();}
+size_t shell_surfaces_peer_linen_object_count(ShellSurfacesContext *ctx){bind_surfaces(ctx);return linen_object_count();}
+size_t shell_surfaces_peer_quil_buffer_count(ShellSurfacesContext *ctx){bind_surfaces(ctx);return quil_buffer_count();}
+void shell_surfaces_peer_quil_render_buffer_list(ShellSurfacesContext *ctx){bind_surfaces(ctx);quil_render_buffer_list();}
+void shell_surfaces_peer_mesh_render_fact_list(ShellSurfacesContext *ctx){bind_surfaces(ctx);mesh_render_fact_list();}
+void shell_surfaces_peer_mesh_emit_linen_quil_links(ShellSurfacesContext *ctx){bind_surfaces(ctx);mesh_emit_linen_quil_links();}
+void shell_surfaces_peer_collar_render_grants_text(ShellSurfacesContext *ctx){bind_surfaces(ctx);collar_render_grants_text();}
+uint8_t shell_surfaces_peer_collar_check_operation(ShellSurfacesContext *ctx,uint8_t op,uint64_t caller,uint64_t object){bind_surfaces(ctx);return collar_check_operation(op,caller,object);}
+void shell_surfaces_peer_collar_auto_grant_from_manifest(ShellSurfacesContext *ctx,const AppManifest *manifest){bind_surfaces(ctx);collar_auto_grant_from_manifest(manifest);}
+void shell_surfaces_peer_registration_reply_poll(ShellSurfacesContext *ctx){bind_surfaces(ctx);}
+void shell_surfaces_peer_launcher_focus_discard(ShellSurfacesContext *ctx){bind_surfaces(ctx);launcher_focus_discard();}
+void shell_surfaces_peer_launcher_action_record(ShellSurfacesContext *ctx,uint32_t target,uint64_t frame,uint8_t action,uint8_t from,bool activated,bool ok){bind_surfaces(ctx);ctx->surfaces->LAUNCHER_FOCUS=(ShellLauncherFocus){true,target,0,frame,action,from,from,frame,activated,0,0,ok};}
+ShellSurfaceBool shell_surfaces_peer_launcher_focus_existing(ShellSurfacesContext *ctx,uint32_t target,uint64_t frame,bool has_action,uint8_t action){bind_surfaces(ctx);(void)target;(void)has_action;(void)action;return(ShellSurfaceBool){true,shell_chrome_try_set_focus(&ctx->shell,frame)};}
+void shell_surfaces_peer_launcher_palette_closed(ShellSurfacesContext *ctx,ShellLauncherFocus pending){bind_surfaces(ctx);(void)pending;launcher_focus_discard();}
+ShellPaletteString shell_surfaces_peer_launcher_row_title(ShellSurfacesContext *ctx,uint8_t command,ShellPaletteString fallback){bind_surfaces(ctx);(void)command;return fallback;}
+ShellPaletteString shell_surfaces_peer_spindle_history_label(ShellSurfacesContext *ctx,ShellPaletteString fallback,bool available,ShellPaletteString reason){bind_surfaces(ctx);(void)available;(void)reason;return fallback;}
+bool shell_surfaces_peer_native_launcher_available(ShellSurfacesContext *ctx,uint32_t target){bind_surfaces(ctx);for(size_t i=0;i<SHELL_APP_COUNT;++i)if(ctx->shell.apps->present[i]&&ctx->shell.apps->entries[i].target==target)return !ctx->shell.apps->entries[i].dead;return true;}
+ShellPaletteStatus shell_surfaces_peer_native_launcher_status(ShellSurfacesContext *ctx,uint32_t target){bool available=shell_surfaces_peer_native_launcher_available(ctx,target);return(ShellPaletteStatus){available,join_text(available?"READY":"CLOSED"),join_text(available?"available":"dead")};}
+
+bool shell_custody_has_surface(uint64_t sid,bool terminal_only){(void)terminal_only;for(size_t i=0;i<SHELL_APP_COUNT;++i)if(SILK_SHELL_STATE.apps.present[i]&&shell_custody_owns_surface(&SILK_SHELL_STATE.apps.entries[i],sid))return true;return sid==SURFACE_ID_APP||sid==SURFACE_ID_STATIC||sid==SURFACE_ID_QUIL||sid==SURFACE_ID_LINEN;}
+bool shell_draw_text(uint64_t sid,const uint8_t *text,size_t len,uint64_t color,size_t *out_drawn){if(len>SHELL_TEXT_CAPACITY||(!text&&len))return false;ShellTextBytes bounded={0};bounded.len=len;for(size_t i=0;i<len;++i)bounded.bytes[i]=text[i];ShellDiagnosticDraw result=shell_diagnostics_shell_draw_text(sid,&bounded,color);if(out_drawn)*out_drawn=result.attempted;return result.admitted;}
+size_t strlen(const char *text){size_t n=0;while(text&&text[n])++n;return n;}
+void write_str(const char *text){if(text)sexos_raw_print(text,strlen(text));}
+void write_u64_dec(uint64_t value){char out[21];size_t n=0;if(!value)out[n++]='0';else{char reverse[20];size_t r=0;while(value){reverse[r++]=(char)('0'+value%10);value/=10;}while(r)out[n++]=reverse[--r];}sexos_raw_print(out,n);}
+void write_debug_lifecycle_state(uint8_t state){write_u64_dec(state);}
+void write_debug_resize_edge(uint8_t edge){write_u64_dec(edge);}
+void write_debug_tombstone_reason(uint8_t reason){write_u64_dec(reason);}
+
+

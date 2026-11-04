@@ -1,0 +1,122 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (include "network_engine_transport.h")
+  (ownership
+   (check-all)
+   (foreign net_config_tls_endpoint (obligation "Separately admitted immutable TLS endpoint selector."))
+   (foreign network_engine_dns_init (obligation "Separately admitted bounded DNS engine initializer."))
+   (foreign network_engine_dns_submit (obligation "Separately admitted one-frame ingress operation."))
+   (foreign network_engine_dns_take_frame (obligation "Separately admitted one-frame egress transfer."))
+   (foreign network_engine_dns_can_receive (obligation "Separately admitted ingress-custody observation."))
+   (foreign network_engine_dns_has_frame (obligation "Separately admitted egress-custody observation."))
+   (foreign network_engine_dns_begin (obligation "Separately admitted DNS job begin transition."))
+   (foreign network_engine_dns_receive (obligation "Separately admitted DNS datagram transfer."))
+   (foreign network_engine_dns_abort (obligation "Separately admitted DNS abort transition."))
+   (foreign network_engine_dns_advance (obligation "Separately admitted DNS/ARP engine turn."))
+   (foreign network_engine_dns_stop (obligation "Separately admitted engine stop and scrub."))
+   (foreign network_engine_dns_snapshot (obligation "Separately admitted engine-state observation."))
+   (foreign network_neighbor_resolve (obligation "Separately admitted route and neighbor transition."))
+   (foreign network_engine_arp_request (obligation "Separately admitted ARP request constructor."))
+   (foreign network_engine_tcp_decode (obligation "Separately admitted TCP decoder."))
+   (foreign network_tcp_client_init (obligation "Separately admitted TCP client initializer."))
+   (foreign network_tcp_client_begin (obligation "Separately admitted TCP begin transition."))
+   (foreign network_tcp_client_send (obligation "Separately admitted TCP send-custody transition."))
+   (foreign network_tcp_client_receive (obligation "Separately admitted TCP receive-custody transfer."))
+   (foreign network_tcp_client_finish (obligation "Separately admitted TCP finish request."))
+   (foreign network_tcp_client_abort (obligation "Separately admitted TCP abort transition."))
+   (foreign network_tcp_client_ingest (obligation "Separately admitted TCP ingress transition."))
+   (foreign network_tcp_client_advance (obligation "Separately admitted TCP timer/output transition."))
+   (foreign network_tcp_client_queued (obligation "Separately admitted TCP queue observation."))
+   (foreign network_tcp_client_snapshot (obligation "Separately admitted TCP-state observation."))
+   (foreign network_tcp_listener_init (obligation "Separately admitted passive-listener initializer."))
+   (foreign network_tcp_listener_ingest (obligation "Separately admitted passive-listener ingress transition."))
+   (foreign network_tcp_listener_advance (obligation "Separately admitted passive-listener output transition."))
+   (foreign network_tcp_listener_snapshot (obligation "Separately admitted passive-listener state observation.")))
+  (native "
+static void transport_frame_clear(NetworkEngineFrame *frame)
+{for(size_t i=0;i<NETWORK_ENGINE_MAX_FRAME;i++)frame->bytes[i]=0;frame->length=0;}
+NetworkEngineError network_engine_transport_init(NetworkEngineTransport *engine,NetConfig config,NetworkEngineMac mac,uint64_t now)
+{
+ NetworkEngineError error=network_engine_dns_init(&engine->base,config,mac,now);if(error)return error;network_tcp_client_init(&engine->client);if(!network_tcp_listener_init(&engine->listener,config,mac,UINT64_C(0x7365786f735f3736),now))return NETWORK_ENGINE_PROTOCOL;engine->client_pending=false;engine->client_tls=false;engine->prefer_listener=true;engine->client_ticket=0;return NETWORK_ENGINE_OK;
+}
+NetworkEngineError network_engine_transport_submit(NetworkEngineTransport *engine,const NetworkEngineFrame *frame)
+{return network_engine_dns_submit(&engine->base,frame);}
+NetworkEngineFrameResult network_engine_transport_take_frame(NetworkEngineTransport *engine)
+{return network_engine_dns_take_frame(&engine->base);}
+bool network_engine_transport_can_receive(const NetworkEngineTransport *engine){return network_engine_dns_can_receive(&engine->base);}
+bool network_engine_transport_has_frame(const NetworkEngineTransport *engine){return network_engine_dns_has_frame(&engine->base);}
+void network_engine_transport_client_abort(NetworkEngineTransport *engine)
+{
+ uint32_t ticket=engine->client_ticket;if(engine->base.tx_present&&engine->base.tx_kind==NETWORK_ENGINE_TX_TCP&&engine->base.tx_ticket==ticket){engine->base.tx_present=false;engine->base.tx_kind=NETWORK_ENGINE_TX_NONE;engine->base.tx_ticket=0;transport_frame_clear(&engine->base.tx);}
+ network_tcp_client_abort(&engine->client);engine->client_pending=false;engine->client_tls=false;engine->client_ticket=0;
+ NetworkTcpClientOutput reset=network_tcp_client_advance(&engine->client,engine->base.last);if(reset.present&&!engine->base.tx_present){engine->base.tx=reset.frame;engine->base.tx_present=true;engine->base.tx_kind=NETWORK_ENGINE_TX_TCP;engine->base.tx_ticket=ticket;}
+}
+NetworkEngineError network_engine_transport_begin_client(NetworkEngineTransport *engine,uint32_t ticket,bool tls)
+{
+ if(engine->base.stopped)return NETWORK_ENGINE_STOPPED;
+ if(engine->base.dns_active)return NETWORK_ENGINE_BUSY;
+ if(!ticket||ticket>NET_CONFIG_MAX_TICKET)return NETWORK_ENGINE_LENGTH;
+ if(tls&&!net_config_tls_endpoint(engine->base.config).present)return NETWORK_ENGINE_CONFIG;
+ network_engine_transport_client_abort(engine);engine->client_pending=true;engine->client_tls=tls;engine->client_ticket=ticket;return NETWORK_ENGINE_OK;
+}
+NetworkTcpClientCount network_engine_transport_client_send(NetworkEngineTransport *engine,const NetworkEnginePayload *payload)
+{if(engine->client_pending)return(NetworkTcpClientCount){false,0,NETWORK_TCP_CLIENT_STATE};return network_tcp_client_send(&engine->client,payload);}
+NetworkTcpClientReceive network_engine_transport_client_receive(NetworkEngineTransport *engine,size_t maximum)
+{if(engine->client_pending)return(NetworkTcpClientReceive){false,0,NETWORK_TCP_CLIENT_STATE,{0}};return network_tcp_client_receive(&engine->client,maximum);}
+NetworkTcpClientState network_engine_transport_client_state(const NetworkEngineTransport *engine){return engine->client_pending?NETWORK_TCP_SYN_SENT:engine->client.state;}
+size_t network_engine_transport_client_queued(const NetworkEngineTransport *engine){return engine->client_pending?0:network_tcp_client_queued(&engine->client);}
+void network_engine_transport_client_finish(NetworkEngineTransport *engine){if(!engine->client_pending)(void)network_tcp_client_finish(&engine->client);}
+NetworkEngineError network_engine_transport_begin_dns(NetworkEngineTransport *engine,uint32_t ticket)
+{
+ if(engine->client_pending||engine->client.state!=NETWORK_TCP_CLOSED)return NETWORK_ENGINE_BUSY;
+ return network_engine_dns_begin(&engine->base,ticket);
+}
+NetworkEngineDnsResult network_engine_transport_dns_receive(NetworkEngineTransport *engine){return network_engine_dns_receive(&engine->base);}
+void network_engine_transport_dns_abort(NetworkEngineTransport *engine){network_engine_dns_abort(&engine->base);}
+static bool transport_client_endpoint(const NetworkEngineTransport *engine,uint32_t *address)
+{
+ if(engine->client_tls){NetConfigEndpoint endpoint=net_config_tls_endpoint(engine->base.config);if(!endpoint.present)return false;*address=endpoint.address;return true;}*address=engine->base.config.http;return true;
+}
+static void transport_start_client(NetworkEngineTransport *engine,uint64_t now)
+{
+ if(!engine->client_pending||engine->base.tx_present)return;
+ uint32_t address=0;if(!transport_client_endpoint(engine,&address)){network_engine_transport_stop(engine,NETWORK_ENGINE_CONFIG);return;}
+ NetworkNeighborResolution neighbor=network_neighbor_resolve(&engine->base.neighbors,engine->base.config,address,now);
+ if(neighbor.kind==NETWORK_NEIGHBOR_DISCOVER){if(network_engine_arp_request(&engine->base.tx,engine->base.config,engine->base.mac,neighbor.next_hop)){engine->base.tx_present=true;engine->base.tx_kind=NETWORK_ENGINE_TX_ARP;}return;}
+ if(neighbor.kind!=NETWORK_NEIGHBOR_HIT)return;
+ NetworkTcpClientError error=network_tcp_client_begin(&engine->client,engine->base.config,engine->base.mac,neighbor.mac,engine->client_ticket,engine->client_tls,UINT64_C(0x7365786f735f3736),now);
+ if(error){network_engine_transport_stop(engine,NETWORK_ENGINE_PROTOCOL);return;}engine->client_pending=false;
+}
+static void transport_tcp_ingress(NetworkEngineTransport *engine,uint64_t now)
+{
+ NetworkEngineFrame input=engine->base.rx;bool consumed=false;if(engine->client.state!=NETWORK_TCP_CLOSED)consumed=network_tcp_client_ingest(&engine->client,&input,now);if(!consumed)(void)network_tcp_listener_ingest(&engine->listener,&input,now);engine->base.rx_present=false;transport_frame_clear(&engine->base.rx);if(engine->base.packets!=UINT64_MAX)engine->base.packets++;
+}
+static bool transport_client_egress(NetworkEngineTransport *engine,uint64_t now)
+{
+ if(engine->client_pending)return false;
+ NetworkTcpClientOutput output=network_tcp_client_advance(&engine->client,now);if(!output.present)return false;engine->base.tx=output.frame;engine->base.tx_present=true;engine->base.tx_kind=NETWORK_ENGINE_TX_TCP;engine->base.tx_ticket=engine->client.ticket;engine->prefer_listener=true;return true;
+}
+static bool transport_listener_egress(NetworkEngineTransport *engine,uint64_t now)
+{
+ NetworkTcpListenerOutput output=network_tcp_listener_advance(&engine->listener,now);if(!output.present)return false;engine->base.tx=output.frame;engine->base.tx_present=true;engine->base.tx_kind=NETWORK_ENGINE_TX_LISTENER;engine->base.tx_ticket=0;engine->prefer_listener=false;return true;
+}
+static void transport_tcp_egress(NetworkEngineTransport *engine,uint64_t now)
+{
+ if(engine->base.tx_present)return;
+ if(engine->prefer_listener){if(transport_listener_egress(engine,now))return;(void)transport_client_egress(engine,now);}else{if(transport_client_egress(engine,now))return;(void)transport_listener_egress(engine,now);}
+}
+void network_engine_transport_stop(NetworkEngineTransport *engine,NetworkEngineError reason)
+{network_engine_dns_stop(&engine->base,reason);network_tcp_client_abort(&engine->client);(void)network_tcp_listener_init(&engine->listener,engine->base.config,engine->base.mac,UINT64_C(0x7365786f735f3736),engine->base.last);engine->client_pending=false;engine->client_tls=false;engine->client_ticket=0;}
+void network_engine_transport_advance(NetworkEngineTransport *engine,uint64_t now)
+{
+ if(engine->base.stopped)return;
+ if(now<engine->base.last||now>(uint64_t)INT64_MAX){network_engine_transport_stop(engine,NETWORK_ENGINE_CLOCK);return;}
+ engine->base.last=now;
+ if(engine->base.tx_present)return;
+ if(engine->base.rx_present){NetworkEngineFrame input=engine->base.rx;NetworkTcpPacket tcp=network_engine_tcp_decode(&input);if(tcp.valid)transport_tcp_ingress(engine,now);else network_engine_dns_advance(&engine->base,now);}else network_engine_dns_advance(&engine->base,now);
+ if(engine->base.stopped||engine->base.tx_present)return;
+ transport_start_client(engine,now);if(!engine->base.tx_present)transport_tcp_egress(engine,now);
+}
+NetworkEngineTransportSnapshot network_engine_transport_snapshot(const NetworkEngineTransport *engine)
+{return(NetworkEngineTransportSnapshot){network_engine_dns_snapshot(&engine->base),network_tcp_client_snapshot(&engine->client),network_tcp_listener_snapshot(&engine->listener),engine->client_pending,engine->client_tls,engine->prefer_listener,engine->client_ticket};}
+")))

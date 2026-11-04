@@ -1,0 +1,38 @@
+{
+  "source_pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "sources": [
+    {
+      "path": "kernel/src/ipc.rs",
+      "sha256": "c7d42c2df1965a3b94bce554e10d5047c4269994c942f524b60b9de7b94a470a"
+    },
+    {
+      "path": "kernel/src/ipc/reply_credit.rs",
+      "sha256": "831e72093dc932cab8bf19aaf2b54795793bc1614f3ccb40965346e89e63cf4f"
+    },
+    {
+      "path": "kernel/src/ipc/router.rs",
+      "sha256": "5fd9d7d28138623172ea565d6a7d0ddb74a07baca2cd3f29079ccddac8fff0f0"
+    },
+    {
+      "path": "kernel/src/ipc/sender.rs",
+      "sha256": "495164f494355bc24f22dc7150f7f84fb53316db69f3b6c277e09becef056c76"
+    },
+    {
+      "path": "kernel/src/ipc/messages.rs",
+      "sha256": "c8ce764c793dd50836578efc7991b2c966b6a10021dde94cf452a8cfcd09b864"
+    },
+    {
+      "path": "kernel/src/syscalls/mod.rs",
+      "sha256": "671f6322cf7e76c48cd8b8eaa2c9f8d17734e92149c04b8acdcac4ae539cbbc4"
+    },
+    {
+      "path": "kernel/src/capability_slot.rs",
+      "sha256": "8e11112db06db93316879d07d4dfb1f096ff1e6109802d7d0ea8ee10ca0380af"
+    },
+    {
+      "path": "kernel/src/ipc/domain_registry.rs",
+      "sha256": "b19a359ae7e6e60518841cd7447f39aa09cf075800f7c07e268296df80694a3f"
+    }
+  ],
+  "scope": "Current typed sender stamps and nonblocking, saturating reply bookkeeping. Both kernels use indexed 64-bit per-domain counters covering the legal caller namespace. Saturation refuses before enqueue; failed publication withdraws exactly its added reservation. Exact request correlation remains a separate protocol."
+}

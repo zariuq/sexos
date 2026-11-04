@@ -1,6 +1,9 @@
 (cesta native-c/1 compact-c/2
   (unit
     (include "sexos_client.h")
+    (include "kaleidoscope_body.h")
+    (include "kaleidoscope_html.h")
+    (cpp-if "!defined(SEXOS_KALEIDOSCOPE_CURRENT)" (then (define SEXOS_KALEIDOSCOPE_CURRENT "0")))
     (define KALEIDO_SURFACE_ID "UINT64_C(300)")
     (define TEXT_COLOR "UINT32_C(0x00CDD6F4)")
 
@@ -84,19 +87,55 @@
       (call sexos_line "[browser.render.buffer.ready] virt=surface pfn=surface sid=%llu"
         (cast (unsigned long long) KALEIDO_SURFACE_ID))
 
-      (var (static const uint8_t) ([] title) "Kaleidoscope")
-      (call send_text title (- (sizeof title) 1) 0)
-      (call sexos_line "[browser.visible.polish.text] line=0 len=%zu" (- (sizeof title) 1))
-      (var (static const uint8_t) ([] status_line) "HTTP 200 from 10.0.2.2")
-      (call send_text status_line (- (sizeof status_line) 1) 32)
-      (call sexos_line "[browser.visible.polish.text] line=1 len=%zu" (- (sizeof status_line) 1))
-
-      (if (== body_length 0) (call send_text live_text live_length 64))
-      (if (> body_length 0)
-        (block
-          (call sexos_line "[browser.body.render.begin]")
-          (call send_text body_text body_length 64)
-          (call sexos_line "[browser.body.render.done]")))
+      (cpp-if "SEXOS_KALEIDOSCOPE_CURRENT"
+        (then
+          (block
+            (var bool rendered_html false)
+            (if (&& (> body_length 0) (call kaleidoscope_html_looks_like body_text body_length))
+              (block
+                (var (static KaleidoscopeHtmlWorkspace) html_workspace (init 0))
+                (var (static uint8_t) ([] html_text KALEIDOSCOPE_BODY_CAPACITY) (init 0))
+                (var KaleidoscopeHtmlConverted converted (init 0))
+                (if (== (call kaleidoscope_html_convert body_text body_length html_text
+                          (sizeof html_text) (& html_workspace) (& converted)) 0)
+                  (block
+                    (call send_text html_text (. converted len) 0)
+                    (call sexos_line "[browser.html.converted] source_bytes=%zu text_bytes=%zu links=%zu truncated=%u scripts_run=%u scripts_refused=%u"
+                      body_length (. converted len) (. converted links)
+                      (cast unsigned (. converted truncated))
+                      (cast unsigned (. converted scripts_run))
+                      (cast unsigned (. converted scripts_refused)))
+                    (= rendered_html true)))))
+            (if (! rendered_html)
+              (block
+                (var KaleidoscopeBodySource body_source (init 0))
+                (var KaleidoscopeBodySource summary_source (init 0))
+                (= (. body_source len) body_length)
+                (= (. summary_source len) live_length)
+                (for (var size_t i 0) (< i body_length) (++ i)
+                  (= ([] (. body_source bytes) i) ([] body_text i)))
+                (for (var size_t i 0) (< i live_length) (++ i)
+                  (= ([] (. summary_source bytes) i) ([] live_text i)))
+                (var KaleidoscopeBodyPreview preview (init 0))
+                (call kaleidoscope_body_build (& body_source) (& summary_source) (& preview))
+                (call send_text (. preview bytes) (. preview len) 0)
+                (call sexos_line "[browser.preview.layout] bytes=%zu newline=1 cached_or_sample=1"
+                  (. preview len))))
+            (if (> body_length 0) (call sexos_line "[browser.body.render.done]"))))
+        (else
+          (block
+            (var (static const uint8_t) ([] title) "Kaleidoscope")
+            (call send_text title (- (sizeof title) 1) 0)
+            (call sexos_line "[browser.visible.polish.text] line=0 len=%zu" (- (sizeof title) 1))
+            (var (static const uint8_t) ([] status_line) "HTTP 200 from 10.0.2.2")
+            (call send_text status_line (- (sizeof status_line) 1) 32)
+            (call sexos_line "[browser.visible.polish.text] line=1 len=%zu" (- (sizeof status_line) 1))
+            (if (== body_length 0) (call send_text live_text live_length 64))
+            (if (> body_length 0)
+              (block
+                (call sexos_line "[browser.body.render.begin]")
+                (call send_text body_text body_length 64)
+                (call sexos_line "[browser.body.render.done]"))))))
       (call sexos_line "[browser.render.draw_text] live=1 len=%zu" live_length)
       (call sexos_pdx_call SEXOS_SLOT_display SEXOS_DISPLAY_commit KALEIDO_SURFACE_ID 50 100)
       (call sexos_line "[browser.render.commit.request] window=%llu"

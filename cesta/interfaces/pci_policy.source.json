@@ -1,0 +1,41 @@
+{
+  "pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "sources": [
+    {
+      "path": "crates/sex-pdx/src/pci_command.rs",
+      "sha256": "dceca0428d1b0af85097e1ab330ae1b1c2e7a4bb239a4ba39afd48b9e8fcb2da"
+    },
+    {
+      "path": "crates/sex-pdx/src/memory_region.rs",
+      "sha256": "98b3aa56ce7b854e464fb10f066c5843062101b5b23c7b412b3fb9a583708f54"
+    },
+    {
+      "path": "kernel/src/pci_command.rs",
+      "sha256": "a619c055eb44a0faa42de86c56597da17741f023242b6833a2239776d4d349eb"
+    },
+    {
+      "path": "kernel/src/hal/pci.rs",
+      "sha256": "3c9db9dc436feeb7567f91545c6a79e44538062e490c3d80902349c7167b521f"
+    },
+    {
+      "path": "kernel/src/boot_memory.rs",
+      "sha256": "a36dacba7be2cef3389f40c1c353f87c0dc68eaa96076491afc433a2910ee6c3"
+    },
+    {
+      "path": "kernel/src/nic_boot.rs",
+      "sha256": "0d96b0bbaa5d705c8c5e334c5bdf3b02ec1bef7144c5a65155aaa9a7d4cf32d7"
+    },
+    {
+      "path": "kernel/src/boot_network_state.rs",
+      "sha256": "07e1a4d79cd121594f04d44c9ed15edd5b12873dca4304389591531401156ff7"
+    },
+    {
+      "path": "kernel/src/boot_network.rs",
+      "sha256": "2fd25f89091106c70503869c40f52cfeb6662fab8ddfcd2c6202d2e04550fe69"
+    },
+    {
+      "path": "kernel/src/devmgr.rs",
+      "sha256": "8911fb85533cd161f4cdeb8a5cae291f308c08392474dc7a4fc265ba200dbb3f"
+    }
+  ]
+}

@@ -45,10 +45,12 @@ SexosRequest sexos_rpc_listen_once(uint64_t slot)
     register uint64_t r10 __asm__("r10");
     register uint64_t r8 __asm__("r8");
     register uint64_t r9 __asm__("r9");
+    register uint64_t rdi __asm__("rdi") = slot;
     __asm__ volatile ("syscall"
-        : "+a"(rax), "=S"(rsi), "=d"(rdx), "=r"(r10), "=r"(r8), "=r"(r9)
-        : "D"(slot) : "rcx", "r11", "memory", "cc");
-    return (SexosRequest){{rax, rdx, r10, r8, (uint32_t)rsi, 0}, r9};
+        : "+a"(rax), "=S"(rsi), "=d"(rdx), "=r"(r10), "=r"(r8), "=r"(r9), "+D"(rdi)
+        : : "rcx", "r11", "memory", "cc");
+    uint32_t task = rdi <= UINT32_MAX ? (uint32_t)rdi : 0;
+    return (SexosRequest){{rax, rdx, r10, r8, (uint32_t)rsi, task}, r9};
 }
 
 uint64_t sexos_rpc_reply(uint32_t caller, uint64_t id, uint64_t value)

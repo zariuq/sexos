@@ -28,6 +28,8 @@ pub fn init(sexdrive_pd_id: u32, sexdisplay_pd_id: u32, sexusb_pd_id: u32, sexne
                         func: dev.func,
                         vendor_id: dev.vendor_id,
                         device_id: dev.device_id,
+                        bar0_view: Some(crate::boot_memory::pci_bar0(pd, &dev, SLOT_NVME_HOST)),
+                        command: None,
                     }));
                     serial_println!("[kernel.cap.nvme_bar.grant] pd={} slot={}", sexdrive_pd_id, SLOT_NVME_HOST);
                     // Route IRQ (Simplified vector mapping)
@@ -44,6 +46,8 @@ pub fn init(sexdrive_pd_id: u32, sexdisplay_pd_id: u32, sexusb_pd_id: u32, sexne
                         func: dev.func,
                         vendor_id: dev.vendor_id,
                         device_id: dev.device_id,
+                        bar0_view: None,
+                        command: None,
                     }));
                     crate::interrupts::register_irq_route(0x23, sexdisplay_pd_id);
                 }
@@ -64,6 +68,8 @@ pub fn init(sexdrive_pd_id: u32, sexdisplay_pd_id: u32, sexusb_pd_id: u32, sexne
                         func: dev.func,
                         vendor_id: dev.vendor_id,
                         device_id: dev.device_id,
+                        bar0_view: Some(crate::boot_memory::pci_bar0(pd, &dev, sex_pdx::SLOT_USB_HOST)),
+                        command: None,
                     }));
                     pd.grant(CapabilityData::Interrupt(InterruptCapData { irq: irq_line }));
                     serial_println!(
@@ -83,12 +89,22 @@ pub fn init(sexdrive_pd_id: u32, sexdisplay_pd_id: u32, sexusb_pd_id: u32, sexne
                 );
                 if sexnet_pd_id != 0 {
                     if let Some(pd) = DOMAIN_REGISTRY.get(sexnet_pd_id) {
+                        if pd.find_capability(sex_pdx::SLOT_NIC as u32).is_some(){
+                            serial_println!("[kernel.cap.nic.skip] reason=slot_occupied vendor={:04x} device={:04x}",dev.vendor_id,dev.device_id);
+                            continue;
+                        }
+                        let Some(view)=crate::boot_memory::nic_bar0(pd,&dev,sex_pdx::SLOT_NIC)else{
+                            serial_println!("[kernel.cap.nic.skip] reason=unsupported_or_invalid_bar vendor={:04x} device={:04x}",dev.vendor_id,dev.device_id);
+                            continue;
+                        };
                         pd.grant_capability(sex_pdx::SLOT_NIC, CapabilityData::Pci(PciCapData {
                             bus: dev.bus,
                             dev: dev.dev,
                             func: dev.func,
                             vendor_id: dev.vendor_id,
                             device_id: dev.device_id,
+                            bar0_view: Some(view),
+                            command: Some(crate::boot_memory::nic_command(pd,&dev,sex_pdx::SLOT_NIC,view)),
                         }));
                         serial_println!("[kernel.cap.nic.grant] pd={} slot=19", sexnet_pd_id);
                     }

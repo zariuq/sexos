@@ -1,0 +1,40 @@
+
+#ifndef SEXOS_MEMORY_REGIONS_H
+#define SEXOS_MEMORY_REGIONS_H
+#include <stdint.h>
+#include <stdbool.h>
+#define REGION_PAGE_BYTES UINT64_C(4096)
+#define REGION_USER_END (UINT64_C(1) << 47)
+#define REGION_PHYSICAL_END (UINT64_C(1) << 52)
+enum { REGION_QUERY=1, REGION_READ=2, REGION_WRITE=4, REGION_DMA=8, REGION_KNOWN=15 };
+typedef struct {
+    uint32_t region_id;
+    uint64_t virtual_base, length;
+    uint8_t rights;
+    bool has_dma;
+    uint64_t dma_base;
+    bool has_peer;
+    uint32_t peer_pd;
+} MemoryRegionGrant;
+/* This is policy input data. Only lookup in the caller's held capability table
+ * can establish that such data is authority for a kernel operation. */
+typedef struct { bool present; MemoryRegionGrant grant; } MemoryRegionCapability;
+typedef struct { uint64_t offset, length; uint8_t rights; } MemoryRegionRequest;
+typedef enum {
+    REGION_OK, REGION_INVALID_CAPABILITY, REGION_INVALID_REQUEST,
+    REGION_OUT_OF_RANGE, REGION_PERMISSION_DENIED, REGION_WRONG_PEER
+} MemoryRegionError;
+typedef struct { uint32_t region_id; uint64_t virtual_address, length; bool has_dma; uint64_t dma_address; } MemoryRegionView;
+typedef struct { uint32_t region_id; uint64_t length; uint8_t rights; bool has_peer; uint32_t peer_pd; } MemoryRegionInfo;
+typedef struct { MemoryRegionError error; MemoryRegionView value; } MemoryRegionViewResult;
+typedef struct { MemoryRegionError error; MemoryRegionInfo value; } MemoryRegionInfoResult;
+typedef struct { uint64_t status, value0, value1, value2, value3; } MemoryRegionReply;
+bool sexos_region_valid(const MemoryRegionGrant *grant);
+MemoryRegionViewResult sexos_region_view(const MemoryRegionCapability *cap, MemoryRegionRequest request);
+MemoryRegionViewResult sexos_region_register_view(const MemoryRegionCapability *cap, uint64_t offset, uint64_t length, uint64_t rights);
+MemoryRegionInfoResult sexos_region_info(const MemoryRegionCapability *cap);
+MemoryRegionViewResult sexos_region_peer_view(const MemoryRegionCapability *cap, uint32_t caller, MemoryRegionRequest request);
+MemoryRegionReply sexos_region_query(const MemoryRegionCapability *cap, uint64_t number, uint64_t offset, uint64_t length, uint64_t rights);
+MemoryRegionReply sexos_memory_region_view(uint64_t slot, uint64_t offset, uint64_t length, uint64_t rights);
+MemoryRegionReply sexos_memory_region_info(uint64_t slot);
+#endif

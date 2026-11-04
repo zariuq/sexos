@@ -148,6 +148,17 @@ bool map_page(uint64_t va, uint64_t phys, uint64_t flags, uint8_t key) {
   cpu_invlpg(va);
   return true;
 }
+uint64_t page_leaf_address(uint64_t va)
+{
+    uint64_t *table=root_table();
+    for (unsigned level=3;level>0;--level) {
+        uint64_t entry=table[table_index(va,level)];
+        if (!(entry&PTE_PRESENT) || (entry&PTE_HUGE)) return 0;
+        table=table_at(entry);
+    }
+    return (uint64_t)(uintptr_t)&table[table_index(va,0)];
+}
+
 /*The entry that maps va, a large page's entry included.*/
 bool read_pte(uint64_t va, uint64_t *pte) {
   uint64_t *table = root_table();

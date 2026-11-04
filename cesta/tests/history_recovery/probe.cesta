@@ -1,0 +1,31 @@
+(cesta native-c/1 compact-c/2
+  (unit (native "
+#include \"sexos_client.h\"
+#include \"sexos_history_recovery.h\"
+static _Noreturn void failed(uint64_t stage)
+{
+    sexos_line(\"[history.probe.failed] stage=%llu\",(unsigned long long)stage);
+    for(;;)sexos_yield();
+}
+void history_probe_main(void)
+{
+    HistoryDecode decoded=history_get(HISTORY_SLOT);
+    if(!decoded.status){
+        if(!history_valid(decoded.value) || decoded.value.holder!=CURRENT_PD_sexfiles ||
+            decoded.value.logical!=CURRENT_PD_spindle || decoded.value.base!=1808 || decoded.value.sectors!=18)failed(1);
+        for(size_t i=0;i<HISTORY_ROSTER_COUNT;++i){
+            HistoryParticipant p=decoded.value.participants[i];
+            if(!history_permits(decoded.value,CURRENT_PD_sexfiles,p.target,p.task) ||
+                history_permits(decoded.value,CURRENT_PD_sexfiles,p.target,0))failed(2);
+            sexos_line(\"[history.probe.participant] index=%llu target=%u task=%u\",(unsigned long long)i,p.target,p.task);
+        }
+        HistoryDecode alias=history_get(HISTORY_SLOT|(UINT64_C(1)<<32));
+        if(alias.status!=1 || alias.value.holder || alias.value.logical || alias.value.base || alias.value.sectors)failed(3);
+        sexos_line(\"[history.probe.done] holder=%u logical=%u participants=%u extent=1808:18 alias_denied=1\",decoded.value.holder,decoded.value.logical,HISTORY_ROSTER_COUNT);
+    }else{
+        if(decoded.status!=1 || decoded.value.holder || decoded.value.logical || decoded.value.base || decoded.value.sectors)failed(4);
+        sexos_line(\"[history.probe.unheld] rejected=1 partial_published=0\");
+    }
+    for(;;){while(sexos_listen_once(0).type_id){};sexos_wait_self();}
+}
+")))

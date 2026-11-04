@@ -1,0 +1,33 @@
+(cesta native-c/1 compact-c/2
+ (unit
+ (include "linen_capture_service.h")
+ (ownership (check-all)
+  (foreign linen_capture_error (obligation "Returns a tagged error distinct from every data chunk."))
+  (foreign linen_capture_begin (obligation "Captures the supplied public projection once for this authenticated owner/job; repeats preserve the capture."))
+  (foreign linen_capture_read (obligation "Reads the retained capture for this authenticated owner/job without consulting live server state."))
+  (foreign linen_capture_end (obligation "Ends only the named capture and cannot revive a retired logical job."))
+  (foreign sexos_answer_request (obligation "Answers the designated authenticated request id, or its explicit legacy envelope. For a correlated request, invalid means the kernel no longer has a heard obligation; no other request is consumed.")))
+ (native "
+bool linen_capture_service_prepare(LinenCaptureServer *state,const LinenCaptureTable *table,const SexosRequest *request,LinenCaptureAnswer *answer)
+{
+ uint64_t opcode=request->message.type_id;
+ if(opcode!=LINEN_CAPTURE_OP_BEGIN && opcode!=LINEN_CAPTURE_OP_READ && opcode!=LINEN_CAPTURE_OP_END)return false;
+ if(answer->present)return false;
+ uint64_t value=linen_capture_error(LINEN_CAPTURE_DENIED);
+ if(request->id!=0){
+  uint32_t caller=request->message.caller_pd;uint32_t task=request->message.caller_task;
+  uint64_t job=request->message.arg0;uint64_t a=request->message.arg1;uint64_t b=request->message.arg2;
+  if(opcode==LINEN_CAPTURE_OP_BEGIN)value=linen_capture_begin(state,caller,task,job,a,b,table);
+  else if(opcode==LINEN_CAPTURE_OP_READ)value=linen_capture_read(state,caller,task,job,a,b);
+  else value=linen_capture_end(state,caller,task,job,a,b);
+ }
+ answer->request=*request;answer->value=value;answer->present=true;return true;
+}
+bool linen_capture_answer_poll(LinenCaptureAnswer *answer)
+{
+ if(!answer->present)return true;
+ uint64_t result=sexos_answer_request(&answer->request,answer->value);
+ if(result!=0 && !(answer->request.id!=0 && result==SEXOS_RPC_INVALID))return false;
+ answer->present=false;return true;
+}
+")))

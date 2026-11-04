@@ -1,0 +1,32 @@
+#ifndef SEXOS_SHELL_DIAGNOSTICS_A_H
+#define SEXOS_SHELL_DIAGNOSTICS_A_H
+#include "silk_shell.h"
+#include "shell_text_delivery.h"
+typedef struct ShellDiagnosticLabel {char bytes[128];size_t len;} ShellDiagnosticLabel;
+typedef uint8_t ShellSinkBytes[SILK_TEXT_SINK_CAP];
+typedef struct ShellDiagnosticDraw {size_t attempted;bool admitted;} ShellDiagnosticDraw;
+typedef struct ShellTextSinkContext {SilkShellProofsAState *proofs_a;SilkShellChromeState *chrome;} ShellTextSinkContext;
+SexosReply shell_diagnostics_pdx_call(uint64_t slot,uint64_t op,uint64_t a,uint64_t b,uint64_t c);
+bool shell_diagnostics_is_spindle_text_key(uint8_t sc);
+bool shell_diagnostics_is_quil_text_key(uint8_t sc);
+bool shell_diagnostics_send_silkbar_phase2_update(uint32_t kind,uint64_t a,uint64_t b);
+void shell_diagnostics_bell_send_app_event(const ShellDiagnosticLabel *source,uint64_t event);
+ShellDiagnosticDraw shell_diagnostics_shell_draw_text(uint64_t surface,const ShellTextBytes *text,uint64_t color);
+bool shell_diagnostics_sink_scancode_to_char(uint8_t scan,uint8_t *out);
+bool shell_diagnostics_silk_text_sink_redraw(ShellTextSinkContext *ctx);
+bool shell_diagnostics_silk_text_sink_key(ShellTextSinkContext *ctx,uint8_t scan,uint64_t value);
+void shell_diagnostics_input_negative_begin_once(SilkShellProofsAState *state);
+void shell_diagnostics_input_negative_mark_done(SilkShellProofsAState *state);
+void shell_diagnostics_surface_input_lifetime_begin_once(SilkShellProofsAState *state);
+void shell_diagnostics_surface_input_lifetime_mark_focus_live(SilkShellProofsAState *state,uint64_t focused,uint8_t live,uint8_t ok);
+void shell_diagnostics_surface_input_lifetime_mark_key_route(SilkShellProofsAState *state,uint64_t target,uint8_t live,uint8_t routed,uint8_t ok);
+void shell_diagnostics_surface_input_lifetime_mark_click_target(SilkShellProofsAState *state,uint64_t target,uint8_t live,uint8_t committed,uint8_t ok);
+void shell_diagnostics_surface_input_lifetime_mark_drag_target(SilkShellProofsAState *state,uint64_t target,uint8_t live,const ShellDiagnosticLabel *phase,uint8_t ok);
+void shell_diagnostics_surface_input_lifetime_mark_dead_clear(SilkShellProofsAState *state,uint64_t target);
+void shell_diagnostics_surface_input_lifetime_try_done(SilkShellProofsAState *state);
+void shell_diagnostics_shell_interaction_contract_begin_once(SilkShellProofsAState *state);
+void shell_diagnostics_click_drag_proof_begin_click_once(SilkShellProofsAState *state);
+void shell_diagnostics_click_drag_proof_begin_drag_once(SilkShellProofsAState *state);
+void shell_diagnostics_shell_interaction_contract_mark_stage(SilkShellProofsAState *state,uint8_t stage);
+void shell_diagnostics_shell_interaction_contract_try_done(SilkShellProofsAState *state);
+#endif

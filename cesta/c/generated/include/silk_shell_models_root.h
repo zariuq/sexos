@@ -1,0 +1,12 @@
+#ifndef SEXOS_SHELL_MODELS_ROOT_H
+#define SEXOS_SHELL_MODELS_ROOT_H
+#include "silk_shell_models_paint.h"
+#include "silk_shell_models_workspace.h"
+void workspace_refresh_poll(void);
+bool workspace_refresh_receive(const SexosMessage *message);
+void silk_shell_models_runtime_init(void);
+bool startup_messages_pending(void);
+void linen_queue_open(uint64_t object,uint64_t choice);
+void linen_async_poll(void);
+bool linen_async_reply(const SexosMessage *message);
+#endif

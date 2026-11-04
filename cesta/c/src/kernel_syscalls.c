@@ -59,10 +59,10 @@ static void line_write(Domain *d, const uint8_t *bytes, uint64_t length) {
   }
 }
 /*Slot 0 of PDX_CALL: the kernel's own operations.*/
-static void kernel_operation(Domain *d, TrapFrame *f, uint64_t operation, uint64_t arg0, uint64_t arg1) {
+static void kernel_operation(Domain *d, TrapFrame *f, uint64_t operation, uint64_t arg0, uint64_t arg1, uint64_t arg2) {
   uint64_t status = ERR_CAP_INVALID;
   uint64_t value = 0;
-  if (operation == 0xE3) {
+  if (!SEXOS_KERNEL_CURRENT_PDX && operation == 0xE3) {
     if (arg0 != 0 && (user_range_ok(arg0, DISPLAY_INFO_SIZE, true, d->mask) && kernel.fb_address != 0)) {
       DisplayInfo info = (DisplayInfo) {
         .virt_addr = kernel.fb_address - hhdm_offset
@@ -90,18 +90,32 @@ static void kernel_operation(Domain *d, TrapFrame *f, uint64_t operation, uint64
     status = 0;
     value = d->init_arg;
   }
-  if (operation == 0xBB) {
+  if (!SEXOS_KERNEL_CURRENT_PDX && operation == 0xBB) {
     klog("PD1: FRAME_PRESENT event\n");
     status = 0;
+  }
+  if (SEXOS_KERNEL_CURRENT_PDX && (operation == 0xE6 && (arg1 == 0 && (arg2 == 0 && kernel.fb_address != 0)))) if (d->id == kernel.display_pd || (d->id == kernel.shell_pd || d->id == kernel.input_pd)) {
+    if (arg0 == 0) {
+      value = (uint64_t)(uint32_t) kernel.fb_width | (uint64_t)(uint32_t) kernel.fb_height << 32;
+      status = 0;
+    }
+    if (arg0 == 1 && d->id == kernel.display_pd) {
+      value = kernel.fb_address;
+      status = 0;
+    }
+    if (arg0 == 2) {
+      value = (uint32_t) kernel.fb_pitch;
+      status = 0;
+    }
   }
   f->rsi = value;
   f->rax = status;
 }
 /*PDX_CALL to a slot holding a domain capability enqueues a call on the target's ring; the call is the message. A full ring answers ERR_SERVICE_NOT_READY.*/
 static void pdx_call(Domain *d, TrapFrame *f) {
-  uint64_t slot = (uint32_t) f->rdi;
+  uint64_t slot = f->rdi;
   if (slot == 0) {
-    kernel_operation(d, f, f->rsi, f->rdx, f->r10);
+    kernel_operation(d, f, f->rsi, f->rdx, f->r10, f->r8);
     return;
   }
   uint64_t status = ERR_CAP_INVALID;
@@ -109,32 +123,61 @@ static void pdx_call(Domain *d, TrapFrame *f) {
   if (cap != NULL && cap->kind == CAP_DOMAIN) {
     Domain *target = domain_get(cap->target);
     if (target != NULL) {
+      if (SEXOS_KERNEL_CURRENT_PDX && (target->task_state == TASK_EXITED || target->task_state == TASK_DORMANT)) {
+        f->rax = ERR_SERVICE_NOT_READY;
+        f->rsi = 0;
+        return;
+      }
+      uint32_t task = SEXOS_KERNEL_CURRENT_PDX ? kernel_current_task(d) : 0;
+      if (SEXOS_KERNEL_CURRENT_PDX && task == 0) {
+        f->rax = ERR_CAP_INVALID;
+        f->rsi = 0;
+        return;
+      }
       RingEntry call_entry = (RingEntry) {
         .type_id = f->rsi,.caller = d->id
       };
+      call_entry.caller_task = SEXOS_KERNEL_CURRENT_PDX ? task : 0;
       call_entry.arg0 = f->rdx;
       call_entry.arg1 = f->r10;
       call_entry.arg2 = f->r8;
       call_entry.sender = d->id;
       call_entry.from_call = true;
+/*Reserve one consumable reply right before publishing each accepted invocation. Exhaustion refuses before enqueue; a failed enqueue withdraws exactly its reservation.*/
+      if (SEXOS_KERNEL_CURRENT_PDX && target->reply_rights[d->id] == UINT64_MAX) {
+        f->rax = ERR_SERVICE_NOT_READY;
+        f->rsi = 0;
+        return;
+      }
+      bool reserved = SEXOS_KERNEL_CURRENT_PDX;
+      if (reserved) target->reply_rights[d->id] += 1;
       status = domain_enqueue(target, call_entry) ? 0 : ERR_SERVICE_NOT_READY;
+      if (reserved && status != 0) target->reply_rights[d->id] -= 1;
     }
   }
   f->rsi = 0;
   f->rax = status;
 }
-/*Take the next message off a ring; a call gives the listener one reply right to its sender.*/
+/*Take the next message off a ring. The historical cohort grants at hearing; the current cohort reserved its obligation before enqueue.*/
 static bool take_message(Domain *d, RingEntry *out) {
   while (d->ring.count > 0) {
     const RingEntry *head = &d->ring.entries[d->ring.head];
 /*A full reply-right counter defers a call until an outstanding reply is consumed; it never wraps or drops the queued call.*/
-    if (head->from_call && (head->sender < KERNEL_MAX_DOMAINS && d->reply_rights[head->sender] == UINT64_MAX)) return false;
+    if (!SEXOS_KERNEL_CURRENT_PDX && (head->from_call && (head->sender < KERNEL_MAX_DOMAINS && d->reply_rights[head->sender] == UINT64_MAX))) return false;
     if (!domain_dequeue(d, out)) return false;
+    if (out->type_id == 0xFF && (out->sender == 0 && !out->from_call)) {
+      uint64_t vector = out->arg0;
+      uint64_t revision = out->arg1;
+      bool invalid = vector >= 256;
+      if (!invalid) invalid = kernel.vector_owner[vector] != d->id || (kernel.vector_heard_revision[vector] == UINT64_MAX || (revision != kernel.vector_heard_revision[vector] + 1 || revision > kernel.vector_revision[vector]));
+      if (invalid) kernel_halt("device interrupt receipt invariant");
+      kernel.vector_heard_revision[vector] = revision;
+    }
     if (out->request_id != 0) {
       if (kernel_rpc_claim(d, out)) return true;
       continue;
     }
-    if (out->from_call && out->sender < KERNEL_MAX_DOMAINS) d->reply_rights[out->sender] += 1;
+    if (!SEXOS_KERNEL_CURRENT_PDX && (out->from_call && out->sender < KERNEL_MAX_DOMAINS)) d->reply_rights[out->sender] += 1;
     return true;
   }
   *out = (RingEntry) {
@@ -150,8 +193,13 @@ RingEntry kernel_listen_message(Domain *d, uint64_t slot) {
   if (slot == 0) if (d->reply_ready) {
     d->reply_ready = false;
     m = (RingEntry) {
-      .type_id = REPLY_TYPE,.caller = 1,.arg0 = d->reply_value
+      .type_id = REPLY_TYPE,.caller = SEXOS_KERNEL_CURRENT_PDX ? d->reply_caller : 1,.caller_task = SEXOS_KERNEL_CURRENT_PDX ? d->reply_task : 0,.arg0 = d->reply_value
     };
+    if (SEXOS_KERNEL_CURRENT_PDX) {
+      d->reply_value = 0;
+      d->reply_caller = 0;
+      d->reply_task = 0;
+    }
   } else take_message(d, &m);
   else {
     const Cap *cap = cap_get(d, slot);
@@ -168,15 +216,20 @@ RingEntry kernel_listen_message(Domain *d, uint64_t slot) {
   return m;
 }
 static void pdx_listen(Domain *d, TrapFrame *f) {
-  RingEntry m = kernel_listen_message(d, (uint32_t) f->rdi);
+  RingEntry m = kernel_listen_message(d, f->rdi);
+  if (SEXOS_KERNEL_CURRENT_PDX) f->rdi = m.caller_task;
   f->rsi = m.caller;
   f->rdx = m.arg0;
   f->r10 = m.arg1;
   f->r8 = m.arg2;
   f->rax = m.type_id;
 }
-/*PDX_REPLY: the reference delivers to any domain named by number. Here a reply consumes one right, given when the replier took a call from the target off its ring, so a domain cannot answer for another or answer twice.*/
+/*PDX_REPLY consumes a held obligation only after publication. The current cohort preserves a full destination slot and stamps the scheduled sender; the historical cohort retains its earlier slot behavior.*/
 static void pdx_reply(Domain *d, TrapFrame *f) {
+  if (f->rdi >= KERNEL_MAX_DOMAINS) {
+    f->rax = 1;
+    return;
+  }
   uint32_t target_id = (uint32_t) f->rdi;
   Domain *target = domain_get(target_id);
   if (target == NULL) {
@@ -191,9 +244,17 @@ static void pdx_reply(Domain *d, TrapFrame *f) {
     f->rax = 1;
     return;
   }
-  d->reply_rights[target_id] -= 1;
+  uint32_t task = SEXOS_KERNEL_CURRENT_PDX ? kernel_current_task(d) : 0;
+  if (SEXOS_KERNEL_CURRENT_PDX && (task == 0 || (target->reply_ready || (target->task_state == TASK_EXITED || target->task_state == TASK_DORMANT)))) {
+    f->rax = 1;
+    return;
+  }
+  target->reply_caller = SEXOS_KERNEL_CURRENT_PDX ? d->id : 0;
+  target->reply_task = SEXOS_KERNEL_CURRENT_PDX ? task : 0;
   target->reply_ready = true;
   target->reply_value = f->rsi;
+  if (SEXOS_KERNEL_CURRENT_PDX) kernel_task_wake(target);
+  d->reply_rights[target_id] -= 1;
   f->rax = 0;
 }
 /*MAP_MEMORY: the reference maps any physical range, writable, executable and under key 0, which every domain can reach. Here only frames ALLOCATE_MEMORY gave the caller, under the caller's key.*/
@@ -259,6 +320,7 @@ static uint64_t map_pci_bar(Domain *d, uint64_t slot, uint64_t bar_index, uint64
 }
 /*SYS_GRANT_MEM_LEND: the kernel allocates a page, maps it for the caller, and lends it to the domain behind the caller's domain capability, at an empty slot. The lender owns the frame.*/
 static uint64_t grant_mem_lend(Domain *d, uint64_t domain_slot, uint64_t length, uint64_t lend_slot) {
+  if (!kernel.genesis_sealed) return NO_ADDRESS;
   if (length != 4096) {
     klog("[kernel.memlend.grant.err] reason=bad_len len=%llu\n", (unsigned long long) length);
     return NO_ADDRESS;
@@ -302,7 +364,8 @@ static uint64_t grant_mem_lend(Domain *d, uint64_t domain_slot, uint64_t length,
   lent.lend_key = d->key;
   lent.permissions = 3;
   lent.source = d->id;
-  cap_set(target, lend_slot, lent);
+/*This subordinate page grant preserves the sealed communication graph. The lender's domain capability, target vacancy and frame ownership were checked above.*/
+  if (!cap_install_lend(target, lend_slot, lent)) return NO_ADDRESS;
   klog("[kernel.memlend.grant.ok] va=%#llx phys=%#llx len=4096\n", (unsigned long long) va, (unsigned long long) phys);
   return va;
 }
@@ -341,10 +404,36 @@ static uint64_t net_diag(uint64_t index) {
   }
   return NO_ADDRESS;
 }
+static void kernel_region_query(Domain *d, TrapFrame *f, uint64_t number)
+{
+    MemoryRegionCapability absent={0};
+    const Cap *held=cap_get(d,f->rdi);
+    const MemoryRegionCapability *region=&absent;
+    if (held && (held->kind == CAP_REGION || held->kind == CAP_PCI)) region=&held->region;
+    MemoryRegionReply r=sexos_region_query(region,number,f->rsi,f->rdx,f->r10);
+    f->rax=r.status; f->rsi=r.value0; f->rdx=r.value1; f->r10=r.value2; f->r8=r.value3;
+}
+static uint64_t current_bar_view(Domain *d, uint64_t slot, uint64_t bar, uint64_t length)
+{
+    const Cap *held=cap_get(d,slot);
+    if (!held || held->kind != CAP_PCI || bar) return NO_ADDRESS;
+    MemoryRegionViewResult result=sexos_region_register_view(&held->region,0,length ? length : 4096,
+        REGION_QUERY|REGION_READ|REGION_WRITE);
+    return result.error ? NO_ADDRESS : result.value.virtual_address;
+}
+
 TrapFrame *kernel_syscall(TrapFrame *f) {
   if (kernel.pku) cpu_wrpkru(0);
   Domain *d = domain_get(kernel.current);
   if (d == NULL) kernel_halt("system call without a current domain");
+  if (SEXOS_KERNEL_CURRENT_PDX) {
+    d->frame = f;
+#if SEXOS_KERNEL_CURRENT_FPU
+kernel_fpu_save_current();
+
+#endif
+    kernel_task_poll();
+  }
   uint64_t number = f->rax;
   switch (number) {
     case SEXOS_SYSCALL_call: pdx_call(d, f);
@@ -353,25 +442,99 @@ TrapFrame *kernel_syscall(TrapFrame *f) {
     break;
     case SEXOS_SYSCALL_reply: pdx_reply(d, f);
     break;
-    case SEXOS_SYSCALL_map_memory: f->rax = map_memory(d, f->rdi, f->rsi);
+    case SEXOS_SYSCALL_map_memory: f->rax = SEXOS_KERNEL_CURRENT_PDX ? NO_ADDRESS : map_memory(d, f->rdi, f->rsi);
     break;
-    case SEXOS_SYSCALL_allocate_memory: f->rax = allocate_memory(d, f->rdi);
+    case SEXOS_SYSCALL_allocate_memory: f->rax = SEXOS_KERNEL_CURRENT_PDX ? NO_ADDRESS : allocate_memory(d, f->rdi);
     break;
 /*Yield leaves rax holding 32, as the reference's yield path does; Rust callers rely on it.*/
     case SEXOS_SYSCALL_yield: return schedule_yield();
     case SEXOS_SYSCALL_ticks: f->rax = kernel.ticks;
     break;
-    case SEXOS_SYSCALL_alloc_shared_buffer: f->rax = alloc_shared_buffer(d, f->rdi, (uint8_t) f->rsi);
+    case SEXOS_SYSCALL_alloc_shared_buffer: f->rax = SEXOS_KERNEL_CURRENT_PDX ? 0 : alloc_shared_buffer(d, f->rdi, (uint8_t) f->rsi);
     break;
-    case SEXOS_SYSCALL_set_state: f->rax = 0;
+    case SEXOS_SYSCALL_set_state: f->rax = SEXOS_KERNEL_CURRENT_PDX ? NO_ADDRESS : 0;
     break;
-    case SEXOS_SYSCALL_map_pci_bar: f->rax = map_pci_bar(d, f->rdi, f->rsi, f->rdx);
+    case SEXOS_SYSCALL_map_pci_bar: f->rax = SEXOS_KERNEL_CURRENT_PDX ? current_bar_view(d, f->rdi, f->rsi, f->rdx) : map_pci_bar(d, f->rdi, f->rsi, f->rdx);
     break;
-    case SEXOS_SYSCALL_grant_mem_lend: f->rax = grant_mem_lend(d, f->rdi, f->rsi, f->rdx);
+    case SEXOS_SYSCALL_grant_mem_lend: f->rax = SEXOS_KERNEL_CURRENT_PDX ? NO_ADDRESS : grant_mem_lend(d, f->rdi, f->rsi, f->rdx);
     break;
-    case SEXOS_SYSCALL_map_mem_lend: f->rax = map_mem_lend(d, f->rdi);
+    case SEXOS_SYSCALL_map_mem_lend: f->rax = SEXOS_KERNEL_CURRENT_PDX ? NO_ADDRESS : map_mem_lend(d, f->rdi);
     break;
-    case SEXOS_SYSCALL_net_diag: f->rax = net_diag(f->rdi);
+    case SEXOS_SYSCALL_net_diag: f->rax = SEXOS_KERNEL_CURRENT_PDX ? NO_ADDRESS : net_diag(f->rdi);
+    break;
+    case 53: if (SEXOS_KERNEL_CURRENT_PDX) if (f->rdi == 0) return kernel_task_block(d, f, 0);
+    else f->rax = ERR_CAP_INVALID;
+    else f->rax = NO_ADDRESS;
+    break;
+    case 70: if (SEXOS_KERNEL_CURRENT_PDX) if (f->rdi != 0 && (f->rdi <= 64 && (f->rsi | f->rdx | (f->r10 | f->r8)) == 0)) return kernel_task_block(d, f, f->rdi);
+    else f->rax = ERR_CAP_INVALID;
+    else f->rax = NO_ADDRESS;
+    break;
+    case 56: if (SEXOS_KERNEL_CURRENT_PDX) kernel_paging_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 57: if (SEXOS_KERNEL_CURRENT_PDX) kernel_paging_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 58: if (SEXOS_KERNEL_CURRENT_PDX) kernel_paging_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 59: if (SEXOS_KERNEL_CURRENT_PDX) kernel_paging_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 60: if (SEXOS_KERNEL_CURRENT_PDX) kernel_paging_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 61: if (SEXOS_KERNEL_CURRENT_PDX) kernel_paging_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 63: if (SEXOS_KERNEL_CURRENT_PDX) kernel_app_query(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 72: if (SEXOS_KERNEL_CURRENT_PDX) kernel_source_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 67: if (SEXOS_KERNEL_CURRENT_PDX) kernel_history_query(d, f);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 68: if (SEXOS_KERNEL_CURRENT_PDX) kernel_pci_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 69: if (SEXOS_KERNEL_CURRENT_PDX) kernel_pci_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 71: if (SEXOS_KERNEL_CURRENT_PDX) kernel_pci_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 73: if (SEXOS_KERNEL_CURRENT_PDX) kernel_source_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 74: if (SEXOS_KERNEL_CURRENT_PDX) kernel_source_syscall(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case SEXOS_SYSCALL_region_writer: if (SEXOS_KERNEL_CURRENT_PDX) kernel_region_writer_syscall(d, f);
+    else f->rax = NO_ADDRESS;
+    break;
+    case SEXOS_SYSCALL_device_reset: if (SEXOS_KERNEL_CURRENT_PDX) kernel_device_reset_syscall(d, f);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 65: if (SEXOS_KERNEL_CURRENT_PDX) kernel_app_retire(d, f);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 66: if (SEXOS_KERNEL_CURRENT_PDX) kernel_app_activation(d, f);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 64: if (SEXOS_KERNEL_CURRENT_PDX) kernel_app_query(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 62: if (SEXOS_KERNEL_CURRENT_PDX) return kernel_task_finish(d, f);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 54: if (SEXOS_KERNEL_CURRENT_PDX) kernel_region_query(d, f, number);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 55: if (SEXOS_KERNEL_CURRENT_PDX) kernel_region_query(d, f, number);
+    else f->rax = NO_ADDRESS;
     break;
     case SEXOS_RPC_register: kernel_rpc_syscall(d, f, number);
     break;
@@ -385,7 +548,16 @@ TrapFrame *kernel_syscall(TrapFrame *f) {
     break;
     case SEXOS_RPC_cancel: kernel_rpc_syscall(d, f, number);
     break;
-    default: f->rax = NO_ADDRESS;
+    default: {
+      f->rax = NO_ADDRESS;
+/*A failed current five-word ABI call cannot return its input arguments as result data.*/
+      if (SEXOS_KERNEL_CURRENT_PDX) {
+        f->rsi = 0;
+        f->rdx = 0;
+        f->r10 = 0;
+        f->r8 = 0;
+      }
+    }
   }
   return resume_frame(f);
 }

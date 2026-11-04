@@ -1,6 +1,5 @@
 pub mod spawn;
 pub mod fs;
-pub mod net;
 pub mod storage;
 pub mod pipe;
 pub mod fork;
@@ -10,7 +9,6 @@ pub mod store;
 use crate::interrupts::SyscallRegs;
 use crate::ipc::messages::MessageType;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use x86_64::structures::paging::PageTableFlags;
 use x86_64::VirtAddr;
 
 const SNAPSHOT_MAX: usize = 64;
@@ -132,21 +130,31 @@ fn snapshot_resolve(handle: u64, out_ptr: *mut sex_pdx::SceneSnapshot) -> u64 {
     0u64
 }
 
-#[repr(C)]
-pub struct DisplayInfo {
-    pub virt_addr: u64,
-    pub width:     u32,
-    pub height:    u32,
-    pub pitch:     u32, // Pixels per row
-}
-
-fn size_to_order(size: usize) -> usize {
-    let pages = (size + 4095) / 4096;
-    let mut order = 0;
-    while order < crate::memory::allocator::MAX_ORDER && (1 << order) < pages {
-        order += 1;
+/// Exact runtime region ABI, also exercised by the boot negative selftest.
+/// Failed replies expose no prior input or address register values.
+pub(crate) fn region_query(pd: &crate::capability::ProtectionDomain, number: u64,
+    slot: u64, offset: u64, length: u64, rights: u64) -> [u64; 5]
+{
+    use crate::capability::CapabilityData;
+    use sex_pdx::memory_region::{resolve_info, resolve_register_view};
+    let fail = [u64::MAX, 0, 0, 0, 0];
+    let Some(slot) = crate::capability_slot::decode_capability_slot(slot) else { return fail; };
+    let grant = match pd.find_capability(slot).map(|cap| cap.data) {
+        Some(CapabilityData::Region(grant)) => Some(grant),
+        Some(CapabilityData::Pci(data)) => data.bar0_view,
+        _ => None,
+    };
+    match number {
+        54 => match resolve_register_view(grant.as_ref(), offset, length, rights) {
+            Ok(view) => [0, view.virtual_address, view.length, view.dma_address.unwrap_or(0), view.region_id as u64],
+            Err(_) => fail,
+        },
+        55 => match resolve_info(grant.as_ref()) {
+            Ok(info) => [0, info.length, info.rights as u64, info.peer_pd.unwrap_or(0) as u64, info.region_id as u64],
+            Err(_) => fail,
+        },
+        _ => fail,
     }
-    order
 }
 
 pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
@@ -157,6 +165,34 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
     let r10 = regs.r10;
     let r8  = regs.r8;
 
+    // Reject full-width selector aliases before lookup, dequeue, allocation,
+    // mapping, or reply insertion. Validated selector casts below are safe.
+    if !crate::capability_slot::valid_syscall_selectors(rax, rdi, rdx) {
+        let error = match rax {
+            0 => {
+                regs.rsi = 0;
+                sex_pdx::ERR_CAP_INVALID
+            }
+            28 => {
+                // Preserve the existing invalid-listen/empty result contract.
+                regs.rsi = 0;
+                regs.rdx = 0;
+                regs.r10 = 0;
+                regs.r8 = 0;
+                regs.rdi = 0;
+                0
+            }
+            29 => 1,
+            68 | 69 | 71 => {
+                regs.rsi=0;regs.rdx=0;regs.r10=0;regs.r8=0;
+                sex_pdx::pci_command::DENIED
+            },
+            _ => u64::MAX,
+        };
+        regs.rax = error;
+        return error;
+    }
+
     let result = match rax {
         0 => { // SYSCALL_PDX_CALL
             let slot = rdi as u32;
@@ -166,27 +202,13 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
             let arg2 = r8;
 
             let (status, value) = if slot == 0 {
-                match num {
-                    0xE3 => { // PDX_GET_DISPLAY_INFO
-                        let ptr = arg0 as *mut DisplayInfo;
-                        let info_size = core::mem::size_of::<DisplayInfo>();
-                        if ptr.is_null() || !validate_user_bytes(arg0, info_size, true) {
-                            (sex_pdx::ERR_CAP_INVALID, 0)
-                        } else if let Some(fb_res) = crate::FB_REQUEST.response() {
-                            if let Some(fb) = fb_res.framebuffers().iter().next() {
-                                unsafe {
-                                    let fb_virt = fb.address() as u64;
-                                    let hhdm = crate::HHDM_REQUEST.response().unwrap().offset;
-                                    (*ptr).virt_addr = fb_virt - hhdm;
-                                    (*ptr).width = fb.width as u32;
-                                    (*ptr).height = fb.height as u32;
-                                    (*ptr).pitch = (fb.pitch / 4) as u32;
-                                }
-                                (0u64, 0u64)
-                            } else { (sex_pdx::ERR_CAP_INVALID, 0) }
-                        } else { (sex_pdx::ERR_CAP_INVALID, 0) }
+                use crate::capability_slot::{decode_bridge_op, BridgeOp};
+                match decode_bridge_op(num) {
+                    Some(BridgeOp::BootDisplayQuery) => {
+                        let caller=crate::core_local::CoreLocal::get().current_pd_ref().id;
+                        match crate::boot_display::query(caller,arg0,arg1,arg2){Some(value)=>(0,value),None=>(sex_pdx::ERR_CAP_INVALID,0)}
                     }
-                    69 => { // raw_print
+                    Some(BridgeOp::SerialRecord) => {
                         let ptr = arg0 as *const u8;
                         let len = arg1 as usize;
                         if len == 0 {
@@ -208,7 +230,7 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
                             (0u64, 0u64)
                         }
                     }
-                    0x12 => { // pdx_get_init_arg
+                    Some(BridgeOp::InitArg) => {
                         let core_local = crate::core_local::CoreLocal::get();
                         let sched = &crate::scheduler::SCHEDULERS[core_local.core_id as usize];
                         let current_task_ptr = sched.current_task.load(core::sync::atomic::Ordering::Acquire);
@@ -228,11 +250,7 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
                             } else { (sex_pdx::ERR_CAP_INVALID, 0) }
                         } else { (sex_pdx::ERR_CAP_INVALID, 0) }
                     }
-                    0xBB => { // Phase 2: FRAME_PRESENT debug hook
-                        crate::serial_println!("PD1: FRAME_PRESENT event");
-                        (0u64, 0u64)
-                    }
-                    _ => (sex_pdx::ERR_CAP_INVALID, 0),
+                    None => (sex_pdx::ERR_CAP_INVALID, 0),
                 }
             } else {
                 match crate::ipc::safe_pdx_call(slot, num, arg0, arg1, arg2) {
@@ -250,14 +268,16 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
             let core_local = crate::core_local::CoreLocal::get();
             let current_pd = core_local.current_pd_ref();
 
+            let mut s_caller_task = 0u64;
             let (type_id, s_caller_pd, s_arg0, s_arg1, s_arg2): (u64, u64, u64, u64, u64) = {
                 // 1. Check priority reply buffer (Syscall 29 source)
-                // Replies always come from Slot 0 (Self) logic conceptually
+                // Reply sender is captured by the kernel at send time.
                 let mut replies = current_pd.incoming_replies.lock();
                 if slot == 0 && !replies.is_empty() {
-                    if let Some(reply) = replies.pop_front() {
+                    if let Some(reply) = crate::ipc::messages::IpcReply::take(&mut replies) {
                         drop(replies);
-                        (0x1, 1, reply.value, 0, 0)
+                        { s_caller_task = reply.caller_task as u64;
+                            (0x1, reply.caller_pd as u64, reply.value, 0, 0) }
                     } else {
                         drop(replies);
                         (0, 0, 0, 0, 0)
@@ -270,8 +290,9 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
                     unsafe {
                         if let Some(msg) = (*current_pd.message_ring).dequeue() {
                             match msg {
-                                MessageType::IpcCall { func_id, arg0, arg1, arg2, caller_pd } => {
-                                    (func_id, caller_pd as u64, arg0, arg1, arg2)
+                                MessageType::IpcCall { func_id, arg0, arg1, arg2, caller_pd, caller_task } => {
+                                    { s_caller_task = caller_task as u64;
+                                        (func_id, caller_pd as u64, arg0, arg1, arg2) }
                                 }
                                 MessageType::DisplayPrimaryFramebuffer { virt_addr, width, height, pitch } => {
                                     (0x11, 1, virt_addr, (width as u64) | ((height as u64) << 32), pitch as u64)
@@ -314,8 +335,9 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
                             unsafe {
                                 if let Some(msg) = (*current_pd.message_ring).dequeue() {
                                     match msg {
-                                        MessageType::IpcCall { func_id, arg0, arg1, arg2, caller_pd } => {
-                                            (func_id, caller_pd as u64, arg0, arg1, arg2)
+                                        MessageType::IpcCall { func_id, arg0, arg1, arg2, caller_pd, caller_task } => {
+                                            { s_caller_task = caller_task as u64;
+                                        (func_id, caller_pd as u64, arg0, arg1, arg2) }
                                         }
                                         MessageType::DisplayPrimaryFramebuffer { virt_addr, width, height, pitch } => {
                                             (0x11, 1, virt_addr, (width as u64) | ((height as u64) << 32), pitch as u64)
@@ -349,6 +371,7 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
             regs.rdx = s_arg0;
             regs.r10 = s_arg1;
             regs.r8  = s_arg2;
+            regs.rdi = s_caller_task;
 
             type_id
         },
@@ -359,36 +382,10 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
             if crate::ipc::router::send_reply(target_pd_id, val).is_ok() { 0 } else { 1 }
         },
 
-        30 => { // MAP_MEMORY
-            let pa = rdi;
-            let size = rsi;
-            if let Some(va) = crate::memory::va_allocator::allocate_va(size as usize) {
-                let mut gvas_lock = crate::memory::manager::GLOBAL_VAS.lock();
-                if let Some(ref mut gvas) = *gvas_lock {
-                    let flags = PageTableFlags::PRESENT 
-                              | PageTableFlags::WRITABLE 
-                              | PageTableFlags::USER_ACCESSIBLE;
-                    if gvas.map_physical_range(VirtAddr::new(va), pa, size, flags, 0).is_ok() {
-                        va
-                    } else {
-                        u64::MAX
-                    }
-                } else {
-                    u64::MAX
-                }
-            } else {
-                u64::MAX
-            }
-        },
-
-        31 => { // ALLOCATE_MEMORY
-            let size = rdi as usize;
-            let order = size_to_order(size);
-            match crate::memory::allocator::GLOBAL_ALLOCATOR.alloc(order) {
-                Some(phys) => phys,
-                None => u64::MAX,
-            }
-        },
+        // Ambient physical allocation/mapping and runtime capability minting
+        // are unavailable. Boot regions are queried through54/55 only.
+        30 | 31 | 50 | 51 => u64::MAX,
+        40 => 0, // historical shared-buffer failure convention
 
         32 => { // SYSCALL_YIELD — cooperative scheduling fallback
             // When the preemptive LAPIC timer does not fire (QEMU limitation),
@@ -402,81 +399,114 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
             }
         },
 
-        43 => { // MAP_PCI_BAR(cap_slot, bar_index, map_size)
-            use crate::capability::CapabilityData;
-            use crate::hal::pci::PciDevice;
-
-            let cap_slot = rdi as u32;
-            let bar_index = (rsi & 0xFF) as u8;
-            let req_size = rdx as usize;
-            let map_size = if req_size == 0 { 0x1000usize } else { req_size.min(0x10000usize) };
-
-            let core_local = crate::core_local::CoreLocal::get();
-            let current_pd = core_local.current_pd_ref();
-            let cap = current_pd.find_capability(cap_slot);
-
-            if let Some(cap) = cap {
-                if let CapabilityData::Pci(data) = cap.data {
-                    let dev = PciDevice {
-                        bus: data.bus,
-                        dev: data.dev,
-                        func: data.func,
-                        vendor_id: data.vendor_id,
-                        device_id: data.device_id,
-                        class_id: 0,
-                        subclass_id: 0,
-                        prog_if: 0,
-                    };
-
-                    let class_rev = dev.read_u32(0x08);
-                    let class_id = (class_rev >> 24) as u8;
-                    let subclass_id = (class_rev >> 16) as u8;
-                    let prog_if = (class_rev >> 8) as u8;
-
-                    // Gate: allow XHCI (0x0c/0x03/0x30) or NVMe (0x01/0x08).
-                    let is_xhci = class_id == 0x0c && subclass_id == 0x03 && prog_if == 0x30;
-                    let is_nvme = class_id == 0x01 && subclass_id == 0x08;
-                    let is_nic  = class_id == 0x02 && subclass_id == 0x00;
-                    if !is_xhci && !is_nvme && !is_nic {
-                        u64::MAX
-                    } else {
-                        let bar_raw = dev.read_u32(0x10 + bar_index * 4);
-                        if (bar_raw & 0x1) != 0 {
-                            // I/O BAR not allowed for this path.
-                            u64::MAX
-                        } else {
-                            let bar_pa = dev.get_bar(bar_index) & !0xFFFu64;
-                            if bar_pa == 0 {
-                                u64::MAX
-                            } else if let Some(va) = crate::memory::va_allocator::allocate_va(map_size) {
-                                let mut gvas_lock = crate::memory::manager::GLOBAL_VAS.lock();
-                                if let Some(ref mut gvas) = *gvas_lock {
-                                    let flags = PageTableFlags::PRESENT
-                                        | PageTableFlags::WRITABLE
-                                        | PageTableFlags::USER_ACCESSIBLE
-                                        // MMIO requires UC (Uncacheable) to prevent CPU caching.
-                                        // PCD=1 + PWT=1 selects UC in the default PAT.
-                                        | PageTableFlags::NO_CACHE
-                                        | PageTableFlags::WRITE_THROUGH;
-                                    if gvas.map_physical_range(VirtAddr::new(va), bar_pa, map_size as u64, flags, 0).is_ok() {
-                                        va
-                                    } else {
-                                        u64::MAX
-                                    }
-                                } else {
-                                    u64::MAX
-                                }
-                            } else {
-                                u64::MAX
-                            }
-                        }
-                    }
-                } else {
-                    u64::MAX
-                }
-            } else {
-                u64::MAX
+        43 => { // Existing ABI, now an idempotent boot BAR0 view query.
+            let pd = crate::core_local::CoreLocal::get().current_pd_ref();
+            let grant = match pd.find_capability(rdi as u32).map(|cap| cap.data) {
+                Some(crate::capability::CapabilityData::Pci(data)) => data.bar0_view,
+                _ => None,
+            };
+            if rsi != 0 { u64::MAX } else {
+                let size = if rdx == 0 { 4096 } else { rdx };
+                sex_pdx::memory_region::resolve_register_view(grant.as_ref(), 0, size,
+                    (sex_pdx::memory_region::QUERY_VIEW | sex_pdx::memory_region::READ | sex_pdx::memory_region::WRITE) as u64)
+                    .map(|view| view.virtual_address).unwrap_or(u64::MAX)
             }
+        },
+        54 | 55 => {
+            let pd = crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply = region_query(pd, rax, rdi, rsi, rdx, r10);
+            regs.rsi = reply[1];
+            regs.rdx = reply[2];
+            regs.r10 = reply[3];
+            regs.r8 = reply[4];
+            reply[0]
+        },
+        56 => {
+            let pd = crate::core_local::CoreLocal::get().current_pd_ref();
+            crate::paging::commit(pd,rdi,rsi,rdx,r10,r8)
+        },
+        57 | 59 => {
+            let pd = crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply = if rax == 57 { crate::paging::query(pd,rdi,rsi) }
+                else { crate::paging::info(pd,rdi) };
+            regs.rsi=reply[1]; regs.rdx=reply[2]; regs.r10=reply[3]; regs.r8=reply[4];
+            reply[0]
+        },
+        58 => {
+            let pd = crate::core_local::CoreLocal::get().current_pd_ref();
+            crate::paging::reject(pd,rdi,rsi)
+        },
+        60 => {
+            let pd = crate::core_local::CoreLocal::get().current_pd_ref();
+            crate::paging::reclaim(pd,rdi,rsi,rdx,r10)
+        },
+        61 => {
+            let pd = crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply = crate::paging::cleanup(pd,rdi,rsi);
+            regs.rsi=reply[1]; regs.rdx=reply[2]; regs.r10=0; regs.r8=0;
+            reply[0]
+        },
+
+        62 => { // Self-only task finish; never returns to the exited frame.
+            unsafe { crate::scheduler::finish_current_task(regs as *const _) }
+        },
+        63 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::app_resources::status(pd,rdi,rsi);
+            regs.rsi=reply[1]; regs.rdx=reply[2]; regs.r10=reply[3]; regs.r8=reply[4]; reply[0]
+        },
+        64 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            crate::app_resources::ack(pd,rdi,rsi)
+        },
+        65 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::app_resources::retire(pd,rdi);
+            regs.rsi=reply[1]; regs.rdx=reply[2]; regs.r10=reply[3]; regs.r8=0; reply[0]
+        },
+
+        67 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::history_recovery::query(pd,rdi,rsi);
+            regs.rsi=reply[1];regs.rdx=reply[2];regs.r10=reply[3];regs.r8=reply[4];reply[0]
+        },
+
+        66 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::app_resources::activation(pd,rdi,rsi);
+            regs.rsi=reply[1];regs.rdx=reply[2];regs.r10=reply[3];regs.r8=reply[4];reply[0]
+        },
+
+        68 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::pci_command::invoke(pd,rdi,rsi,rdx,r10,r8);
+            regs.rsi=reply[1];regs.rdx=reply[2];regs.r10=reply[3];regs.r8=reply[4];reply[0]
+        },
+        69 => {
+            let pd = crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::pci_command::identity(pd,rdi,rsi,rdx,r10,r8);
+            regs.rsi=reply[1];regs.rdx=reply[2];regs.r10=reply[3];regs.r8=reply[4];
+            reply[0]
+        },
+        71 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::pci_command::network_config(pd,rdi,rsi,rdx,r10,r8);
+            regs.rsi=reply[1];regs.rdx=reply[2];regs.r10=reply[3];regs.r8=reply[4];reply[0]
+        },
+        74 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::trust_source::invoke(pd,rdi,rsi,rdx,r10,r8);
+            regs.rsi=reply[1];regs.rdx=reply[2];regs.r10=reply[3];regs.r8=reply[4];reply[0]
+        },
+        73 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::clock_source::invoke(pd,rdi,rsi,rdx,r10,r8);
+            regs.rsi=reply[1];regs.rdx=reply[2];regs.r10=reply[3];regs.r8=reply[4];reply[0]
+        },
+        72 => {
+            let pd=crate::core_local::CoreLocal::get().current_pd_ref();
+            let reply=crate::entropy_source::invoke(pd,rdi,rsi,rdx,r10,r8);
+            regs.rsi=reply[1];regs.rdx=reply[2];regs.r10=reply[3];regs.r8=reply[4];reply[0]
         },
 
         34 => { // SYSCALL_GET_TICKS — exposes kernel TICKS counter
@@ -493,136 +523,6 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
             0
         },
 
-        40 => { // SYSCALL_ALLOC_SHARED_BUFFER
-            let size = rdi as usize;
-            let consumer_id = rsi as u8;
-            let current_pd = crate::core_local::CoreLocal::get().current_pd() as u8;
-            
-            // Validation: current_pd != consumer_id
-            if current_pd == consumer_id {
-                0
-            } else {
-                match crate::ipc::buffer::IPC_BUFFER_MANAGER.allocate_shared_buffer(size, current_pd, consumer_id) {
-                    Ok(va) => va,
-                    Err(_) => 0,
-                }
-            }
-        },
-
-        50 => { // SYS_GRANT_MEM_LEND(domain_slot, length=4096, lend_slot)
-            // Kernel allocates a page, maps it for caller, installs MemLend cap in target.
-            // Ownership is provable: kernel allocs the page here, not from userland.
-            use crate::capability::{CapabilityData, MemLendCapData};
-            use crate::ipc::DOMAIN_REGISTRY;
-
-            let domain_slot = rdi as u32;
-            let length = rsi;
-            let lend_slot = rdx;
-
-            let core_local = crate::core_local::CoreLocal::get();
-            let caller_pd = core_local.current_pd_ref();
-            let caller_pd_id = caller_pd.id;
-            let caller_pku_key = caller_pd.pku_key;
-
-            if length != 4096 {
-                crate::serial_println!("[kernel.memlend.grant.err] reason=bad_len len={}", length);
-                u64::MAX
-            } else {
-                match caller_pd.find_capability(domain_slot) {
-                    Some(cap) if matches!(cap.data, CapabilityData::Domain(_)) => {
-                        let target_pd_id = if let CapabilityData::Domain(id) = cap.data { id } else { 0 };
-                        match DOMAIN_REGISTRY.get(target_pd_id) {
-                            Some(target_pd) => {
-                                if target_pd.find_capability(lend_slot as u32).is_some() {
-                                    crate::serial_println!("[kernel.memlend.grant.err] reason=slot_occupied slot={}", lend_slot);
-                                    u64::MAX
-                                } else {
-                                    crate::serial_println!("[kernel.memlend.grant.begin] caller_pd={} target_pd={} slot={}", caller_pd_id, target_pd_id, lend_slot);
-                                    let order = size_to_order(4096);
-                                    match crate::memory::allocator::GLOBAL_ALLOCATOR.alloc(order) {
-                                        Some(phys) => {
-                                            match crate::memory::va_allocator::allocate_va(4096) {
-                                                Some(va) => {
-                                                    let mut gvas_lock = crate::memory::manager::GLOBAL_VAS.lock();
-                                                    if let Some(ref mut gvas) = *gvas_lock {
-                                                        let flags = PageTableFlags::PRESENT
-                                                            | PageTableFlags::WRITABLE
-                                                            | PageTableFlags::USER_ACCESSIBLE;
-                                                        if gvas.map_physical_range(VirtAddr::new(va), phys, 4096, flags, caller_pku_key).is_ok() {
-                                                            target_pd.grant_capability(lend_slot, CapabilityData::MemLend(MemLendCapData {
-                                                                base: phys,
-                                                                length: 4096,
-                                                                pku_key: caller_pku_key,
-                                                                permissions: 0x3,
-                                                                source_pd_id: caller_pd_id,
-                                                            }));
-                                                            crate::serial_println!("[kernel.memlend.grant.ok] va={:#x} phys={:#x} len=4096", va, phys);
-                                                            va
-                                                        } else {
-                                                            crate::serial_println!("[kernel.memlend.grant.err] reason=map_fail");
-                                                            u64::MAX
-                                                        }
-                                                    } else { u64::MAX }
-                                                }
-                                                None => { crate::serial_println!("[kernel.memlend.grant.err] reason=no_va"); u64::MAX }
-                                            }
-                                        }
-                                        None => { crate::serial_println!("[kernel.memlend.grant.err] reason=no_phys"); u64::MAX }
-                                    }
-                                }
-                            }
-                            None => { crate::serial_println!("[kernel.memlend.grant.err] reason=no_target_pd"); u64::MAX }
-                        }
-                    }
-                    _ => { crate::serial_println!("[kernel.memlend.grant.err] reason=no_domain_cap slot={}", domain_slot); u64::MAX }
-                }
-            }
-        },
-
-        51 => { // SYS_MAP_MEM_LEND(cap_slot) → consumer_va
-            use crate::capability::CapabilityData;
-
-            let cap_slot = rdi as u32;
-
-            let core_local = crate::core_local::CoreLocal::get();
-            let caller_pd = core_local.current_pd_ref();
-            let caller_pku_key = caller_pd.pku_key;
-
-            crate::memory::allocator::diet_memlend_log(cap_slot as u64, 0);
-            match caller_pd.find_capability(cap_slot) {
-                Some(cap) => {
-                    if let CapabilityData::MemLend(data) = cap.data {
-                        if data.permissions & 0x2 == 0 {
-                            crate::serial_println!("[kernel.memlend.map.err] reason=no_write_perm");
-                            u64::MAX
-                        } else {
-                            match crate::memory::va_allocator::allocate_va(data.length as usize) {
-                                Some(va) => {
-                                    let mut gvas_lock = crate::memory::manager::GLOBAL_VAS.lock();
-                                    if let Some(ref mut gvas) = *gvas_lock {
-                                        let flags = PageTableFlags::PRESENT
-                                            | PageTableFlags::WRITABLE
-                                            | PageTableFlags::USER_ACCESSIBLE;
-                                        if gvas.map_physical_range(VirtAddr::new(va), data.base, data.length, flags, caller_pku_key).is_ok() {
-                                            crate::memory::allocator::diet_memlend_log(va, data.length);
-                                            va
-                                        } else {
-                                            crate::serial_println!("[kernel.memlend.map.err] reason=map_fail");
-                                            u64::MAX
-                                        }
-                                    } else { u64::MAX }
-                                }
-                                None => { crate::serial_println!("[kernel.memlend.map.err] reason=no_va"); u64::MAX }
-                            }
-                        }
-                    } else {
-                        crate::serial_println!("[kernel.memlend.map.err] reason=wrong_kind slot={}", cap_slot);
-                        u64::MAX
-                    }
-                }
-                None => { crate::serial_println!("[kernel.memlend.map.err] reason=no_cap slot={}", cap_slot); u64::MAX }
-            }
-        },
         52 => { // SYS_NET_DIAG
             match rdi {
                 0 => {
@@ -650,6 +550,34 @@ pub fn dispatch(regs: &mut SyscallRegs) -> u64 {
                     chunk
                 }
                 _ => u64::MAX,
+            }
+        },
+
+        70 => { // PDX_WAIT_SELF_TICKS: bounded delay, current BOOT task only.
+            if rsi!=0||rdx!=0||r10!=0||r8!=0 { sex_pdx::ERR_CAP_INVALID }
+            else {
+                regs.rax=0;
+                if unsafe {crate::scheduler::wait_for_message_ticks(regs as *const _,rdi)} {0}
+                else {sex_pdx::ERR_CAP_INVALID}
+            }
+        },
+
+        53 => { // PDX_WAIT_SELF: only this domain's own inbox/reply events.
+            if rdi != 0 {
+                sex_pdx::ERR_CAP_INVALID
+            } else {
+                let pd = crate::core_local::CoreLocal::get().current_pd_ref();
+                // The pending-wake handshake covers publication after these
+                // observations. No event is consumed by this syscall.
+                let has_message = unsafe { (*pd.message_ring).len() != 0 };
+                let has_reply = !pd.incoming_replies.lock().is_empty();
+                if has_message || has_reply {
+                    0
+                } else {
+                    regs.rax = 0;
+                    unsafe { crate::scheduler::wait_for_message(regs as *const _) };
+                    0
+                }
             }
         },
 

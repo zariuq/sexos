@@ -1,4 +1,4 @@
-/* Generated from cesta-protocol/1. Declare the context and native hooks first. */
+/* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
 
 #ifdef CESTA_PROTOCOL_rpc_admit_run_DEFINED
 #error "duplicate protocol definition"
@@ -22,6 +22,7 @@
     defined(rpc_wait_failed) || \
     defined(rpc_wait_yield) || \
     defined(rpc_wait_timeout) || \
+    defined(rpc_wait_complete) || \
     defined(rpc_admit_run_decline_reason) || \
     defined(rpc_admit_run_decline_count) || \
     defined(rpc_admit_run_counters) || \
@@ -78,6 +79,12 @@ rpc_admit_run(RpcWaitContext *ctx)
         _Static_assert(_Generic(&(ctx->budget), uint64_t *: 1, const uint64_t *: 1, default: 0), "protocol limit field must be nonvolatile uint64_t");
         for (uint64_t cesta_remaining = ctx->budget; cesta_remaining != 0; --cesta_remaining) {
             if (rpc_admit_begin(ctx)) {
+#if rpc_admit_run_CHECKED
+                if (!rpc_wait_complete(ctx)) {
+                    rpc_admit_run_CHECK_FAILURE(ctx, "fact", "complete", 1);
+                    for (;;) {}
+                }
+#endif
                 return rpc_admit_run_answered;
             }
             if (rpc_wait_failed(ctx)) {
@@ -117,6 +124,7 @@ rpc_admit_run(RpcWaitContext *ctx)
     defined(rpc_wait_failed) || \
     defined(rpc_wait_yield) || \
     defined(rpc_wait_timeout) || \
+    defined(rpc_wait_complete) || \
     defined(rpc_notify_run_decline_reason) || \
     defined(rpc_notify_run_decline_count) || \
     defined(rpc_notify_run_counters) || \
@@ -173,6 +181,12 @@ rpc_notify_run(RpcWaitContext *ctx)
         _Static_assert(_Generic(&(ctx->budget), uint64_t *: 1, const uint64_t *: 1, default: 0), "protocol limit field must be nonvolatile uint64_t");
         for (uint64_t cesta_remaining = ctx->budget; cesta_remaining != 0; --cesta_remaining) {
             if (rpc_notify_send(ctx)) {
+#if rpc_notify_run_CHECKED
+                if (!rpc_wait_complete(ctx)) {
+                    rpc_notify_run_CHECK_FAILURE(ctx, "fact", "complete", 1);
+                    for (;;) {}
+                }
+#endif
                 return rpc_notify_run_answered;
             }
             if (rpc_wait_failed(ctx)) {
@@ -314,6 +328,12 @@ rpc_wait_run(RpcWaitContext *ctx)
 #if rpc_wait_run_CHECKED
                 if (rpc_wait_owned(ctx)) {
                     rpc_wait_run_CHECK_FAILURE(ctx, "own", "request", 0);
+                    for (;;) {}
+                }
+#endif
+#if rpc_wait_run_CHECKED
+                if (!rpc_wait_complete(ctx)) {
+                    rpc_wait_run_CHECK_FAILURE(ctx, "fact", "complete", 1);
                     for (;;) {}
                 }
 #endif

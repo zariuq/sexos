@@ -7,11 +7,18 @@ extern crate sex_rt;
 
 mod vfs;
 mod messages;
+mod defer_queue;
 mod pdx;
 mod trampoline;
 mod backends;
 mod proof;
 mod sexobject;
+mod spindle_history;
+mod spindle_probe;
+mod document;
+mod document_journal;
+mod history_journal;
+mod history_disk;
 
 use crate::trampoline::trampoline_main;
 
@@ -21,7 +28,8 @@ pub extern "C" fn _start() -> ! {
     // sexfiles: RamFS Contract Lock V1
     // Bounded RAM-backed filesystem with no POSIX semantics.
     sex_rt::heap_init();
-    crate::pdx::serial_println!("[sexfiles.ready]");
+    // trampoline_main publishes readiness after its handlers and backends
+    // initialize. Heap initialization alone does not make requests serviceable.
     crate::pdx::serial_println!("[sexfiles.init.before_trampoline] ok=1");
     trampoline_main();
     crate::pdx::serial_println!("[sexfiles.trampoline.return.unexpected] ok=0");

@@ -1,0 +1,29 @@
+
+#ifndef SEXOS_NETWORK_ENGINE_NEIGHBOR_H
+#define SEXOS_NETWORK_ENGINE_NEIGHBOR_H
+#include "network_engine_packet.h"
+enum { NETWORK_NEIGHBOR_CAPACITY=8 };
+#define NETWORK_NEIGHBOR_LIFETIME UINT64_C(60000)
+#define NETWORK_NEIGHBOR_PROBE_INTERVAL UINT64_C(1000)
+typedef struct NetworkNeighborEntry {
+    bool present; uint32_t address; NetworkEngineMac mac; uint64_t expires,last_used;
+} NetworkNeighborEntry;
+typedef struct NetworkNeighborTable {
+    NetworkNeighborEntry entries[NETWORK_NEIGHBOR_CAPACITY];
+    bool probe_present; uint32_t probe_address; uint64_t next_probe;
+} NetworkNeighborTable;
+typedef struct NetworkRouteDecision { bool valid,on_link; uint32_t next_hop; } NetworkRouteDecision;
+typedef enum NetworkNeighborResolutionKind {
+    NETWORK_NEIGHBOR_INVALID=0, NETWORK_NEIGHBOR_HIT=1,
+    NETWORK_NEIGHBOR_DISCOVER=2, NETWORK_NEIGHBOR_WAIT=3
+} NetworkNeighborResolutionKind;
+typedef struct NetworkNeighborResolution {
+    NetworkNeighborResolutionKind kind; uint32_t next_hop; NetworkEngineMac mac;
+} NetworkNeighborResolution;
+void network_neighbor_init(NetworkNeighborTable *table);
+NetworkRouteDecision network_route_decide(NetConfig config, uint32_t destination);
+void network_neighbor_expire(NetworkNeighborTable *table, uint64_t now);
+bool network_neighbor_observe(NetworkNeighborTable *table, NetConfig config, NetworkArpPacket packet, uint64_t now);
+NetworkNeighborResolution network_neighbor_resolve(NetworkNeighborTable *table, NetConfig config, uint32_t destination, uint64_t now);
+size_t network_neighbor_count(const NetworkNeighborTable *table);
+#endif

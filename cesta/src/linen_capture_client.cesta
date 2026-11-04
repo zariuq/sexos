@@ -1,0 +1,77 @@
+(cesta native-c/1 compact-c/2
+ (unit
+ (include "linen_capture_client.h")
+ (ownership (check-all)
+  (foreign linen_capture_append (obligation "Appends only a bounded, canonical tagged chunk to this frame and retains no reference."))
+  (foreign linen_capture_decode (obligation "Validates the complete canonical captured frame and initializes the value table on success; retains no reference.")))
+ (native "
+LinenCaptureClient linen_capture_client_new(void){LinenCaptureClient state={0};return state;}
+bool linen_capture_client_refresh(LinenCaptureClient *state)
+{
+ state->dirty=true;
+ if(state->phase!=LINEN_CLIENT_IDLE)return true;
+ if(state->next_job==UINT64_MAX){state->exhausted=true;return false;}
+ state->next_job+=1;state->job=state->next_job;state->phase=LINEN_CLIENT_BEGIN;
+ state->request=0;state->dirty=false;state->cancelled=false;state->failed=false;
+ state->may_capture=false;state->complete=false;state->frame.len=0;return true;
+}
+LinenCaptureAction linen_capture_client_action(const LinenCaptureClient *state)
+{
+ LinenCaptureAction action={0};
+ if(state->request!=0 || state->phase==LINEN_CLIENT_IDLE)return action;
+ action.present=true;action.job=state->job;
+ if(state->phase==LINEN_CLIENT_BEGIN){action.opcode=LINEN_CAPTURE_OP_BEGIN;action.arg1=LINEN_CAPTURE_VERSION;}
+ else if(state->phase==LINEN_CLIENT_READ){action.opcode=LINEN_CAPTURE_OP_READ;action.arg1=state->frame.len;}
+ else if(state->phase==LINEN_CLIENT_END)action.opcode=LINEN_CAPTURE_OP_END;
+ else action.present=false;
+ return action;
+}
+bool linen_capture_client_sent(LinenCaptureClient *state,uint64_t request)
+{
+ if(request==0 || request<=state->last_request || state->request!=0 || state->phase==LINEN_CLIENT_IDLE)return false;
+ state->request=request;state->last_request=request;
+ if(state->phase==LINEN_CLIENT_BEGIN)state->may_capture=true;
+ return true;
+}
+uint8_t linen_capture_client_reply(LinenCaptureClient *state,uint64_t request,uint64_t value)
+{
+ if(request==0 || request!=state->request || state->phase==LINEN_CLIENT_IDLE)return LINEN_CLIENT_IGNORED;
+ state->request=0;
+ if(state->phase==LINEN_CLIENT_BEGIN){
+  if(value==0){state->phase=LINEN_CLIENT_READ;state->frame.len=0;return LINEN_CLIENT_PROGRESS;}
+  state->may_capture=false;state->phase=LINEN_CLIENT_IDLE;state->failed=true;return LINEN_CLIENT_FAILED;
+ }
+ if(state->phase==LINEN_CLIENT_READ){
+  if(value==0){
+   state->complete=linen_capture_decode(&state->frame,&state->table);
+   state->failed=!state->complete;state->phase=LINEN_CLIENT_END;return LINEN_CLIENT_PROGRESS;
+  }
+  if(!linen_capture_append(&state->frame,value)){state->failed=true;state->phase=LINEN_CLIENT_END;}
+  return LINEN_CLIENT_PROGRESS;
+ }
+ if(state->phase==LINEN_CLIENT_END){
+  if(value!=0 && value!=((UINT64_C(0x80)|LINEN_CAPTURE_STALE)<<56))return LINEN_CLIENT_PROGRESS;
+  state->phase=LINEN_CLIENT_IDLE;state->may_capture=false;
+  if(state->cancelled)return LINEN_CLIENT_CANCELLED;
+  if(state->failed || value!=0 || !state->complete)return LINEN_CLIENT_FAILED;
+  return LINEN_CLIENT_PUBLISHED;
+ }
+ return LINEN_CLIENT_IGNORED;
+}
+bool linen_capture_client_retry(LinenCaptureClient *state,uint64_t request)
+{
+ if(request==0 || request!=state->request || state->phase==LINEN_CLIENT_IDLE)return false;
+ state->request=0;return true;
+}
+bool linen_capture_client_cancel(LinenCaptureClient *state)
+{
+ state->dirty=false;
+ if(state->phase==LINEN_CLIENT_IDLE)return true;
+ if(state->request!=0)return false;
+ state->cancelled=true;state->complete=false;
+ if(state->may_capture)state->phase=LINEN_CLIENT_END;
+ else state->phase=LINEN_CLIENT_IDLE;
+ return true;
+}
+bool linen_capture_client_busy(const LinenCaptureClient *state){return state->phase!=LINEN_CLIENT_IDLE;}
+")))

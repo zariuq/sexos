@@ -4,8 +4,9 @@ Module NetworkTxProtocol {
       (network_tx_run) == (Protocol "cesta-protocol/1"
         (Context TxContext)
         (Hooks
-          (Hook valid tx_valid guard (Requires binding) (Uses) (Proves valid_frame))
-          (Hook submit tx_submit effect (Requires valid_frame binding) (Uses frame) (Proves submitted))
+          (Hook valid tx_valid guard (Requires binding) (Uses) (Proves valid_frame effect_permit))
+          (Hook submit tx_submit effect (Requires valid_frame effect_permit binding) (Uses frame)
+            (Proves submitted) (Invalidates valid_frame effect_permit))
           (Hook ready tx_ready effect (Requires submitted binding) (Uses frame) (Proves complete))
           (Hook failed tx_failed guard (Requires submitted binding) (Uses frame) (Proves))
           (Hook yield tx_yield prepare (Requires submitted binding) (Uses frame) (Proves))
@@ -28,7 +29,8 @@ Module NetworkTxProtocol {
               (Release frame (Return raised)))
             (Return raised))
           (Return declined)))
-        (Checks (Fact valid_frame tx_frame_fact) (Fact submitted tx_submitted)
+        (ExitRequires (answered complete))
+        (Checks (Fact valid_frame tx_frame_fact) (Fact effect_permit tx_permit) (Fact submitted tx_submitted)
                 (Fact complete tx_complete) (Fact binding tx_binding) (Own frame tx_owned)));
     }
   }

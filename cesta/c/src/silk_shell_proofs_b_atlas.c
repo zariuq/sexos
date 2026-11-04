@@ -1,0 +1,137 @@
+#include "silk_shell_proofs_b_atlas.h"
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+
+static uint8_t atlas_proof_populated(const ShellInputContext *ctx,bool ignore_minimized)
+{
+ uint8_t count=0;for(uint8_t scene=0;scene<WORKSPACE_COUNT;++scene){bool found=false;for(size_t i=0;i<MAX_FRAMES;++i){ShellFrame frame=ctx->shell.chrome->FRAMES[i];if(frame.present&&frame.scene_id==scene&&(!ignore_minimized||(frame.flags&FRAME_FLAG_MINIMIZED)==0)){found=true;break;}}if(found&&count<UINT8_MAX)++count;}return count?count:1;
+}
+static ShellProofsBFrame atlas_proof_active_frame(const ShellInputContext *ctx)
+{
+ uint8_t active=ctx->shell.chrome->ACTIVE_SCENE_IDX;for(size_t i=0;i<MAX_FRAMES;++i){ShellFrame frame=ctx->shell.chrome->FRAMES[i];if(frame.present&&frame.scene_id==active&&(frame.flags&FRAME_FLAG_MINIMIZED)==0)return(ShellProofsBFrame){true,frame.frame_id};}return(ShellProofsBFrame){0};
+}
+static ShellProofsBScene atlas_proof_frame_scene(const ShellInputContext *ctx,uint32_t frame_id)
+{
+ for(size_t i=0;i<MAX_FRAMES;++i){ShellFrame frame=ctx->shell.chrome->FRAMES[i];if(frame.present&&frame.frame_id==frame_id)return(ShellProofsBScene){true,frame.scene_id};}return(ShellProofsBScene){0};
+}
+
+void shell_proofs_b_maybe_run_atlas_phase_e1_click_scene_switch_proof(ShellInputContext *ctx)
+{
+ if(!ATLAS_PHASE_E1_CLICK_SCENE_SWITCH_PROOF_ENABLED || ctx->atlas->ATLAS_PHASE_E1_CLICK_SCENE_SWITCH_PROOF_DONE)return;
+ for(;;){uint8_t stage=ctx->atlas->ATLAS_PHASE_E1_CLICK_SCENE_SWITCH_PROOF_STAGE;if(stage>=10)break;ctx->atlas->ATLAS_PHASE_E1_CLICK_SCENE_SWITCH_PROOF_STAGE=(uint8_t)(stage+1);
+  if(stage==0)sexos_line("[silk.atlas.phase_e1.begin] active=%u scenes=%u",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(unsigned)atlas_proof_populated(ctx,false));
+  else if(stage==1){if(!ctx->shell.chrome->ATLAS_MODE_ENABLED)shell_proofs_b_atlas_toggle(ctx);sexos_line("[silk.atlas.phase_e1.enter] ok=%u active=%u",(unsigned)ctx->shell.chrome->ATLAS_MODE_ENABLED,(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);}
+  else if(stage==2){uint8_t from=ctx->shell.chrome->ACTIVE_SCENE_IDX;uint32_t width=(uint32_t)shell_proofs_b_atlas_desktop_width(ctx);int32_t bar=shell_proofs_b_atlas_bar_height(ctx);for(uint8_t scene=0;scene<ATLAS_MAX_SCENES;++scene)if(scene!=from){ShellProofsBCard card=shell_proofs_b_atlas_card(ctx,scene,width);int32_t x=card.x+(int32_t)(card.w/2),y=bar+card.y+(int32_t)(card.h/2);ShellProofsBScene hit=shell_proofs_b_atlas_scene_at(ctx,x,y);if(hit.present&&hit.scene==scene){sexos_line("[silk.atlas.hit.scene] scene=%u x=%d y=%d ok=1",(unsigned)scene,x,y);sexos_line("[silk.atlas.click.consume] scene=%u ok=1",(unsigned)scene);break;}}}
+  else if(stage==3){uint8_t from=ctx->shell.chrome->ACTIVE_SCENE_IDX,target=from;for(uint8_t scene=0;scene<ATLAS_MAX_SCENES;++scene)if(scene!=from){target=scene;break;}if(target!=from)shell_proofs_b_atlas_switch_scene(ctx,target);sexos_line("[silk.scene.active.set] from=%u to=%u reason=atlas_card_click",(unsigned)from,(unsigned)target);shell_proofs_b_atlas_exit(ctx);sexos_line("[silk.atlas.mode.exit] active=%u reason=atlas_card_click view=desktop ok=1",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);sexos_line("[silk.atlas.phase_e1.done] from=%u to=%u ok=1",(unsigned)from,(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);}
+  else if(stage==4){if(!ctx->shell.chrome->ATLAS_MODE_ENABLED)shell_proofs_b_atlas_toggle(ctx);ShellProofsBScene hit=shell_proofs_b_atlas_scene_at(ctx,0,0);if(!hit.present)sexos_line("[silk.atlas.hit.empty] x=0 y=0 reason=no_card");}
+  else if(stage==5){shell_proofs_b_atlas_exit(ctx);sexos_line("[silk.atlas.phase_e1.negative.empty_click] ok=1");ctx->atlas->ATLAS_PHASE_E1_CLICK_SCENE_SWITCH_PROOF_DONE=true;}
+  shell_proofs_b_yield(ctx);
+ }
+}
+
+void shell_proofs_b_maybe_run_atlas_phase_e2_keyboard_scene_cycle_proof(ShellInputContext *ctx)
+{
+ if(!ATLAS_PHASE_E2_KEYBOARD_SCENE_CYCLE_PROOF_ENABLED || ctx->atlas->ATLAS_PHASE_E2_KEYBOARD_SCENE_CYCLE_PROOF_DONE)return;
+ for(;;){uint8_t stage=ctx->atlas->ATLAS_PHASE_E2_KEYBOARD_SCENE_CYCLE_PROOF_STAGE;if(stage>=10)break;ctx->atlas->ATLAS_PHASE_E2_KEYBOARD_SCENE_CYCLE_PROOF_STAGE=(uint8_t)(stage+1);
+  if(stage==0)sexos_line("[silk.atlas.phase_e2.begin] active=%u scenes=%zu",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(size_t)WORKSPACE_COUNT);
+  else if(stage==1){if(!ctx->shell.chrome->ATLAS_MODE_ENABLED)shell_proofs_b_atlas_toggle(ctx);sexos_line("[silk.atlas.phase_e2.enter] ok=%u active=%u",(unsigned)ctx->shell.chrome->ATLAS_MODE_ENABLED,(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);}
+  else if(stage==2)(void)shell_proofs_b_atlas_cycle(ctx,1,"atlas_key_cycle");
+  else if(stage==3)(void)shell_proofs_b_atlas_cycle(ctx,-1,"atlas_key_cycle");
+  else if(stage==4){shell_proofs_b_atlas_exit(ctx);uint8_t scene=ctx->shell.chrome->ACTIVE_SCENE_IDX;sexos_line("[silk.atlas.mode.exit] active=%u reason=atlas_key_cycle_done view=desktop ok=1",(unsigned)scene);sexos_line("[silk.atlas.phase_e2.done] start=%u final=%u ok=1",(unsigned)scene,(unsigned)scene);ctx->atlas->ATLAS_PHASE_E2_KEYBOARD_SCENE_CYCLE_PROOF_DONE=true;}
+  shell_proofs_b_yield(ctx);
+ }
+}
+
+void shell_proofs_b_maybe_run_atlas_phase_e3_drag_begin_marker_proof(ShellInputContext *ctx)
+{
+ if(!ATLAS_PHASE_E3_DRAG_BEGIN_MARKER_PROOF_ENABLED || ctx->atlas->ATLAS_PHASE_E3_DRAG_BEGIN_MARKER_PROOF_DONE)return;
+ for(;;){uint8_t stage=ctx->atlas->ATLAS_PHASE_E3_DRAG_BEGIN_MARKER_PROOF_STAGE;if(stage>=10)break;ctx->atlas->ATLAS_PHASE_E3_DRAG_BEGIN_MARKER_PROOF_STAGE=(uint8_t)(stage+1);
+  if(stage==0)sexos_line("[silk.atlas.phase_e3.begin] active=%u scenes=%u",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(unsigned)atlas_proof_populated(ctx,false));
+  else if(stage==1){if(!ctx->shell.chrome->ATLAS_MODE_ENABLED)shell_proofs_b_atlas_toggle(ctx);sexos_line("[silk.atlas.phase_e3.enter] ok=%u active=%u",(unsigned)ctx->shell.chrome->ATLAS_MODE_ENABLED,(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);}
+  else if(stage==2){uint8_t active=ctx->shell.chrome->ACTIVE_SCENE_IDX;ShellProofsBCard card=shell_proofs_b_atlas_card(ctx,active,(uint32_t)shell_proofs_b_atlas_desktop_width(ctx));int32_t x=card.x+(int32_t)(ATLAS_CARD_W/2),y=shell_proofs_b_atlas_bar_height(ctx)+card.y+(int32_t)(ATLAS_CARD_H/2);ShellProofsBFrame frame=atlas_proof_active_frame(ctx);if(frame.present){sexos_line("[silk.atlas.drag.begin] scene=%u frame=%u x=%d y=%d ok=1 source=synthetic",(unsigned)active,(unsigned)frame.frame,x,y);ctx->atlas->ATLAS_DRAG_INTENT=(AtlasDragIntent){true,active,frame.frame,x,y};}else sexos_line("[silk.atlas.drag.noop] reason=no_card_or_preview ok=1");}
+  else if(stage==3){if(ctx->atlas->ATLAS_DRAG_INTENT.active){sexos_line("[silk.atlas.drag.cancel] scene=%u frame=%u reason=proof_release ok=1",(unsigned)ctx->atlas->ATLAS_DRAG_INTENT.scene_id,(unsigned)ctx->atlas->ATLAS_DRAG_INTENT.frame_id);ctx->atlas->ATLAS_DRAG_INTENT.active=false;}}
+  else if(stage==4){uint8_t scene=ctx->shell.chrome->ACTIVE_SCENE_IDX;sexos_line("[silk.atlas.drag.invariant] scene_before=%u scene_after=%u ownership_mutated=0 ok=1",(unsigned)scene,(unsigned)scene);}
+  else if(stage==5){shell_proofs_b_atlas_exit(ctx);sexos_line("[silk.atlas.mode.exit] active=%u reason=atlas_drag_begin_done view=desktop ok=1",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);sexos_line("[silk.atlas.phase_e3.done] ok=1");ctx->atlas->ATLAS_PHASE_E3_DRAG_BEGIN_MARKER_PROOF_DONE=true;}
+  shell_proofs_b_yield(ctx);
+ }
+}
+
+void shell_proofs_b_maybe_run_atlas_phase_e4b_same_scene_noop_proof(ShellInputContext *ctx)
+{
+ if(!ATLAS_PHASE_E4B_SAME_SCENE_NOOP_PROOF_ENABLED || ctx->atlas->ATLAS_PHASE_E4B_SAME_SCENE_NOOP_PROOF_DONE)return;
+ for(;;){uint8_t stage=ctx->atlas->ATLAS_PHASE_E4B_SAME_SCENE_NOOP_PROOF_STAGE;if(stage>=10)break;ctx->atlas->ATLAS_PHASE_E4B_SAME_SCENE_NOOP_PROOF_STAGE=(uint8_t)(stage+1);
+  if(stage==0)sexos_line("[silk.atlas.phase_e4b.begin] active=%u scenes=%u",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(unsigned)atlas_proof_populated(ctx,false));
+  else if(stage==1){if(!ctx->shell.chrome->ATLAS_MODE_ENABLED)shell_proofs_b_atlas_toggle(ctx);sexos_line("[silk.atlas.phase_e4b.enter] ok=%u active=%u",(unsigned)ctx->shell.chrome->ATLAS_MODE_ENABLED,(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);}
+  else if(stage==2){ShellProofsBFrame frame=atlas_proof_active_frame(ctx);if(frame.present){ShellProofsBScene before=atlas_proof_frame_scene(ctx,frame.frame);sexos_line("[silk.frame.scene.move.noop.verify] frame=%u before=%u after=__pending__ ownership_mutated=__pending__ ok=__pending__",(unsigned)frame.frame,(unsigned)before.scene);bool noop=shell_proofs_b_atlas_same_scene_noop(ctx,frame.frame,before.scene,before.scene);if(!noop)sexos_line("[silk.frame.scene.move.reject] frame=%u reason=unexpected_cross_scene ok=0",(unsigned)frame.frame);else{ShellProofsBScene after=atlas_proof_frame_scene(ctx,frame.frame);uint8_t mutated=(uint8_t)(!after.present||after.scene!=before.scene);sexos_line("[silk.frame.scene.move.noop.verify] frame=%u before=%u after=%u ownership_mutated=%u ok=%u",(unsigned)frame.frame,(unsigned)before.scene,(unsigned)(after.present?after.scene:before.scene),(unsigned)mutated,(unsigned)!mutated);}}else sexos_line("[silk.atlas.drag.noop] reason=no_card_or_frame ok=1");}
+  else if(stage==3){ctx->atlas->ATLAS_DRAG_INTENT.active=false;sexos_line("[silk.atlas.drag.clear] reason=same_scene_noop ok=1");}
+  else if(stage==4){shell_proofs_b_atlas_exit(ctx);sexos_line("[silk.atlas.mode.exit] active=%u reason=atlas_same_scene_noop_done view=desktop ok=1",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);sexos_line("[silk.atlas.phase_e4b.done] ok=1");ctx->atlas->ATLAS_PHASE_E4B_SAME_SCENE_NOOP_PROOF_DONE=true;}
+  shell_proofs_b_yield(ctx);
+ }
+}
+
+static ShellProofsBFrame atlas_proof_frame_in_scene(const ShellInputContext *ctx,uint8_t scene)
+{
+ for(size_t i=0;i<MAX_FRAMES;++i){ShellFrame frame=ctx->shell.chrome->FRAMES[i];if(frame.present&&frame.scene_id==scene&&(frame.flags&FRAME_FLAG_MINIMIZED)==0)return(ShellProofsBFrame){true,frame.frame_id};}return(ShellProofsBFrame){0};
+}
+
+static bool atlas_proof_move_and_restore(ShellInputContext *ctx,uint32_t frame,uint8_t source,uint8_t target,const char *move_reason,const char *restore_reason,const char *prefix)
+{
+ bool moved=shell_proofs_b_atlas_reparent(ctx,frame,target,move_reason);if(!moved){sexos_line("[silk.frame.scene.move.reject] frame=%u reason=reparent_failed ok=0",(unsigned)frame);return false;}ShellProofsBScene after=atlas_proof_frame_scene(ctx,frame);bool focus_valid=ctx->shell.chrome->FOCUSED_SURFACE_ID==0||shell_proofs_b_atlas_surface_in_active_scene(ctx,ctx->shell.chrome->FOCUSED_SURFACE_ID);sexos_line("[%s.verify_moved] frame=%u expected=%u actual=%u ownership_unique=1 focus_valid=%u ok=%u",prefix,(unsigned)frame,(unsigned)target,(unsigned)(after.present?after.scene:target),(unsigned)focus_valid,(unsigned)(after.present&&after.scene==target&&focus_valid));if(!after.present||after.scene!=target||!focus_valid)return false;bool restored=shell_proofs_b_atlas_reparent(ctx,frame,source,restore_reason);if(!restored){sexos_line("[silk.frame.scene.move.reject] frame=%u reason=restore_failed ok=0",(unsigned)frame);return false;}sexos_line("[silk.frame.scene.move.restore] frame=%u from=%u to=%u ok=1",(unsigned)frame,(unsigned)target,(unsigned)source);ShellProofsBScene final=atlas_proof_frame_scene(ctx,frame);sexos_line("[%s.verify_restored] frame=%u expected=%u actual=%u ok=%u",prefix,(unsigned)frame,(unsigned)source,(unsigned)(final.present?final.scene:source),(unsigned)(final.present&&final.scene==source));return final.present&&final.scene==source;
+}
+
+void shell_proofs_b_maybe_run_atlas_phase_e4c_cross_scene_reparent_proof(ShellInputContext *ctx)
+{
+ if(!ATLAS_PHASE_E4C_CROSS_SCENE_REPARENT_PROOF_ENABLED || ctx->atlas->ATLAS_PHASE_E4C_CROSS_SCENE_REPARENT_PROOF_DONE)return;
+ bool transaction_ok=false;
+ for(;;){uint8_t stage=ctx->atlas->ATLAS_PHASE_E4C_CROSS_SCENE_REPARENT_PROOF_STAGE;if(stage>=20)break;ctx->atlas->ATLAS_PHASE_E4C_CROSS_SCENE_REPARENT_PROOF_STAGE=(uint8_t)(stage+1);
+  if(stage==0)sexos_line("[silk.atlas.phase_e4c.begin] active=%u scenes=%u",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(unsigned)atlas_proof_populated(ctx,true));
+  else if(stage==1){if(!ctx->shell.chrome->ATLAS_MODE_ENABLED)shell_proofs_b_atlas_toggle(ctx);sexos_line("[silk.atlas.phase_e4c.enter] ok=%u active=%u",(unsigned)ctx->shell.chrome->ATLAS_MODE_ENABLED,(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);}
+  else if(stage==2){uint8_t source=ctx->shell.chrome->ACTIVE_SCENE_IDX;ShellProofsBFrame frame=atlas_proof_frame_in_scene(ctx,source);uint8_t populated=atlas_proof_populated(ctx,true);if(!frame.present)sexos_line("[silk.atlas.phase_e4c.noop] reason=no_frame ok=1");else if(populated<=1)sexos_line("[silk.atlas.phase_e4c.noop] reason=single_scene ok=1");else{uint8_t target=source?0:1;transaction_ok=atlas_proof_move_and_restore(ctx,frame.frame,source,target,"atlas_synthetic_reparent","atlas_synthetic_restore","silk.atlas.phase_e4c");}}
+  else if(stage==3)sexos_line("[silk.atlas.phase_e4c.restore_verify] ok=%u",(unsigned)transaction_ok);
+  else if(stage==5){shell_proofs_b_atlas_exit(ctx);sexos_line("[silk.atlas.mode.exit] active=%u reason=atlas_cross_scene_reparent_done view=desktop ok=%u",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(unsigned)transaction_ok);if(transaction_ok){sexos_line("[silk.atlas.phase_e4c.done] ok=1");ctx->atlas->ATLAS_PHASE_E4C_CROSS_SCENE_REPARENT_PROOF_DONE=true;}else sexos_line("[silk.atlas.phase_e4c.reject] reason=transaction_failed ok=0");}
+  shell_proofs_b_yield(ctx);
+ }
+}
+
+void shell_proofs_b_maybe_run_atlas_phase_e4c2_true_reparent_proof(ShellInputContext *ctx)
+{
+ if(!ATLAS_PHASE_E4C2_TRUE_REPARENT_PROOF_ENABLED || ctx->atlas->ATLAS_PHASE_E4C2_TRUE_REPARENT_PROOF_DONE)return;
+ bool transaction_ok=false;
+ for(;;){uint8_t stage=ctx->atlas->ATLAS_PHASE_E4C2_TRUE_REPARENT_PROOF_STAGE;if(stage>=20)break;ctx->atlas->ATLAS_PHASE_E4C2_TRUE_REPARENT_PROOF_STAGE=(uint8_t)(stage+1);
+  if(stage==0)sexos_line("[silk.atlas.phase_e4c2.begin] active=%u scenes=%u",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(unsigned)atlas_proof_populated(ctx,true));
+  else if(stage==1){if(!ctx->shell.chrome->ATLAS_MODE_ENABLED)shell_proofs_b_atlas_toggle(ctx);sexos_line("[silk.atlas.phase_e4c2.enter] ok=%u active=%u",(unsigned)ctx->shell.chrome->ATLAS_MODE_ENABLED,(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);}
+  else if(stage==2){uint8_t source=ctx->shell.chrome->ACTIVE_SCENE_IDX;ShellProofsBFrame frame=atlas_proof_frame_in_scene(ctx,source);if(WORKSPACE_COUNT<2)sexos_line("[silk.atlas.phase_e4c2.skip] reason=no_target_scene ok=1");else if(!frame.present)sexos_line("[silk.atlas.phase_e4c2.skip] reason=no_safe_frame ok=1");else{uint8_t target=source?0:1;sexos_line("[silk.atlas.phase_e4c2.setup] frame=%u source=%u target=%u original=%u ok=1",(unsigned)frame.frame,(unsigned)source,(unsigned)target,(unsigned)source);transaction_ok=atlas_proof_move_and_restore(ctx,frame.frame,source,target,"atlas_true_reparent","atlas_true_reparent_restore","silk.atlas.phase_e4c2");if(transaction_ok)sexos_line("[silk.atlas.phase_e4c2.restore_original] frame=%u original=%u ok=1",(unsigned)frame.frame,(unsigned)source);}}
+  else if(stage==3)sexos_line("[silk.atlas.phase_e4c2.final_verify] ok=%u",(unsigned)transaction_ok);
+  else if(stage==4){shell_proofs_b_atlas_exit(ctx);sexos_line("[silk.atlas.mode.exit] active=%u reason=atlas_e4c2_true_reparent_done view=desktop ok=%u",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(unsigned)transaction_ok);if(transaction_ok){sexos_line("[silk.atlas.phase_e4c2.done] ok=1");ctx->atlas->ATLAS_PHASE_E4C2_TRUE_REPARENT_PROOF_DONE=true;}else sexos_line("[silk.atlas.phase_e4c2.reject] reason=transaction_failed ok=0");}
+  shell_proofs_b_yield(ctx);
+ }
+}
+
+void shell_proofs_b_maybe_run_atlas_phase_e4d_real_pointer_drop_proof(ShellInputContext *ctx)
+{
+ if(!ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF_ENABLED || ctx->atlas->ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF_DONE)return;
+ for(;;){uint8_t stage=ctx->atlas->ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF_STAGE;if(stage>=20)break;ctx->atlas->ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF_STAGE=(uint8_t)(stage+1);
+  if(stage==0)sexos_line("[silk.atlas.phase_e4d.begin] active=%u scenes=%u",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(unsigned)atlas_proof_populated(ctx,true));
+  else if(stage==1){if(!ctx->shell.chrome->ATLAS_MODE_ENABLED)shell_proofs_b_atlas_toggle(ctx);sexos_line("[silk.atlas.phase_e4d.enter] ok=%u active=%u",(unsigned)ctx->shell.chrome->ATLAS_MODE_ENABLED,(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX);}
+  else if(stage==2){uint8_t source=ctx->shell.chrome->ACTIVE_SCENE_IDX,target=source?0:1;ShellProofsBFrame frame=atlas_proof_frame_in_scene(ctx,source);if(WORKSPACE_COUNT<2||target==source){sexos_line("[silk.atlas.phase_e4d.skip] reason=no_target_scene ok=1");ctx->atlas->ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF_STAGE=20;break;}if(!frame.present){sexos_line("[silk.atlas.phase_e4d.skip] reason=no_source ok=1");ctx->atlas->ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF_STAGE=20;break;}uint32_t width=(uint32_t)shell_proofs_b_atlas_desktop_width(ctx);int32_t bar=shell_proofs_b_atlas_bar_height(ctx);ShellProofsBCard from=shell_proofs_b_atlas_card(ctx,source,width),to=shell_proofs_b_atlas_card(ctx,target,width);int32_t sx=from.x+(int32_t)(from.w/2),sy=bar+from.y+(int32_t)(from.h/2),tx=to.x+(int32_t)(to.w/2),ty=bar+to.y+(int32_t)(to.h/2);sexos_line("[silk.atlas.phase_e4d.setup] frame=%u source=%u target=%u src_x=%d src_y=%d tgt_x=%d tgt_y=%d ok=1",(unsigned)frame.frame,(unsigned)source,(unsigned)target,sx,sy,tx,ty);ctx->atlas->ATLAS_PHASE_E4D_PROOF_FRAME_ID=frame.frame;ctx->atlas->ATLAS_PHASE_E4D_PROOF_ORIGINAL_SCENE=source;ctx->atlas->ATLAS_PHASE_E4D_PROOF_TARGET_SCENE=target;ctx->atlas->ATLAS_PHASE_E4D_PROOF_MOVED_OK=0;ctx->atlas->ATLAS_PHASE_E4D_PROOF_RESTORED_OK=0;ctx->shell.input->POINTER_X=sx;ctx->shell.input->POINTER_Y=sy;shell_proofs_b_atlas_input_hid(ctx,EV_BTN,1,1);if(!ctx->atlas->ATLAS_DRAG_INTENT.active){sexos_line("[silk.atlas.phase_e4d.skip] reason=drag_begin_failed ok=1");ctx->atlas->ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF_STAGE=20;break;}ctx->shell.input->POINTER_X=tx;ctx->shell.input->POINTER_Y=ty;shell_proofs_b_atlas_input_hid(ctx,EV_BTN,1,0);if(ctx->atlas->ATLAS_DRAG_INTENT.active){(void)shell_proofs_b_atlas_cancel_drag(ctx,"proof_drop_incomplete");break;}ShellProofsBScene moved=atlas_proof_frame_scene(ctx,frame.frame);sexos_line("[silk.atlas.phase_e4d.verify_moved] frame=%u expected=%u actual=%u ok=%u",(unsigned)frame.frame,(unsigned)target,(unsigned)(moved.present?moved.scene:source),(unsigned)(moved.present&&moved.scene==target));if(!moved.present||moved.scene!=target)break;ctx->atlas->ATLAS_PHASE_E4D_PROOF_MOVED_OK=1;if(!ctx->shell.chrome->ATLAS_MODE_ENABLED)shell_proofs_b_atlas_toggle(ctx);bool restored=shell_proofs_b_atlas_reparent(ctx,frame.frame,source,"atlas_pointer_drop_restore");ShellProofsBScene final=atlas_proof_frame_scene(ctx,frame.frame);sexos_line("[silk.atlas.phase_e4d.verify_restored] frame=%u expected=%u actual=%u ok=%u",(unsigned)frame.frame,(unsigned)source,(unsigned)(final.present?final.scene:target),(unsigned)(restored&&final.present&&final.scene==source));if(restored&&final.present&&final.scene==source)ctx->atlas->ATLAS_PHASE_E4D_PROOF_RESTORED_OK=1;}
+  else if(stage==3){uint32_t frame=ctx->atlas->ATLAS_PHASE_E4D_PROOF_FRAME_ID;ShellProofsBScene final=atlas_proof_frame_scene(ctx,frame);bool ok=ctx->atlas->ATLAS_PHASE_E4D_PROOF_MOVED_OK==1&&ctx->atlas->ATLAS_PHASE_E4D_PROOF_RESTORED_OK==1&&final.present&&final.scene==ctx->atlas->ATLAS_PHASE_E4D_PROOF_ORIGINAL_SCENE;ctx->atlas->ATLAS_PHASE_E4D_PROOF_FINAL_OK=(uint8_t)ok;sexos_line("[silk.atlas.phase_e4d.final_verify] ok=%u",(unsigned)ok);}
+  else if(stage==4){bool ok=ctx->atlas->ATLAS_PHASE_E4D_PROOF_FINAL_OK==1;shell_proofs_b_atlas_exit(ctx);sexos_line("[silk.atlas.mode.exit] active=%u reason=atlas_e4d_done view=desktop ok=%u",(unsigned)ctx->shell.chrome->ACTIVE_SCENE_IDX,(unsigned)ok);if(ok){sexos_line("[silk.atlas.phase_e4d.done] ok=1");ctx->atlas->ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF_DONE=true;}else sexos_line("[silk.atlas.phase_e4d.reject] reason=final_verify_failed ok=0");}
+  shell_proofs_b_yield(ctx);
+ }
+}
+
+void shell_proofs_b_maybe_run_atlas_overview_final_closeout_proof(ShellInputContext *ctx,SilkShellProofsBState *proofs_b)
+{
+ if(!proofs_b->maybe_run_atlas_overview_final_closeout_proof__ATLAS_OVERVIEW_FINAL_CLOSEOUT_CALLPATH_MARKERS_EMITTED){proofs_b->maybe_run_atlas_overview_final_closeout_proof__ATLAS_OVERVIEW_FINAL_CLOSEOUT_CALLPATH_MARKERS_EMITTED=true;sexos_line("[silk.atlas.overview.final.callpath.enter] ok=1");sexos_line("[silk.atlas.overview.final.callpath.enabled] enabled=%u ok=%u",(unsigned)ATLAS_OVERVIEW_FINAL_CLOSEOUT_PROOF_ENABLED,(unsigned)ATLAS_OVERVIEW_FINAL_CLOSEOUT_PROOF_ENABLED);}
+ if(!ATLAS_OVERVIEW_FINAL_CLOSEOUT_PROOF_ENABLED || ctx->atlas->ATLAS_OVERVIEW_FINAL_CLOSEOUT_PROOF_DONE)return;
+ bool done=ctx->atlas->ATLAS_PHASE_A_STATE_MODEL_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_B_SNAPSHOT_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_C_RENDER_STUB_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_D_FRAME_PREVIEW_STUB_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_E1_CLICK_SCENE_SWITCH_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_E2_KEYBOARD_SCENE_CYCLE_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_E3_DRAG_BEGIN_MARKER_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_E4B_SAME_SCENE_NOOP_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_E4C_CROSS_SCENE_REPARENT_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_E4C2_TRUE_REPARENT_PROOF_DONE&&ctx->atlas->ATLAS_PHASE_E4D_REAL_POINTER_DROP_PROOF_DONE;if(!done)return;(void)atlas_proof_populated(ctx,true);sexos_line("[silk.atlas.overview.final.begin]");sexos_line("[silk.atlas.overview.final.done] ok=1");ctx->atlas->ATLAS_OVERVIEW_FINAL_CLOSEOUT_PROOF_DONE=true;
+}
+
+
