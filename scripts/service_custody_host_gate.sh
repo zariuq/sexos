@@ -45,7 +45,7 @@ from pathlib import Path
 import re,sys
 s=Path('apps/spindle/src/main.rs').read_text()
 parts=[s[s.index('#[derive(Clone, Copy, PartialEq)]\nenum ViMode'):s.index('// ── Prompt redraw')]]
-for name in ['handle_key','handle_key_insert','handle_key_normal','scancode_to_ascii']:
+for name in ['handle_key','handle_key_insert','handle_key_normal','scancode_to_ascii','shifted']:
     parts.append(re.findall(r'^fn '+name+r'\b.*?^}',s,re.M|re.S)[0])
 Path(sys.argv[1]).write_text('\n'.join(parts))
 PYEDITOR
@@ -135,7 +135,7 @@ assert 'unsafe { workspace_refresh_poll(); shell_lifecycle_poll();' in s
 assert 'WORKSPACE_REFRESH_PENDING.iter().any(|p|*p)' in s
 assert 'if workspace_refresh_receive(&msg) { continue; }' in s
 q=Path('servers/quil/src/main.rs').read_text()
-assert q.index('DOCUMENT_WORKSPACE.changed();')>q.index('if event.outcome == document_exchange::Outcome::Saved {')
+saved=q.index('if event.outcome == document_exchange::Outcome::Saved {');assert q.index('DOCUMENT_WORKSPACE.changed();',saved)<q.index('} else if',saved)
 assert 'DOCUMENT_WORKSPACE.close();DOCUMENT_IO.close();' in q
 assert 'DOCUMENT_WORKSPACE.pending()' in q and 'DOCUMENT_WORKSPACE.poll(' in q
 PYWORKSPACE

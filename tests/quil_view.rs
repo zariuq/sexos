@@ -1094,3 +1094,31 @@ fn publish_output_turn(stage: &mut text_transaction::Stage) {
         assert!(stage.release_after_publication());
     }
 }
+
+#[test]
+fn word_movement_stops_at_word_edges_and_scalar_boundaries() {
+    let t = "let café = a_b,  next\n  end".as_bytes();
+    assert_eq!(view::word_right(t, 0), 3);
+    assert_eq!(view::word_right(t, 3), 9, "é is part of the word");
+    assert_eq!(view::word_right(t, 9), 15);
+    assert_eq!(view::word_right(t, 15), 22);
+    assert_eq!(view::word_right(t, 22), t.len());
+    assert_eq!(view::word_left(t, t.len()), t.len() - 3);
+    assert_eq!(view::word_left(t, 22), 18);
+    assert_eq!(view::word_left(t, 15), 12);
+    assert_eq!(view::word_left(t, 9), 4);
+    assert_eq!(view::word_left(t, 2), 0);
+    assert_eq!(view::word_left(t, 0), 0);
+    assert_eq!(view::word_right(b"", 0), 0);
+    assert_eq!(view::word_right(t, 999), t.len());
+}
+
+#[test]
+fn home_and_end_stay_on_the_carets_line() {
+    let t = b"one\ntwo\n\nfour";
+    assert_eq!((view::line_start(t, 0), view::line_end(t, 0)), (0, 3));
+    assert_eq!((view::line_start(t, 3), view::line_end(t, 3)), (0, 3), "at the line break");
+    assert_eq!((view::line_start(t, 5), view::line_end(t, 5)), (4, 7));
+    assert_eq!((view::line_start(t, 8), view::line_end(t, 8)), (8, 8), "an empty line");
+    assert_eq!((view::line_start(t, 99), view::line_end(t, 99)), (9, t.len()));
+}

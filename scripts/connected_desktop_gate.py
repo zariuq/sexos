@@ -287,7 +287,7 @@ def inspect_session(trace,peer,wire,raw,c,manifest,evidence,seed,disk,before_sav
   auth=one(trace,r'\[browser.asset.authenticated\] ticket=2 profile=1 expected_name=probe.sexos.test server_finished=1 certificate=1 certificate_verify=1')
   admit=one(trace,r'\[browser.asset.admitted\] ticket=(2) dns_generation=(1) seq=(\d+) task_bytes=(\d+) private_bytes=(\d+) profile=1 authority=held_route');intent=one(trace,r'\[browser.asset.intent\] accepted=1 explicit=1 public_internet=0')
   asset.prerequisites(trace,[intent],[admit],wire['image'],manifest['host_utc_start'],manifest['host_utc_end'])
-  if int(admit[5])!=int(admit[4])+8248+12288:raise ValueError('image private byte accounting differs')
+  if int(admit[5])!=int(admit[4])+8256+12288:raise ValueError('image private byte accounting differs')
   parsed=one(trace,rf'\[browser.asset.body\] ticket=2 bytes={len(asset.BODY)} hash={hex(asset.fingerprint(asset.BODY))} parsed=1 authenticated=1 visible=0');flow=wire['image']['joins'][0]
   released=one(trace,rf'\[browser.asset.released\] ticket=2 tx={flow["outgoing_bytes"]} rx={flow["incoming_bytes"]} body_bytes={len(asset.BODY)} body_hash={hex(asset.fingerprint(asset.BODY))} positive_release=1 authenticated=1')
   decoded=one(trace,rf'\[browser.asset.decoded\] ticket=2 width=48 height=48 pixels=2304 hash={hex(asset.PIXEL_HASH)} bounded_turn=128')
@@ -542,7 +542,7 @@ def run_boot(root,iso,binding,seed,out,c,model,resolution_text,recovery=False,ex
    key('j',pattern=r'\[shell.action.select_next_linen\] id=\d+')
   else:raise ValueError('actual Linen selection never reached connected document')
   if not recovery:picture('linen-selected','linen')
-  key('ret',pattern=rf'\[quil.persist.load.ok\] bytes={len(FINAL)} hash={hex(fnv(FINAL))} doc={doc["object"]}(?=\s|$)');focus(201);key('end',pattern=rf'\[quil.cursor.move\] old=\d+ new={len(FINAL)} len={len(FINAL)} dir=end ok=1')
+  key('ret',pattern=rf'\[quil.persist.load.ok\] bytes={len(FINAL)} hash={hex(fnv(FINAL))} doc={doc["object"]}(?=\s|$)');focus(201);key('ctrl','end',pattern=rf'\[quil.cursor.move\] old=\d+ new={len(FINAL)} len={len(FINAL)} dir=doc_end ok=1')
  def wheel(name,delta,before):
   tile,_=http.wheel_viewport(text());x,y=tile['x']+tile['w']-24,tile['y']+64;pointer=len(text());launch.pointer_move(q,x,y,resolution,text,wait,lambda row:actions.append(dict(row,kind='move')));after=http.wheel_move(http.reader_geometry(text(),BODY,c['wheel'],before),delta)[0];row=dict(name=name,wheel=delta,target='body',before=before,after=after,x=x,y=y,pointer_start=pointer,serial_start=len(text()),host_start=time.monotonic(),transport='input-send-event',events=http.wheel_events(delta));evidence['wheel'].append(row);q.cmd('input-send-event',{'events':row['events']});row.update(serial_qmp_return=len(text()),host_qmp_return=time.monotonic());deadline=time.monotonic()+30;error='no actual wheel'
   while time.monotonic()<deadline:

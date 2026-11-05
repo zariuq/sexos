@@ -98,6 +98,45 @@ impl Find {
     pub fn next(&self, text: &[u8], from: usize) -> Option<Match> {
         next_match(text, self.query(), from)
     }
+    pub fn prev(&self, text: &[u8], before: usize) -> Option<Match> {
+        prev_match(text, self.query(), before)
+    }
+}
+
+/// Replace every non-overlapping occurrence (left to right). Writes only the
+/// span from the first match's start to the last match's end, rewritten,
+/// into `out`; returns `(span_start, span_end, out_len, count)`, `None` when
+/// nothing matches or the rewritten span does not fit `out`.
+pub fn replace_all(text: &[u8], needle: &[u8], with: &[u8], out: &mut [u8]) -> Option<(usize, usize, usize, usize)> {
+    if needle.is_empty() { return None; }
+    let (mut at, mut n, mut count) = (0, 0, 0);
+    // First match start, and the end of the previous match.
+    let (mut start, mut last) = (None, 0);
+    while at + needle.len() <= text.len() {
+        if text[at..at + needle.len()] != *needle { at += 1; continue; }
+        if start.is_none() { start = Some(at); last = at; }
+        let gap = &text[last..at];
+        if n + gap.len() + with.len() > out.len() { return None; }
+        out[n..n + gap.len()].copy_from_slice(gap); n += gap.len();
+        out[n..n + with.len()].copy_from_slice(with); n += with.len();
+        count += 1;
+        at += needle.len();
+        last = at;
+    }
+    Some((start?, last, n, count))
+}
+
+/// The last occurrence ending at or before `before`, else the last one in
+/// the document (wrapping once from the end). Empty queries never match.
+pub fn prev_match(text: &[u8], needle: &[u8], before: usize) -> Option<Match> {
+    if needle.is_empty() || needle.len() > text.len() { return None; }
+    let last = text.len() - needle.len();
+    let at = |start: usize| text[start..start + needle.len()] == *needle;
+    let limit = before.min(text.len());
+    if let Some(start) = (0..=last).rev().filter(|s| s + needle.len() <= limit).find(|&s| at(s)) {
+        return Some(Match { start, end: start + needle.len(), wrapped: false });
+    }
+    (0..=last).rev().find(|&s| at(s)).map(|start| Match { start, end: start + needle.len(), wrapped: true })
 }
 
 pub fn next_match(text: &[u8], needle: &[u8], from: usize) -> Option<Match> {

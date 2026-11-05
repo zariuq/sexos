@@ -23,12 +23,13 @@ mod probe_fixture;
 pub use verifier::controlled_self_check;
 pub use sex_http::Error as HttpError;
 pub use sex_http::Resource;
+pub use sex_http::Path as HttpPath;
 
 pub const RECORD_READ: usize = 4096;
 pub const RECORD_WRITE: usize = 2048;
 pub const QUEUE_BYTES: usize = 4096;
 pub const MAX_TASK_BYTES: usize = 32768;
-pub const PIPE_METADATA_BYTES:usize=56;
+pub const PIPE_METADATA_BYTES:usize=64;
 pub const PIPE_BYTES:usize=2*QUEUE_BYTES+PIPE_METADATA_BYTES;
 pub const MAX_DOCUMENT:usize=sex_http::MAX_BODY;
 pub const HTTPS_PATH:&[u8]=b"/welcome";
@@ -111,11 +112,24 @@ impl Drop for Task {
 /// Owned plaintext bytes, not a memory/transport capability. This allocation
 /// can move into the client without copying a 12KiB object onto its stack.
 /// Publication after positive lease RELEASE remains the caller's obligation.
-pub struct Document { bytes:Box<[u8;MAX_DOCUMENT]>,len:usize,ready:bool,resource:Resource }
+/// A page source larger than `MAX_DOCUMENT` (up to `sex_http::MAX_PAGE_SOURCE`)
+/// replaces the buffer until `rewrite` turns it into at most `MAX_DOCUMENT` of text.
+pub struct Document { bytes:Box<[u8]>,len:usize,ready:bool,resource:Resource }
 impl Document {
-    fn new(resource:Resource)->Result<Self,Error>{Ok(Self{bytes:Box::try_new([0;MAX_DOCUMENT]).map_err(|_|Error::Memory)?,len:0,ready:false,resource})}
+    fn new(resource:Resource)->Result<Self,Error>{Ok(Self{bytes:Box::try_new([0u8;MAX_DOCUMENT]).map_err(|_|Error::Memory)?,len:0,ready:false,resource})}
     pub fn as_bytes(&self)->&[u8]{if self.ready{&self.bytes[..self.len]}else{&[]}}
+    /// Length of the received (or converted) bytes.
+    pub fn source_len(&self)->usize{self.as_bytes().len()}
     fn scrub(&mut self){erase(self.bytes.as_mut());self.len=0;self.ready=false;}
+    pub fn resource_kind(&self)->Resource{self.resource}
+    /// Replace ready text with a bounded presentation of itself (for example
+    /// HTML as readable text). The source bytes are erased; nothing escapes.
+    pub fn rewrite(&mut self,f:impl FnOnce(&[u8],&mut [u8])->usize)->Result<(),Error>{
+        if !self.ready{return Err(Error::Memory);}
+        let mut next=Box::try_new([0u8;MAX_DOCUMENT]).map_err(|_|Error::Memory)?;
+        let len=f(&self.bytes[..self.len],next.as_mut()).min(MAX_DOCUMENT);
+        self.scrub();self.bytes=next;self.len=len;self.ready=true;Ok(())
+    }
 }
 impl Drop for Document{fn drop(&mut self){self.scrub();}}
 
@@ -186,12 +200,12 @@ impl Session {
     /// Always erases the transferred caller seed, including rejected starts.
     /// Seconds are input data, not new time authority or an advancing clock.
     pub fn prepare(seed:&mut[u8;32], seconds:u32, profile:u32) -> Result<Self,Error> {
-        Self::prepare_mode(seed,seconds,profile,false,None)
+        Self::prepare_mode(seed,seconds,profile,false,None,None)
     }
     /// Real protocol mode still has no transport/endpoint authority. The
     /// caller must move bytes exclusively through an admitted held duplex job.
     pub fn exchange(seed:&mut[u8;32], seconds:u32, profile:u32) -> Result<Self,Error> {
-        Self::prepare_mode(seed,seconds,profile,true,None)
+        Self::prepare_mode(seed,seconds,profile,true,None,None)
     }
     /// Bounded HTTP/1.1 text document on the same immutable name/profile.
     /// This generates protocol bytes only; the parent supplies held duplex I/O.
@@ -201,9 +215,13 @@ impl Session {
     /// Fixed HTTP resource on the same BOOT-attested TLS endpoint/profile.
     /// Resource metadata is data, never a host, route or trust authority.
     pub fn resource(seed:&mut[u8;32],seconds:u32,profile:u32,resource:Resource)->Result<Self,Error>{
-        Self::prepare_mode(seed,seconds,profile,true,Some(resource))
+        Self::prepare_mode(seed,seconds,profile,true,Some(resource),None)
     }
-    fn prepare_mode(seed:&mut[u8;32], seconds:u32, profile:u32, exchange:bool, resource:Option<Resource>) -> Result<Self,Error> {
+    /// An HTML page at a validated path on the same BOOT endpoint/profile.
+    pub fn page(seed:&mut[u8;32],seconds:u32,profile:u32,path:sex_http::Path)->Result<Self,Error>{
+        Self::prepare_mode(seed,seconds,profile,true,Some(Resource::PageHtml),Some(path))
+    }
+    fn prepare_mode(seed:&mut[u8;32], seconds:u32, profile:u32, exchange:bool, resource:Option<Resource>, path:Option<sex_http::Path>) -> Result<Self,Error> {
         let private=Seed(*seed); erase(seed);
         if !(1_577_836_800..=4_102_444_799).contains(&seconds) { return Err(Error::Clock); }
         let verifier=verifier::Verifier::new(profile,seconds).map_err(|_|Error::Policy)?;
@@ -220,26 +238,43 @@ impl Session {
                 tls.open(TlsContext::new(&config,&mut provider)).await?;provider.verifier.finished()?;
                 shared.borrow_mut().authenticated=true;
                 let mut request=[0;sex_http::HTTPS_MAX_REQUEST];
-                let count=sex_http::request_https_resource(&mut request,resource);
+                let count=match path{Some(path)=>sex_http::request_https_page(&mut request,&path),None=>sex_http::request_https_resource(&mut request,resource)};
                 let mut at=0;while at<count{let n=tls.write(&request[at..count]).await?;
                     if n==0{return Err(TlsError::InvalidApplicationData);}at+=n;}
                 erase(&mut request);tls.flush().await?;
-                let mut receiver=sex_http::Receiver::for_resource(resource);let mut chunk=[0;512];
-                while !receiver.complete(){
-                    let n=tls.read(&mut chunk).await?;
-                    if n==0{return Err(TlsError::InvalidApplicationData);}
-                    if let Err(error)=receiver.feed(&chunk[..n]){
-                        shared.borrow_mut().document_error=Some(error);erase(&mut chunk);return Err(TlsError::InvalidApplicationData);
+                // An HTML page may be larger than a document: it is received into
+                // a heap buffer (fallible; the task itself does not grow).
+                let mut page_buffer=alloc::vec::Vec::new();
+                if resource==Resource::PageHtml{page_buffer.try_reserve_exact(sex_http::MAX_PAGE_SOURCE).map_err(|_|TlsError::InternalError)?;page_buffer.resize(sex_http::MAX_PAGE_SOURCE,0);}
+                let mut inline=sex_http::Receiver::for_resource(resource);
+                let mut paged=sex_http::ReceiverIn::page(&mut page_buffer);
+                macro_rules! receive{($receiver:expr)=>{{
+                    let receiver=$receiver;let mut chunk=[0;512];
+                    while !receiver.complete(){
+                        let n=tls.read(&mut chunk).await?;
+                        if n==0{return Err(TlsError::InvalidApplicationData);}
+                        if let Err(error)=receiver.feed(&chunk[..n]){
+                            shared.borrow_mut().document_error=Some(error);erase(&mut chunk);return Err(TlsError::InvalidApplicationData);
+                        }
+                        erase(&mut chunk);shared.borrow_mut().document_received=receiver.length();
                     }
-                    erase(&mut chunk);shared.borrow_mut().document_received=receiver.length();
-                }
-                receiver.finish().map_err(|error|{shared.borrow_mut().document_error=Some(error);TlsError::InvalidApplicationData})?;
+                    receiver.finish().map_err(|error|{shared.borrow_mut().document_error=Some(error);TlsError::InvalidApplicationData})?
+                }}}
+                let page=resource==Resource::PageHtml;
+                let received=if page{receive!(&mut paged)}else{receive!(&mut inline)};
                 // Complete the encrypted outgoing close before moving any body
                 // result out of the owned future. Remaining bounded peer tail
                 // ciphertext is explicitly outside this framing proof.
                 tls.close().await.map_err(|(_,error)|error)?;
                 let mut pipe=shared.borrow_mut();let result=pipe.document.as_mut().ok_or(TlsError::InternalError)?;
-                result.len=receiver.copy_body(result.bytes.as_mut()).map_err(|_|TlsError::InvalidApplicationData)?;
+                let kept=if !page{result.len=inline.copy_body(result.bytes.as_mut()).map_err(|_|TlsError::InvalidApplicationData)?;false}
+                else if received<=MAX_DOCUMENT{result.len=paged.copy_body(result.bytes.as_mut()).map_err(|_|TlsError::InvalidApplicationData)?;false}
+                // Too large for the document: the source itself moves in, kept
+                // (not erased) by the receiver, until rewritten.
+                else{paged.keep().map_err(|_|TlsError::InvalidApplicationData)?;true};
+                drop(paged);drop(inline);
+                if kept{page_buffer.truncate(received);erase(result.bytes.as_mut());result.bytes=core::mem::take(&mut page_buffer).into_boxed_slice();result.len=received;}
+                erase(&mut page_buffer);
                 result.ready=true;pipe.verified=true;Ok(())
             };
             Task::new(future)?
@@ -309,7 +344,7 @@ impl Session {
     pub fn state(&self) -> State { self.state }
     pub fn failure(&self) -> Option<Failure> { self.failure }
     pub fn http_failure(&self)->Option<sex_http::Error>{self.http_failure}
-    pub fn is_document(&self)->bool{self.resource==Some(Resource::WelcomeText)}
+    pub fn is_document(&self)->bool{matches!(self.resource,Some(Resource::WelcomeText|Resource::PageHtml))}
     pub fn resource_kind(&self)->Option<Resource>{self.resource}
     pub fn document_received(&self)->usize{self.pipe.borrow().document_received}
     pub fn owned_payload_bytes(&self)->usize{self.stats.task_bytes+2*QUEUE_BYTES+if self.resource.is_some(){MAX_DOCUMENT}else{0}}
@@ -325,15 +360,15 @@ impl Session {
     pub fn take_document(&mut self)->Option<Document>{
         if !self.is_document()||self.state!=State::ExchangeVerified{return None;}
         let mut pipe=self.pipe.borrow_mut();let body=pipe.document.as_ref()?;
-        if !body.ready||body.resource!=Resource::WelcomeText{return None;}
+        if !body.ready||Some(body.resource)!=self.resource{return None;}
         pipe.document.take()
     }
     /// Move the same finite allocation without copying or permitting binary
     /// bytes to enter the text/import API. Positive RELEASE belongs to parent.
     pub fn take_asset(&mut self)->Option<Asset>{
-        if self.resource!=Some(Resource::ArtworkQoi)||self.state!=State::ExchangeVerified{return None;}
+        if !self.resource.is_some_and(Resource::is_image)||self.state!=State::ExchangeVerified{return None;}
         let mut pipe=self.pipe.borrow_mut();let body=pipe.document.as_ref()?;
-        if !body.ready||body.resource!=Resource::ArtworkQoi{return None;}
+        if !body.ready||Some(body.resource)!=self.resource{return None;}
         pipe.document.take().map(Asset)
     }
     pub fn stats(&self) -> Stats { self.stats }
@@ -437,9 +472,9 @@ mod tests {
         }
     }
     #[test] fn resource_sessions_are_finite_and_cannot_transfer_before_tls_completion(){
-        for resource in [Resource::WelcomeText,Resource::ArtworkQoi]{
+        for resource in [Resource::WelcomeText,Resource::ArtworkQoi,Resource::PageHtml,Resource::ArtworkPng]{
             let mut seed=[29;32];let mut session=Session::resource(&mut seed,1_793_367_907,1,resource).unwrap();assert_eq!(seed,[0;32]);
-            assert_eq!(session.resource_kind(),Some(resource));assert_eq!(session.is_document(),resource==Resource::WelcomeText);
+            assert_eq!(session.resource_kind(),Some(resource));assert_eq!(session.is_document(),!resource.is_image());
             assert!(session.take_document().is_none());assert!(session.take_asset().is_none());
             let stats=session.stats();assert!(stats.task_bytes<=MAX_TASK_BYTES);assert_eq!(stats.private_bytes,stats.task_bytes+PIPE_BYTES+MAX_DOCUMENT);
             assert_eq!(session.pipe.borrow().document.as_ref().unwrap().bytes.len(),MAX_DOCUMENT);
@@ -449,6 +484,21 @@ mod tests {
             for _ in 0..8{session.poll();}assert_eq!(session.state(),State::Rejected);assert!(session.task.is_none());assert!(session.take_asset().is_none());assert!(session.take_document().is_none());
             let pipe=session.pipe.borrow();let body=pipe.document.as_ref().unwrap();assert_eq!(body.len,0);assert!(!body.ready);assert!(body.bytes.iter().all(|b|*b==0));assert!(pipe.rx.iter().chain(pipe.tx.iter()).all(|b|*b==0));
         }
+    }
+    #[test] fn an_oversized_page_source_is_rewritten_into_a_document(){
+        let mut doc=Document::new(Resource::PageHtml).unwrap();
+        let html:alloc::vec::Vec<u8>=(0..20000).map(|n|if n<6{b"<p>hi "[n]}else{b'x'}).collect();
+        doc.bytes=html.clone().into_boxed_slice();doc.len=html.len();doc.ready=true;
+        assert_eq!(doc.source_len(),20000);
+        doc.rewrite(|input,out|{assert_eq!(input,html.as_slice());assert_eq!(out.len(),MAX_DOCUMENT);out[..2].copy_from_slice(b"hi");2}).unwrap();
+        assert_eq!(doc.as_bytes(),b"hi");assert_eq!(doc.bytes.len(),MAX_DOCUMENT,"the source buffer is gone after conversion");
+    }
+    #[test] fn rewrite_replaces_ready_text_and_erases_the_source(){
+        let mut doc=Document::new(Resource::PageHtml).unwrap();assert!(doc.rewrite(|_,_|0).is_err());
+        doc.bytes[..9].copy_from_slice(b"<p>hi</p>");doc.len=9;doc.ready=true;let old=doc.bytes.as_ptr();
+        doc.rewrite(|html,out|{assert_eq!(html,b"<p>hi</p>");out[..2].copy_from_slice(b"hi");2}).unwrap();
+        assert_eq!(doc.as_bytes(),b"hi");assert_eq!(doc.resource_kind(),Resource::PageHtml);assert_ne!(doc.bytes.as_ptr(),old);
+        doc.rewrite(|_,_|usize::MAX).unwrap();assert_eq!(doc.as_bytes().len(),MAX_DOCUMENT);
     }
     #[test] fn asset_wrapper_moves_one_body_allocation_and_scrubs_the_entire_capacity(){
         // Local ownership/erasure test only: these deliberately seeded private

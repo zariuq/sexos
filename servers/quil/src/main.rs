@@ -6,6 +6,7 @@ mod view;
 mod unicode_input;
 mod display_delivery;
 mod find;
+mod autosave;
 use core::alloc::{GlobalAlloc, Layout};
 use sex_pdx::{pdx_call, pdx_listen_raw, pdx_try_listen_raw, sched_yield, serial_println, OP_QUIL_PING, OP_TEXT_DRAW, OP_TEXT_CLEAR, SLOT_DISPLAY, SLOT_STORAGE};
 
@@ -129,6 +130,10 @@ static mut QUIL_NAME_LEN: usize = 0;
 
 static mut DOCUMENT_IO:document_exchange::Client=document_exchange::Client::new();
 static mut QUIL_REVISION:u64=0;
+/// Idle recovery drafts; see autosave.rs. Never touches the document itself.
+static mut QUIL_AUTOSAVE:autosave::Autosave=autosave::Autosave::new();
+/// Ctrl+D armed for (document, revision); a second Ctrl+D deletes it.
+static mut QUIL_DELETE_ARMED:Option<(u64,u64)>=None;
 // One incarnation owns its scratch and selection; no stack-sized client temporary.
 static mut QUIL_CLIPBOARD:sex_pdx::clipboard_client::Client=sex_pdx::clipboard_client::Client::new();
 static mut QUIL_SELECTION:sex_pdx::text_selection::Selection=sex_pdx::text_selection::Selection::new();
@@ -156,7 +161,7 @@ unsafe fn quil_revision_changed()->bool {
 unsafe fn quil_fresh_source() {
     QUIL_UNICODE_INPUT.clear();QUIL_INPUT_NOTICE=None;QUIL_UNICODE_SNAPSHOT=None;
     let Some(next)=QUIL_GENERATION.checked_add(1).filter(|_|QUIL_GENERATION!=0)else{quil_selection_fence();return};
-    QUIL_GENERATION=next;QUIL_REVISION=0;QUIL_COPY_SNAPSHOT=None;QUIL_PASTE_SNAPSHOT=None;UNDO_HEAD=0;UNDO_COUNT=0;UNDO_REDO_COUNT=0;
+    QUIL_GENERATION=next;QUIL_REVISION=0;QUIL_AUTOSAVE.reset();QUIL_COPY_SNAPSHOT=None;QUIL_PASTE_SNAPSHOT=None;UNDO_HEAD=0;UNDO_COUNT=0;UNDO_REDO_COUNT=0;
     if QUIL_CLIPBOARD.pending(){QUIL_CLIPBOARD.cancel(sex_pdx::get_ticks());}
     quil_selection_bind();
 }
@@ -244,6 +249,42 @@ unsafe fn quil_replace_next() {
     sex_pdx::serial_record!("[quil.replace] start={} old_bytes={} new_bytes={} applied={} revision={}",start,end-start,len,applied as u8,QUIL_REVISION);
     if applied {quil_find_next();} else {QUIL_INPUT_NOTICE=Some(b"REPLACE NOT APPLIED");}
 }
+/// Shift+Enter: select the previous occurrence before the selection (or
+/// caret), wrapping once to the end.
+unsafe fn quil_find_prev() {
+    let Some(snapshot)=QUIL_SELECTION.snapshot() else{QUIL_INPUT_NOTICE=Some(b"FIND UNAVAILABLE");return};
+    let before=snapshot.range().0;
+    let query_bytes=QUIL_FIND.query().len();
+    match QUIL_FIND.prev(&QUIL_BUFFER[..QUIL_BUFFER_LEN],before) {
+        Some(found)=>{
+            let source=quil_source();
+            let selected=QUIL_SELECTION.move_to(source,found.start,false).is_ok()&&QUIL_SELECTION.move_to(source,found.end,true).is_ok();
+            if selected {QUIL_CURSOR_POS=found.end;QUIL_GOAL_COL=usize::MAX;}
+            sex_pdx::serial_record!("[quil.find.prev] query_bytes={} start={} end={} wrapped={} found=1 selected={}",query_bytes,found.start,found.end,found.wrapped as u8,selected as u8);
+            quil_selection_record();
+        },
+        None=>{QUIL_INPUT_NOTICE=Some(b"NOT FOUND");sex_pdx::serial_record!("[quil.find.prev] query_bytes={} found=0",query_bytes);},
+    }
+}
+/// Rewritten span for replace-all (the document limit).
+static mut QUIL_REPLACE_SCRATCH: [u8; 12288] = [0; 12288];
+/// Replace every occurrence of the query as one undoable edit covering the
+/// first match to the last.
+unsafe fn quil_replace_all() {
+    let (mut query, mut with) = ([0u8; find::QUERY_MAX], [0u8; find::QUERY_MAX]);
+    let (ql, wl) = (QUIL_FIND.query().len(), QUIL_FIND.replacement().len());
+    query[..ql].copy_from_slice(QUIL_FIND.query());
+    with[..wl].copy_from_slice(QUIL_FIND.replacement());
+    let scratch = &mut *core::ptr::addr_of_mut!(QUIL_REPLACE_SCRATCH);
+    match find::replace_all(&QUIL_BUFFER[..QUIL_BUFFER_LEN], &query[..ql], &with[..wl], scratch) {
+        Some((start, end, len, count)) => {
+            let applied = quil_replace((start, end), &scratch[..len]);
+            if !applied { QUIL_INPUT_NOTICE = Some(b"REPLACE NOT APPLIED"); }
+            sex_pdx::serial_record!("[quil.replace.all] count={} start={} end={} new_bytes={} applied={} len={} revision={}", count, start, end, len, applied as u8, QUIL_BUFFER_LEN, QUIL_REVISION);
+        }
+        None => { QUIL_INPUT_NOTICE = Some(b"NOT FOUND"); sex_pdx::serial_record!("[quil.replace.all] count=0 applied=0"); }
+    }
+}
 /// Select the next exact occurrence after the current selection, wrapping
 /// once to the start. The bound selection source fences stale documents.
 unsafe fn quil_find_next() {
@@ -282,8 +323,24 @@ fn quil_dispatch_key(key:sex_pdx::app_key::Key,palette_active:&mut bool,selected
             }
             draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);return
         }
+        if let Some(line)=QUIL_GOTO {
+            // Ctrl+G: digits, Backspace, Enter jumps, Esc or any chord leaves.
+            QUIL_GOTO=None;
+            if !key.control {
+                match key.code {
+                    0x01=>{},
+                    0x0e=>QUIL_GOTO=Some(line/10),
+                    0x1c=>quil_goto_line(line),
+                    0x02..=0x0b=>{let d=if key.code==0x0b{0}else{key.code as u32-1};QUIL_GOTO=Some(if line>=1_000_000{line}else{line*10+d});},
+                    _=>QUIL_GOTO=Some(line),
+                }
+                draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);return
+            }
+        }
         if QUIL_FIND.active() {
             // A control chord (New/Open/Save...) leaves find mode and proceeds.
+            // Ctrl+Enter in the replacement field replaces every match.
+            if key.control&&key.code==0x1c&&QUIL_FIND.field()==find::Field::Replacement {quil_replace_all();draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);return}
             if key.control {QUIL_FIND.clear();sex_pdx::serial_record!("[quil.find.mode] on=0 reason=chord");}
             else {
                 match key.code {
@@ -291,6 +348,7 @@ fn quil_dispatch_key(key:sex_pdx::app_key::Key,palette_active:&mut bool,selected
                     0x0e=>{QUIL_FIND.pop();},
                     0x50=>QUIL_FIND.set_field(find::Field::Replacement),
                     0x48=>QUIL_FIND.set_field(find::Field::Query),
+                    0x1c if key.shift&&QUIL_FIND.field()==find::Field::Query=>quil_find_prev(),
                     0x1c if QUIL_FIND.field()==find::Field::Replacement=>quil_replace_next(),
                     0x1c=>quil_find_next(),
                     code=>{if let Some(ch)=scancode_to_char(code as u64,key.shift){if !QUIL_FIND.push(ch){QUIL_INPUT_NOTICE=Some(b"FIND QUERY FULL");}}},
@@ -310,10 +368,21 @@ fn quil_dispatch_key(key:sex_pdx::app_key::Key,palette_active:&mut bool,selected
                     draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);
                 },
                 0x1e if !QUIL_NAME_MODE=>{*palette_active=false;let _=QUIL_SELECTION.select_all(quil_source());QUIL_CURSOR_POS=QUIL_BUFFER_LEN;quil_selection_record();draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);},
+                0x20 if key.shift&&!QUIL_NAME_MODE&&!*palette_active=>quil_duplicate_line(),
+                0x20 if !QUIL_NAME_MODE&&!*palette_active=>quil_delete_key(),
+                0x17 if !QUIL_NAME_MODE&&!*palette_active=>quil_stats_key(),
+                0x22 if !QUIL_NAME_MODE&&!*palette_active=>{QUIL_FIND.clear();QUIL_GOTO=Some(0);sex_pdx::serial_record!("[quil.goto.mode] on=1");draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);},
                 0x31=>document_action(sex_pdx::document_view::NEW,palette_active,selected_row),
                 0x18=>document_action(sex_pdx::document_view::OPEN,palette_active,selected_row),
                 0x1f=>document_action(if key.shift{sex_pdx::document_view::SAVE_AS}else{sex_pdx::document_view::SAVE},palette_active,selected_row),
                 0x13=>{if QUIL_CLIPBOARD.pending(){QUIL_CLIPBOARD.cancel(sex_pdx::get_ticks());QUIL_CLIPBOARD_NOTICE=true;QUIL_CLIPBOARD_ERROR=None;}document_action(sex_pdx::document_view::QUIESCE,palette_active,selected_row);},
+                0x4b|0x4d|0x47|0x4f if !QUIL_NAME_MODE&&!*palette_active=>quil_word_move(key.code,key.shift),
+                0x26 if !QUIL_NAME_MODE&&!*palette_active=>quil_select_line(),
+                0x25|0x24 if !QUIL_NAME_MODE&&!*palette_active=>quil_kill_or_join(key.code==0x24),
+                0x48|0x50 if !QUIL_NAME_MODE&&!*palette_active=>quil_move_line(key.code==0x48),
+                // Ctrl+] indents and Ctrl+[ outdents the selected lines (Tab is the desktop's).
+                0x1b|0x1a if !QUIL_NAME_MODE&&!*palette_active=>{if let Some(s)=QUIL_SELECTION.snapshot(){if quil_indent(s.range(),key.code==0x1a){draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);}}},
+                0x0e|0x53 if !QUIL_NAME_MODE&&!*palette_active=>quil_word_delete(key.code),
                 0x2c if !QUIL_NAME_MODE=>{*palette_active=false;if key.shift{text_buffer_redo();}else{text_buffer_undo();}draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);},
                 0x15 if !QUIL_NAME_MODE=>{*palette_active=false;text_buffer_redo();draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);},
                 // C/X/V arrive only as a separately authorized Shell INTENT.
@@ -331,8 +400,9 @@ fn quil_dispatch_key(key:sex_pdx::app_key::Key,palette_active:&mut bool,selected
         let movement=match key.code {
             0x4b=>Some(QUIL_SELECTION.move_to(source,if !key.shift&&snapshot.range().0!=snapshot.range().1{snapshot.range().0}else{sex_pdx::text_encoding::previous(&QUIL_BUFFER[..QUIL_BUFFER_LEN],snapshot.caret())},key.shift)),
             0x4d=>Some(QUIL_SELECTION.move_to(source,if !key.shift&&snapshot.range().0!=snapshot.range().1{snapshot.range().1}else{sex_pdx::text_encoding::next(&QUIL_BUFFER[..QUIL_BUFFER_LEN],snapshot.caret())},key.shift)),
-            0x47=>Some(QUIL_SELECTION.home(source,key.shift)),
-            0x4f=>Some(QUIL_SELECTION.end(source,key.shift)),
+            // The caret's line; Ctrl+Home/End go to the ends of the document.
+            0x47=>Some(QUIL_SELECTION.move_to(source,view::line_start(&QUIL_BUFFER[..QUIL_BUFFER_LEN],snapshot.caret()),key.shift)),
+            0x4f=>Some(QUIL_SELECTION.move_to(source,view::line_end(&QUIL_BUFFER[..QUIL_BUFFER_LEN],snapshot.caret()),key.shift)),
             0x48|0x50|0x49|0x51=>{
                 let steps=if key.code==0x49||key.code==0x51{DOCUMENT_VIEW.body_rows().max(1)}else{1};
                 let next=view::vertical_steps(&QUIL_BUFFER[..QUIL_BUFFER_LEN],snapshot.caret(),DOCUMENT_VIEW.cols,&mut QUIL_GOAL_COL,key.code==0x48||key.code==0x49,steps).unwrap_or(snapshot.caret());
@@ -408,14 +478,229 @@ fn document_save_start(create: bool) {
                 QUIL_REVISION,
                 QUIL_BUFFER_LEN
             );
+        } else if QUIL_AUTOSAVE.pending() {
+            QUIL_AUTOSAVE.queued_save = Some(create);
+            sex_pdx::serial_record!("[quil.document.queued] kind=save behind=autosave");
         } else {
             sex_pdx::serial_record!("[quil.document.busy] kind=save");
         }
         draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);
     }
 }
+/// Ctrl+G line prompt: the number typed so far.
+static mut QUIL_GOTO: Option<u32> = None;
+static mut QUIL_GOTO_TEXT: [u8; 24] = [0; 24];
+/// Move the caret to the start of line `line` (1-based, clamped).
+unsafe fn quil_goto_line(line: u32) {
+    let text = &QUIL_BUFFER[..QUIL_BUFFER_LEN];
+    let want = line.max(1) as usize;
+    let mut pos = 0;
+    let mut current = 1;
+    while current < want { match text[pos..].iter().position(|b| *b == b'\n') { Some(k) => { pos += k + 1; current += 1; } None => break } }
+    let old = QUIL_CURSOR_POS;
+    if QUIL_SELECTION.move_to(quil_source(), pos, false).is_ok() { QUIL_CURSOR_POS = pos; QUIL_GOAL_COL = usize::MAX; quil_selection_record(); }
+    sex_pdx::serial_record!("[quil.goto] line={} reached={} old={} new={} len={}", line, current, old, QUIL_CURSOR_POS, QUIL_BUFFER_LEN);
+}
+/// Ctrl+Left/Right move by word, Ctrl+Home/End to the ends of the document;
+/// Shift extends the selection.
+unsafe fn quil_word_move(code: u8, shift: bool) {
+    let Some(snapshot) = QUIL_SELECTION.snapshot() else { return };
+    let text = &QUIL_BUFFER[..QUIL_BUFFER_LEN];
+    let to = match code { 0x4b => view::word_left(text, snapshot.caret()), 0x4d => view::word_right(text, snapshot.caret()), 0x47 => 0, _ => QUIL_BUFFER_LEN };
+    let old = QUIL_CURSOR_POS;
+    if QUIL_SELECTION.move_to(quil_source(), to, shift).is_ok() {
+        QUIL_CURSOR_POS = QUIL_SELECTION.snapshot().map_or(to, |s| s.caret()); QUIL_GOAL_COL = usize::MAX; quil_selection_record();
+        sex_pdx::serial_record!("[quil.cursor.move] old={} new={} len={} dir={} ok=1", old, QUIL_CURSOR_POS, QUIL_BUFFER_LEN, match code { 0x4b => "word_left", 0x4d => "word_right", 0x47 => "doc_start", _ => "doc_end" });
+        draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);
+    }
+}
+/// Ctrl+L selects the caret's whole line (with its newline); pressed again
+/// with a line selected, it extends the selection by the next line.
+unsafe fn quil_select_line() {
+    let Some(snapshot) = QUIL_SELECTION.snapshot() else { return };
+    let text = &QUIL_BUFFER[..QUIL_BUFFER_LEN];
+    let (a, b) = snapshot.range();
+    let line_end = |from: usize| text[from..].iter().position(|c| *c == b'\n').map_or(text.len(), |k| from + k + 1);
+    let whole = a != b && (a == 0 || text[a - 1] == b'\n') && (b == text.len() || text[b - 1] == b'\n');
+    let (start, end) = if whole { (a, line_end(b)) } else { let s = text[..a].iter().rposition(|c| *c == b'\n').map_or(0, |k| k + 1); (s, line_end(a.max(s))) };
+    let source = quil_source();
+    let ok = QUIL_SELECTION.move_to(source, start, false).is_ok() && QUIL_SELECTION.move_to(source, end, true).is_ok();
+    if ok { QUIL_CURSOR_POS = end; QUIL_GOAL_COL = usize::MAX; quil_selection_record(); draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]); }
+    sex_pdx::serial_record!("[quil.select.line] start={} end={} extended={} ok={}", start, end, whole as u8, ok as u8);
+}
+/// Indent (a leading tab) or outdent (one leading tab, else up to four
+/// spaces) every line the selection touches, as one undoable edit; the
+/// changed lines stay selected so the key can repeat.
+unsafe fn quil_indent(range: (usize, usize), out: bool) -> bool {
+    let text = &QUIL_BUFFER[..QUIL_BUFFER_LEN];
+    let start = text[..range.0].iter().rposition(|c| *c == b'\n').map_or(0, |k| k + 1);
+    // A selection ending at a line start does not include that line.
+    let last = if range.1 > range.0 && text[range.1 - 1] == b'\n' { range.1 - 1 } else { range.1 };
+    let end = text[last..].iter().position(|c| *c == b'\n').map_or(text.len(), |k| last + k);
+    let scratch = &mut *core::ptr::addr_of_mut!(QUIL_REPLACE_SCRATCH);
+    let (mut n, mut lines) = (0, 0);
+    for line in text[start..end].split(|c| *c == b'\n') {
+        if lines > 0 { if n == scratch.len() { return false; } scratch[n] = b'\n'; n += 1; }
+        lines += 1;
+        let body = if out {
+            if line.first() == Some(&b'\t') { &line[1..] } else { &line[line.iter().take(4).take_while(|c| **c == b' ').count()..] }
+        } else { if n == scratch.len() { return false; } scratch[n] = b'\t'; n += 1; line };
+        if n + body.len() > scratch.len() { return false; }
+        scratch[n..n + body.len()].copy_from_slice(body);
+        n += body.len();
+    }
+    let applied = quil_replace((start, end), &scratch[..n]);
+    if applied {
+        let source = quil_source();
+        if QUIL_SELECTION.move_to(source, start, false).is_ok() && QUIL_SELECTION.move_to(source, start + n, true).is_ok() { QUIL_CURSOR_POS = start + n; quil_selection_record(); }
+    }
+    sex_pdx::serial_record!("[quil.indent] lines={} out={} start={} end={} applied={} len={}", lines, out as u8, start, start + n, applied as u8, QUIL_BUFFER_LEN);
+    applied
+}
+/// Ctrl+K deletes from the caret to the end of its line (at the end, the
+/// line break); Ctrl+J joins the next line onto this one with one space
+/// (its leading spaces and tabs dropped). Each is one undoable edit.
+unsafe fn quil_kill_or_join(join: bool) {
+    let Some(snapshot) = QUIL_SELECTION.snapshot() else { return };
+    let text = &QUIL_BUFFER[..QUIL_BUFFER_LEN];
+    let caret = snapshot.caret();
+    let end = text[caret..].iter().position(|c| *c == b'\n').map_or(text.len(), |k| caret + k);
+    let (range, insert): ((usize, usize), &[u8]) = if join {
+        if end == text.len() { sex_pdx::serial_record!("[quil.line.join] applied=0 reason=last_line"); return; }
+        let next = end + 1 + text[end + 1..].iter().take_while(|c| matches!(**c, b' ' | b'\t')).count();
+        ((end, next), if end > 0 && text[end - 1] != b' ' && next < text.len() && text[next] != b'\n' { b" " } else { b"" })
+    } else if end > caret { ((caret, end), b"") } else if end < text.len() { ((end, end + 1), b"") } else { return };
+    let applied = quil_replace(range, insert);
+    if applied && QUIL_SELECTION.move_to(quil_source(), if join { range.0 } else { caret }, false).is_ok() { QUIL_CURSOR_POS = if join { range.0 } else { caret }; quil_selection_record(); }
+    sex_pdx::serial_record!("[quil.line.{}] start={} removed={} applied={} len={}", if join { "join" } else { "kill" }, range.0, range.1 - range.0, applied as u8, QUIL_BUFFER_LEN);
+    if applied { draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]); }
+}
+/// Ctrl+Shift+D copies the caret's line below itself (one undoable edit);
+/// the caret moves to the same column in the copy.
+unsafe fn quil_duplicate_line() {
+    let Some(snapshot) = QUIL_SELECTION.snapshot() else { return };
+    let text = &QUIL_BUFFER[..QUIL_BUFFER_LEN];
+    let caret = snapshot.caret();
+    let start = text[..caret].iter().rposition(|c| *c == b'\n').map_or(0, |k| k + 1);
+    let end = text[caret..].iter().position(|c| *c == b'\n').map_or(text.len(), |k| caret + k);
+    let scratch = &mut *core::ptr::addr_of_mut!(QUIL_REPLACE_SCRATCH);
+    let n = end - start;
+    scratch[0] = b'\n';
+    scratch[1..1 + n].copy_from_slice(&text[start..end]);
+    let applied = quil_replace((end, end), &scratch[..1 + n]);
+    let new_caret = end + 1 + (caret - start);
+    if applied && QUIL_SELECTION.move_to(quil_source(), new_caret, false).is_ok() { QUIL_CURSOR_POS = new_caret; quil_selection_record(); }
+    sex_pdx::serial_record!("[quil.line.duplicate] start={} bytes={} caret={} applied={} len={}", end, n, QUIL_CURSOR_POS, applied as u8, QUIL_BUFFER_LEN);
+    if applied { draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]); }
+}
+/// Ctrl+Up / Ctrl+Down swap the caret's line with the one above / below as
+/// one undoable edit; the caret keeps its column in the moved line.
+unsafe fn quil_move_line(up: bool) {
+    let Some(snapshot) = QUIL_SELECTION.snapshot() else { return };
+    let text = &QUIL_BUFFER[..QUIL_BUFFER_LEN];
+    let caret = snapshot.caret();
+    let start = text[..caret].iter().rposition(|c| *c == b'\n').map_or(0, |k| k + 1);
+    let end = text[caret..].iter().position(|c| *c == b'\n').map_or(text.len(), |k| caret + k);
+    // The neighbour line: (its start, its end), excluding newlines.
+    let other = if up {
+        if start == 0 { None } else { Some((text[..start - 1].iter().rposition(|c| *c == b'\n').map_or(0, |k| k + 1), start - 1)) }
+    } else if end == text.len() { None } else {
+        Some((end + 1, text[end + 1..].iter().position(|c| *c == b'\n').map_or(text.len(), |k| end + 1 + k)))
+    };
+    let Some((o_start, o_end)) = other else { sex_pdx::serial_record!("[quil.line.move] up={} applied=0 reason=edge", up as u8); return };
+    let (first, second, range) = if up { ((start, end), (o_start, o_end), (o_start, end)) } else { ((o_start, o_end), (start, end), (start, o_end)) };
+    let scratch = &mut *core::ptr::addr_of_mut!(QUIL_REPLACE_SCRATCH);
+    let (a, b) = (first.1 - first.0, second.1 - second.0);
+    scratch[..a].copy_from_slice(&text[first.0..first.1]);
+    scratch[a] = b'\n';
+    scratch[a + 1..a + 1 + b].copy_from_slice(&text[second.0..second.1]);
+    let col = caret - start;
+    let new_caret = if up { range.0 + col } else { range.0 + a + 1 + col };
+    let applied = quil_replace(range, &scratch[..a + 1 + b]);
+    if applied && QUIL_SELECTION.move_to(quil_source(), new_caret, false).is_ok() { QUIL_CURSOR_POS = new_caret; quil_selection_record(); }
+    sex_pdx::serial_record!("[quil.line.move] up={} start={} end={} caret={} applied={} len={}", up as u8, range.0, range.1, QUIL_CURSOR_POS, applied as u8, QUIL_BUFFER_LEN);
+    if applied { draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]); }
+}
+/// Ctrl+Backspace / Ctrl+Delete remove the word before / after the caret
+/// (or the selection) as one undoable edit.
+unsafe fn quil_word_delete(code: u8) {
+    let Some(snapshot) = QUIL_SELECTION.snapshot() else { return };
+    let text = &QUIL_BUFFER[..QUIL_BUFFER_LEN];
+    let range = snapshot.range();
+    let range = if range.0 != range.1 { range } else if code == 0x0e { (view::word_left(text, snapshot.caret()), snapshot.caret()) } else { (snapshot.caret(), view::word_right(text, snapshot.caret())) };
+    let changed = range.0 != range.1 && quil_replace(range, &[]);
+    sex_pdx::serial_record!("[quil.word.delete] dir={} bytes={} changed={} len={}", if code == 0x0e { "back" } else { "forward" }, range.1 - range.0, changed as u8, QUIL_BUFFER_LEN);
+    if changed { draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]); }
+}
+/// Ctrl+I: lines, words and characters of the buffer in the status line.
+static mut QUIL_STATS_TEXT: [u8; 48] = [0; 48];
+unsafe fn quil_stats_key() {
+    let text = &QUIL_BUFFER[..QUIL_BUFFER_LEN];
+    let (lines, words, chars) = autosave::counts(text);
+    let mut out = [0u8; 48];
+    let mut n = 0;
+    for (value, label) in [(lines, &b" LINES / "[..]), (words, b" WORDS / "), (chars, b" CHARS")] {
+        let mut digits = [0u8; 20];
+        let mut k = 0;
+        let mut v = value;
+        loop { digits[k] = b'0' + (v % 10) as u8; k += 1; v /= 10; if v == 0 { break; } }
+        while k > 0 { k -= 1; out[n] = digits[k]; n += 1; }
+        out[n..n + label.len()].copy_from_slice(label);
+        n += label.len();
+    }
+    QUIL_STATS_TEXT = out;
+    QUIL_INPUT_NOTICE = Some(&*core::ptr::slice_from_raw_parts(core::ptr::addr_of!(QUIL_STATS_TEXT) as *const u8, n));
+    sex_pdx::serial_record!("[quil.stats] lines={} words={} chars={} bytes={}", lines, words, chars, QUIL_BUFFER_LEN);
+    draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);
+}
+/// Ctrl+D: the first press asks, a second press on the same unchanged saved
+/// document deletes its object. The text stays in the buffer, unsaved.
+unsafe fn quil_delete_key() {
+    let id = QUIL_DOC_ID;
+    if !(3..15).contains(&id) {
+        QUIL_INPUT_NOTICE = Some(b"NOTHING SAVED TO DELETE");
+    } else if QUIL_DELETE_ARMED == Some((id, QUIL_REVISION)) {
+        QUIL_DELETE_ARMED = None;
+        if DOCUMENT_IO.delete(id as u8) {
+            QUIL_INPUT_NOTICE = Some(b"DELETING");
+            sex_pdx::serial_record!("[quil.document.begin] kind=delete object={}", id);
+        } else {
+            QUIL_INPUT_NOTICE = Some(b"CANNOT DELETE NOW");
+            sex_pdx::serial_record!("[quil.document.busy] kind=delete object={}", id);
+        }
+    } else {
+        QUIL_DELETE_ARMED = Some((id, QUIL_REVISION));
+        QUIL_INPUT_NOTICE = Some(b"DELETE FILE? CTRL D AGAIN");
+        sex_pdx::serial_record!("[quil.document.delete.ask] object={} revision={}", id, QUIL_REVISION);
+    }
+    draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]);
+}
+/// Start an idle recovery draft of the current buffer (see autosave.rs).
+unsafe fn autosave_start() {
+    let name = QUIL_AUTOSAVE.name(&QUIL_DOC_TITLE);
+    let target = QUIL_AUTOSAVE.target();
+    let len = name.iter().position(|b| *b == 0).unwrap_or(16);
+    if DOCUMENT_IO.save(target, name, &QUIL_BUFFER[..QUIL_BUFFER_LEN], QUIL_REVISION) {
+        sex_pdx::serial_record!("[quil.autosave.begin] draft={} name={} revision={} bytes={} hash={:#x} document={} document_unchanged=1",
+            target.map_or(0, |v| v), core::str::from_utf8(&name[..len]).unwrap_or("?"), QUIL_REVISION, QUIL_BUFFER_LEN,
+            sex_pdx::document::hash(&QUIL_BUFFER[..QUIL_BUFFER_LEN]), QUIL_DOC_ID);
+    } else {
+        QUIL_AUTOSAVE.finish(false, 0, QUIL_REVISION, sex_pdx::document::BUSY);
+    }
+}
+/// Settle a draft save; an explicit Save queued behind it runs next.
+unsafe fn autosave_event(event: document_exchange::Event) {
+    let saved = event.outcome == document_exchange::Outcome::Saved;
+    let done = QUIL_AUTOSAVE.finish(saved, event.object, event.revision, event.error);
+    if saved { DOCUMENT_WORKSPACE.changed(); }
+    sex_pdx::serial_record!("[quil.autosave.result] outcome={:?} result={:?} revision={} dirty={} document={}",
+        event.outcome, done, QUIL_REVISION, QUIL_DIRTY as u8, QUIL_DOC_ID);
+    if let Some(create) = QUIL_AUTOSAVE.queued_save.take() { document_save_start(create); }
+    else { draw_text_lines(&QUIL_BUFFER[..QUIL_BUFFER_LEN]); }
+}
 fn document_event(event: document_exchange::Event, palette_active:&mut bool) {
     unsafe {
+        if QUIL_AUTOSAVE.pending() { autosave_event(event); return; }
         QUIL_CLIPBOARD_NOTICE=false;
         if event.outcome == document_exchange::Outcome::Saved {
             DOCUMENT_WORKSPACE.changed();
@@ -459,6 +744,16 @@ fn document_event(event: document_exchange::Event, palette_active:&mut bool) {
                 sex_pdx::document::hash(&QUIL_BUFFER[..QUIL_BUFFER_LEN]),
                 QUIL_DOC_ID
             );
+        } else if event.outcome == document_exchange::Outcome::Deleted {
+            DOCUMENT_WORKSPACE.changed();
+            sex_pdx::serial_record!("[quil.document.deleted] object={} current={} text_kept={}",event.object,(QUIL_DOC_ID==event.object as u64) as u8,QUIL_BUFFER_LEN);
+            if QUIL_DOC_ID == event.object as u64 {
+                QUIL_DOC_ID = u64::MAX;
+                QUIL_DOC_TITLE = *b"UNTITLED\0\0\0\0\0\0\0\0";
+                quil_fresh_source();
+                QUIL_DIRTY = QUIL_BUFFER_LEN > 0;
+                QUIL_INPUT_NOTICE = Some(b"DELETED / TEXT KEPT UNSAVED");
+            }
         } else {
             sex_pdx::serial_record!("[quil.document.result] outcome={:?} error={} requested_revision={} revision={} buffer_retained=1",event.outcome,event.error,event.revision,QUIL_REVISION);
         }
@@ -923,8 +1218,15 @@ fn document_draw(buf: &[u8], palette: Option<u8>) {
         let (find_prompt,find_len)=QUIL_FIND.prompt();
         let input_status: &[u8]=if QUIL_UNICODE_INPUT.active(){&unicode_prompt[..unicode_len]}
             else if let Some(notice)=QUIL_INPUT_NOTICE {notice}
+            else if let Some(line)=QUIL_GOTO{
+                let mut n=0;for &b in b"Go to line: "{QUIL_GOTO_TEXT[n]=b;n+=1;}
+                if line>0{let mut d=[0u8;10];let mut k=0;let mut v=line;while v>0{d[k]=b'0'+(v%10) as u8;k+=1;v/=10;}while k>0{k-=1;QUIL_GOTO_TEXT[n]=d[k];n+=1;}}
+                &*core::ptr::slice_from_raw_parts(core::ptr::addr_of!(QUIL_GOTO_TEXT) as *const u8,n)
+            }
             else if QUIL_FIND.active(){&find_prompt[..find_len]}
-            else {quil_clipboard_status().unwrap_or(DOCUMENT_IO.status().as_bytes())};
+            else if let Some(s)=quil_clipboard_status(){s}
+            else if QUIL_DIRTY&&QUIL_AUTOSAVE.kept(QUIL_REVISION)&&DOCUMENT_IO.status()=="READY"{b"DRAFT KEPT"}
+            else {DOCUMENT_IO.status().as_bytes()};
         let text = view::render_selection(
             buf,
             QUIL_CURSOR_POS,
@@ -4233,11 +4535,15 @@ pub extern "C" fn _start() -> ! {
         unsafe{if DOCUMENT_OPEN{match sex_pdx::pdx_call_checked(sex_pdx::SLOT_SHELL,sex_pdx::document_view::OPEN_LINEN,catalog.target_pd as u64,catalog.task_id as u64,0){Ok(_)=>DOCUMENT_OPEN=false,Err(sex_pdx::ERR_SERVICE_NOT_READY)=>{},Err(_)=>DOCUMENT_OPEN=false}}}
         unsafe{DOCUMENT_WORKSPACE.poll(|args|sex_pdx::pdx_call_checked(sex_pdx::SLOT_SHELL,sex_pdx::document_view::WORKSPACE_CHANGED,args[0],args[1],args[2]).map(|_|()));}
         unsafe{DOCUMENT_DISPLAY.poll(quil_content_sid(),|op,sid,a,b|sex_pdx::pdx_call_checked(SLOT_DISPLAY,op,sid,a,b).map(|_|()),|paint,bytes|sex_pdx::serial_record!("[quil.ui.admitted] paint={} bytes={} presentation=unconfirmed",paint,bytes));}
+        unsafe{let ready=!DOCUMENT_IO.busy()&&!QUIL_NAME_MODE&&!palette_active&&QUIL_BUFFER_LEN>0;if QUIL_AUTOSAVE.due(sex_pdx::get_ticks(),QUIL_DIRTY,QUIL_REVISION,ready){autosave_start();}}
         unsafe{if let Some(event)=DOCUMENT_IO.step(|r|sex_pdx::pdx_call_checked(SLOT_STORAGE,sex_pdx::document::OP,r.header(),r.a,r.b).map(|_|())){document_event(event,&mut palette_active);}}
         unsafe{QUIL_CLIPBOARD.poll(sex_pdx::get_ticks(),|packet|match sex_pdx::pdx_call_checked(sex_pdx::SLOT_SHELL,packet.opcode,packet.args[0],packet.args[1],packet.args[2]){Ok(_)=>sex_pdx::clipboard_client::Admission::Accepted,Err(sex_pdx::ERR_SERVICE_NOT_READY)=>sex_pdx::clipboard_client::Admission::Full,Err(_)=>sex_pdx::clipboard_client::Admission::Rejected});}
         quil_clipboard_events(palette_active);
         let msg = if presentation_pending || document_view_ready || unsafe{DOCUMENT_IO.busy()||DOCUMENT_DISPLAY.pending()||DOCUMENT_WORKSPACE.pending()||DOCUMENT_OPEN||(QUIL_CLIPBOARD.pending()&&QUIL_CLIPBOARD.view()!=sex_pdx::clipboard_client::View::Uncertain)} {
             match pdx_try_listen_raw(0){Some(msg)=>msg,None=>{sched_yield();continue}}
+        }else if unsafe{QUIL_AUTOSAVE.armed()}{
+            // Idle draft countdown: bounded timed wait, woken early by input.
+            match pdx_try_listen_raw(0){Some(msg)=>msg,None=>{let _=sex_pdx::sys_wait_self_ticks(64);continue}}
         }else{pdx_listen_raw(0)};
         if msg.type_id==1 && msg.caller_pd==3 && msg.arg0==catalog.surface_id && incarnation.ordinal!=0 {
             presentation_pending=true;continue;

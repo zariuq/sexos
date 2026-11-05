@@ -95,6 +95,8 @@ mod viewport;
 mod scroll_view;
 mod display_delivery;
 mod sextime_command;
+mod calc_command;
+mod complete;
 static mut HISTORY_STATUS:sex_pdx::spindle_status::Publisher=sex_pdx::spindle_status::Publisher::new(0,0);
 static mut HISTORY_IO:history_persistence::Client=history_persistence::Client::new();
 
@@ -433,6 +435,69 @@ fn ghost_suffix(line: &CmdLine, hist: &History) -> Option<([u8; CMD_MAX], usize)
     None
 }
 
+/// Tab without a ghost: complete the command name being typed (the line is
+/// one word, caret at its end). A unique match gets a trailing space; an
+/// ambiguous one extends to the shared prefix, and when nothing more is
+/// shared lists the candidates above the prompt.
+fn complete_command(line: &mut CmdLine) -> bool {
+    if line.len == 0 || line.cur != line.len || line.buf[..line.len].contains(&b' ') { return false; }
+    let word = &line.buf[..line.len];
+    let (extra, matches) = complete::complete(word);
+    if matches == 0 { return false; }
+    if extra.is_empty() && matches > 1 {
+        let mut row = [0u8; 96];
+        let mut n = 0;
+        for c in complete::candidates(word) {
+            if n + c.len() + 2 > row.len() { break; }
+            row[n..n + 2].copy_from_slice(b"  "); n += 2;
+            row[n..n + c.len()].copy_from_slice(c); n += c.len();
+        }
+        unsafe { (*core::ptr::addr_of_mut!(SPINDLE_SCROLLBACK)).push(&row[..n]); }
+    }
+    for &b in extra { line.insert_at(line.len, b); }
+    if matches == 1 { line.insert_at(line.len, b' '); }
+    serial_println!("[spindle.complete] matches={} added={} len={}", matches, extra.len() + (matches == 1) as usize, line.len);
+    true
+}
+
+/// Ctrl+U clears the line, Ctrl+W deletes the word before the cursor,
+/// Ctrl+L clears the scrollback, Ctrl+R recalls the newest history entry
+/// containing the typed text (again: the next older one).
+fn line_control(code: u8, line: &mut CmdLine, hist: &History, sb: &mut Scrollback) {
+    // Ctrl+R: the text searched for, and the last entry recalled.
+    static mut SEARCH: ([u8; CMD_MAX], usize, [u8; CMD_MAX], usize, usize) = ([0; CMD_MAX], 0, [0; CMD_MAX], 0, 0);
+    let s = unsafe { &mut *core::ptr::addr_of_mut!(SEARCH) };
+    let key = match code {
+        0x16 => { line.clear(); "u" }
+        0x11 => {
+            let mut a = line.cur;
+            while a > 0 && line.buf[a - 1] == b' ' { a -= 1; }
+            while a > 0 && line.buf[a - 1] != b' ' { a -= 1; }
+            for _ in a..line.cur { line.delete_at(a); }
+            line.cur = a;
+            "w"
+        }
+        0x26 => { *sb = Scrollback::new(); "l" }
+        0x13 => {
+            // Continue only while the line still shows the last recalled entry.
+            if line.buf[..line.len] != s.2[..s.3] { s.0[..line.len].copy_from_slice(&line.buf[..line.len]); s.1 = line.len; s.4 = 0; }
+            let needle = &s.0[..s.1];
+            let count = (hist.total as usize).min(MAX_HISTORY);
+            let found = (s.4..count).find(|&i| hist.get(i).is_some_and(|e| needle.is_empty() || e.windows(needle.len()).any(|w| w == needle)));
+            if let Some(i) = found {
+                let entry = hist.get(i).unwrap_or(b"");
+                line.clear();
+                for &b in entry { line.insert_at(line.len, b); }
+                s.2[..line.len].copy_from_slice(&line.buf[..line.len]); s.3 = line.len; s.4 = i + 1;
+            }
+            "r"
+        }
+        _ => "other",
+    };
+    line.hist_nav = None;
+    sex_pdx::serial_record!("[spindle.line.ctrl] key={} len={} cur={}", key, line.len, line.cur);
+}
+
 /// Accept the current ghost suggestion (if any) into the live command line.
 fn ghost_accept(line: &mut CmdLine, hist: &History) -> bool {
     if let Some((suffix, slen)) = ghost_suffix(line, hist) {
@@ -700,12 +765,17 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
         },
         b"help" => {
             // ── section: basics ──
-            serial_println!("[spindle.help.section] name=basics commands=6");
+            serial_println!("[spindle.help.section] name=basics commands=9");
             sb.push(b"--- Basics ---");
             sb.push(b"  help         show this help");
             sb.push(b"  clear        clear scrollback");
             sb.push(b"  echo <msg>   print message");
             sb.push(b"  sextime <n>  Unix seconds as SexTime/UTC/Long Count");
+            sb.push(b"  calc <expr>  exact + - * / % ** sqrt abs min max round floor ceil ans");
+            sb.push(b"  calc x = 2   name a value (up to 8)");
+            sb.push(b"  calc 255 in hex   also in bin / in oct");
+            sb.push(b"  calc ln(2)   exp ln log sin cos tan, 2**0.5");
+            sb.push(b"  Tab          complete a command name");
             sb.push(b"  about        Spindle version + identity");
             sb.push(b"  route        input/surface route info");
             sb.push(b"  close        session lifecycle status");
@@ -746,6 +816,7 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
             sb.push(b"--- History & Events ---");
             sb.push(b"  history      show command history");
             sb.push(b"  history clear  clear and save history");
+            sb.push(b"  history <text>  entries containing text");
             sb.push(b"  events       show event log");
             sb.push(b"  events clr   clear event log");
             serial_println!("[spindle.help.command] name=history ok=1");
@@ -824,6 +895,33 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
             sb.push(b"");
             sb.push(b"Type 'daily' for full daily-driver readiness summary.");
             sb.push(b"Type 'blockers' for known V1 limitations.");
+            true
+        }
+        b"calc" => {
+            static mut CALC_ENV: calc_command::Env = calc_command::Env::new();
+            let (expr, radix) = calc_command::split_radix(args);
+            let mut line = [0u8; calc_command::LINE_MAX];
+            match calc_command::eval_env(expr, unsafe { &mut *core::ptr::addr_of_mut!(CALC_ENV) }).and_then(|(v, _)| calc_command::render_radix(v, radix, &mut line)) {
+                Ok(n) => {
+                    sb.push(&line[..n]);
+                    sex_pdx::serial_record!("[spindle.calc] expr_bytes={} result={} ok=1", args.len(), core::str::from_utf8(&line[..n]).unwrap_or("?"));
+                }
+                Err(error) => {
+                    sb.push(match error {
+                        calc_command::Error::DivideByZero => b"calc: division by zero".as_slice(),
+                        calc_command::Error::Overflow => b"calc: number too large",
+                        calc_command::Error::TooDeep => b"calc: nested too deeply",
+                        calc_command::Error::NoAnswer => b"calc: no previous answer (ans)",
+                        calc_command::Error::Exponent => b"calc: ** whole exponents go up to 64",
+                        calc_command::Error::Domain => b"calc: square root of a negative number",
+                        calc_command::Error::Unknown => b"calc: unknown name (set one with  calc x = 2)",
+                        calc_command::Error::NotWhole => b"calc: only whole results show in hex/bin/oct",
+                        calc_command::Error::NotReal => b"calc: needs a real number",
+                        calc_command::Error::Syntax => b"usage: calc <expr>  e.g. calc 2*(3+4)/5",
+                    });
+                    sex_pdx::serial_record!("[spindle.calc] expr_bytes={} error={:?} ok=0", args.len(), error);
+                }
+            }
             true
         }
         b"sextime" => {
@@ -1161,6 +1259,20 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
             if args == b"clear" {
                 hist.clear();
                 sb.push(b"History cleared.");
+            } else if !args.is_empty() {
+                // `history <text>`: entries containing the text, newest first
+                // (history searches themselves are left out).
+                let count = (hist.total as usize).min(MAX_HISTORY);
+                let mut found = 0;
+                for i in 0..count {
+                    if let Some(entry) = hist.get(i) {
+                        if entry.starts_with(b"history ") || !entry.windows(args.len()).any(|w| w == args) { continue; }
+                        sb.push(entry);
+                        found += 1;
+                    }
+                }
+                if found == 0 { sb.push(b"No history entries match."); }
+                sex_pdx::serial_record!("[spindle.history.search] bytes={} found={}", args.len(), found);
             } else {
                 if hist.total == 0 {
                     sb.push(b"History: empty.");
@@ -1649,7 +1761,7 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
             sb.push(b"    Esc              toggle palette");
             sb.push(b"  Selection: range markers [start, end] tracked.");
             sb.push(b"  Palette: up/down nav, Enter execute, Esc dismiss.");
-            sb.push(b"Limitations: no shift, no visual cursor indicator.");
+            sb.push(b"Limitations: no visual cursor indicator.");
             serial_println!("[spindle.editor.command] name=edit-help ok=1 reason=keybindings_v2");
             true
         }
@@ -2510,6 +2622,7 @@ pub extern "C" fn _start() -> ! {
             sex_pdx::serial_record!("[spindle.input.progress] target={} display_pending={} key={}",instance_pd(),unsafe{DISPLAY_IO.pending()}as u8,msg.arg0);
             sex_pdx::serial_record!("[spindle.probe.input] target={} pending={} key={} down={}",instance_pd(),unsafe{STORAGE_PROBE.busy()}as u8,msg.arg0,msg.arg1);
             let scancode = msg.arg0 as u8;
+            let shift = (msg.arg0 >> 8) & 1 == 1;
             let value = msg.arg1;
             unsafe {
                 static mut SPINDLE_KEY_RECV_BUDGET: u32 = 64;
@@ -2519,6 +2632,12 @@ pub extern "C" fn _start() -> ! {
                 }
             }
             if value != 1 { continue; }
+            // Ctrl chords edit the line; they never insert text.
+            if (msg.arg0 >> 9) & 1 == 1 {
+                line_control(scancode, &mut line, hist, sb);
+                unsafe { content_render(&line, sb); }
+                continue;
+            }
 
             // On Enter, record command, persist, dispatch, and optionally Bell-notify.
             if scancode == 0x1C && line.len > 0 {
@@ -2552,7 +2671,7 @@ pub extern "C" fn _start() -> ! {
                 }
                 line.hist_nav = None;
             }
-            handle_key(scancode, &mut line, hist);
+            handle_key(scancode, shift, &mut line, hist);
             unsafe {
                 static mut SPINDLE_ECHO_BUDGET: u32 = 16;
                 if SPINDLE_ECHO_BUDGET > 0 {
@@ -2567,19 +2686,19 @@ pub extern "C" fn _start() -> ! {
 
 /// Process a single keyboard scancode into the line editor.
 /// Scancode table matches sexsh convention (US QWERTY set 1).
-fn handle_key(scancode: u8, line: &mut CmdLine, hist: &History) {
+fn handle_key(scancode: u8, shift: bool, line: &mut CmdLine, hist: &History) {
     let moved=match scancode {
         0x4B=>{line.cursor_left();true},0x47=>{line.cursor_home();true},0x4F=>{line.cursor_end();true},
         0x4D if line.mode==ViMode::Normal || line.cur<line.len=>{line.cursor_right();true},_=>false,
     };
     if moved{serial_println!("[spindle.line.cursor] pos={} len={}",line.cur,line.len);return;}
     match line.mode {
-        ViMode::Insert => handle_key_insert(scancode, line, hist),
+        ViMode::Insert => handle_key_insert(scancode, shift, line, hist),
         ViMode::Normal => handle_key_normal(scancode, line, hist),
     }
 }
 
-fn handle_key_insert(scancode: u8, line: &mut CmdLine, hist: &History) {
+fn handle_key_insert(scancode: u8, shift: bool, line: &mut CmdLine, hist: &History) {
     match scancode {
         0x1C => { // Enter — caller handles dispatch; just clear
             serial_println!("[spindle.line.enter] len={} mode=insert text={:?}",
@@ -2614,13 +2733,13 @@ fn handle_key_insert(scancode: u8, line: &mut CmdLine, hist: &History) {
                 serial_println!("[spindle.key.right] no_ghost");
             }
         }
-        0x0F => { // Tab — accept ghost autosuggest if present (no raw-tab insert)
-            if !ghost_accept(line, hist) {
+        0x0F => { // Tab — accept ghost autosuggest, else complete a command name
+            if !ghost_accept(line, hist) && !complete_command(line) {
                 serial_println!("[spindle.key.tab] no_ghost");
             }
         }
         _ => {
-            if let Some(ch) = scancode_to_ascii(scancode) {
+            if let Some(ch) = scancode_to_ascii(scancode).map(|c| if shift { shifted(c) } else { c }) {
                 line.insert_at(line.cur, ch);
                 line.hist_nav = None;
                 serial_println!("[spindle.line.append] ch={} len={}", ch as char, line.len);
@@ -2697,6 +2816,18 @@ fn handle_key_normal(scancode: u8, line: &mut CmdLine, hist: &History) {
                 _ => {}
             }
         }
+    }
+}
+
+/// US QWERTY Shift layer for an unshifted ASCII key.
+fn shifted(c: u8) -> u8 {
+    match c {
+        b'a'..=b'z' => c - 32,
+        b'1' => b'!', b'2' => b'@', b'3' => b'#', b'4' => b'$', b'5' => b'%',
+        b'6' => b'^', b'7' => b'&', b'8' => b'*', b'9' => b'(', b'0' => b')',
+        b'-' => b'_', b'=' => b'+', b'[' => b'{', b']' => b'}', b';' => b':',
+        b'\'' => b'"', b'`' => b'~', b'\\' => b'|', b',' => b'<', b'.' => b'>', b'/' => b'?',
+        _ => c,
     }
 }
 
