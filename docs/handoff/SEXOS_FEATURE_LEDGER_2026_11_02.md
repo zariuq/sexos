@@ -1,42 +1,50 @@
 # SexOS feature ledger (from 2026-11-02)
 
-## Handoff summary (as of 2026-11-03, after M36)
+## Handoff summary (as of 2026-11-05, after Q9)
 
-**Try it (native image).** Browser: `W` HTML page as text, `1`-`9` follow
-links, `Backspace` back, `G` QOI image, `P` PNG image (any standard depth,
+**Try it (native image).** Browser: `W` HTML page as text, `1`-`9`, `0`, `Shift+1`-`6` follow
+links 1-16, `Backspace` back, `/` find in page, `G` QOI image, `P` PNG image (any standard depth,
 interlaced or not, colour-key transparency), `B` plain document. Quil:
 autosave draft after ~30 s idle (`DRAFT KEPT`), `Ctrl+D` twice deletes the
 saved file, `Ctrl+I` line/word/char counts, `Ctrl+G` go to line,
-`Ctrl+Left/Right` by word, `Ctrl+Home/End`, `Ctrl+Backspace/Delete` a word,
+Home/End on the line, `Ctrl+Left/Right` by word, `Ctrl+Home/End`, `Ctrl+Backspace/Delete` a word,
 find/replace (`Shift+Enter` previous, `Ctrl+Enter` replace all), `Ctrl+L`
-select line.
-Spindle: Shift works; Tab completes command names; `calc` does exact decimals with `** sqrt abs min max
-round floor ceil pi e ans`, named values (`calc x = 2`), `0x`/`0b` input
+select line, `Ctrl+Up/Down` move line, `Ctrl+]`/`Ctrl+[` indent, `Ctrl+Shift+D`
+duplicate line, `Ctrl+K` kill to line end, `Ctrl+J` join lines.
+Spindle: Shift works; Tab completes command names; Ctrl+U/W/L/R edit and search; `history <text>` filters; `calc` does exact decimals with `** sqrt abs min max
+round floor ceil pi e ans`, `exp ln log sin cos tan`, fractional powers, named values (`calc x = 2`), `0x`/`0b` input
 and `... in hex|bin|oct` output.
 
 **HTML reader.** Headings, paragraphs, lists (numbered/nested/definition),
 aligned tables, quotes, rules, `<pre>`, inline code/emphasis markers, links
 with a numbered list, images as alt text, forms as read-only text,
-`sup/sub/abbr/q/details`, common named and numeric entities, page title.
+`sup/sub/abbr/q/details`, `ol type=a/i`, media/frame placeholders, Latin-1,
+Greek and symbol entities (Display draws 94 non-ASCII glyphs), page title.
 
 **Inline script subset** (`apps/kaleidoscope/src/script.rs`, not a JS
 engine, no DOM/events/timers/network/storage/clock/entropy): numbers printed
 like JavaScript, strings and string methods, regular expressions
-(`regex.rs`, bounded backtracking), `null`/`undefined`, `typeof`,
-`if/else`, `switch`, `while`/`do`/`for`/`for...of`/`for...in`, labelled
-`break`/`continue`, under a 10,000-step budget; `var` (function scoped) /
-`let`/`const` (block scoped); functions with default and rest parameters,
-arrows, IIFEs, callbacks, closures (on `return`), `this`, `class ...
-extends` with `super`, `static`, `get`/`set`, `new`, `instanceof`,
-`try/catch/finally/throw` and Error objects; arrays and objects with most
-standard methods, object-literal shorthand/methods/computed keys/spread,
-destructuring with defaults, holes and rest; templates; `?.`, `??`,
-short-circuit `&& || ?:`, `**`, bitwise operators, logical and compound
-assignment to any member chain, `++`/`--` in expressions; `Math`,
-`JSON.stringify/parse`, `Date` from given values only (no
-`new Date()`/`Date.now()`), URI encode/decode; output via `document.write`.
-Bounds: nesting 32, 6 arguments per call, 32 variables, 16 functions, 32
-closures, 32 arrays, 16 objects.
+(`regex.rs`, bounded backtracking; `exec`/`lastIndex`, `matchAll`),
+`null`/`undefined`, `typeof`, `if/else`, `switch`, all loop forms incl.
+`for...of/in`, labelled `break`/`continue`, under a 10,000-step budget;
+`var` (function scoped) / `let`/`const`; functions with default, rest and
+destructured parameters, arrows, IIFEs, named function expressions,
+callbacks, closures (on `return`), `this`, `class ... extends` with
+`super`, `static`, fields and `#private` names, `get`/`set`, `new`, `instanceof`, `try/catch/finally/
+throw` and Error objects; arrays, objects, `Set`, `Map` with most standard
+methods; object-literal shorthand/methods/computed keys/spread;
+destructuring (nested, defaults, holes, rest); nested templates; `?.`,
+`??`, short-circuit `&& || ?:`, `**`, bitwise operators, assignment
+expressions, logical/compound assignment to any member chain, `++`/`--`;
+`arguments`, `call/apply/bind`, prototypes (copied at construction), comma
+operator, `console.*` (no output), `Promise` (then/catch/finally/all,
+microtask order; no async/await),
+`Math` (incl. exp/log/trig, no random), `JSON.stringify` (replacer keys, indent) / `parse`, `Date` from
+given values only, URI encode/decode, `toPrecision`/`toLocaleString`;
+output via `document.write`. Bounds: nesting 64 plus a stack floor 10 KiB
+above the Browser stack bottom, 50,000 steps, 16 KiB source, 6 arguments
+per call, 48 variables, 32 functions, 64 closures, 128 arrays (512
+elements), 64 objects (256 properties), 32 collections.
 
 **Native gates added** (all pass at 1280x800 and 1024x768 on the latest
 image): `https_html_gate.py` (also bounds the Browser stack high water,
@@ -53,13 +61,11 @@ key handlers call new functions.
 **Open release gates** (details below): full-window reader needs a larger
 Display text delivery; Display applies app paints late; Display redraws are slow (raster 100-670 ticks per frame, H2; H1 removed the inbox backlog); autosave
 failure fences document I/O like any uncertain save; no draft cleanup;
-images limited to 48x48; the Browser body limit is 12 KiB.
+images limited to 48x48; HTML sources up to 32 KiB, converted text 12 KiB.
 
-**Next suggested steps.** Fix focus raising in Shell/Display (with the
+**Next suggested steps.** `async`/`await` would need a suspendable interpreter. Fix focus raising in Shell/Display (with the
 concurrent session); grow the document/body limit with streaming
-conversion (12 KiB is fixed in `sex-http`'s codec); a runtime stack guard in
-the script interpreter before raising its nesting limit (callback-heavy
-recursion costs ~3 KiB per level); an event model for scripts only if it
+conversion (12 KiB is fixed in `sex-http`'s codec); an event model for scripts only if it
 fits held authority.
 
 ## F1. Browser reads HTML pages as text (2026-11-02)
@@ -1150,6 +1156,515 @@ HTML gate at both sizes (`... Zdaymode231a2a`: a class getter and a
 script host tests 40 groups; sealed build and master gate GREEN; native
 HTML gate at both sizes (`... Zdaymode231a2a6`). Browser stack high water
 46,752.
+
+## N1. Script stack floor; nesting limit 32 -> 64 (2026-11-03)
+
+- The Browser gives the script interpreter a **stack floor**: 8 KiB above
+  the bottom of its mapped 64 KiB stack (`stack_probe::script_floor`).
+  Every statement, expression and call checks the stack pointer against
+  it, and nesting that reaches it refuses the script (`Limit`, writes
+  nothing) instead of overrunning the stack, whatever the frame sizes.
+  Refusals are counted (`[browser.script.stack_floor] hits=N`). Host
+  tests and the gate oracle run without a floor.
+- With that guard the nesting budget doubles (`MAX_DEPTH` 64): plain
+  recursion now reaches `fact(15)` (was `fact(7)`).
+
+**Evidence** (`docs/handoff/assets/script-stack-floor-2026-11-03/`): script
+host tests 40 groups; sealed build and master gate GREEN; native HTML gate
+at both sizes with `fact(15)` = `1307674368000` and a callback recursion
+`r(400)` refused at the floor (`hits=1`, `scripts_refused=3`, no output).
+Browser stack high water 57,936 bytes: the refused recursion ran down to
+the floor (57,344) plus a leaf frame, under the gate's 60 KiB bound.
+
+## N2-N3. Script `Set`/`Map`; assignment expressions (2026-11-03)
+
+- **N2 `Set` and `Map`:** `new Set(iterable)`, `new Map([[k, v], ...])`,
+  `add/set/get/has/delete/clear/size/forEach/keys/values/entries`, chaining,
+  SameValueZero keys (NaN equals NaN, objects by identity), insertion
+  order, spread (`[...new Set(xs)]`), `Array.from`, `for...of` (a Map gives
+  `[key, value]`), `instanceof`. Up to 16 collections per script.
+  `keys/values/entries` return arrays rather than iterators.
+- **N3 Assignment expressions:** an assignment can appear wherever an
+  expression can, with the assigned value as its value: `a = b = 0`,
+  `(o.k = 2) * 3`, `if (x = f())`, arrow bodies such as `x => t += x`.
+
+**Evidence** (`docs/handoff/assets/script-set-map-assign-expr-2026-11-03/`):
+script host tests 41 groups; sealed build and master gate GREEN; native
+HTML gate at both sizes (`... mispx`); stack floor refusal unchanged
+(`hits=1`), high water 58,048 bytes.
+
+## N4-N6. Script number formatting, `exec`/`matchAll`, object helpers (2026-11-03)
+
+- **N4 Numbers:** `toPrecision(p)` (exponential when the exponent is below
+  -6 or at least p, as JavaScript), `toLocaleString()` in the en-US form
+  (grouped thousands, at most 3 fraction digits), and the `Number`
+  constants (`MAX_SAFE_INTEGER`, `EPSILON`, `MAX_VALUE`, ...).
+- **N5 Regular expressions:** `re.exec(s)` with `lastIndex` for `g`
+  (the `while ((m = re.exec(s)) !== null)` loop), `re.lastIndex`, and
+  `s.matchAll(re)` (an array of match arrays, not an iterator).
+- **N6 Objects and strings:** `hasOwnProperty`, `Object.hasOwn`,
+  `Object.freeze`/`isFrozen` (assignments to a frozen object are ignored),
+  arrays' `keys/values/entries`, and `localeCompare` (letters compared
+  case-insensitively first, lower case before upper).
+
+**Evidence** (`docs/handoff/assets/script-format-exec-helpers-2026-11-03/`):
+script host tests 42 groups; sealed build and master gate GREEN; native
+HTML gate at both sizes (`... 98,765.432 0.012`). High water 58,472 bytes
+(the floor-refused recursion; bound 60 KiB).
+
+## N7-N8. HTML entities; script stack floor reserve 10 KiB (2026-11-03)
+
+- **N7** The HTML reader decodes the full Latin-1 letter set (`&eacute;`,
+  `&szlig;`, `&AElig;`, ...), Greek letters (`&alpha;`..`&omega;`, capitals,
+  `&sigmaf;`), and about 90 other common named references (math
+  `&le; &ge; &ne; &infin; &sum;`, arrows, `&check;`, `&dagger;`, card suits,
+  typographic spaces and quotes); `&zwj; &zwnj; &lrm; &rlm;` vanish like
+  `&shy;`. Unknown names stay literal. (Whether a glyph draws depends on
+  the reader font; the native reader pixel oracle only checks ASCII, so the
+  gate page stays ASCII and the entities are covered by the host test.)
+- **N8** The script stack floor moved from 8 to 10 KiB above the stack
+  bottom: a recursion refused at the floor now peaks at 56,784 bytes
+  (was 58,472), leaving more room under the gate's 60 KiB bound.
+
+**Evidence** (`docs/handoff/assets/html-entities-stack-floor-10k-2026-11-03/`):
+host test `latin1_greek_and_symbol_entities` (tests/browser_html_text.rs,
+25 tests); sealed build and master gate GREEN; native HTML gate at both
+sizes (`floor_offset=10240 hits=1`, high water 56,784).
+
+## N9. Display glyphs for Latin-1, quotes, dashes and common symbols (2026-11-03)
+
+- Display's 5x7 scalar font grew from 16 to 94 glyphs: the accented
+  Latin-1 letters (grave, acute, circumflex, tilde, diaeresis, ring;
+  capitals with the letter compressed under the accent, as the existing
+  `É`/`Ä`), `ç Ç ñ Ñ`, `° ± × ÷ « » © £ ¢ ¥ § µ ¿ ¡ · ¬ ² ½`, curly
+  quotes, en/em dash, bullet, minus, `≤ ≥ ≠ ∞ π α β ✓`. Other scalars still
+  draw the explicit box. The table is generated from the ASCII glyphs plus
+  accent rows and kept sorted and distinct; it is a constant ROM change
+  only (no layout or protocol change).
+
+**Evidence** (`docs/handoff/assets/display-latin1-glyphs-2026-11-03/`,
+including `glyph-sheet.png` rendered from the table): display text
+readability and surface-group host gates pass (table size assertion now
+94), desktop pixel checker tests pass (29); sealed build and master gate
+GREEN; native HTML (1280x800) and Quil autosave (1024x768) regressions OK.
+
+## N10. Browser follows links 10-16 (2026-11-03)
+
+- The reader lists up to 16 links but only `1`-`9` followed them. Now `0`
+  follows link 10 and `Shift+1`..`Shift+6` links 11-16. A number beyond the
+  page's links is refused locally (`[browser.html.link.refused] ...
+  network=0`) like any non-endpoint target.
+
+**Evidence** (`docs/handoff/assets/browser-links-10-16-2026-11-03/`): sealed
+build and master gate GREEN; native HTML gate at both sizes presses `0`
+(`index=10 listed=0 ... network=0`) and `Shift+4` (`index=14`) on the
+3-link page before following link 1 as before.
+
+## N11-N12. Script nested templates, named function expressions, replace fix (2026-11-03)
+
+- **N11 Templates:** a template literal now ends at its real closing
+  backtick: `\`` escapes and `${...}` substitutions with their own strings,
+  braces and **nested templates** (`` `${xs.map(x => `<${x}>`)}` ``) are
+  skipped. Before, the first backtick ended the template.
+- **N12** Named function expressions can call themselves
+  (`var f = function fact(n) {... fact(n - 1)}`); nested destructuring
+  patterns (`{a: {b}, c: [d, e = 4]}`, also in `for...of`); `reduceRight`;
+  `Array.from(x, mapFn)`. **Fix:** `'s'.replace('b', fn)` with a string
+  pattern inserted the text `function`; the function is now called with
+  `(match, offset, string)`.
+
+**Evidence** (`docs/handoff/assets/script-templates-named-fn-builtins-2026-11-03/`):
+script host tests 43 groups; sealed build and master gate GREEN; native
+HTML gate at both sizes (`... [1][2]a+b`).
+
+## N13. Browser find in page (2026-11-03)
+
+- In the visible reader, `/` opens find: the footer shows
+  `FIND: query_ ENTER NEXT/ESC`; letters, digits, space and `-.,` edit the
+  query (24 bytes), Backspace erases, Enter selects the next match after
+  the selection (ASCII case-insensitive, wrapping once) and scrolls it
+  into view, Esc closes. Purely local: no service or authority.
+- Shell's Browser key filter (`browser_input::command`) now also passes
+  `/` and space; its host test lists them.
+- Also fixes the `browser_reader_visibility` host fixture (in
+  `service_custody_host_gate.sh`), which N10 left without `page_html` /
+  `follow_link`. That gate showed one flaky run (tests sharing the global
+  clipboard client across threads), then passed three times in a row.
+
+**Evidence** (`docs/handoff/assets/browser-find-in-page-2026-11-03/`):
+clipboard, service-custody, sexnet and Quil clipboard host gates pass;
+sealed build and master gate GREEN; native HTML gate at both sizes types
+`/`, `sum`, Enter (`[browser.find] query_bytes=3 start=206 end=209
+wrapped=0 found=1 selected=1`, checked against the expected text), Esc.
+
+## N14. Spindle Ctrl line editing (2026-11-03)
+
+- Shell now passes Ctrl to Spindle (bit 9 of the key word, beside Shift in
+  bit 8). Ctrl chords never insert text: `Ctrl+U` clears the line,
+  `Ctrl+W` deletes the word before the cursor, `Ctrl+L` clears the
+  scrollback, `Ctrl+R` recalls the newest history entry containing the
+  typed text and, pressed again, the next older one.
+
+**Evidence** (`docs/handoff/assets/spindle-ctrl-editing-2026-11-03/`): all
+host gates pass (sexnet, service-custody, clipboard, Quil clipboard,
+Spindle calc, app activation); sealed build and master gate GREEN; native
+Spindle gate at both sizes: `echo ab cd` + Ctrl+W (`len=8`), Ctrl+U
+(`len=0`), `0xff` + Ctrl+R recalls `calc 0xff+1` (`len=11`), Enter -> `256`.
+
+## N15. Quil move line up/down (2026-11-03)
+
+- `Ctrl+Up` / `Ctrl+Down` swap the caret's line with the line above /
+  below as one undoable edit (the span of both lines is rewritten once);
+  the caret keeps its column in the moved line. At the first / last line
+  nothing changes (`applied=0 reason=edge`).
+
+**Evidence** (`docs/handoff/assets/quil-move-line-2026-11-03/`): Quil
+clipboard, service-custody and sexnet host gates pass; sealed build and
+master gate GREEN; native Quil autosave gate at both sizes adds a second
+line `x` after recovery and moves it up
+(`[quil.line.move] up=1 start=0 end=16 caret=1 applied=1 len=16`).
+
+## N16. Quil indent / outdent lines (2026-11-03)
+
+- `Ctrl+]` indents (a leading tab) and `Ctrl+[` outdents (one leading tab,
+  else up to four spaces) every line the selection touches, as one
+  undoable edit; the lines stay selected so the chord can repeat. Tab
+  itself is the desktop's focus key (Shell consumes it as
+  `AccessFocusNext`), which the first native attempt showed, so the
+  chords use brackets.
+
+**Evidence** (`docs/handoff/assets/quil-indent-lines-2026-11-03/`): Quil
+clipboard, service-custody and sexnet host gates pass; sealed build and
+master gate GREEN; native Quil autosave gate at both sizes: Ctrl+A, Ctrl+]
+(`[quil.indent] lines=2 out=0 start=0 end=18 applied=1 len=18`), Ctrl+[
+(`lines=2 out=1 ... len=16`).
+
+## N17. HTML reader: list paragraphs, marker styles, media, `<pre><code>` (2026-11-03)
+
+- A paragraph (or other block) opening right after a list marker stays on
+  the marker's line (`<li><p>x</p>` was an empty bullet and blank lines),
+  and blocks inside lists are not spaced apart.
+- `<ol type=a|A|i|I>` numbers with letters or roman numerals (with
+  `start`).
+- `<video>`, `<audio>` and `<iframe>` show `[video: title]`, `[audio]`,
+  `[frame]` and their fallback content is skipped (nothing is played or
+  loaded).
+- `<code>`/`<kbd>` inside `<pre>` get no backtick markers; `&#9;` is a
+  space instead of staying literal.
+
+**Evidence** (`docs/handoff/assets/html-lists-media-pre-2026-11-03/`): html
+text host tests 26 (new `list_paragraphs_marker_styles_media_and_preformatted_code`);
+sealed build and master gate GREEN; native HTML gate at both sizes with
+`i. roman one / ii. roman two` and `[video: Clip]` (fallback absent).
+
+## N18. Script destructured parameters, `JSON.stringify` layout, `document.write` expressions (2026-11-03)
+
+- Parameters can be patterns: `([k, v]) => ...`, `function f({x, y = 2},
+  [p, q])` (functions, arrows, methods).
+- `JSON.stringify(v, keys, space)`: a replacer key list (at every level)
+  and an indent (a number up to 10, or text up to 10 bytes), laid out like
+  JavaScript (empty `[]`/`{}` stay on one line, `": "` after keys). A
+  function replacer refuses the script.
+- `document.write(...)`/`writeln(...)` also work as expressions, e.g. an
+  arrow body `xs.forEach(x => document.write(x))`.
+
+**Evidence** (`docs/handoff/assets/script-param-patterns-pretty-json-2026-11-03/`):
+script host tests 44 groups; sealed build and master gate GREEN; native
+HTML gate at both sizes (`... p118`).
+
+## N19. Quil duplicate line (2026-11-03)
+
+- `Ctrl+Shift+D` copies the caret's line below itself as one undoable
+  edit; the caret moves to the same column in the copy. Plain `Ctrl+D`
+  keeps its meaning (press twice to delete the saved document).
+
+**Evidence** (`docs/handoff/assets/quil-duplicate-line-2026-11-03/`): Quil
+clipboard, service-custody and sexnet host gates pass; sealed build and
+master gate GREEN; native Quil autosave gate at both sizes
+(`[quil.line.duplicate] start=16 bytes=14 caret=31 applied=1 len=31`);
+Quil delete gate (plain Ctrl+D) regression OK.
+
+## P1. Browser private heap 64 -> 128 KiB (2026-11-03)
+
+- The Browser's ELF-owned heap arena (`sex-rt/src/heap.rs`, used only by
+  the Browser) grew to 128 KiB, the first step toward a larger page limit:
+  with a 12 KiB body the peak was 48,400 bytes (74% of 64 KiB); a 24 KiB
+  body needs about 36 KiB more. Not an ABI input; the Browser ELF is
+  ~991 KB on the image.
+- `browser_reserve_gate.py` now names the heap size and the Browser's
+  permanent 768-byte state (page-link table and history boxes, added with
+  the HTML link rounds). The gate had been expecting `heap_used=0` after
+  a clear and so was failing since those rounds; it is green again.
+
+**Evidence** (`docs/handoff/assets/browser-heap-128k-2026-11-03/`): sealed
+build and master gate GREEN; native HTML and PNG gates (1280x800) with
+`heap_total=131072` (peak 48,400 used); Browser reserve gate at 1280x800
+and 1024x768.
+
+## P2. Script budgets raised with the 128 KiB heap (2026-11-03)
+
+- Script budgets, previously shrunk for the 64 KiB heap: source 4 -> 16
+  KiB, output 1 -> 4 KiB, string arena 4 -> 12 KiB, steps 10,000 ->
+  50,000, variables 32 -> 48, functions 16 -> 32, closures 32 -> 64,
+  array elements 256 -> 512, arrays 32 -> 128, objects 16 -> 64,
+  properties 128 -> 256, classes/regexes/collections/accessors doubled.
+  A script starts only with 40 KiB of free heap (was 20).
+- The interpreter's fixed tables (variables, functions, arrays, objects,
+  constructor tags) moved from the Browser stack to fallible heap
+  allocations: with the larger tables on the stack, the first native run
+  refused `fact(15)` at the stack floor.
+- Fixes: `Object.keys/values/entries` and string `split` were capped at
+  16 results by fixed buffers; constructor tags became 16-bit so 32
+  functions cannot collide with the Error/Set/Map tags.
+- The 12 KiB page-body limit stays: `sex-http` is allocation-free, a
+  larger receiver would push the shared TLS task past its 32 KiB budget,
+  and ~8 gates encode the figure (also Quil's import bound). Follow-up:
+  a page-only receive path that converts HTML straight into the 12 KiB
+  text document.
+
+**Evidence** (`docs/handoff/assets/script-budgets-heap-tables-2026-11-03/`):
+script host tests 45 groups; sealed build and master gate GREEN; native
+HTML gate at both sizes with a 16th script (`big 79800 40`: a 400-element
+array, a 40-property object), `scripts_run=16 scripts_refused=3`, stack
+floor hits 1 (the intended deep recursion), high water 56,952.
+
+## P3. Script Promises (2026-11-03)
+
+- `new Promise((resolve, reject) => ...)` (a throw in the executor
+  rejects), `then(f, g)`, `catch(g)`, `finally(h)`, `Promise.resolve`,
+  `Promise.reject`, `Promise.all`, adoption of a promise by another, and
+  `instanceof Promise`. Reactions are microtasks run in JavaScript's
+  order after the script's own code (e.g. `Promise.all` settles after its
+  items' reactions), all under the step budget. Nothing asynchronous
+  exists to wait for (no timers or network), so every promise settles
+  within the script. `async`/`await` remain refused: the interpreter
+  cannot suspend a call, so their ordering could not be honest.
+- Statements may start with `new`, `void` or `typeof`
+  (`new Promise(...).then(...)`, `new A()`).
+
+**Evidence** (`docs/handoff/assets/script-promises-2026-11-03/`): script
+host tests 46 groups; sealed build and master gate GREEN; native HTML gate
+at both sizes with a 17th script (`promise first then 3 async 1+2`).
+
+## P4. Script optional calls, tagged templates, `String.raw` (2026-11-03)
+
+- `f?.(args)` calls unless `f` is null/undefined (`o.m?.()` too; the
+  arguments are then only checked).
+- Tagged templates: ``tag`a${x}b` `` calls `tag(['a', 'b'], x)` with the
+  cooked text pieces; ``String.raw`a\n${x}` `` keeps escapes as written.
+
+**Evidence** (`docs/handoff/assets/script-optional-call-tagged-templates-2026-11-03/`):
+script host tests 47 groups; sealed build and master gate GREEN; native
+HTML gate at both sizes (`promise first 1\dx-yundefined ...`).
+
+## P5. Spindle `calc` scientific functions (2026-11-03)
+
+- `exp ln log sin cos tan` (radians) and fractional powers of positive
+  bases (`2**0.5`, via exp(e ln b)). Computed with i128 integer
+  arithmetic at 18 decimal places (range reduction plus Taylor/atanh
+  series), shown to 9 and marked `~` except at trivial points (`exp(0)`,
+  `ln(1)`, `sin(0)`, `cos(0)`). `ln` of a non-positive number, a
+  fractional power of a non-positive base and `tan` at a pole are
+  `Domain`; `exp` above 88 is `Overflow`. Results are exact to 9 places
+  for exact inputs; inputs built from 9-place values (like `pi/6`) carry
+  their own rounding (`sin(pi/6)` is `~ 0.499999999`).
+
+**Evidence** (`docs/handoff/assets/spindle-calc-scientific-2026-11-03/`):
+calc host tests (`transcendental_functions_to_nine_places`); sealed build
+and master gate GREEN; native Spindle gate at both sizes (`calc ln(2)` ->
+`~ 0.693147181`, `calc 2**0.5` -> `~ 1.414213562`).
+
+## P6. Spindle `history <text>` (2026-11-03)
+
+- `history <text>` lists the history entries containing the text, newest
+  first, leaving out earlier `history ...` searches; `No history entries
+  match.` otherwise. `history` and `history clear` are unchanged.
+
+**Evidence** (`docs/handoff/assets/spindle-history-search-2026-11-03/`):
+host gates pass; sealed build and master gate GREEN; native Spindle gate at
+both sizes (`history ln` -> `[spindle.history.search] bytes=2 found=1`).
+
+## P7. Script `Math` elementary functions (2026-11-03)
+
+- `Math.exp expm1 log log1p log2 log10 sin cos tan asin acos atan atan2
+  sinh cosh tanh cbrt hypot` and the constants `E LN2 LN10 LOG2E LOG10E
+  SQRT2 SQRT1_2`, in `apps/kaleidoscope/src/fmath.rs` without libm:
+  range reduction (split ln2 / pi/2 constants) and series. A host test
+  sweeps -40..40 against Rust's std and keeps every result within 4 ulps;
+  `log10`/`log2` are exact at exact powers (`Math.log10(1000)` is 3, as in
+  JavaScript engines), `exp(0)`/`log(1)` exact. `Math.random` stays absent
+  (no entropy authority).
+
+**Evidence** (`docs/handoff/assets/script-math-elementary-2026-11-03/`):
+script host tests 48 groups (incl. `elementary_functions_stay_within_a_few_ulps_of_std`);
+sealed build and master gate GREEN; native HTML gate at both sizes
+(`big 79800 40 521`: `Math.hypot(3, 4)`, `Math.log10(100)`,
+`Math.sin(Math.PI / 2)`).
+
+## P8. HTML tables: captions and implicit row ends (2026-11-03)
+
+- **Fix:** `<caption>` text became an extra first column of the first
+  row; it is now its own line above the aligned rows.
+- **Fix:** rows without `</tr>` (the end tag is optional in HTML) ran
+  together on one line; a new `<tr>` now ends the previous row.
+
+**Evidence** (`docs/handoff/assets/html-table-caption-rows-2026-11-03/`):
+html text host tests 27 (`table_captions_and_implicit_row_ends`); sealed
+build and master gate GREEN; native HTML gate at both sizes with a
+captioned table of implicit rows (`Ports / dns   | 53 / https | 443`).
+
+## P9. HTML repeated breaks and no-break spaces (2026-11-03)
+
+- **Fix:** `<br><br>` collapsed into one line break; repeated breaks now
+  leave blank lines (up to two).
+- **Fix:** `&nbsp;` was an ordinary collapsible space, so `a&nbsp;&nbsp;b`
+  showed one space; no-break spaces are now always written (as plain
+  ASCII spaces, keeping the reader output ASCII).
+
+**Evidence** (`docs/handoff/assets/html-breaks-nbsp-2026-11-03/`): html
+text host tests 28 (`repeated_breaks_and_no_break_spaces`); sealed build
+and master gate GREEN; native HTML gate at both sizes (`wide  gap` /
+blank line / `after break`).
+
+## P10. Regression on the final image of the P batch (2026-11-03)
+
+All 11 host gates pass (sexnet jobs, service custody, Quil clipboard,
+clipboard, Spindle calc, Quil autosave, Spindle sextime, browser text,
+Display text readability, Display surface groups, app activation). On the
+sealed image at the batch's head: PNG (8-bit 1280x800, Adam7 16-bit
+1024x768), Browser reserve (1280x800, 128 KiB heap), Quil autosave
+(1280x800, all Quil editing chords) and Spindle calc (1024x768, incl.
+Ctrl editing, Tab completion, scientific functions, history search)
+native gates pass; the HTML gate passed at both sizes in P9.
+
+Evidence: `docs/handoff/assets/batch-regression-2026-11-03/`.
+
+## Q1. HTML pages up to 32 KiB of source (2026-11-03)
+
+- `sex-http`: the receiver is generic over its body storage
+  (`ReceiverIn<B>`); `Receiver` stays the inline 12 KiB form, and
+  `ReceiverIn::page(&mut buffer)` writes into a caller-owned buffer. Only a
+  `PageHtml` response may declare up to `MAX_PAGE_SOURCE` (32 KiB); every
+  other resource keeps `MAX_BODY`. `keep()` leaves a finished body in the
+  caller's buffer (not erased on drop); a failed receive erases it.
+  Still allocation-free.
+- `sex-tls`: a page fetch receives into a fallible 32 KiB heap buffer
+  (the TLS task does not grow). A page that fits 12 KiB is copied as
+  before; a larger source becomes the document's buffer
+  (`Document.bytes` is now a boxed slice) until the Browser's `rewrite`
+  converts it into at most 12 KiB of text. `Pipe` grew by 8 bytes
+  (`PIPE_METADATA_BYTES` 56 -> 64); the gates that bind it from source,
+  and their synthetic fixtures (`8248` -> `8256`, totals +8), are updated.
+- The converted text is still bounded by 12 KiB (Quil import and the
+  document view are unchanged); the source can now carry up to 32 KiB of
+  markup, styles and scripts.
+
+**Evidence** (`docs/handoff/assets/browser-page-receive-32k-2026-11-03/`):
+`sex-http` tests 43 (new `pages_up_to_the_page_source_limit_arrive_in_the_callers_buffer`,
+`a_failed_page_receive_erases_the_callers_buffer`); `sex-tls` suites all
+pass (new `an_oversized_page_source_is_rewritten_into_a_document`); the
+Python gate unit suite has only its 7 pre-existing failures
+(`python-unit-preexisting-failures.txt`, unchanged from HEAD); host gates
+pass; sealed build and master gate GREEN; native HTML gate at both sizes
+follows a **15,630-byte** page (`source_bytes=15630 text_bytes=149`);
+native HTTPS document, asset, PNG and Browser reserve gates pass.
+
+## Q2. Script class fields, static fields, `#private` names (2026-11-03)
+
+- Instance fields (`count = 0;`, `y = this.x + 1`), set on each new
+  instance before its constructor runs, parent class first; static fields
+  (`static made = 0`, readable/writable as `C.made`, `C.made++`, inherited
+  by subclasses, initialized in order after the class exists).
+- `#name` is accepted as a member name; private fields and class methods
+  are no longer listed by `Object.keys/values/entries`, `for...in` or
+  `JSON.stringify` (methods were listed before: they live on each instance
+  here, on the prototype in JavaScript). Privacy itself is not enforced.
+
+**Evidence** (`docs/handoff/assets/script-class-fields-2026-11-03/`): script
+host tests 49 groups; sealed build and master gate GREEN; native HTML gate
+at both sizes (`... 1a2a36 ...`: `Base.count` incremented by three
+constructions).
+
+## Q3. Script copying array methods, `Object.groupBy`, `structuredClone`; frames re-cut (2026-11-03)
+
+- `toSorted`, `toReversed`, `with(i, v)`, `toSpliced(...)` return changed
+  copies; `Object.groupBy(items, fn)`; `structuredClone(v)` deep-copies
+  plain arrays and objects (functions, class instances and collections are
+  refused).
+- The first native run showed `fact(15)` refused at the stack floor: the
+  P/Q rounds had regrown the recursive frames (`unary`+`atom` 200 -> 408,
+  `chain` 328 -> 520, `member` 616 -> 1,144). `document.write` as an
+  expression, `structuredClone` and tagged templates moved to
+  `#[inline(never)]` helpers, and `member` dispatches to per-type helpers
+  (`member_number/regex/array`): now `unary` 200, `chain` 456, `member` 360.
+
+**Evidence** (`docs/handoff/assets/script-copying-array-methods-2026-11-03/`):
+script host tests 50 groups; sealed build and master gate GREEN; native
+HTML gate at both sizes (`big 79800 40 521 1232`, `scripts_run=17
+scripts_refused=3`, floor hits 1, high water 56,016).
+
+## Q4. HTML table header rule (2026-11-03)
+
+- A table row made only of `<th>` cells is followed by a rule under the
+  aligned columns (`------+-----`, `-+-` between columns). If a table cannot
+  be aligned (no room), the rule stays a short `-` line.
+
+**Evidence** (`docs/handoff/assets/html-table-header-rule-2026-11-03/`):
+html text host tests 28 (three table expectations updated for the rule);
+sealed build and master gate GREEN; native HTML gate at both sizes
+(`name  | port` / `------+-----` / `dns   | 53` / `https | 443`).
+
+## Q5-Q6. Quil Home/End on the line; kill and join lines (2026-11-05)
+
+- **Q5 Fix:** Home and End went to the start and end of the whole document
+  (found by the native gate on a three-line document). They now stay on the
+  caret's line (`view::line_start/line_end`); `Ctrl+Home/End` remain the
+  document ends. `connected_desktop_gate.py` uses Ctrl+End accordingly.
+- **Q6** `Ctrl+K` deletes from the caret to the end of the line (at the end,
+  the line break); `Ctrl+J` joins the next line with one space, dropping
+  its leading whitespace. Each is one undoable edit.
+
+**Evidence** (`docs/handoff/assets/quil-line-home-end-kill-join-2026-11-05/`):
+host test `home_and_end_stay_on_the_carets_line`; Quil clipboard,
+service-custody and sexnet host gates pass; the Python gate suite has only
+its 7 pre-existing failures; sealed build and master gate GREEN; native
+Quil autosave gate at both sizes (Home `old=31 new=17`, `[quil.line.kill]
+start=17 removed=14`, `[quil.line.join] start=1 removed=1`); native
+connected desktop gate at 1280x800.
+
+## Q7. Script `arguments`, `call`, `apply`, `bind` (2026-11-05)
+
+- `arguments` gives the running call's arguments as a new array (so it is
+  a copy: writing to it does not change parameters). `f.call(this, ...)`,
+  `f.apply(this, [...])`, and `f.bind(this, ...)` (64 per script; a bound
+  `this` cannot be replaced, as in JavaScript).
+- **Fix:** a callback that was not a plain function value during the
+  parse-only pass of a function body (`xs.map(fn.bind(this))`) refused the
+  whole script; `map`-style methods and `sort` now check only when live.
+
+**Evidence** (`docs/handoff/assets/script-arguments-call-apply-bind-2026-11-05/`):
+script host tests 51 groups; sealed build and master gate GREEN; native
+HTML gate at both sizes (`big 79800 40 521 1232 27`).
+
+## Q8-Q9. Script prototypes, comma operator, `console`, small builtins (2026-11-05)
+
+- **Q8 Prototypes:** `F.prototype.m = ...`, `F.prototype = {...}`,
+  `F.prototype` reads, `Object.create(proto)`, and the
+  `P.call(this, x)` + `C.prototype = Object.create(P.prototype)` pattern.
+  This is a snapshot, not a chain: an instance copies its prototype when
+  constructed, so later additions do not reach existing instances, and
+  `instanceof` does not walk from C to P. Copied properties are not listed
+  by `Object.keys`/`JSON.stringify`.
+- **Q9:** the comma operator (`(a, b)`, `a = 1, b = 2;`, `for (...; i++, j--)`;
+  `for` updates are now any expression, so `++i` works); `console.log/info/
+  warn/error/debug` evaluate their arguments and write nothing (they used
+  to refuse the whole script); `substr`, `isFinite`, `Number.parseFloat/
+  parseInt`, `Object.defineProperty` (`value`/`get`/`set` only),
+  `Object.getOwnPropertyNames`, `Array(n)` and `Error(m)` without `new`.
+
+**Evidence** (`docs/handoff/assets/script-prototypes-comma-console-2026-11-05/`):
+script host tests 53 groups; sealed build and master gate GREEN; native
+HTML gate at both sizes (`... 1232 27 82`), floor hits 1, high water 56,592.
 
 ## Release gates noted while doing F1–F2
 

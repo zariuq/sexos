@@ -24,10 +24,12 @@ pub struct Output<'a> {
     pre: bool,
     /// `<blockquote>` nesting; each line inside starts with `> ` per level.
     quote: u8,
+    /// Only a list marker is on the current line (a block opening here stays on it).
+    marker: bool,
 }
 
 impl<'a> Output<'a> {
-    fn new(buf: &'a mut [u8]) -> Self { Self { buf, len: 0, truncated: false, space: true, newlines: 2, pre: false, quote: 0 } }
+    fn new(buf: &'a mut [u8]) -> Self { Self { buf, len: 0, truncated: false, space: true, newlines: 2, pre: false, quote: 0, marker: false } }
     fn room(&self) -> usize { self.buf.len().saturating_sub(TRUNCATED.len()) }
     fn byte(&mut self, b: u8) {
         if self.len < self.room() { self.buf[self.len] = b; self.len += 1; } else { self.truncated = true; }
@@ -51,9 +53,20 @@ impl<'a> Output<'a> {
         if self.newlines != 0 { for _ in 0..self.quote { self.byte(b'>'); self.byte(b' '); } }
         self.space = false;
         self.newlines = 0;
+        self.marker = false;
         self.byte(b);
     }
     fn bytes(&mut self, s: &[u8]) { for &b in s { self.text(b); } }
+    /// A space that is always written (`&nbsp;`): pending collapsible space
+    /// first, then this one.
+    fn hard_space(&mut self) {
+        if self.space && self.newlines == 0 { self.byte(b' '); }
+        if self.newlines != 0 { for _ in 0..self.quote { self.byte(b'>'); self.byte(b' '); } }
+        self.byte(b' ');
+        self.space = false;
+        self.newlines = 0;
+        self.marker = false;
+    }
     /// Literal bytes at the start of a line (indentation, list markers).
     fn raw(&mut self, s: &[u8]) {
         if self.newlines != 0 { for _ in 0..self.quote { self.byte(b'>'); self.byte(b' '); } }
@@ -70,7 +83,7 @@ impl<'a> Output<'a> {
     /// Pad the ` | `-separated cells written since `start` into columns.
     /// Skipped if the padding would not fit; widths count characters.
     fn align_columns(&mut self, start: usize) {
-        if self.truncated || start >= self.len { return; }
+        if self.truncated || start >= self.len { self.plain_rules(start); return; }
         let text = &self.buf[start..self.len];
         let width = |cell: &[u8]| cell.iter().filter(|b| **b & 0xc0 != 0x80).count();
         let mut widths = [0usize; 16];
@@ -79,8 +92,14 @@ impl<'a> Output<'a> {
             for (k, cell) in cells.iter().enumerate().take(16) { widths[k] = widths[k].max(width(cell)); }
         }
         let mut out: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+        let columns = text.split(|b| *b == b'\n').map(|l| split_cells(l).len()).max().unwrap_or(0).min(16);
         for (n, line) in text.split(|b| *b == b'\n').enumerate() {
             if n > 0 { out.push(b'\n'); }
+            if line == [HEADER_RULE] {
+                // Under a header row: dashes per column, `-+-` between.
+                for k in 0..columns { if k > 0 { out.extend_from_slice(b"-+-"); } for _ in 0..widths[k].max(1) { out.push(b'-'); } }
+                continue;
+            }
             let cells = split_cells(line);
             let last = cells.len().saturating_sub(1);
             for (k, cell) in cells.iter().enumerate() {
@@ -89,9 +108,13 @@ impl<'a> Output<'a> {
                 if k < last && k < 16 { for _ in width(cell)..widths[k] { out.push(b' '); } }
             }
         }
-        if start + out.len() > self.room() { return; }
+        if start + out.len() > self.room() { self.plain_rules(start); return; }
         self.buf[start..start + out.len()].copy_from_slice(&out);
         self.len = start + out.len();
+    }
+    /// Unaligned tables keep a short plain rule under header rows.
+    fn plain_rules(&mut self, start: usize) {
+        for b in &mut self.buf[start.min(self.len)..self.len] { if *b == HEADER_RULE { *b = b'-'; } }
     }
     fn finish(mut self) -> (usize, bool) {
         while self.len > 0 && self.buf[self.len - 1] == b'\n' { self.len -= 1; }
@@ -168,17 +191,35 @@ fn entity(input: &[u8], out: &mut [u8; 4]) -> Option<(usize, usize)> {
             b"cent" => 0xa2, b"sect" => 0xa7, b"para" => 0xb6, b"reg" => 0xae, b"trade" => 0x2122,
             b"larr" => 0x2190, b"rarr" => 0x2192, b"uarr" => 0x2191, b"darr" => 0x2193, b"plusmn" => 0xb1,
             b"frac12" => 0xbd, b"laquo" => 0xab, b"raquo" => 0xbb, b"iexcl" => 0xa1, b"iquest" => 0xbf,
-            b"shy" => return Some((0, end + 1)), _ => return None,
+            b"shy" | b"zwnj" | b"zwj" | b"lrm" | b"rlm" => return Some((0, end + 1)),
+            _ => named(name)?,
         }
     };
     // Controls and surrogates are not readable text.
-    let ch = char::from_u32(code).filter(|c| !c.is_control() || *c == '\n')?;
+    let ch = char::from_u32(code).filter(|c| !c.is_control() || matches!(*c, '\n' | '\t'))?;
     Some((ch.encode_utf8(out).len(), end + 1))
+}
+
+/// Latin-1 letters U+00C0..U+00FF by entity name (the two operators too).
+const LATIN1: [&[u8]; 64] = [b"Agrave", b"Aacute", b"Acirc", b"Atilde", b"Auml", b"Aring", b"AElig", b"Ccedil", b"Egrave", b"Eacute", b"Ecirc", b"Euml", b"Igrave", b"Iacute", b"Icirc", b"Iuml", b"ETH", b"Ntilde", b"Ograve", b"Oacute", b"Ocirc", b"Otilde", b"Ouml", b"times", b"Oslash", b"Ugrave", b"Uacute", b"Ucirc", b"Uuml", b"Yacute", b"THORN", b"szlig", b"agrave", b"aacute", b"acirc", b"atilde", b"auml", b"aring", b"aelig", b"ccedil", b"egrave", b"eacute", b"ecirc", b"euml", b"igrave", b"iacute", b"icirc", b"iuml", b"eth", b"ntilde", b"ograve", b"oacute", b"ocirc", b"otilde", b"ouml", b"divide", b"oslash", b"ugrave", b"uacute", b"ucirc", b"uuml", b"yacute", b"thorn", b"yuml"];
+/// Greek lower case U+03B1..U+03C9 (`sigmaf` is U+03C2); capitalised names are
+/// U+0391.. (there is no capital final sigma).
+const GREEK: [&[u8]; 25] = [b"alpha", b"beta", b"gamma", b"delta", b"epsilon", b"zeta", b"eta", b"theta", b"iota", b"kappa", b"lambda", b"mu", b"nu", b"xi", b"omicron", b"pi", b"rho", b"sigmaf", b"sigma", b"tau", b"upsilon", b"phi", b"chi", b"psi", b"omega"];
+/// Other common named references.
+const NAMED: [(&[u8], u32); 89] = [(b"le", 0x2264), (b"ge", 0x2265), (b"ne", 0x2260), (b"micro", 0xb5), (b"check", 0x2713), (b"infin", 0x221e), (b"minus", 0x2212), (b"asymp", 0x2248), (b"equiv", 0x2261), (b"sum", 0x2211), (b"prod", 0x220f), (b"radic", 0x221a), (b"part", 0x2202), (b"nabla", 0x2207), (b"isin", 0x2208), (b"notin", 0x2209), (b"cap", 0x2229), (b"cup", 0x222a), (b"forall", 0x2200), (b"exist", 0x2203), (b"empty", 0x2205), (b"harr", 0x2194), (b"rArr", 0x21d2), (b"lArr", 0x21d0), (b"hArr", 0x21d4), (b"uArr", 0x21d1), (b"dArr", 0x21d3), (b"crarr", 0x21b5), (b"sup1", 0xb9), (b"sup2", 0xb2), (b"sup3", 0xb3), (b"frac14", 0xbc), (b"frac34", 0xbe), (b"ensp", 0x2002), (b"emsp", 0x2003), (b"thinsp", 0x2009), (b"dagger", 0x2020), (b"Dagger", 0x2021), (b"permil", 0x2030), (b"prime", 0x2032), (b"Prime", 0x2033), (b"lsaquo", 0x2039), (b"rsaquo", 0x203a), (b"sbquo", 0x201a), (b"bdquo", 0x201e), (b"loz", 0x25ca), (b"spades", 0x2660), (b"clubs", 0x2663), (b"hearts", 0x2665), (b"diams", 0x2666), (b"curren", 0xa4), (b"brvbar", 0xa6), (b"uml", 0xa8), (b"ordf", 0xaa), (b"ordm", 0xba), (b"macr", 0xaf), (b"acute", 0xb4), (b"cedil", 0xb8), (b"oline", 0x203e), (b"frasl", 0x2044), (b"lowast", 0x2217), (b"sim", 0x223c), (b"cong", 0x2245), (b"sub", 0x2282), (b"sup", 0x2283), (b"perp", 0x22a5), (b"sdot", 0x22c5), (b"lceil", 0x2308), (b"rceil", 0x2309), (b"lfloor", 0x230a), (b"rfloor", 0x230b), (b"lang", 0x27e8), (b"rang", 0x27e9), (b"OElig", 0x152), (b"oelig", 0x153), (b"Scaron", 0x160), (b"scaron", 0x161), (b"Yuml", 0x178), (b"fnof", 0x192), (b"circ", 0x2c6), (b"tilde", 0x2dc), (b"star", 0x2606), (b"starf", 0x2605), (b"cross", 0x2717), (b"hyphen", 0x2010), (b"ang", 0x2220), (b"there4", 0x2234), (b"prop", 0x221d), (b"int", 0x222b)];
+fn named(name: &[u8]) -> Option<u32> {
+    if let Some(i) = LATIN1.iter().position(|n| *n == name) { return Some(0xC0 + i as u32); }
+    if let Some(i) = GREEK.iter().position(|n| *n == name) { return Some(0x3B1 + i as u32); }
+    if let Some(i) = GREEK.iter().position(|n| n.len() == name.len() && n[0].to_ascii_uppercase() == name[0] && n[1..] == name[1..]) { return (i != 17).then_some(0x391 + i as u32); }
+    NAMED.iter().find(|(n, _)| *n == name).map(|(_, c)| *c)
 }
 
 const INLINE: [(&[u8], u8); 7] = [(b"code", b'`'), (b"kbd", b'`'), (b"strong", b'*'), (b"b", b'*'), (b"em", b'_'), (b"i", b'_'), (b"cite", b'_')];
 /// Two-character markers: highlighted, deleted and inserted text.
 const INLINE2: [(&[u8], &[u8]); 6] = [(b"mark", b"=="), (b"del", b"~~"), (b"s", b"~~"), (b"strike", b"~~"), (b"ins", b"++"), (b"u", b"__")];
+/// Marks a rule line under a table header row until columns are aligned.
+const HEADER_RULE: u8 = 0x01;
+const MEDIA: [&[u8]; 3] = [b"video", b"audio", b"iframe"];
 const SKIP: [&[u8]; 5] = [b"style", b"head", b"template", b"noscript", b"svg"];
 const BLOCK: [&[u8]; 19] = [b"p", b"div", b"section", b"article", b"header", b"footer", b"main", b"nav", b"ul", b"ol", b"table", b"blockquote", b"pre", b"hr", b"dl", b"form", b"details", b"fieldset", b"figure"];
 
@@ -212,10 +253,14 @@ pub fn convert(html: &[u8], out: &mut [u8]) -> Converted {
     let (mut scripts_run, mut scripts_refused) = (0u8, 0u8);
     // Open lists: 0 = bulleted, n = next number of an ordered list.
     let mut lists = [0u16; 4];
+    // Marker style per open ordered list: b'1', b'a', b'A', b'i' or b'I'.
+    let mut styles = [b'1'; 4];
     // Title of the open <abbr>, shown after its text.
     let mut abbr: Option<(usize, usize)> = None;
     // Output offset where the open (outermost) table's rows begin.
     let mut table: Option<usize> = None;
+    // The open table row: cells so far, and whether all were header cells.
+    let (mut row_cells, mut row_all_th) = (0u8, true);
     let mut depth = 0usize;
     if let Some(title) = title(html) {
         o.bytes(b"Title:");
@@ -272,33 +317,47 @@ pub fn convert(html: &[u8], out: &mut [u8]) -> Converted {
                 o.line(true);
                 if !end_tag { o.bytes(if name[1] <= b'2' { b"# " } else { b"## " }); }
             } else if name_is(name, b"br") {
-                o.line(false);
+                // Each <br> ends a line; repeated ones leave blank lines (up to two).
+                if o.newlines == 0 { o.line(false); } else if o.newlines < 3 { o.byte(b'\n'); o.newlines += 1; }
             } else if name_is(name, b"li") && !end_tag {
                 o.line(false);
                 for _ in 1..depth.max(1) { o.raw(b"  "); }
                 match lists.get(depth.wrapping_sub(1)).copied().filter(|n| *n > 0) {
                     Some(n) => {
-                        let mut digits = [0u8; 6];
-                        let len = number(n as usize, &mut digits);
+                        let mut digits = [0u8; 16];
+                        let len = list_marker(n as usize, styles[depth - 1], &mut digits);
                         o.raw(&digits[..len]);
                         o.raw(b". ");
                         lists[depth - 1] = n.saturating_add(1);
                     }
                     None => o.raw(b"- "),
                 }
+                o.marker = true;
             } else if (name_is(name, b"dt") || name_is(name, b"dd")) && !end_tag {
                 o.line(false);
                 if name_is(name, b"dd") { o.raw(b"    "); }
-            } else if name_is(name, b"tr") && end_tag {
+            } else if name_is(name, b"tr") {
+                // A row ends at `</tr>` or at the next `<tr>` (the end tag is optional).
+                if end_tag || o.newlines == 0 { o.line(false); }
+                if row_cells > 0 && row_all_th && table.is_some() { o.raw(&[HEADER_RULE]); o.line(false); }
+                (row_cells, row_all_th) = (0, true);
+            } else if name_is(name, b"caption") {
+                // The caption is its own line above the rows (not a column).
                 o.line(false);
+                if end_tag && table.is_some() { table = Some(o.len); }
             } else if (name_is(name, b"td") || name_is(name, b"th")) && !end_tag {
+                row_cells = row_cells.saturating_add(1);
+                if name_is(name, b"td") { row_all_th = false; }
                 if o.newlines == 0 { o.bytes(b" |"); o.space = true; }
             } else if BLOCK.iter().any(|n| name_is(name, n)) {
                 o.pre = false;
                 let list = name_is(name, b"ol") || name_is(name, b"ul");
-                // A list inside a list item continues that item's lines.
-                o.line(!(list && depth > usize::from(end_tag)));
+                // A list inside a list item continues that item's lines; a
+                // paragraph opening right after a list marker stays on its
+                // line, and blocks inside lists are not spaced apart.
+                if !(o.marker && !end_tag && !list) { o.line(!(depth > usize::from(end_tag && list))); }
                 if name_is(name, b"table") {
+                    (row_cells, row_all_th) = (0, true);
                     if !end_tag { table = Some(o.len); } else if let Some(start) = table.take() { o.align_columns(start); }
                 } else if name_is(name, b"ol") || name_is(name, b"ul") {
                     if end_tag { depth = depth.saturating_sub(1); }
@@ -306,6 +365,7 @@ pub fn convert(html: &[u8], out: &mut [u8]) -> Converted {
                         let start = attribute(&body[name_end..], b"start")
                             .and_then(|v| core::str::from_utf8(v).ok()?.trim().parse::<u16>().ok()).unwrap_or(1).max(1);
                         lists[depth] = if name_is(name, b"ol") { start } else { 0 };
+                        styles[depth] = match attribute(&body[name_end..], b"type") { Some([c @ (b'a' | b'A' | b'i' | b'I')]) => *c, _ => b'1' };
                         depth += 1;
                     } else { depth += 1; }
                 } else if name_is(name, b"blockquote") {
@@ -324,6 +384,18 @@ pub fn convert(html: &[u8], out: &mut [u8]) -> Converted {
             } else if name_is(name, b"figcaption") {
                 o.line(false);
                 if !end_tag { o.bytes(b"Figure:"); o.space = true; }
+            } else if o.pre && (name_is(name, b"code") || name_is(name, b"kbd")) {
+                // Preformatted code is already set apart: no inline markers.
+            } else if MEDIA.iter().any(|n| name_is(name, n)) && !end_tag {
+                // Media and frames are not played or loaded; a placeholder
+                // stands for them and their fallback content is skipped.
+                let label = MEDIA.iter().find(|n| name_is(name, n)).copied().unwrap_or(b"media");
+                o.text(b'[');
+                o.space = false;
+                for &c in if name_is(name, b"iframe") { &b"frame"[..] } else { label } { o.text(c); }
+                if let Some(t) = attribute(&body[name_end..], b"title").filter(|t| !t.is_empty()) { o.text(b':'); o.space = true; for &c in t { o.text(c); } }
+                o.text(b']');
+                if !body.ends_with(b"/") { skip_until = MEDIA.iter().find(|n| name_is(name, n)).copied(); }
             } else if let Some(mark) = INLINE.iter().find(|(n, _)| name_is(name, n)).map(|(_, m)| *m) {
                 // Inline emphasis and code keep a plain-text marker, Markdown style.
                 if end_tag { o.space = false; o.text(mark); } else { o.text(mark); o.space = false; }
@@ -416,6 +488,12 @@ pub fn convert(html: &[u8], out: &mut [u8]) -> Converted {
         if skip_until.is_some() { i += 1; continue; }
         if b == b'&' {
             let mut buf = [0u8; 4];
+            if html[i + 1..].starts_with(b"nbsp;") && !o.pre {
+                // A no-break space is kept, not collapsed (written as a plain space).
+                o.hard_space();
+                i += 6;
+                continue;
+            }
             if let Some((n, used)) = entity(&html[i + 1..], &mut buf) {
                 for &c in &buf[..n] { o.text(c); }
                 i += 1 + used;
@@ -473,6 +551,27 @@ fn title(html: &[u8]) -> Option<&[u8]> {
     let end = start + html[start..].windows(8).position(|w| name_is(w, b"</title>"))?;
     let t = &html[start..end];
     t.iter().any(|b| !b.is_ascii_whitespace()).then_some(t)
+}
+
+/// An ordered-list marker: decimal, letters (`a`..`z`, `aa`..) or roman.
+fn list_marker(n: usize, style: u8, out: &mut [u8; 16]) -> usize {
+    match style {
+        b'a' | b'A' => {
+            let (mut n, mut tmp, mut len) = (n, [0u8; 16], 0);
+            while n > 0 && len < 16 { n -= 1; tmp[len] = style + (n % 26) as u8; len += 1; n /= 26; }
+            for i in 0..len { out[i] = tmp[len - 1 - i]; }
+            len
+        }
+        b'i' | b'I' if (1..4000).contains(&n) => {
+            let mut len = 0;
+            let mut n = n;
+            for (v, r) in [(1000, &b"m"[..]), (900, b"cm"), (500, b"d"), (400, b"cd"), (100, b"c"), (90, b"xc"), (50, b"l"), (40, b"xl"), (10, b"x"), (9, b"ix"), (5, b"v"), (4, b"iv"), (1, b"i")] {
+                while n >= v { for &c in r { if len < 16 { out[len] = if style == b'I' { c.to_ascii_uppercase() } else { c }; len += 1; } } n -= v; }
+            }
+            len
+        }
+        _ => { let mut d = [0u8; 6]; let len = number(n, &mut d); out[..len].copy_from_slice(&d[..len]); len }
+    }
 }
 
 fn number(mut n: usize, out: &mut [u8; 6]) -> usize {

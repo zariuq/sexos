@@ -22,11 +22,17 @@ REQUEST=b'GET /page.html HTTP/1.1\r\nHost: probe.sexos.test:46080\r\nConnection:
 PAGE=(b'<!DOCTYPE html><html><head><title>Lab notes</title><style>body{color:red}</style>'
  b'<script>while(1){}</script></head><body>'
  b'<h1>SexOS field notes</h1><p>One shared address space supplies addresses;\n held capabilities supply authority.</p>'
+ b'<ol type=i><li><p>roman one</p><li>roman two</ol><video title=Clip>no player</video>'
+ b'<p>wide&nbsp;&nbsp;gap<br><br>after break</p>'
+ b'<table><caption>Ports</caption><tr><th>name<th>port<tr><td>dns<td>53<tr><td>https<td>443</table>'
  b'<p><script>var n = 6; document.write("Script says " + n*7, " / ", -(-(-((1+1)*3))))</script></p>'
  b"<p><script>var t = 'sexos'; if (t.length === 5) { document.write(t.toUpperCase(), ' ', Math.max(2, 7) > 5 ? 'ok' : 'no') } else document.write('bad')</script></p>"
  b'<p>Press <kbd>W</kbd> for this <strong>page</strong>, see <code>html_text.rs</code>.</p>'
  b"<p><script>function sq(x) { return x * x }\nvar s = 0; for (var i = 1; i <= 200; i++) s += i; var n = 3; while (n > 0) { document.write(n, ' '); n-- } document.write('sum ', s, ' sq ', sq(12))</script></p>"
- b"<p><script>function fact(n) { if (n <= 1) return 1; return n * fact(n - 1) }\ndocument.write('deep ', ((((((((((7)))))))))), ' ', fact(7))</script></p>"
+ b"<p><script>function fact(n) { if (n <= 1) return 1; return n * fact(n - 1) }\ndocument.write('deep ', ((((((((((7)))))))))), ' ', fact(15))</script></p>"
+ b"<p><script>Promise.all([1, Promise.resolve(2)]).then(xs => document.write(' async ', xs.join('+'))); new Promise(r => r(3)).then(v => document.write(' then ', v)); document.write('promise first', ' ', String.raw`1\\d`, (s => s.join('-'))`x${0}y`, (null)?.())</script></p>"
+ b"<p><script>function Pt(x) { this.x = x } Pt.prototype.dbl = function () { return this.x * 2 }; console.log('quiet'); var big = Array.from({length: 400}, (_, i) => i); var ob = {}; for (var i = 0; i < 40; i++) ob['k' + i] = i; document.write('big ', big.reduce((a, b) => a + b), ' ', Object.keys(ob).length, ' ', Math.hypot(3, 4), Math.log10(100), Math.round(Math.sin(Math.PI / 2)), ' ', [3, 1, 2].toSorted().join(''), Object.keys(Object.groupBy([1, 2, 3], x => x % 2)).length, ' ', (function () { return arguments.length }).call(null, 1, 2), (function () { return this.v }).bind({v: 7})(), ' ', new Pt(4).dbl(), (1, 2))</script></p>"
+ b"<p><script>function r(n) { return n ? [n].map(x => r(x - 1))[0] : 0 } document.write('zzdeep ', r(400))</script></p>"
  b"<p><script>var sq = []; for (var i = 1; i <= 6; i++) sq.push(i * i); document.write('squares ', sq.join(' '), ' last ', sq[sq.length - 1])</script></p>"
  b"<p><script>var parts = 'held, never ambient'.split(', '); document.write(parts.length, ' ', parts[1].toUpperCase(), ' at ', 'SexOS'.indexOf('OS'), ' ', parseInt('42px') + 1)</script></p>"
  b"<p><script>var odd = []; for (var i = 0; i < 20; i++) { if (i % 2 === 0) continue; if (i > 9) break; odd.push(i) } document.write(`odd ${odd.join('+')} = ${1 + 3 + 5 + 7 + 9}`)</script></p>"
@@ -39,7 +45,7 @@ PAGE=(b'<!DOCTYPE html><html><head><title>Lab notes</title><style>body{color:red
  b"<p><script>const app = {name: '\\u0053ex', opens: 0, open: function () { this.opens++; return this }}; app.open().open(); let out = []; for (let i = 0; i < 3; i++) { try { if (i === 1) throw 'skip'; out.push(i) } catch (e) { out.push(e) } }\ndocument.write(app.name, ' ', app.opens, ' ', out.join('/'), ' ', [[1], [2, 3]].flat().at(-1), ' ', typeof i)</script></p>"
  b"<p><script>var log = 'boot 12ms, linen 7ms, quil 30ms'; var total = 0; log.replace(/(\\w+) (\\d+)ms/g, function (all, name, ms) { total += parseInt(ms); return '' });\ndocument.write(log.match(/\\d+ms/g).length, ' ', total, ' ', /^boot/.test(log), ' ', log.split(/,\\s*/)[1].replace(/(\\w+) (\\d+)/, '$2:$1'))</script></p>"
  b'<p>Plan: <mark>held</mark> not <del>ambient</del>.</p>'
- b"<p><script>class Base { constructor(t) { this.t = t } loud() { return this.t } get size() { return this.t.length } static of(t) { return new Note(t) } } class Note extends Base { loud() { return super.loud().toUpperCase() } }\nvar cfg = JSON.parse('{\"day\": [2012, 11, 21]}'); var tags = ''; for (const k in Object.assign({}, cfg, {v: 1})) tags += k; for (const c of 'ok') tags += c.toUpperCase(); function pad(s, w = 4, ...rest) { return s.padStart(w, '0') + rest.length } var nest = {a: {n: [1]}}; nest.a.n[0] += 4; var k = 0; var {tz = 'Z', ...rc} = {...cfg, mode: 1}; var tick = (function () { let t = 0; return () => ++t })(); tick(); var lb = ''; outer: for (const r of [1, 2]) { for (const c of 'ab') { if (c === 'b') continue outer; lb += r + c } } var d = new Date(cfg.day[0], cfg.day[1], cfg.day[2]); document.write(new Note('epoch').loud(), ' ', d.toDateString(), ' ', d.getDay(), ' ', cfg.tz?.name ?? 'UTC', cfg.day?.[3] || '!', ' ', tags, ' ', pad('7'), pad('7', 2, 1, 1, 1, 1), ' ', encodeURIComponent('a b'), [3, 1].toString(), 'k-v-w'.split('-', 2), ' ', Base.of('q') instanceof Base, ' ', (2 ** 10 | 1) >>> 0, (function () { return 'iife' })(), ' ', nest.a.n[k++] * 10 + k, ' ', tz + Object.keys(rc).join(''), tick(), Base.of('abc').size, lb, ['4', '', '2'].filter(Boolean).map(Number).reduce((a, b) => a + b))</script></p>"
+ b"<p><script>class Base { #seen = 0; static count = 0; constructor(t) { this.t = t; Base.count++ } loud() { return this.t } get size() { return this.t.length } static of(t) { return new Note(t) } } class Note extends Base { loud() { return super.loud().toUpperCase() } }\nvar cfg = JSON.parse('{\"day\": [2012, 11, 21]}'); var tags = ''; for (const k in Object.assign({}, cfg, {v: 1})) tags += k; for (const c of 'ok') tags += c.toUpperCase(); function pad(s, w = 4, ...rest) { return s.padStart(w, '0') + rest.length } var nest = {a: {n: [1]}}; nest.a.n[0] += 4; var k = 0; var {tz = 'Z', ...rc} = {...cfg, mode: 1}; var tick = (function () { let t = 0; return () => ++t })(); tick(); var lb = ''; outer: for (const r of [1, 2]) { for (const c of 'ab') { if (c === 'b') continue outer; lb += r + c } } var d = new Date(cfg.day[0], cfg.day[1], cfg.day[2]); document.write(new Note('epoch').loud(), ' ', d.toDateString(), ' ', d.getDay(), ' ', cfg.tz?.name ?? 'UTC', cfg.day?.[3] || '!', ' ', tags, ' ', pad('7'), pad('7', 2, 1, 1, 1, 1), ' ', encodeURIComponent('a b'), [3, 1].toString(), 'k-v-w'.split('-', 2), ' ', Base.of('q') instanceof Base, ' ', (2 ** 10 | 1) >>> 0, (function () { return 'iife' })(), ' ', nest.a.n[k++] * 10 + k, ' ', tz + Object.keys(rc).join(''), tick(), Base.of('abc').size, lb, Base.count, ['4', '', '2'].filter(Boolean).map(Number).reduce((a, b) => a + b), ' ', [...new Set('mississippi')].join(''), new Map([[1, 'x']]).get(1), ' ', (98765.4321).toLocaleString(), ' ', (0.012345).toPrecision(2), ' ', `${[1, 2].map(x => `[${x}]`).join('')}`, 'a-b'.replace('-', m => '+'), ' ', Object.entries({p: 1}).map(([k, v]) => k + v), JSON.stringify({q: [7]}, null, 1).length)</script></p>"
  b'<h3>Notes</h3>'
  b'<h2>Rules</h2><ol><li>BOOT grants routes &amp; identities.<ul><li>held, never ambient</li></ul></li><li>Applications cannot mint them.</li><li>Only the bounded script subset runs.</li></ol>'
  b'<p>Read the <a href="/guide">guide</a>, the <a href=\'/ledger\'>ledger</a> or <a href="https://elsewhere.example/x">elsewhere</a>.<br>Entities: &lt;tag&gt; &#65;&#x42;C</p>'
@@ -48,7 +54,8 @@ PAGE=(b'<!DOCTYPE html><html><head><title>Lab notes</title><style>body{color:red
  b'<blockquote>Quoted: authority is held, never ambient.</blockquote><hr>'
  b'<p><img src="/art.qoi" alt="SexOS mark"></p><!-- a comment that never renders --><p>END OF CONTROLLED HTML PAGE</p></body></html>')
 GUIDE_REQUEST=b'GET /guide HTTP/1.1\r\nHost: probe.sexos.test:46080\r\nConnection: close\r\nAccept: text/html\r\n\r\n'
-GUIDE=b'<html><body><h1>Guide</h1><p>Followed from the field notes on the same BOOT endpoint.</p><pre>\nkey   action\n1-9   follow link\nBksp  back\n</pre><p><a href="/page.html">Back to notes</a></p></body></html>'
+# Larger than a 12 KiB document: the page receive path (style is skipped).
+GUIDE=b'<html><head><style>'+b'.pad{margin:0}'*1100+b'</style></head><body><h1>Guide</h1><p>Followed from the field notes on the same BOOT endpoint.</p><pre>\nkey   action\n1-9   follow link\nBksp  back\n</pre><p><a href="/page.html">Back to notes</a></p></body></html>'
 # The page response is ~1.1 KB: one full 1024-byte TLS record plus a short
 # one. Before F11 this size failed at guest connection close.
 SCOPE='Actual fixed BOOT-controlled HTTPS text/html page through held policy/seed/UTC/DNS/duplex authority, converted by the bounded reader (inline scripts only through the bounded subset) and checked against reader glyph pixels. Public laboratory root only; no general JavaScript, CSS, layout, forms, arbitrary URL or public web trust claim.'
@@ -93,7 +100,7 @@ class HtmlPeer(doc.ControlledHTTPSPeer):
 
 def expected_text(root,page=PAGE):
  with tempfile.TemporaryDirectory()as d:
-  src=Path(d)/'oracle.rs';src.write_text('extern crate alloc;\n#[path='+json.dumps(str(root/'apps/kaleidoscope/src/regex.rs'))+']mod regex;\n#[path='+json.dumps(str(root/'apps/kaleidoscope/src/script.rs'))+']mod script;\n#[path='+json.dumps(str(root/'apps/kaleidoscope/src/html_text.rs'))+']mod html_text;\nuse std::io::{Read,Write};fn main(){let mut i=Vec::new();std::io::stdin().read_to_end(&mut i).unwrap();let mut o=vec![0u8;12288];let c=html_text::convert(&i,&mut o);eprintln!("{} {}",c.links,c.truncated as u8);std::io::stdout().write_all(&o[..c.len]).unwrap();}\n')
+  src=Path(d)/'oracle.rs';src.write_text('extern crate alloc;\n#[path='+json.dumps(str(root/'apps/kaleidoscope/src/regex.rs'))+']mod regex;\n#[path='+json.dumps(str(root/'apps/kaleidoscope/src/fmath.rs'))+']mod fmath;\n#[path='+json.dumps(str(root/'apps/kaleidoscope/src/script.rs'))+']mod script;\n#[path='+json.dumps(str(root/'apps/kaleidoscope/src/html_text.rs'))+']mod html_text;\nuse std::io::{Read,Write};fn main(){let mut i=Vec::new();std::io::stdin().read_to_end(&mut i).unwrap();let mut o=vec![0u8;12288];let c=html_text::convert(&i,&mut o);eprintln!("{} {}",c.links,c.truncated as u8);std::io::stdout().write_all(&o[..c.len]).unwrap();}\n')
   subprocess.run(['rustc','--edition=2021','-O',str(src),'-o',str(Path(d)/'oracle')],check=True,capture_output=True)
   r=subprocess.run([str(Path(d)/'oracle')],input=page,capture_output=True,check=True);links,cut=map(int,r.stderr.split())
   return r.stdout,links,cut
@@ -147,9 +154,10 @@ def main():
   b=len(trace());q.key('w');wait(r'\[shell.browser.input\] code=17 down=1 slot=43 accepted=1',b);wait(r'\[browser.html.intent\] accepted=1 explicit=1 path=/page.html script=0 public_internet=0',b)
   wait(r'\[browser.https.view\] state=Verified controlled_profile=1 public_internet=0',b);doc_event=peer.completed.wait(30)
   if not doc_event:raise TimeoutError('peer close_notify')
-  conv=wait(rf'\[browser.html.converted\] source_bytes={len(PAGE)} text_bytes={len(text)} links={links} truncated={cut} scripts_run=15 scripts_refused=2 ticks=\d+',b);checks['converted']=conv[0]
+  conv=wait(rf'\[browser.html.converted\] source_bytes={len(PAGE)} text_bytes={len(text)} links={links} truncated={cut} scripts_run=17 scripts_refused=3 ticks=\d+',b);checks['converted']=conv[0]
   hw=wait(r'\[browser.stack.high_water\] bytes=(\d+) mapped=65536 painted_at=\d+ untouched=\d+',b);checks['stack_high_water']=int(hw[1])
   if int(hw[1])>60*1024:raise RuntimeError(f'Browser stack high water {hw[1]} leaves under 4 KiB')
+  fl=wait(r'\[browser.script.stack_floor\] floor_offset=10240 hits=(\d+)',b);checks['script_stack_floor_hits']=int(fl[1])
   def reader(name,text,request,path):
    shot=out/(name+'.ppm');result=dict(ok=False,errors=['no frame']);deadline=time.monotonic()+25
    while time.monotonic()<deadline:
@@ -165,6 +173,15 @@ def main():
   if len(peer.dns)!=1 or len(peer.rows)!=1:raise RuntimeError('refused link caused network work')
   checks['refused_link']='index=3 https://elsewhere.example/x refused, no DNS/TLS'
   guide,glinks,gcut=expected_text(root,GUIDE)
+  # Find in page: `/`, query `sum`, Enter selects the match, Esc closes.
+  b=len(trace());q.key('slash');wait(r'\[browser.find.mode\] on=1',b)
+  for k in ('s','u','m'):q.key(k)
+  b=len(trace());q.key('ret');m=wait(r'\[browser.find\] query_bytes=3 start=(\d+) end=(\d+) wrapped=0 found=1 selected=1',b);checks['find']=m[0]
+  if text[int(m[1]):int(m[2])].lower()!=b'sum':raise RuntimeError(f'find selected {text[int(m[1]):int(m[2])]!r}')
+  b=len(trace());q.key('esc');wait(r'\[browser.find.mode\] on=0',b)
+  # `0` is link 10 and Shift+4 link 14; this page lists 3, so both are refused locally.
+  b=len(trace());q.key('0');wait(r'\[browser.html.link.refused\] index=10 listed=0 reason=not_endpoint_path network=0',b)
+  b=len(trace());q.cmd('send-key',{'keys':[{'type':'qcode','data':'shift'},{'type':'qcode','data':'4'}],'hold-time':80});wait(r'\[browser.html.link.refused\] index=14 listed=0 reason=not_endpoint_path network=0',b)
   b=len(trace());q.key('1');wait(r'\[browser.html.link\] index=1 path=/guide same_endpoint=1 script=0 depth=1',b)
   if not peer.served[1].wait(60):raise TimeoutError('followed page not served')
   wait(r'\[browser.https.view\] state=Verified controlled_profile=1 public_internet=0',b)
@@ -172,11 +189,11 @@ def main():
   reader('html-followed',guide,GUIDE_REQUEST,b'/guide');(out/'expected-guide.txt').write_bytes(guide)
   b=len(trace());q.key('backspace');wait(r'\[browser.html.back\] path=/page.html depth=0',b)
   if not peer.served[2].wait(60):raise TimeoutError('back page not served')
-  wait(rf'\[browser.html.converted\] source_bytes={len(PAGE)} text_bytes={len(text)} links={links} truncated={cut} scripts_run=15 scripts_refused=2 ticks=\d+',b)
+  wait(rf'\[browser.html.converted\] source_bytes={len(PAGE)} text_bytes={len(text)} links={links} truncated={cut} scripts_run=17 scripts_refused=3 ticks=\d+',b)
   reader('html-back',text,REQUEST,b'/page.html')
   b=len(trace());q.key('backspace');wait(r'\[browser.html.back\] depth=0 network=0',b);time.sleep(1)
   if len(peer.rows)!=3:raise RuntimeError('back at the first page caused network work')
-  assert b'Script says 42' in text and b'SEXOS ok' in text and b'3 2 1 sum 20100 sq 144' in text and b'deep 7 5040' in text and b'squares 1 4 9 16 25 36 last 36' in text and b'2 NEVER AMBIENT at 3 43' in text and b'odd 1+3+5+7+9 = 25' in text and b'{"name":"Quil","saves":3,"kind":"editor"} keys 3' in text and b'number 20.00 true undefined' in text and b'LINEN... QUIL.... SPINDLE. 23 6 four 1 a+b' in text and b'[input: Search notes] [x] exact [button: Find]' in text and b'9 9 hex ff true truefalse 5' in text and b'code 83 Sex 8' in text and b'Sex 2 0/skip/2 3 undefined' in text and b'3 49 true 7:linenms' in text and b'==held== not ~~ambient~~' in text and b'EPOCH Fri Dec 21 2012 5 UTC! dayvOK 00070074 a%20b3,1k,v true 1025iife 51 Zdaymode231a2a6' in text and b'while' not in text and b'color:red' not in text and text.startswith(b'Title: Lab notes'),'head/script/style handling differs'
+  assert b'Script says 42' in text and b'SEXOS ok' in text and b'3 2 1 sum 20100 sq 144' in text and b'deep 7 1307674368000' in text and b'big 79800 40 521 1232 27 82' in text and b'promise first 1\\dx-yundefined then 3 async 1+2' in text and b'zzdeep' not in text and b'squares 1 4 9 16 25 36 last 36' in text and b'2 NEVER AMBIENT at 3 43' in text and b'odd 1+3+5+7+9 = 25' in text and b'{"name":"Quil","saves":3,"kind":"editor"} keys 3' in text and b'number 20.00 true undefined' in text and b'LINEN... QUIL.... SPINDLE. 23 6 four 1 a+b' in text and b'[input: Search notes] [x] exact [button: Find]' in text and b'9 9 hex ff true truefalse 5' in text and b'code 83 Sex 8' in text and b'Sex 2 0/skip/2 3 undefined' in text and b'3 49 true 7:linenms' in text and b'==held== not ~~ambient~~' in text and b'EPOCH Fri Dec 21 2012 5 UTC! dayvOK 00070074 a%20b3,1k,v true 1025iife 51 Zdaymode231a2a36 mispx 98,765.432 0.012 [1][2]a+b p118' in text and b'i. roman one\nii. roman two' in text and b'wide  gap\n\nafter break' in text and b'[video: Clip]' in text and b'Ports\nname  | port\n------+-----\ndns   | 53\nhttps | 443' in text and b'no player' not in text and b'while' not in text and b'color:red' not in text and text.startswith(b'Title: Lab notes'),'head/script/style handling differs'
  except Exception as exc:failure=repr(exc)
  finally:
   peer.close()

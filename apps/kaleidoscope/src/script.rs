@@ -26,6 +26,10 @@
 //! regular expressions (`/a(b+)/gi`, `.test`, and `match search replace
 //! replaceAll split` with `$1`/`$&` or a callback; see `regex.rs`),
 //! `class A extends B { constructor() { super(...) } m() { super.m() } static s() {} }`,
+//! `Set`/`Map` (add/set/get/has/delete/clear/size/forEach/keys/values/entries, spread,
+//! `for...of`), assignment as an expression (`a = b = 0`, `x => t += x`),
+//! `re.exec` with `lastIndex`, `matchAll`, `toPrecision`, `toLocaleString`, `localeCompare`,
+//! `Number.MAX_SAFE_INTEGER` etc., `hasOwnProperty`/`Object.hasOwn`, `Object.freeze`,
 //! `get`/`set` accessors in classes and object literals (not listed by `Object.keys`),
 //! `new`, `instanceof`,
 //! `findLast findLastIndex flatMap lastIndexOf splice unshift toString`, `Array.of`,
@@ -45,36 +49,61 @@
 //! script writes nothing. Written text is inserted as text, never markup.
 use alloc::vec::Vec;
 use crate::regex::{Regex, CAPTURES};
+use crate::fmath;
 use core::fmt::Write;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
-pub const MAX_SOURCE: usize = 4096;
-pub const MAX_OUTPUT: usize = 1024;
-const ARENA: usize = 4096;
+pub const MAX_SOURCE: usize = 16384;
+pub const MAX_OUTPUT: usize = 4096;
+const ARENA: usize = 12288;
 /// Contiguous heap a script needs before it starts (buffers plus slack).
-const HEADROOM: usize = 20 * 1024;
+const HEADROOM: usize = 40 * 1024;
 /// Statements executed per script, loop bodies included.
-const STEPS: u32 = 10_000;
+const STEPS: u32 = 50_000;
 // Arena and output live on the heap (fallibly): the Browser stack is tight.
-const VARS: usize = 32;
-const FUNCS: usize = 16;
+const VARS: usize = 48;
+const FUNCS: usize = 32;
 /// Function values that escaped their creating call, and the variable
 /// sets (environments) they carry; `Value::Func(FUNCS + k)` is closure k.
-const CLOSURES: usize = 32;
-const ENVS: usize = 8;
+const CLOSURES: usize = 64;
+const ENVS: usize = 16;
 /// `String`, `Number` and `Boolean` used as function values (`xs.map(Number)`).
 const BUILTIN_FUNCS: u8 = 250;
+/// `f.bind(...)` results: `Value::Func(BOUND + k)` (after functions and closures).
+const BOUND: u8 = 100;
+const BOUNDS: usize = 64;
+/// A Promise executor's `resolve`/`reject` functions: `Value::Func(RESOLVERS + k)`.
+const RESOLVERS: u8 = 200;
 /// Array elements (all arrays) and array count; arrays are shared by reference.
-const ELEMS: usize = 256;
-const ARRAYS: usize = 32;
+const ELEMS: usize = 512;
+const ARRAYS: usize = 128;
 /// Objects and their properties (name in the arena, value), by reference.
-const OBJECTS: usize = 16;
-const PROPS: usize = 128;
+const OBJECTS: usize = 64;
+const PROPS: usize = 256;
 const PARAMS: usize = 6;
 const NAME: usize = 16;
 // Nesting budget (expressions, statements, calls). Measured natively at 32
 // with fact(7): the Browser stack stays below its 46.7 KiB construction peak
 // (feature ledger F30).
-const MAX_DEPTH: u8 = 32;
+const MAX_DEPTH: u8 = 64;
+/// Lowest stack address a script may reach (0: no floor). The Browser sets
+/// it from its mapped stack, so deep nesting is refused (`Limit`) before the
+/// stack runs out, whatever the frame sizes; host tests run without one.
+static STACK_FLOOR: AtomicUsize = AtomicUsize::new(0);
+static FLOOR_HITS: AtomicUsize = AtomicUsize::new(0);
+pub fn set_stack_floor(addr: usize) { STACK_FLOOR.store(addr, Ordering::Relaxed); }
+/// Scripts refused at the stack floor so far.
+pub fn floor_hits() -> usize { FLOOR_HITS.load(Ordering::Relaxed) }
+#[inline(always)]
+fn stack_low() -> bool {
+    let floor = STACK_FLOOR.load(Ordering::Relaxed);
+    if floor == 0 { return false; }
+    let marker = 0u8;
+    let sp = core::hint::black_box(&marker) as *const u8 as usize;
+    if sp >= floor { return false; }
+    FLOOR_HITS.fetch_add(1, Ordering::Relaxed);
+    true
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error { Unsupported, Syntax, Limit, Thrown }
@@ -82,6 +111,14 @@ pub enum Error { Unsupported, Syntax, Limit, Thrown }
 #[derive(Clone, Copy)]
 enum Value { Num(f64), Str(u16, u16), Bool(bool), Undef, Null, Arr(u8), Obj(u8), Func(u8), Re(u8) }
 
+/// What a settled promise does next: call `fulfilled`/`rejected` (absent:
+/// pass the state on) and settle `child` with the outcome. `finally`
+/// handlers see no value and pass the original outcome on; `slot` feeds a
+/// `Promise.all` (gather, index).
+#[derive(Clone, Copy)]
+struct Reaction { fulfilled: Option<u8>, rejected: Option<u8>, child: Option<u8>, finally: bool, slot: Option<(u8, u16)> }
+/// `JSON.stringify` options: the indent unit and a replacer key list.
+struct Layout { indent: Vec<u8>, keys: Option<Vec<Vec<u8>>> }
 /// An assignment target's last key: `.name` or `[value]`.
 #[derive(Clone, Copy)]
 enum Key<'a> { Name(&'a [u8]), Value(Value) }
@@ -96,16 +133,16 @@ struct Machine<'a> {
     /// A newline was skipped before the current token (statement end).
     nl: bool,
     arena: Vec<u8>,
-    vars: [([u8; NAME], u8, Value); VARS],
+    vars: Vec<([u8; NAME], u8, Value)>,
     /// Per variable: 0 `var`/parameter, 1 `let`, 2 `const` (block scoped).
-    kinds: [u8; VARS],
+    kinds: Vec<u8>,
     /// First variable slot of the innermost open block.
     block_base: usize,
     nvars: usize,
     out: Vec<u8>,
     depth: u8,
     steps: u32,
-    funcs: [([u8; NAME], u8, Pos<'a>); FUNCS],
+    funcs: Vec<([u8; NAME], u8, Pos<'a>)>,
     nfuncs: usize,
     /// Checking a function body at its declaration: names may be parameters.
     skim: bool,
@@ -127,15 +164,37 @@ struct Machine<'a> {
     thrown: Option<Value>,
     /// Compiled regular expression literals, by source offset.
     regexes: Vec<(usize, &'a [u8], &'a [u8], Regex)>,
+    /// `lastIndex` of each regular expression (for `exec` with `g`).
+    re_last: Vec<usize>,
+    /// Objects passed to `Object.freeze` (assignments to them are ignored).
+    frozen: Vec<u8>,
     /// `class` declarations: name, constructor, methods, parent class, static methods.
-    classes: Vec<(&'a [u8], Option<u8>, Vec<(&'a [u8], u8)>, Option<u8>, Vec<(&'a [u8], u8)>, Vec<(&'a [u8], u8, bool)>)>,
+    classes: Vec<(&'a [u8], Option<u8>, Vec<(&'a [u8], u8)>, Option<u8>, Vec<(&'a [u8], u8)>, Vec<(&'a [u8], u8, bool)>, Vec<(&'a [u8], Option<Pos<'a>>)>, u8)>,
+    /// `Set`/`Map` objects: (object, keys array, values array; a Set's
+    /// values array is its keys array).
+    collections: Vec<(u8, u8, u8)>,
+    /// Promises: (object, state 0 pending / 1 fulfilled / 2 rejected, value,
+    /// reactions waiting for it).
+    promises: Vec<(u8, u8, Value, Vec<Reaction>)>,
+    /// Settled reactions to run, in order, after the script (microtasks).
+    jobs: Vec<(Reaction, u8, Value)>,
+    /// `resolve`/`reject` handed to executors: (promise, rejects).
+    resolvers: Vec<(u8, bool)>,
+    /// `Promise.all`: (result promise, results array, items still pending).
+    gathers: Vec<(u8, u8, usize)>,
     /// Accessor properties: (object, name, getter, setter).
     accessors: Vec<(u8, Vec<u8>, Option<u8>, Option<u8>)>,
     /// What made each object, for `instanceof`: 0 a literal, 1+k class k,
-    /// 16+f function `f` as a constructor, 64 an Error.
-    made_by: [u8; OBJECTS],
+    /// 256+f function `f` as a constructor, 64 an Error, 65 a Set, 66 a Map.
+    made_by: Vec<u16>,
     /// The function running now (for `super`).
     func_now: Option<u8>,
+    /// `F.prototype` objects: (function, object).
+    protos: Vec<(u8, u8)>,
+    /// `bind` results: (function, this, leading arguments).
+    bounds: Vec<(u8, Value, Vec<Value>)>,
+    /// The running call's arguments (for `arguments`); valid while it runs.
+    args_now: *const [Value],
     /// First variable slot of the running call (its parameters and locals).
     frame_base: usize,
     /// Closures: (function, environment); environments: captured variables.
@@ -145,11 +204,11 @@ struct Machine<'a> {
     loops: u8,
     elems: Vec<Value>,
     /// (start, len, cap) of each array inside `elems`.
-    arrays: [(u16, u16, u16); ARRAYS],
+    arrays: Vec<(u16, u16, u16)>,
     narrays: usize,
     props: Vec<(u16, u16, Value)>,
     /// (start, len, cap) of each object inside `props`.
-    objects: [(u16, u16, u16); OBJECTS],
+    objects: Vec<(u16, u16, u16)>,
     nobjects: usize,
 }
 
@@ -211,7 +270,7 @@ impl<'a> Machine<'a> {
             }
         } else if c == b'`' {
             let start = self.at + 1;
-            let end = s[start..].iter().position(|&b| b == b'`').ok_or(Error::Syntax)? + start;
+            let end = template_end(s, start).ok_or(Error::Syntax)?;
             self.at = end + 1;
             Tok::Template(&s[start..end])
         } else if c == b'"' || c == b'\'' {
@@ -221,8 +280,10 @@ impl<'a> Machine<'a> {
             if i >= s.len() { return Err(Error::Syntax); }
             self.at = i + 1;
             Tok::Str(&s[start..i])
-        } else if ident_start(c) {
+        } else if ident_start(c) || (c == b'#' && s.get(self.at + 1).is_some_and(|b| ident_start(*b))) {
+            // `#name` (a private class member) is an ordinary name here.
             let start = self.at;
+            if c == b'#' { self.at += 1; }
             while self.at < s.len() && (ident_start(s[self.at]) || s[self.at].is_ascii_digit()) { self.at += 1; }
             Tok::Ident(&s[start..self.at])
         } else if s[self.at..].starts_with(b"?.") && !s.get(self.at + 2).is_some_and(u8::is_ascii_digit) {
@@ -314,6 +375,45 @@ impl<'a> Machine<'a> {
         self.restore(resume);
         self.store(&text)
     }
+    /// `tag\`...\``: tag(strings, ...values) (kept out of `chain`).
+    #[inline(never)]
+    fn tagged_template(&mut self, f: u8, raw: &'a [u8]) -> Result<Value, Error> {
+        let (pieces, values) = self.template_parts(raw, true)?;
+        if !self.live { return Ok(Value::Undef); }
+        let mut strings = Vec::new();
+        for piece in &pieces { strings.push(self.store(piece)?); }
+        let mut args = alloc::vec![self.new_array(&strings)?];
+        args.extend_from_slice(&values);
+        if args.len() > PARAMS { return Err(Error::Limit); }
+        self.invoke(f, &args)
+    }
+    /// A template's text pieces (escapes processed when `cooked`) and its
+    /// substitution values, in order.
+    fn template_parts(&mut self, raw: &'a [u8], cooked: bool) -> Result<(Vec<Vec<u8>>, Vec<Value>), Error> {
+        let base = raw.as_ptr() as usize - self.src.as_ptr() as usize;
+        let resume = self.pos();
+        let (mut pieces, mut values) = (alloc::vec![Vec::new()], Vec::new());
+        let mut i = 0;
+        while i < raw.len() {
+            if raw[i..].starts_with(b"${") {
+                self.at = base + i + 2;
+                self.next()?;
+                values.push(self.expr()?);
+                if self.tok != Tok::Punct(b'}') { return Err(Error::Syntax); }
+                i = self.at - base;
+                pieces.push(Vec::new());
+            } else {
+                let piece = pieces.last_mut().ok_or(Error::Syntax)?;
+                if raw[i] == b'\\' && i + 1 < raw.len() {
+                    if cooked { piece.push(match raw[i + 1] { b'n' => b'\n', b't' => b'\t', other => other }); } else { piece.extend_from_slice(&raw[i..i + 2]); }
+                    i += 2;
+                } else { piece.push(raw[i]); i += 1; }
+            }
+            if pieces.iter().map(Vec::len).sum::<usize>() > ARENA { return Err(Error::Limit); }
+        }
+        self.restore(resume);
+        Ok((pieces, values))
+    }
     fn text(&self, v: Value) -> &[u8] {
         match v { Value::Str(s, n) => &self.arena[s as usize..s as usize + n as usize], _ => &[] }
     }
@@ -369,8 +469,17 @@ impl<'a> Machine<'a> {
     /// Full expression, including `?:`. Each nesting level (parentheses,
     /// unary operators, branches) costs one unit of the depth budget.
     fn expr(&mut self) -> Result<Value, Error> {
-        if self.depth >= MAX_DEPTH { return Err(Error::Limit); }
+        if self.too_deep() { return Err(Error::Limit); }
         self.depth += 1;
+        // An assignment is an expression too (`a = b = 0`, `x => t += x`);
+        // its value is the value assigned. (`n++` is handled in `atom`.)
+        if let Tok::Ident(_) = self.tok {
+            let at = self.pos();
+            self.next()?;
+            let assigns = self.assigns_ahead_with(false)?;
+            self.restore(at);
+            if assigns { let v = self.assignment(self.live); self.depth -= 1; return v; }
+        }
         let v = self.binary(1);
         self.depth -= 1;
         v
@@ -474,7 +583,7 @@ impl<'a> Machine<'a> {
     }
     fn unary(&mut self) -> Result<Value, Error> {
         if self.tok == Tok::Ident(b"typeof") {
-            if self.depth >= MAX_DEPTH { return Err(Error::Limit); }
+            if self.too_deep() { return Err(Error::Limit); }
             self.next()?;
             self.depth += 1;
             // An undeclared name is "undefined" here, as in JavaScript.
@@ -492,14 +601,14 @@ impl<'a> Machine<'a> {
         }
         if self.tok == Tok::Ident(b"void") {
             self.next()?;
-            if self.depth >= MAX_DEPTH { return Err(Error::Limit); }
+            if self.too_deep() { return Err(Error::Limit); }
             self.depth += 1;
             let v = self.unary();
             self.depth -= 1;
             return v.map(|_| Value::Undef);
         }
         if let Tok::Punct(op @ (b'-' | b'+' | b'!' | b'~')) = self.tok {
-            if self.depth >= MAX_DEPTH { return Err(Error::Limit); }
+            if self.too_deep() { return Err(Error::Limit); }
             self.next()?;
             self.depth += 1;
             let v = self.unary()?;
@@ -535,7 +644,19 @@ impl<'a> Machine<'a> {
             if opt {
                 self.next()?;
                 if matches!(v, Value::Undef | Value::Null) { self.live = false; }
-                if self.tok == Tok::Punct(b'(') { return Err(Error::Unsupported); }
+                if self.tok == Tok::Punct(b'(') {
+                    // `f?.(args)`: called unless f is null/undefined.
+                    let mut args = [Value::Undef; PARAMS];
+                    let n = self.argument_list(&mut args)?;
+                    v = match v { Value::Func(f) if self.live => self.invoke(f, &args[..n])?, _ if !self.live => Value::Undef, _ => return Err(Error::Unsupported) };
+                    continue;
+                }
+            }
+            // A tagged template: `tag\`a${x}b\`` calls tag(strings, ...values).
+            if let (Value::Func(f), Tok::Template(raw)) = (v, self.tok) {
+                self.next()?;
+                v = self.tagged_template(f, raw)?;
+                continue;
             }
             if self.tok == Tok::Punct(b'[') {
                 self.next()?;
@@ -558,11 +679,31 @@ impl<'a> Machine<'a> {
                 v = Value::Undef;
                 continue;
             }
+            if let Value::Func(f) = v { v = self.function_member(f, name)?; continue; }
             if let (Value::Obj(id), Value::Num(ms)) = (v, if let Value::Obj(id) = v { self.get_prop(id, b"__date") } else { Value::Undef }) {
                 if self.find_prop(id, name).is_none() {
                     let _ = id;
                     self.arguments()?;
                     v = self.date_method(ms, name)?;
+                    continue;
+                }
+            }
+            if let (Value::Obj(id), true) = (v, self.live) {
+                if matches!(self.made_by[id as usize], 65 | 66) && self.find_prop(id, name).is_none() {
+                    v = self.collection_member(id, name)?;
+                    continue;
+                }
+                if self.made_by[id as usize] == 67 && matches!(name, b"then" | b"catch" | b"finally") {
+                    v = self.promise_then(id, name)?;
+                    continue;
+                }
+            }
+            if let (Value::Obj(id), b"hasOwnProperty") = (v, name) {
+                if self.find_prop(id, name).is_none() {
+                    let (args, _) = self.arguments()?;
+                    let k = self.to_text(args[0])?;
+                    let key = self.text(k).to_vec();
+                    v = Value::Bool(self.find_prop(id, &key).is_some() || self.accessor(id, &key).is_some());
                     continue;
                 }
             }
@@ -581,8 +722,9 @@ impl<'a> Machine<'a> {
     }
     /// `.name` / `.name(...)` on numbers, regular expressions, arrays and
     /// strings. Kept out of `chain` (whose frame is on every call path).
+    /// `toString(radix)`, `toPrecision`, `toLocaleString`, `toFixed` on numbers.
     #[inline(never)]
-    fn member(&mut self, mut v: Value, name: &'a [u8]) -> Result<Value, Error> {
+    fn member_number(&mut self, mut v: Value, name: &'a [u8]) -> Result<Option<Value>, Error> {
         if let (Value::Num(x), b"toString") = (v, name) {
             let (args, n) = self.arguments()?;
             let radix = if n == 0 { 10.0 } else { self.to_number(args[0]) };
@@ -598,7 +740,15 @@ impl<'a> Machine<'a> {
                 digits.reverse();
                 self.store(&digits)?
             };
-            return Ok(v);
+            return Ok(Some(v));
+        }
+        if let (Value::Num(x), b"toPrecision" | b"toLocaleString") = (v, name) {
+            let (args, n) = self.arguments()?;
+            return if name == b"toLocaleString" { self.locale_number(x) } else if n == 0 || matches!(args[0], Value::Undef) { self.number_text(x) } else {
+                let p = self.to_number(args[0]);
+                if !(1.0..=21.0).contains(&p) || p != floor(p) { return Err(Error::Unsupported); }
+                self.precision(x, p as usize)
+            }.map(Some);
         }
         if let (Value::Num(x), b"toFixed") = (v, name) {
             self.expect(b'(')?;
@@ -607,27 +757,51 @@ impl<'a> Machine<'a> {
             let d = self.to_number(d);
             if !(0.0..=20.0).contains(&d) || d != floor(d) { return Err(Error::Unsupported); }
             v = self.fixed(x, d as usize)?;
-            return Ok(v);
+            return Ok(Some(v));
         }
+        let _ = &mut v;
+        Ok(None)
+    }
+    /// `test`, `exec`, `source`, `flags`, `lastIndex` on regular expressions.
+    #[inline(never)]
+    fn member_regex(&mut self, mut v: Value, name: &'a [u8]) -> Result<Option<Value>, Error> {
         if let Value::Re(k) = v {
             v = match name {
                 b"test" => { let (args, _) = self.arguments()?; let t = self.to_text(args[0])?; let text = self.text(t).to_vec(); Value::Bool(self.re_find(k, &text, 0)?.is_some()) }
                 b"source" => { let p = self.regexes[k as usize].1; self.store(p)? }
                 b"flags" => { let f = self.regexes[k as usize].2; self.store(f)? }
+                b"lastIndex" => Value::Num(self.re_last[k as usize] as f64),
+                b"exec" => {
+                    // With `g`, starts at `lastIndex` and moves it past the match
+                    // (back to 0 when nothing more matches).
+                    let (args, _) = self.arguments()?;
+                    if !self.live { return Ok(Some(Value::Undef)); }
+                    let t = self.to_text(args[0])?;
+                    let text = self.text(t).to_vec();
+                    let global = self.regexes[k as usize].2.contains(&b'g');
+                    let from = if global { self.re_last[k as usize] } else { 0 };
+                    let found = if from > text.len() { None } else { self.re_find(k, &text, from)? };
+                    match found {
+                        None => { self.re_last[k as usize] = 0; Value::Null }
+                        Some(c) => {
+                            if global { self.re_last[k as usize] = c[0].map_or(0, |(_, b)| b); }
+                            let groups = self.regexes[k as usize].3.groups;
+                            let mut items = Vec::new();
+                            for g in 0..=groups { items.push(match c[g] { Some((a, b)) => self.store(&text[a..b])?, None => Value::Undef }); }
+                            self.new_array(&items)?
+                        }
+                    }
+                }
                 _ => return Err(Error::Unsupported),
             };
-            return Ok(v);
+            return Ok(Some(v));
         }
-        if let (Value::Str(..), b"match" | b"search" | b"replace" | b"replaceAll" | b"split") = (v, name) {
-            // String methods with a regular expression argument.
-            let at = self.pos();
-            let (args, n) = self.arguments()?;
-            if let Some(Value::Re(k)) = args.first().copied().filter(|_| n >= 1) {
-                v = self.string_regex(name, v, k, args.get(1).copied().unwrap_or(Value::Undef))?;
-                return Ok(v);
-            }
-            self.restore(at);
-        }
+        let _ = &mut v;
+        Ok(None)
+    }
+    /// Array members.
+    #[inline(never)]
+    fn member_array(&mut self, mut v: Value, name: &'a [u8]) -> Result<Option<Value>, Error> {
         if let Value::Arr(id) = v {
             let (_, len, _) = self.arrays[id as usize];
             v = match name {
@@ -646,24 +820,45 @@ impl<'a> Machine<'a> {
                     let sep = match sep { Some(x) => { let t = self.to_text(x)?; self.text(t).to_vec() } None => b",".to_vec() };
                     self.join(id, &sep)?
                 }
-                b"forEach" | b"map" | b"filter" | b"find" | b"findIndex" | b"findLast" | b"findLastIndex" | b"flatMap" | b"some" | b"every" | b"reduce" => {
+                b"forEach" | b"map" | b"filter" | b"find" | b"findIndex" | b"findLast" | b"findLastIndex" | b"flatMap" | b"some" | b"every" | b"reduce" | b"reduceRight" => {
                     let (args, n) = self.arguments()?;
                     self.array_callback(id, name, &args[..n])?
                 }
                 b"indexOf" | b"lastIndexOf" | b"includes" | b"slice" | b"concat" | b"reverse" | b"sort" | b"pop" | b"shift" | b"fill" | b"at" | b"flat"
-                | b"toString" | b"splice" | b"unshift" => {
+                | b"toString" | b"splice" | b"unshift" | b"keys" | b"values" | b"entries"
+                | b"toSorted" | b"toReversed" | b"with" | b"toSpliced" => {
                     let (args, n) = self.arguments()?;
                     self.array_method(id, name, &args[..n])?
                 }
                 _ => return Err(Error::Unsupported),
             };
-            return Ok(v);
+            return Ok(Some(v));
+        }
+        let _ = &mut v;
+        Ok(None)
+    }
+    /// `.name` / `.name(...)` on numbers, regular expressions, arrays and
+    /// strings. Kept out of `chain` (whose frame is on every call path).
+    #[inline(never)]
+    fn member(&mut self, mut v: Value, name: &'a [u8]) -> Result<Value, Error> {
+        // Per-type members live in their own frames (callbacks recurse through here).
+        let done = match v { Value::Num(_) => self.member_number(v, name)?, Value::Re(_) => self.member_regex(v, name)?, Value::Arr(_) => self.member_array(v, name)?, _ => None };
+        if let Some(r) = done { return Ok(r); }
+        if let (Value::Str(..), b"match" | b"matchAll" | b"search" | b"replace" | b"replaceAll" | b"split") = (v, name) {
+            // String methods with a regular expression argument.
+            let at = self.pos();
+            let (args, n) = self.arguments()?;
+            if let Some(Value::Re(k)) = args.first().copied().filter(|_| n >= 1) {
+                v = self.string_regex(name, v, k, args.get(1).copied().unwrap_or(Value::Undef))?;
+                return Ok(v);
+            }
+            self.restore(at);
         }
         let s = self.to_text(v)?;
         v = match name {
             b"length" => Value::Num(self.text(s).len() as f64),
             b"trim" | b"indexOf" | b"charAt" | b"slice" | b"substring" | b"split" | b"replace" | b"replaceAll"
-            | b"startsWith" | b"endsWith" | b"includes" | b"repeat" | b"padStart" | b"padEnd" | b"lastIndexOf" | b"charCodeAt" | b"codePointAt" | b"at" | b"trimStart" | b"trimEnd" => {
+            | b"startsWith" | b"endsWith" | b"includes" | b"repeat" | b"padStart" | b"padEnd" | b"lastIndexOf" | b"charCodeAt" | b"codePointAt" | b"at" | b"trimStart" | b"trimEnd" | b"localeCompare" | b"substr" => {
                 self.expect(b'(')?;
                 let mut args = [Value::Undef; 2];
                 let mut n = 0;
@@ -714,6 +909,17 @@ impl<'a> Machine<'a> {
         let piece = |m: &mut Self, span: Option<(usize, usize)>| -> Result<Value, Error> { match span { Some((a, b)) => m.store(&text[a..b]), None => Ok(Value::Undef) } };
         Ok(match name {
             b"search" => Value::Num(found.first().and_then(|c| c[0]).map_or(-1.0, |(a, _)| a as f64)),
+            b"matchAll" => {
+                // Every match with its groups (an array, not an iterator).
+                if !global { return Err(Error::Unsupported); }
+                let mut all: Vec<Value> = Vec::new();
+                for c in &found {
+                    let mut items: Vec<Value> = Vec::new();
+                    for g in 0..=groups { items.push(piece(self, c[g])?); }
+                    all.push(self.new_array(&items)?);
+                }
+                self.new_array(&all)?
+            }
             b"match" => {
                 if found.is_empty() { return Ok(Value::Null); }
                 let mut items: Vec<Value> = Vec::new();
@@ -804,6 +1010,20 @@ impl<'a> Machine<'a> {
                 let b = t.iter().rposition(|b| !b.is_ascii_whitespace()).map_or(a, |p| p + 1);
                 Value::Str((start + a) as u16, (b - a) as u16)
             }
+            b"substr" => {
+                // Start (negative: from the end) and length, in bytes.
+                let a = pos(self, args[0], 0, true);
+                let l = pos(self, args[1], n - a, false).min(n - a);
+                Value::Str((start + a) as u16, l as u16)
+            }
+            b"localeCompare" => {
+                // ASCII letters case-insensitively first, then lower before
+                // upper (close to the default collation for plain text).
+                let other = self.to_text(args[0])?;
+                let key = |t: &[u8]| t.iter().map(|b| (b.to_ascii_lowercase(), b.is_ascii_uppercase())).collect::<Vec<_>>();
+                let (a, b) = (key(&self.arena[start..start + n]), key(self.text(other)));
+                Value::Num(match a.cmp(&b) { core::cmp::Ordering::Less => -1.0, core::cmp::Ordering::Equal => 0.0, _ => 1.0 })
+            }
             b"startsWith" | b"endsWith" | b"includes" | b"lastIndexOf" => {
                 let needle = self.to_text(args[0])?;
                 let (h, k) = (self.text(s), self.text(needle));
@@ -815,14 +1035,22 @@ impl<'a> Machine<'a> {
                 }
             }
             b"replace" | b"replaceAll" => {
-                let (from, to) = (self.to_text(args[0])?, self.to_text(args[1])?);
+                // The replacement is text, or a function called with
+                // (match, offset, whole string) for each match.
+                let call = if let Value::Func(g) = args[1] { Some(g) } else { None };
+                let from = self.to_text(args[0])?;
+                let to = if call.is_some() { self.store(b"")? } else { self.to_text(args[1])? };
                 let (h, f, t) = (self.text(s).to_vec(), self.text(from).to_vec(), self.text(to).to_vec());
                 let mut out: Vec<u8> = Vec::new();
                 let mut i = 0;
                 let mut done = false;
                 while i < h.len() {
                     if !f.is_empty() && !done && h[i..].starts_with(&f) {
-                        out.extend_from_slice(&t);
+                        match call {
+                            Some(g) if self.live => { let r = self.invoke(g, &[from, Value::Num(i as f64), s])?; let r = self.to_text(r)?; out.extend_from_slice(self.text(r)); }
+                            Some(_) => {}
+                            None => out.extend_from_slice(&t),
+                        }
                         i += f.len();
                         done = name == b"replace";
                     } else { out.push(h[i]); i += 1; }
@@ -876,9 +1104,9 @@ impl<'a> Machine<'a> {
             _ => {
                 // split(sep): a new array of pieces (no separator: one piece).
                 let sep = match args[0] { Value::Undef => None, v => { let t = self.to_text(v)?; Some(t) } };
-                let mut items = [Value::Undef; 16];
+                let mut items: Vec<Value> = Vec::new();
                 let mut count = 0;
-                let mut put = |v: Value, c: &mut usize| -> Result<(), Error> { if *c == 16 { return Err(Error::Limit); } items[*c] = v; *c += 1; Ok(()) };
+                let mut put = |v: Value, c: &mut usize| -> Result<(), Error> { if *c == ELEMS { return Err(Error::Limit); } items.push(v); *c += 1; Ok(()) };
                 match sep {
                     None => put(s, &mut count)?,
                     Some(Value::Str(_, 0)) => for i in 0..n { put(Value::Str((start + i) as u16, 1), &mut count)?; },
@@ -909,6 +1137,7 @@ impl<'a> Machine<'a> {
             b"String" => self.to_text(v)?,
             b"isNaN" => Value::Bool(self.to_number(v).is_nan()),
             b"Boolean" => Value::Bool(self.truthy(v)),
+            b"isFinite" => Value::Bool(self.to_number(v).is_finite()),
             b"encodeURIComponent" => {
                 // UTF-8 bytes as %XX except JavaScript's unreserved marks.
                 let t = self.to_text(v)?;
@@ -983,7 +1212,7 @@ impl<'a> Machine<'a> {
     fn add_accessor(&mut self, id: u8, key: &[u8], f: u8, setter: bool) -> Result<(), Error> {
         let k = match self.accessors.iter().position(|a| a.0 == id && a.1 == key) {
             Some(k) => k,
-            None => { if self.accessors.len() == 32 { return Err(Error::Limit); } self.accessors.push((id, key.to_vec(), None, None)); self.accessors.len() - 1 }
+            None => { if self.accessors.len() == 64 { return Err(Error::Limit); } self.accessors.push((id, key.to_vec(), None, None)); self.accessors.len() - 1 }
         };
         if setter { self.accessors[k].3 = Some(f); } else { self.accessors[k].2 = Some(f); }
         Ok(())
@@ -1044,18 +1273,31 @@ impl<'a> Machine<'a> {
                 return Ok(Value::Obj(id));
             }
             b"Date" => return self.date_new(args),
+            b"Promise" => {
+                // The executor runs now with resolve/reject; a throw rejects.
+                let p = self.promise_new()?;
+                let Some(&Value::Func(exec)) = args.first() else { return Err(Error::Unsupported) };
+                let (res, rej) = (self.resolver(p, false)?, self.resolver(p, true)?);
+                self.call_settling(exec, &[res, rej], |m, outcome| match outcome { Ok(_) => Ok(()), Err(e) => m.settle(p, 2, e) })?;
+                return Ok(Value::Obj(p));
+            }
+            b"Set" | b"Map" => return self.collection_new(class == b"Map", args.first().copied()),
             _ => {}
         }
         let id = self.new_object()?;
         if let Some(k) = self.classes.iter().position(|c| c.0 == class) {
-            self.made_by[id as usize] = 1 + k as u8;
+            self.made_by[id as usize] = 1 + k as u16;
             self.class_methods(k, id)?;
             let r = self.class_init(k, Value::Obj(id), args)?;
             return Ok(if matches!(r, Value::Obj(_)) { r } else { Value::Obj(id) });
         }
         let f = self.funcs[..self.nfuncs].iter().position(|(n, l, _)| *l != 0 && &n[..*l as usize] == class)
             .or_else(|| match self.lookup(class) { Some(Value::Func(i)) => Some(i as usize), _ => None }).ok_or(Error::Unsupported)?;
-        self.made_by[id as usize] = 16 + self.real_func(f as u8);
+        let real = self.real_func(f as u8);
+        self.made_by[id as usize] = 256 + real as u16;
+        // A snapshot of F.prototype at construction (later additions do not
+        // reach existing instances).
+        if let Some(proto) = self.protos.iter().find(|p| p.0 == real).map(|p| p.1) { self.copy_props(proto, id)?; }
         self.this_next = Some(Value::Obj(id));
         let r = self.invoke(f as u8, args)?;
         Ok(if matches!(r, Value::Obj(_)) { r } else { Value::Obj(id) })
@@ -1079,13 +1321,16 @@ impl<'a> Machine<'a> {
             b"Object" => matches!(v, Value::Obj(_) | Value::Arr(_) | Value::Func(_)),
             b"Function" => matches!(v, Value::Func(_)),
             b"Error" => made == 64,
+            b"Set" => made == 65,
+            b"Promise" => made == 67,
+            b"Map" => made == 66,
             b"TypeError" | b"RangeError" | b"SyntaxError" => made == 64 && { let Value::Obj(id) = v else { return Ok(false) }; let n = self.get_prop(id, b"name"); matches!(n, Value::Str(..)) && self.text(n) == c },
             _ => if let Some(k) = self.classes.iter().position(|x| x.0 == c) {
-                let mut at = (1..=8).contains(&made).then(|| made as usize - 1);
+                let mut at = (1..=16).contains(&made).then(|| made as usize - 1);
                 while let Some(m) = at { if m == k { return Ok(true); } at = self.classes[m].3.map(|p| p as usize); }
                 false
             } else if let Some(f) = self.funcs[..self.nfuncs].iter().position(|(n, l, _)| *l != 0 && &n[..*l as usize] == c).or_else(|| match self.lookup(c) { Some(Value::Func(i)) => Some(i as usize), _ => None }) {
-                made == 16 + self.real_func(f as u8)
+                made == 256 + self.real_func(f as u8) as u16
             } else { return Err(Error::Unsupported) },
         })
     }
@@ -1094,7 +1339,60 @@ impl<'a> Machine<'a> {
         if let Some(p) = self.classes[k].3 { self.class_methods(p as usize, id)?; }
         for (name, f) in self.classes[k].2.clone() { self.set_prop(id, name, Value::Func(f))?; }
         for (name, f, setter) in self.classes[k].5.clone() { self.add_accessor(id, name, f, setter)?; }
+        // Instance fields, parent's first, initialized with `this` = the instance.
+        for (name, init) in self.classes[k].6.clone() {
+            let v = match init { Some(at) => self.eval_at(at, Value::Obj(id))?, None => Value::Undef };
+            self.set_prop(id, name, v)?;
+        }
         Ok(())
+    }
+    /// Evaluates the expression at `at` (a field initializer) with `this`.
+    fn eval_at(&mut self, at: Pos<'a>, this: Value) -> Result<Value, Error> {
+        let back = self.pos();
+        let saved = core::mem::replace(&mut self.this, this);
+        let live = core::mem::replace(&mut self.live, true);
+        self.restore(at);
+        let v = self.expr();
+        self.restore(back);
+        self.this = saved;
+        self.live = live;
+        v
+    }
+    /// A `#private` class field: not listed by keys/values/entries/JSON.
+    fn private_prop(&self, k: usize) -> bool { let (ns, nn, _) = self.props[k]; nn > 0 && self.arena[ns as usize] == b'#' }
+    /// Property `k` of object `id` is not listed: a `#private` field, or a
+    /// class method (in JavaScript those live on the prototype).
+    fn hidden_prop(&self, id: u8, k: usize) -> bool {
+        if self.private_prop(k) { return true; }
+        let (ns, nn, v) = self.props[k];
+        // Copied from F.prototype and unchanged: inherited, in JavaScript's terms.
+        if self.made_by[id as usize] >= 256 {
+            let f = (self.made_by[id as usize] - 256) as u8;
+            if let Some(proto) = self.protos.iter().find(|p| p.0 == f).map(|p| p.1) {
+                let name = &self.arena[ns as usize..ns as usize + nn as usize];
+                if let Some(q) = self.find_prop(proto, name) {
+                    let same = match (self.props[q].2, v) { (Value::Func(a), Value::Func(b)) => a == b, (Value::Num(a), Value::Num(b)) => a == b, (Value::Bool(a), Value::Bool(b)) => a == b, (Value::Str(a, n), Value::Str(b, m)) => a == b && n == m, (Value::Arr(a), Value::Arr(b)) | (Value::Obj(a), Value::Obj(b)) => a == b, (Value::Null, Value::Null) | (Value::Undef, Value::Undef) => true, _ => false };
+                    if same { return true; }
+                }
+            }
+        }
+        let Value::Func(f) = v else { return false };
+        let mut c = match self.made_by[id as usize] { m @ 1..=16 => Some(m as usize - 1), _ => None };
+        let name = &self.arena[ns as usize..ns as usize + nn as usize];
+        while let Some(i) = c {
+            if self.classes[i].2.iter().any(|m| m.0 == name && m.1 == f) { return true; }
+            c = self.classes[i].3.map(|p| p as usize);
+        }
+        false
+    }
+    /// The static-field object of class `name` holding `key` (or its own).
+    fn static_home(&self, name: &[u8], key: &[u8]) -> Option<u8> {
+        let mut k = self.classes.iter().position(|c| c.0 == name)?;
+        let own = self.classes[k].7;
+        loop {
+            if self.find_prop(self.classes[k].7, key).is_some() { return Some(self.classes[k].7); }
+            match self.classes[k].3 { Some(p) => k = p as usize, None => return Some(own) }
+        }
     }
     /// Runs the constructor of class `k` on `this`; a class without one
     /// passes its arguments to its parent's, as JavaScript does.
@@ -1124,6 +1422,365 @@ impl<'a> Machine<'a> {
             if let Some(&(_, f)) = self.classes[k].2.iter().find(|c| c.0 == m) { self.this_next = Some(this); return self.invoke(f, &args[..n]); }
             k = self.classes[k].3.ok_or(Error::Unsupported)? as usize;
         }
+    }
+    /// At `(` of `Array.from(...)`: is there a second (map function) argument?
+    fn from_with_map(&mut self) -> Result<bool, Error> {
+        let at = self.pos();
+        self.expect(b'(')?;
+        let mut depth = 0;
+        let mut second = false;
+        loop {
+            match self.tok {
+                Tok::Punct(b'(' | b'[' | b'{') => depth += 1,
+                Tok::Punct(b')' | b']' | b'}') if depth == 0 => break,
+                Tok::Punct(b')' | b']' | b'}') => depth -= 1,
+                Tok::Punct(b',') if depth == 0 => { second = true; break; }
+                Tok::End => break,
+                _ => {}
+            }
+            self.next()?;
+        }
+        self.restore(at);
+        Ok(second)
+    }
+    fn promise_new(&mut self) -> Result<u8, Error> {
+        if self.promises.len() == 64 { return Err(Error::Limit); }
+        let id = self.new_object()?;
+        self.made_by[id as usize] = 67;
+        self.promises.push((id, 0, Value::Undef, Vec::new()));
+        Ok(id)
+    }
+    fn resolver(&mut self, p: u8, reject: bool) -> Result<Value, Error> {
+        if self.resolvers.len() == (BUILTIN_FUNCS - RESOLVERS) as usize { return Err(Error::Limit); }
+        self.resolvers.push((p, reject));
+        Ok(Value::Func(RESOLVERS + (self.resolvers.len() - 1) as u8))
+    }
+    fn promise_index(&self, p: u8) -> Result<usize, Error> { self.promises.iter().position(|e| e.0 == p).ok_or(Error::Unsupported) }
+    /// Resolving with another promise follows it; anything else fulfils.
+    fn resolve(&mut self, p: u8, v: Value) -> Result<(), Error> {
+        if let Value::Obj(q) = v {
+            if self.made_by[q as usize] == 67 {
+                if q == p { return self.settle(p, 2, Value::Undef); }
+                return self.react(q, Reaction { fulfilled: None, rejected: None, child: Some(p), finally: false, slot: None });
+            }
+        }
+        self.settle(p, 1, v)
+    }
+    /// The first settlement wins; reactions waiting on it become jobs.
+    fn settle(&mut self, p: u8, state: u8, v: Value) -> Result<(), Error> {
+        let k = self.promise_index(p)?;
+        if self.promises[k].1 != 0 { return Ok(()); }
+        self.promises[k].1 = state;
+        self.promises[k].2 = v;
+        let waiting = core::mem::take(&mut self.promises[k].3);
+        for r in waiting { self.queue(r, state, v)?; }
+        Ok(())
+    }
+    fn queue(&mut self, r: Reaction, state: u8, v: Value) -> Result<(), Error> {
+        if self.jobs.len() >= 256 { return Err(Error::Limit); }
+        self.jobs.push((r, state, v));
+        Ok(())
+    }
+    /// Runs `r` when `p` settles (now, as a job, if it already has).
+    fn react(&mut self, p: u8, r: Reaction) -> Result<(), Error> {
+        let k = self.promise_index(p)?;
+        match self.promises[k].1 { 0 => { self.promises[k].3.push(r); Ok(()) } state => { let v = self.promises[k].2; self.queue(r, state, v) } }
+    }
+    /// `p.then(f, g)`, `p.catch(g)`, `p.finally(h)`: a new promise.
+    #[inline(never)]
+    fn promise_then(&mut self, p: u8, name: &[u8]) -> Result<Value, Error> {
+        let (args, n) = self.arguments()?;
+        if !self.live { return Ok(Value::Undef); }
+        let func = |i: usize| match args.get(i).copied().filter(|_| i < n) { Some(Value::Func(f)) => Some(f), _ => None };
+        let child = self.promise_new()?;
+        let r = match name {
+            b"then" => Reaction { fulfilled: func(0), rejected: func(1), child: Some(child), finally: false, slot: None },
+            b"catch" => Reaction { fulfilled: None, rejected: func(0), child: Some(child), finally: false, slot: None },
+            _ => Reaction { fulfilled: func(0), rejected: func(0), child: Some(child), finally: true, slot: None },
+        };
+        self.react(p, r)?;
+        Ok(Value::Obj(child))
+    }
+    /// Calls `f`, turning a throw into `Err(value)` for `done` (other errors
+    /// still refuse the script).
+    fn call_settling(&mut self, f: u8, args: &[Value], done: impl FnOnce(&mut Self, Result<Value, Value>) -> Result<(), Error>) -> Result<(), Error> {
+        let saved = (self.depth, self.loops, self.live, self.nvars, self.block_base);
+        match self.invoke(f, args) {
+            Ok(v) => done(self, Ok(v)),
+            Err(Error::Thrown) => {
+                (self.depth, self.loops, self.live, self.nvars, self.block_base) = saved;
+                (self.jump, self.jump_label, self.ret) = (None, None, None);
+                let e = self.thrown.take().unwrap_or(Value::Undef);
+                done(self, Err(e))
+            }
+            Err(e) => Err(e),
+        }
+    }
+    /// One microtask: a reaction to a settled promise.
+    fn run_job(&mut self, r: Reaction, state: u8, v: Value) -> Result<(), Error> {
+        self.steps += 1;
+        if self.steps > STEPS { return Err(Error::Limit); }
+        if let Some((g, i)) = r.slot {
+            let (p, results, _) = self.gathers[g as usize];
+            if state == 2 { return self.settle(p, 2, v); }
+            let start = self.arrays[results as usize].0 as usize;
+            self.elems[start + i as usize] = v;
+            self.gathers[g as usize].2 -= 1;
+            if self.gathers[g as usize].2 == 0 { self.settle(p, 1, Value::Arr(results))?; }
+            return Ok(());
+        }
+        let handler = if state == 1 { r.fulfilled } else { r.rejected };
+        let child = r.child;
+        match handler {
+            None => match child { Some(c) => if state == 1 { self.resolve(c, v) } else { self.settle(c, 2, v) }, None => Ok(()) },
+            Some(f) => {
+                let args: &[Value] = if r.finally { &[] } else { core::slice::from_ref(&v) };
+                let args = args.to_vec();
+                self.call_settling(f, &args, |m, outcome| match (child, outcome) {
+                    (None, _) => Ok(()),
+                    (Some(c), Err(e)) => m.settle(c, 2, e),
+                    (Some(c), Ok(_)) if r.finally => if state == 1 { m.resolve(c, v) } else { m.settle(c, 2, v) },
+                    (Some(c), Ok(out)) => m.resolve(c, out),
+                })
+            }
+        }
+    }
+    /// After the script: run promise reactions in order until none remain.
+    fn drain_jobs(&mut self) -> Result<(), Error> {
+        let mut i = 0;
+        while i < self.jobs.len() {
+            let (r, state, v) = self.jobs[i];
+            self.run_job(r, state, v)?;
+            i += 1;
+        }
+        Ok(())
+    }
+    /// `document.write(...)` as an expression (kept out of `atom`).
+    #[inline(never)]
+    fn write_expression(&mut self) -> Result<Value, Error> {
+        self.next()?;
+        let line = match self.tok { Tok::Ident(b"write") => false, Tok::Ident(b"writeln") => true, _ => return Err(Error::Unsupported) };
+        self.next()?;
+        let mut args = [Value::Undef; PARAMS];
+        let n = self.argument_list(&mut args)?;
+        if self.live {
+            for &v in &args[..n] { self.emit(v)?; }
+            if line { let nl = self.store(b"\n")?; self.emit(nl)?; }
+        }
+        Ok(Value::Undef)
+    }
+    #[inline(never)]
+    fn structured_clone(&mut self) -> Result<Value, Error> {
+        let (args, _) = self.arguments()?;
+        if !self.live { return Ok(Value::Undef); }
+        self.deep_copy(args[0], 0)
+    }
+    /// `console.log(...)` and friends: arguments are evaluated, nothing is
+    /// written (the page has no console to show them).
+    #[inline(never)]
+    fn console_call(&mut self) -> Result<Value, Error> {
+        self.next()?;
+        let Tok::Ident(b"log" | b"info" | b"warn" | b"error" | b"debug") = self.tok else { return Err(Error::Unsupported) };
+        self.next()?;
+        self.expect(b'(')?;
+        while self.tok != Tok::Punct(b')') {
+            if self.tok == Tok::Punct(b'S') { self.next()?; }
+            self.expr()?;
+            if self.tok != Tok::Punct(b',') { break; }
+            self.next()?;
+        }
+        self.expect(b')')?;
+        Ok(Value::Undef)
+    }
+    /// `Array(3)`, `Error('x')`: the same as with `new`.
+    #[inline(never)]
+    fn construct_call(&mut self, name: &[u8]) -> Result<Value, Error> {
+        let mut args = [Value::Undef; PARAMS];
+        let n = self.argument_list(&mut args)?;
+        if !self.live { return Ok(Value::Undef); }
+        self.construct(name, &args[..n])
+    }
+    /// `structuredClone(v)`: plain arrays and objects copied deeply (functions,
+    /// class instances and collections are refused, as JavaScript does for
+    /// functions); other values are themselves.
+    fn deep_copy(&mut self, v: Value, depth: u8) -> Result<Value, Error> {
+        if depth > 32 { return Err(Error::Limit); }
+        Ok(match v {
+            Value::Func(_) => return Err(Error::Unsupported),
+            Value::Arr(id) => {
+                let (start, len, _) = self.arrays[id as usize];
+                let items = self.elems[start as usize..start as usize + len as usize].to_vec();
+                let mut out = Vec::new();
+                for item in items { out.push(self.deep_copy(item, depth + 1)?); }
+                self.new_array(&out)?
+            }
+            Value::Obj(id) => {
+                if self.made_by[id as usize] != 0 && self.made_by[id as usize] != 64 { return Err(Error::Unsupported); }
+                let copy = self.new_object()?;
+                self.made_by[copy as usize] = self.made_by[id as usize];
+                let (start, len, _) = self.objects[id as usize];
+                for k in start as usize..start as usize + len as usize {
+                    let (ns, nn, value) = self.props[k];
+                    let key = self.arena[ns as usize..ns as usize + nn as usize].to_vec();
+                    let value = self.deep_copy(value, depth + 1)?;
+                    self.set_prop(copy, &key, value)?;
+                }
+                Value::Obj(copy)
+            }
+            other => other,
+        })
+    }
+    /// `new Set(iterable)` / `new Map([[k, v], ...])`.
+    fn collection_new(&mut self, map: bool, from: Option<Value>) -> Result<Value, Error> {
+        let id = self.new_object()?;
+        self.made_by[id as usize] = if map { 66 } else { 65 };
+        let Value::Arr(keys) = self.new_array(&[])? else { return Err(Error::Limit) };
+        let vals = if map { let Value::Arr(v) = self.new_array(&[])? else { return Err(Error::Limit) }; v } else { keys };
+        if self.collections.len() == 32 { return Err(Error::Limit); }
+        self.collections.push((id, keys, vals));
+        if let Some(src) = from.filter(|v| !matches!(v, Value::Undef | Value::Null)) {
+            for item in self.iterate(src)? {
+                if map {
+                    let Value::Arr(pair) = item else { return Err(Error::Unsupported) };
+                    let (ps, pl, _) = self.arrays[pair as usize];
+                    let k = if pl > 0 { self.elems[ps as usize] } else { Value::Undef };
+                    let v = if pl > 1 { self.elems[ps as usize + 1] } else { Value::Undef };
+                    self.collection_put(id, k, v)?;
+                } else { self.collection_put(id, item, item)?; }
+            }
+        }
+        Ok(Value::Obj(id))
+    }
+    fn collection(&self, id: u8) -> Result<(u8, u8), Error> {
+        self.collections.iter().find(|c| c.0 == id).map(|c| (c.1, c.2)).ok_or(Error::Unsupported)
+    }
+    /// Position of `key` (SameValueZero: NaN equals NaN).
+    fn collection_find(&mut self, keys: u8, key: Value) -> Result<Option<usize>, Error> {
+        let (start, len, _) = self.arrays[keys as usize];
+        for k in 0..len as usize {
+            let e = self.elems[start as usize + k];
+            if let (Value::Num(a), Value::Num(b)) = (e, key) { if a.is_nan() && b.is_nan() { return Ok(Some(k)); } }
+            if matches!(self.apply(b'E', e, key)?, Value::Bool(true)) { return Ok(Some(k)); }
+        }
+        Ok(None)
+    }
+    fn collection_put(&mut self, id: u8, key: Value, value: Value) -> Result<(), Error> {
+        let (keys, vals) = self.collection(id)?;
+        match self.collection_find(keys, key)? {
+            Some(k) => { if keys != vals { let s = self.arrays[vals as usize].0 as usize; self.elems[s + k] = value; } }
+            None => { self.push(keys, key)?; if keys != vals { self.push(vals, value)?; } }
+        }
+        Ok(())
+    }
+    /// The `i`th item when iterating: a Set's value, a Map's `[key, value]`.
+    fn collection_item(&mut self, id: u8, i: usize) -> Result<Option<Value>, Error> {
+        let (keys, vals) = self.collection(id)?;
+        let (ks, len, _) = self.arrays[keys as usize];
+        if i >= len as usize { return Ok(None); }
+        let k = self.elems[ks as usize + i];
+        if keys == vals { return Ok(Some(k)); }
+        let v = self.elems[self.arrays[vals as usize].0 as usize + i];
+        Ok(Some(self.new_array(&[k, v])?))
+    }
+    /// The values `...v` / `Array.from(v)` / `for...of` see.
+    fn iterate(&mut self, v: Value) -> Result<Vec<Value>, Error> {
+        Ok(match v {
+            Value::Arr(id) => { let (s0, l0, _) = self.arrays[id as usize]; self.elems[s0 as usize..s0 as usize + l0 as usize].to_vec() }
+            Value::Str(s0, n0) => (0..n0).map(|k| Value::Str(s0 + k, 1)).collect(),
+            Value::Obj(id) if matches!(self.made_by[id as usize], 65 | 66) => {
+                let mut out = Vec::new();
+                while let Some(item) = self.collection_item(id, out.len())? { out.push(item); }
+                out
+            }
+            _ if !self.live => Vec::new(),
+            _ => return Err(Error::Unsupported),
+        })
+    }
+    /// `size` and the methods of a Set or Map.
+    #[inline(never)]
+    fn collection_member(&mut self, id: u8, name: &[u8]) -> Result<Value, Error> {
+        let (keys, vals) = self.collection(id)?;
+        let map = keys != vals;
+        if name == b"size" { return Ok(Value::Num(self.arrays[keys as usize].1 as f64)); }
+        let (args, n) = self.arguments()?;
+        let a0 = if n > 0 { args[0] } else { Value::Undef };
+        Ok(match name {
+            b"add" if !map => { self.collection_put(id, a0, a0)?; Value::Obj(id) }
+            b"set" if map => { self.collection_put(id, a0, if n > 1 { args[1] } else { Value::Undef })?; Value::Obj(id) }
+            b"get" if map => match self.collection_find(keys, a0)? { Some(k) => self.elems[self.arrays[vals as usize].0 as usize + k], None => Value::Undef },
+            b"has" => Value::Bool(self.collection_find(keys, a0)?.is_some()),
+            b"delete" => match self.collection_find(keys, a0)? {
+                Some(k) => {
+                    for arr in if map { [keys, vals].to_vec() } else { [keys].to_vec() } {
+                        let (s0, l0, _) = self.arrays[arr as usize];
+                        let mut items = self.elems[s0 as usize..s0 as usize + l0 as usize].to_vec();
+                        items.remove(k);
+                        self.set_items(arr, &items)?;
+                    }
+                    Value::Bool(true)
+                }
+                None => Value::Bool(false),
+            },
+            b"clear" => { self.set_items(keys, &[])?; if map { self.set_items(vals, &[])?; } Value::Undef }
+            b"keys" => { let (s0, l0, _) = self.arrays[keys as usize]; let items = self.elems[s0 as usize..s0 as usize + l0 as usize].to_vec(); self.new_array(&items)? }
+            b"values" => { let (s0, l0, _) = self.arrays[vals as usize]; let items = self.elems[s0 as usize..s0 as usize + l0 as usize].to_vec(); self.new_array(&items)? }
+            b"entries" => { let items = self.iterate(Value::Obj(id))?; let items = if map { items } else { let mut pairs = Vec::new(); for v in items { pairs.push(self.new_array(&[v, v])?); } pairs }; self.new_array(&items)? }
+            b"forEach" => {
+                let Value::Func(f) = a0 else { return Err(Error::Unsupported) };
+                let mut i = 0;
+                while let Some(item) = { let (ks, len, _) = self.arrays[keys as usize]; (i < len as usize).then(|| self.elems[ks as usize + i]) } {
+                    self.steps += 1;
+                    if self.steps > STEPS { return Err(Error::Limit); }
+                    let value = if map { self.elems[self.arrays[vals as usize].0 as usize + i] } else { item };
+                    self.invoke(f, &[value, item, Value::Obj(id)])?;
+                    i += 1;
+                }
+                Value::Undef
+            }
+            _ => return Err(Error::Unsupported),
+        })
+    }
+    /// `x.toPrecision(p)`: `p` significant digits, exponential when the
+    /// exponent is below -6 or at least `p` (as JavaScript).
+    fn precision(&mut self, x: f64, p: usize) -> Result<Value, Error> {
+        if !x.is_finite() { return self.number_text(x); }
+        if x == 0.0 { return self.fixed(0.0, p - 1); }
+        let a = if x < 0.0 { -x } else { x };
+        let mut e: i32 = 0;
+        let mut m = a;
+        while m >= 10.0 { m /= 10.0; e += 1; }
+        while m < 1.0 { m *= 10.0; e -= 1; }
+        // Rounding to p digits can carry into a new digit (9.99 -> 10.0).
+        let scale = pow(10.0, (p as i32 - 1) as f64);
+        if floor(m * scale + 0.5) >= 10.0 * scale { e += 1; m /= 10.0; }
+        if e < -6 || e >= p as i32 {
+            let digits = self.fixed(m, p - 1)?;
+            let mut t = if x < 0.0 { b"-".to_vec() } else { Vec::new() };
+            t.extend_from_slice(self.text(digits));
+            let _ = write!(Text(&mut t), "e{}{}", if e < 0 { '-' } else { '+' }, e.abs());
+            return self.store(&t);
+        }
+        self.fixed(x, (p as i32 - 1 - e) as usize)
+    }
+    /// `x.toLocaleString()` in the en-US form: grouped thousands, at most
+    /// three fraction digits.
+    fn locale_number(&mut self, x: f64) -> Result<Value, Error> {
+        if x.is_nan() { return self.store(b"NaN"); }
+        if x.is_infinite() { return self.store(if x < 0.0 { "-∞".as_bytes() } else { "∞".as_bytes() }); }
+        let f = self.fixed(x, 3)?;
+        let mut t = self.text(f).to_vec();
+        while t.last() == Some(&b'0') { t.pop(); }
+        if t.last() == Some(&b'.') { t.pop(); }
+        let neg = t.first() == Some(&b'-');
+        let body = if neg { &t[1..] } else { &t[..] };
+        let int_len = body.iter().position(|c| *c == b'.').unwrap_or(body.len());
+        let mut out = if neg { b"-".to_vec() } else { Vec::new() };
+        for (i, &c) in body.iter().enumerate() {
+            if i > 0 && i < int_len && (int_len - i) % 3 == 0 { out.push(b','); }
+            out.push(c);
+        }
+        if out == b"-0" { out.remove(0); }
+        self.store(&out)
     }
     /// `new Date(...)` from given components, a time value or an ISO string.
     /// There is no `new Date()` / `Date.now()`: a script holds no clock.
@@ -1257,8 +1914,15 @@ impl<'a> Machine<'a> {
         }
     }
     /// JSON text of a value; undefined members are left out like JavaScript.
-    fn json(&mut self, v: Value, into: &mut Vec<u8>) -> Result<(), Error> {
-        if self.depth >= MAX_DEPTH { return Err(Error::Limit); }
+    fn json(&mut self, v: Value, into: &mut Vec<u8>) -> Result<(), Error> { self.json_with(v, into, &Layout { indent: Vec::new(), keys: None }, 0) }
+    /// A new line and the indent for `level` (pretty printing only).
+    fn json_break(into: &mut Vec<u8>, layout: &Layout, level: usize) {
+        if layout.indent.is_empty() { return; }
+        into.push(b'\n');
+        for _ in 0..level { into.extend_from_slice(&layout.indent); }
+    }
+    fn json_with(&mut self, v: Value, into: &mut Vec<u8>, layout: &Layout, level: usize) -> Result<(), Error> {
+        if self.too_deep() { return Err(Error::Limit); }
         if into.len() > ARENA { return Err(Error::Limit); }
         self.depth += 1;
         match v {
@@ -1269,9 +1933,11 @@ impl<'a> Machine<'a> {
                 let (start, len, _) = self.arrays[id as usize];
                 for k in 0..len as usize {
                     if k > 0 { into.push(b','); }
+                    Self::json_break(into, layout, level + 1);
                     let e = self.elems[start as usize + k];
-                    if matches!(e, Value::Undef | Value::Func(_)) { into.extend_from_slice(b"null"); } else { self.json(e, into)?; }
+                    if matches!(e, Value::Undef | Value::Func(_)) { into.extend_from_slice(b"null"); } else { self.json_with(e, into, layout, level + 1)?; }
                 }
+                if len > 0 { Self::json_break(into, layout, level); }
                 into.push(b']');
             }
             Value::Obj(id) => {
@@ -1280,14 +1946,19 @@ impl<'a> Machine<'a> {
                 let mut first = true;
                 for k in start as usize..start as usize + len as usize {
                     let (ns, nn, value) = self.props[k];
-                    // Like JavaScript: undefined and function members are left out.
-                    if matches!(value, Value::Undef | Value::Func(_)) { continue; }
+                    // Like JavaScript: undefined and function members are left out,
+                    // and a replacer list keeps only the keys it names.
+                    if matches!(value, Value::Undef | Value::Func(_)) || self.hidden_prop(id, k) { continue; }
+                    if let Some(keys) = &layout.keys { if !keys.iter().any(|k| k[..] == self.arena[ns as usize..ns as usize + nn as usize]) { continue; } }
                     if !first { into.push(b','); }
                     first = false;
+                    Self::json_break(into, layout, level + 1);
                     self.quote(Value::Str(ns, nn), into);
                     into.push(b':');
-                    self.json(value, into)?;
+                    if !layout.indent.is_empty() { into.push(b' '); }
+                    self.json_with(value, into, layout, level + 1)?;
                 }
+                if !first { Self::json_break(into, layout, level); }
                 into.push(b'}');
             }
             Value::Undef | Value::Func(_) => into.extend_from_slice(b"null"),
@@ -1339,11 +2010,10 @@ impl<'a> Machine<'a> {
             if self.tok == Tok::Punct(b'S') {
                 self.next()?;
                 let v = self.expr()?;
-                let Value::Arr(id) = v else { return Err(Error::Unsupported) };
-                let (start, len, _) = self.arrays[id as usize];
-                if n + len as usize > out.len() { return Err(Error::Limit); }
-                out[n..n + len as usize].copy_from_slice(&self.elems[start as usize..start as usize + len as usize]);
-                n += len as usize;
+                let items = self.iterate(v)?;
+                if n + items.len() > out.len() { return Err(Error::Limit); }
+                out[n..n + items.len()].copy_from_slice(&items);
+                n += items.len();
             } else {
                 if n == out.len() { return Err(Error::Limit); }
                 out[n] = self.expr()?;
@@ -1379,6 +2049,31 @@ impl<'a> Machine<'a> {
                 Value::Num(found)
             }
             b"toString" => self.join(id, b",")?,
+            // Copying forms: the array itself is left unchanged.
+            b"toSorted" | b"toReversed" | b"toSpliced" | b"with" => {
+                let items = self.elems[start..start + len].to_vec();
+                let Value::Arr(copy) = self.new_array(&items)? else { return Err(Error::Limit) };
+                match name {
+                    b"toSorted" => { self.array_method(copy, b"sort", args)?; }
+                    b"toReversed" => { self.array_method(copy, b"reverse", &[])?; }
+                    b"toSpliced" => { self.array_method(copy, b"splice", args)?; }
+                    _ => {
+                        let i = self.to_number(arg(0));
+                        let i = if i < 0.0 { len as f64 + floor(i) } else { floor(i) };
+                        if !(i >= 0.0 && (i as usize) < len) { return Err(Error::Unsupported); }
+                        let s0 = self.arrays[copy as usize].0 as usize;
+                        self.elems[s0 + i as usize] = arg(1);
+                    }
+                }
+                Value::Arr(copy)
+            }
+            b"keys" => { let items: Vec<Value> = (0..len).map(|k| Value::Num(k as f64)).collect(); self.new_array(&items)? }
+            b"values" => { let items = self.elems[start..start + len].to_vec(); self.new_array(&items)? }
+            b"entries" => {
+                let mut items = Vec::new();
+                for k in 0..len { let e = self.elems[start + k]; items.push(self.new_array(&[Value::Num(k as f64), e])?); }
+                self.new_array(&items)?
+            }
             b"splice" | b"unshift" => {
                 // Rebuild the contents; the array keeps its identity.
                 let (a, removed) = if name == b"unshift" { (0, 0) } else {
@@ -1426,7 +2121,7 @@ impl<'a> Machine<'a> {
                 self.new_array(&items)?
             }
             b"sort" => {
-                let cmp = match args.first() { None => None, Some(Value::Func(f)) => Some(*f), _ => return Err(Error::Unsupported) };
+                let cmp = match args.first() { None => None, Some(Value::Func(f)) => Some(*f), _ if !self.live => None, _ => return Err(Error::Unsupported) };
                 if let (Some(f), true) = (cmp, self.live) {
                     // Insertion sort with the script's comparator (bounded by steps).
                     for i in 1..len {
@@ -1464,11 +2159,23 @@ impl<'a> Machine<'a> {
         })
     }
     fn array_callback(&mut self, id: u8, name: &[u8], args: &[Value]) -> Result<Value, Error> {
-        let Some(Value::Func(f)) = args.first().copied() else { return Err(Error::Unsupported) };
         if !self.live { return Ok(Value::Undef); }
+        let Some(Value::Func(f)) = args.first().copied() else { return Err(Error::Unsupported) };
         let (_, len, _) = self.arrays[id as usize];
         let mut acc = args.get(1).copied();
         let mut kept: Vec<Value> = Vec::new();
+        if name == b"reduceRight" {
+            let mut acc = args.get(1).copied();
+            for k in (0..len as usize).rev() {
+                let (start, now, _) = self.arrays[id as usize];
+                if k >= now as usize { continue; }
+                let e = self.elems[start as usize + k];
+                self.steps += 1;
+                if self.steps > STEPS { return Err(Error::Limit); }
+                acc = Some(match acc { None => e, Some(a) => self.invoke(f, &[a, e, Value::Num(k as f64), Value::Arr(id)])? });
+            }
+            return acc.ok_or(Error::Unsupported);
+        }
         if matches!(name, b"findLast" | b"findLastIndex") {
             for k in (0..len as usize).rev() {
                 let (start, now, _) = self.arrays[id as usize];
@@ -1557,7 +2264,7 @@ impl<'a> Machine<'a> {
         Ok(())
     }
     fn join(&mut self, id: u8, sep: &[u8]) -> Result<Value, Error> {
-        if self.depth >= MAX_DEPTH { return Err(Error::Limit); }
+        if self.too_deep() { return Err(Error::Limit); }
         self.depth += 1;
         let (start, len, _) = self.arrays[id as usize];
         let at = self.arena.len();
@@ -1580,7 +2287,8 @@ impl<'a> Machine<'a> {
         self.expect(b'.')?;
         let Tok::Ident(name) = self.tok else { return Err(Error::Syntax) };
         self.next()?;
-        if name == b"PI" { return Ok(Value::Num(core::f64::consts::PI)); }
+        use core::f64::consts as k;
+        if let Some(c) = match name { b"PI" => Some(k::PI), b"E" => Some(k::E), b"LN2" => Some(k::LN_2), b"LN10" => Some(k::LN_10), b"LOG2E" => Some(k::LOG2_E), b"LOG10E" => Some(k::LOG10_E), b"SQRT2" => Some(k::SQRT_2), b"SQRT1_2" => Some(k::FRAC_1_SQRT_2), _ => None } { return Ok(Value::Num(c)); }
         self.expect(b'(')?;
         let mut values = [Value::Undef; 32];
         let n = self.items(b')', &mut values)?;
@@ -1594,6 +2302,24 @@ impl<'a> Machine<'a> {
             b"trunc" => one(|x| if x < 0.0 { -floor(-x) } else { floor(x) }),
             b"sign" => one(|x| if x.is_nan() { x } else if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { x }),
             b"sqrt" => one(sqrt),
+            b"exp" => one(fmath::exp),
+            b"expm1" => one(|x| if x.abs() < 1e-5 { x + x * x / 2.0 } else { fmath::exp(x) - 1.0 }),
+            b"log" => one(fmath::ln),
+            b"log1p" => one(|x| if x.abs() < 1e-5 { x - x * x / 2.0 } else { fmath::ln(1.0 + x) }),
+            b"log2" => one(|x| fmath::log_base(x, 2.0, core::f64::consts::LN_2)),
+            b"log10" => one(|x| fmath::log_base(x, 10.0, core::f64::consts::LN_10)),
+            b"sin" => one(|x| fmath::sin_cos(x).0),
+            b"cos" => one(|x| fmath::sin_cos(x).1),
+            b"tan" => one(|x| { let (s, c) = fmath::sin_cos(x); s / c }),
+            b"atan" => one(fmath::atan),
+            b"asin" => one(|x| if x.abs() > 1.0 { f64::NAN } else { fmath::atan2(x, sqrt(1.0 - x * x)) }),
+            b"acos" => one(|x| if x.abs() > 1.0 { f64::NAN } else { fmath::atan2(sqrt(1.0 - x * x), x) }),
+            b"atan2" => if n < 2 { f64::NAN } else { fmath::atan2(a, args[1]) },
+            b"cbrt" => one(|x| if x == 0.0 || !x.is_finite() { x } else { let r = fmath::exp(fmath::ln(x.abs()) / 3.0).copysign(x); r - (r * r * r - x) / (3.0 * r * r) }),
+            b"hypot" => { let m = args[..n].iter().fold(0.0f64, |m, &x| if x.is_infinite() { f64::INFINITY } else if m.is_infinite() { m } else if x.is_nan() || m.is_nan() { f64::NAN } else { m.max(x.abs()) }); if m == 0.0 || !m.is_finite() { m } else { m * sqrt(args[..n].iter().map(|x| (x / m) * (x / m)).sum()) } },
+            b"sinh" => one(|x| (fmath::exp(x) - fmath::exp(-x)) / 2.0),
+            b"cosh" => one(|x| (fmath::exp(x) + fmath::exp(-x)) / 2.0),
+            b"tanh" => one(|x| if x.abs() > 20.0 { 1.0f64.copysign(x) } else { let e = fmath::exp(2.0 * x); (e - 1.0) / (e + 1.0) }),
             b"pow" => if n < 2 { f64::NAN } else { pow(a, args[1]) },
             b"max" => args[..n].iter().fold(f64::NEG_INFINITY, |m, &x| if x.is_nan() || m.is_nan() { f64::NAN } else if x > m { x } else { m }),
             b"min" => args[..n].iter().fold(f64::INFINITY, |m, &x| if x.is_nan() || m.is_nan() { f64::NAN } else if x < m { x } else { m }),
@@ -1713,6 +2439,111 @@ impl<'a> Machine<'a> {
         let Tok::Ident(f) = self.tok else { return Err(Error::Syntax) };
         self.next()?;
         if (name, f) == (&b"Array"[..], &b"of"[..]) { let (args, n) = self.arguments()?; return self.new_array(&args[..n]); }
+        if (name, f) == (&b"JSON"[..], &b"stringify"[..]) {
+            // `JSON.stringify(v, replacer, space)`: a key list (a function
+            // replacer is refused) and an indent of up to 10 spaces or text.
+            let (args, n) = self.arguments()?;
+            let keys = match args[1] {
+                Value::Arr(id) if n > 1 => { let (st, len, _) = self.arrays[id as usize]; let mut keys = Vec::new(); for k in 0..len as usize { let t = self.to_text(self.elems[st as usize + k])?; keys.push(self.text(t).to_vec()); } Some(keys) }
+                Value::Undef | Value::Null => None,
+                _ if n < 2 => None,
+                _ => return Err(Error::Unsupported),
+            };
+            let indent = match args[2] {
+                Value::Num(x) => { let k = if x.is_nan() { 0.0 } else { x.clamp(0.0, 10.0) }; alloc::vec![b' '; k as usize] }
+                s @ Value::Str(..) => { let t = self.text(s); t[..t.len().min(10)].to_vec() }
+                _ => Vec::new(),
+            };
+            let mut j = Vec::new();
+            self.json_with(args[0], &mut j, &Layout { indent, keys }, 0)?;
+            return self.store(&j);
+        }
+        if (name, f) == (&b"Array"[..], &b"from"[..]) && self.from_with_map()? {
+            // `Array.from(x, fn)`: each item mapped through fn(item, index).
+            let (args, _) = self.arguments()?;
+            if !self.live { return Ok(Value::Undef); }
+            let Value::Func(g) = args[1] else { return Err(Error::Unsupported) };
+            let items = match args[0] {
+                Value::Obj(id) if !matches!(self.made_by[id as usize], 65 | 66) => { let n = self.to_number(self.get_prop(id, b"length")); if !(0.0..=ELEMS as f64).contains(&n) { return Err(Error::Limit); } (0..n as usize).map(|_| Value::Undef).collect() }
+                v => self.iterate(v)?,
+            };
+            let mut out = Vec::new();
+            for (k, item) in items.into_iter().enumerate() { self.steps += 1; if self.steps > STEPS { return Err(Error::Limit); } out.push(self.invoke(g, &[item, Value::Num(k as f64)])?); }
+            return self.new_array(&out);
+        }
+        if name == b"Number" && self.tok != Tok::Punct(b'(') {
+            return Ok(Value::Num(match f {
+                b"MAX_SAFE_INTEGER" => 9007199254740991.0, b"MIN_SAFE_INTEGER" => -9007199254740991.0,
+                b"EPSILON" => f64::EPSILON, b"MAX_VALUE" => f64::MAX, b"MIN_VALUE" => 5e-324,
+                b"POSITIVE_INFINITY" => f64::INFINITY, b"NEGATIVE_INFINITY" => f64::NEG_INFINITY, b"NaN" => f64::NAN,
+                _ => return Err(Error::Unsupported),
+            }));
+        }
+        if name == b"Promise" {
+            let (args, _) = self.arguments()?;
+            if !self.live { return Ok(Value::Undef); }
+            return match f {
+                b"resolve" => { if let Value::Obj(id) = args[0] { if self.made_by[id as usize] == 67 { return Ok(args[0]); } } let p = self.promise_new()?; self.resolve(p, args[0])?; Ok(Value::Obj(p)) }
+                b"reject" => { let p = self.promise_new()?; self.settle(p, 2, args[0])?; Ok(Value::Obj(p)) }
+                b"all" => {
+                    let items = self.iterate(args[0])?;
+                    let p = self.promise_new()?;
+                    let results = self.new_array(&alloc::vec![Value::Undef; items.len()])?;
+                    let Value::Arr(results) = results else { return Err(Error::Limit) };
+                    if items.is_empty() { self.settle(p, 1, Value::Arr(results))?; return Ok(Value::Obj(p)); }
+                    if self.gathers.len() == 32 { return Err(Error::Limit); }
+                    self.gathers.push((p, results, items.len()));
+                    let g = (self.gathers.len() - 1) as u8;
+                    for (k, item) in items.into_iter().enumerate() {
+                        let q = match item { Value::Obj(id) if self.made_by[id as usize] == 67 => id, v => { let q = self.promise_new()?; self.settle(q, 1, v)?; q } };
+                        self.react(q, Reaction { fulfilled: None, rejected: None, child: None, finally: false, slot: Some((g, k as u16)) })?;
+                    }
+                    Ok(Value::Obj(p))
+                }
+                _ => Err(Error::Unsupported),
+            };
+        }
+        if (name, f) == (&b"Object"[..], &b"groupBy"[..]) {
+            // `Object.groupBy(items, fn)`: arrays of items under fn(item, i).
+            let (args, _) = self.arguments()?;
+            if !self.live { return Ok(Value::Undef); }
+            let Value::Func(g) = args[1] else { return Err(Error::Unsupported) };
+            let items = self.iterate(args[0])?;
+            let out = self.new_object()?;
+            for (k, item) in items.into_iter().enumerate() {
+                self.steps += 1;
+                if self.steps > STEPS { return Err(Error::Limit); }
+                let key = self.invoke(g, &[item, Value::Num(k as f64)])?;
+                let key = self.to_text(key)?;
+                let key = self.text(key).to_vec();
+                match self.get_prop(out, &key) {
+                    Value::Arr(group) => self.push(group, item)?,
+                    _ => { let group = self.new_array(&[item])?; self.set_prop(out, &key, group)?; }
+                }
+            }
+            return Ok(Value::Obj(out));
+        }
+        if name == b"Number" && matches!(f, b"parseFloat" | b"parseInt") { return self.convert(f); }
+        if (name, f) == (&b"Object"[..], &b"defineProperty"[..]) {
+            // `value`, `get` and `set` of a descriptor; the other flags are not
+            // modelled (properties stay writable and enumerable).
+            let (args, _) = self.arguments()?;
+            if !self.live { return Ok(Value::Undef); }
+            let (Value::Obj(id), Value::Obj(d)) = (args[0], args[2]) else { return Err(Error::Unsupported) };
+            let k = self.to_text(args[1])?;
+            let key = self.text(k).to_vec();
+            if let Value::Func(g) = self.get_prop(d, b"get") { self.add_accessor(id, &key, g, false)?; }
+            if let Value::Func(g) = self.get_prop(d, b"set") { self.add_accessor(id, &key, g, true)?; }
+            if self.find_prop(d, b"value").is_some() { let v = self.get_prop(d, b"value"); self.set_prop(id, &key, v)?; }
+            return Ok(args[0]);
+        }
+        if (name, f) == (&b"Object"[..], &b"hasOwn"[..]) {
+            let (args, _) = self.arguments()?;
+            let Value::Obj(id) = args[0] else { return Ok(Value::Bool(false)) };
+            let k = self.to_text(args[1])?;
+            let key = self.text(k).to_vec();
+            return Ok(Value::Bool(self.find_prop(id, &key).is_some() || self.accessor(id, &key).is_some()));
+        }
         if (name, f) == (&b"Object"[..], &b"assign"[..]) {
             // Copies own properties of each source onto the target.
             let (args, n) = self.arguments()?;
@@ -1740,6 +2571,7 @@ impl<'a> Machine<'a> {
                 let items: Vec<Value> = match v {
                     Value::Arr(id) => { let (s0, l0, _) = self.arrays[id as usize]; self.elems[s0 as usize..s0 as usize + l0 as usize].to_vec() }
                     Value::Str(s0, n0) => (0..n0).map(|k| Value::Str(s0 + k, 1)).collect(),
+                    Value::Obj(id) if matches!(self.made_by[id as usize], 65 | 66) => self.iterate(v)?,
                     Value::Obj(id) => { let n = self.to_number(self.get_prop(id, b"length")); if !(0.0..=ELEMS as f64).contains(&n) { return Err(Error::Limit); } (0..n as usize).map(|_| Value::Undef).collect() }
                     _ => return Err(Error::Unsupported),
                 };
@@ -1749,6 +2581,15 @@ impl<'a> Machine<'a> {
             (b"Number", b"isInteger", _) => Ok(Value::Bool(num(self).is_some_and(|x| x.is_finite() && x == floor(x)))),
             (b"Number", b"isFinite", _) => Ok(Value::Bool(num(self).is_some_and(f64::is_finite))),
             (b"Number", b"isNaN", _) => Ok(Value::Bool(num(self).is_some_and(f64::is_nan))),
+            (b"Object", b"create", v) => {
+                // A new object with a snapshot of `proto`'s properties.
+                if !self.live { return Ok(Value::Undef); }
+                let id = self.new_object()?;
+                match v { Value::Obj(p) => self.copy_props(p, id)?, Value::Null => {} _ => return Err(Error::Unsupported) }
+                Ok(Value::Obj(id))
+            }
+            (b"Object", b"freeze", v) => { if let (Value::Obj(id), true) = (v, self.live) { if !self.frozen.contains(&id) { self.frozen.push(id); } } Ok(v) }
+            (b"Object", b"isFrozen", v) => Ok(Value::Bool(match v { Value::Obj(id) => self.frozen.contains(&id), _ => true })),
             (b"Object", b"fromEntries", Value::Arr(list)) => {
                 let id = self.new_object()?;
                 let (start, len, _) = self.arrays[list as usize];
@@ -1765,13 +2606,13 @@ impl<'a> Machine<'a> {
             }
             (b"Object", b"values" | b"entries", Value::Obj(id)) => {
                 let (start, len, _) = self.objects[id as usize];
-                let mut items = [Value::Undef; 16];
-                if len as usize > items.len() { return Err(Error::Limit); }
+                let mut items = Vec::new();
                 for k in 0..len as usize {
+                    if self.hidden_prop(id, start as usize + k) { continue; }
                     let (ns, nn, value) = self.props[start as usize + k];
-                    items[k] = if f == b"values" { value } else { self.new_array(&[Value::Str(ns, nn), value])? };
+                    items.push(if f == b"values" { value } else { self.new_array(&[Value::Str(ns, nn), value])? });
                 }
-                self.new_array(&items[..len as usize])
+                self.new_array(&items)
             }
             (b"JSON", b"stringify", v) => { let mut j = Vec::new(); self.json(v, &mut j)?; self.store(&j) }
             (b"JSON", b"parse", v) => {
@@ -1787,12 +2628,10 @@ impl<'a> Machine<'a> {
                     Err(e) => Err(e),
                 }
             }
-            (b"Object", b"keys", Value::Obj(id)) => {
+            (b"Object", b"keys" | b"getOwnPropertyNames", Value::Obj(id)) => {
                 let (start, len, _) = self.objects[id as usize];
-                let mut keys = [Value::Undef; 16];
-                if len as usize > keys.len() { return Err(Error::Limit); }
-                for (k, slot) in (start as usize..start as usize + len as usize).zip(keys.iter_mut()) { let (ns, nn, _) = self.props[k]; *slot = Value::Str(ns, nn); }
-                self.new_array(&keys[..len as usize])
+                let keys: Vec<Value> = (start as usize..start as usize + len as usize).filter(|&k| !self.hidden_prop(id, k)).map(|k| { let (ns, nn, _) = self.props[k]; Value::Str(ns, nn) }).collect();
+                self.new_array(&keys)
             }
             _ => Err(Error::Unsupported),
         }
@@ -1801,6 +2640,19 @@ impl<'a> Machine<'a> {
     #[inline(never)]
     fn string_static(&mut self) -> Result<Value, Error> {
         self.next()?;
+        if self.tok == Tok::Ident(b"raw") {
+            // String.raw`...`: escapes kept as written, substitutions filled in.
+            self.next()?;
+            let Tok::Template(raw) = self.tok else { return Err(Error::Unsupported) };
+            self.next()?;
+            let (pieces, values) = self.template_parts(raw, false)?;
+            let mut out = Vec::new();
+            for (k, piece) in pieces.iter().enumerate() {
+                out.extend_from_slice(piece);
+                if let Some(&v) = values.get(k) { let t = self.to_text(v)?; out.extend_from_slice(self.text(t)); }
+            }
+            return self.store(&out);
+        }
         if self.tok != Tok::Ident(b"fromCharCode") { return Err(Error::Unsupported); }
         self.next()?;
         let (args, n) = self.arguments()?;
@@ -1821,6 +2673,12 @@ impl<'a> Machine<'a> {
         self.next()?;
         let Tok::Ident(m) = self.tok else { return Err(Error::Syntax) };
         self.next()?;
+        if self.tok != Tok::Punct(b'(') {
+            // `C.x`: a static field (inherited ones too).
+            if !self.live { return Ok(Value::Undef); }
+            let home = self.static_home(name, m).ok_or(Error::Unsupported)?;
+            return Ok(self.get_prop(home, m));
+        }
         let mut args = [Value::Undef; PARAMS];
         let n = self.argument_list(&mut args)?;
         if !self.live { return Ok(Value::Undef); }
@@ -1845,9 +2703,10 @@ impl<'a> Machine<'a> {
                 let at = pattern.as_ptr() as usize - self.src.as_ptr() as usize;
                 self.next()?;
                 if let Some(k) = self.regexes.iter().position(|r| r.0 == at) { return Ok(Value::Re(k as u8)); }
-                if self.regexes.len() == 8 { return Err(Error::Limit); }
+                if self.regexes.len() == 16 { return Err(Error::Limit); }
                 let re = Regex::new(pattern, flags).map_err(|e| if e == crate::regex::Error::Limit { Error::Limit } else { Error::Syntax })?;
                 self.regexes.push((at, pattern, flags, re));
+                self.re_last.push(0);
                 Ok(Value::Re((self.regexes.len() - 1) as u8))
             }
             Tok::Template(raw) => { self.next()?; self.template(raw) }
@@ -1858,20 +2717,28 @@ impl<'a> Machine<'a> {
                 self.skim_body()?;
                 Ok(Value::Func(self.define(b"", at)?))
             }
-            Tok::Punct(b'(') => { self.next()?; let v = self.expr()?; self.expect(b')')?; Ok(v) }
+            Tok::Punct(b'(') => {
+                self.next()?;
+                let mut v = self.expr()?;
+                // The comma operator: each runs, the last is the value.
+                while self.tok == Tok::Punct(b',') { self.next()?; v = self.expr()?; }
+                self.expect(b')')?;
+                Ok(v)
+            }
             Tok::Punct(b'{') => self.object_literal(),
             Tok::Punct(b'[') => self.array_literal(),
             Tok::Ident(b"new") => self.new_expression(),
             Tok::Ident(b"function") => {
                 self.next()?;
-                if let Tok::Ident(_) = self.tok { self.next()?; }
+                // A named function expression can call itself by its name.
+                let name = if let Tok::Ident(n) = self.tok { self.next()?; n } else { b"" };
                 let at = self.pos();
                 self.expect(b'(')?;
                 self.skip_params()?;
                 self.expect(b')')?;
                 if self.tok != Tok::Punct(b'{') { return Err(Error::Syntax); }
                 self.skim_body()?;
-                Ok(Value::Func(self.define(b"", at)?))
+                Ok(Value::Func(self.define(name, at)?))
             }
             Tok::Ident(_) if arrow => {
                 let at = self.pos();
@@ -1886,16 +2753,22 @@ impl<'a> Machine<'a> {
                     b"NaN" => Ok(Value::Num(f64::NAN)),
                     b"null" => Ok(Value::Null),
                     b"this" => Ok(self.this),
+                    b"console" if self.tok == Tok::Punct(b'.') && self.lookup(name).is_none() => self.console_call(),
+                    b"Array" | b"Error" | b"TypeError" | b"RangeError" | b"SyntaxError" if self.tok == Tok::Punct(b'(') && self.lookup(name).is_none() => self.construct_call(name),
+                    b"arguments" if self.func_now.is_some() && self.lookup(name).is_none() => self.arguments_array(),
                     b"super" => self.super_call(),
                     b"undefined" => Ok(Value::Undef),
                     b"Infinity" => Ok(Value::Num(f64::INFINITY)),
                     b"true" => Ok(Value::Bool(true)),
                     b"false" => Ok(Value::Bool(false)),
                     b"Math" => self.math(),
+                    // `document.write(...)` as an expression (arrow bodies); its value is undefined.
+                    b"document" if self.tok == Tok::Punct(b'.') => self.write_expression(),
                     b"Date" if self.tok == Tok::Punct(b'.') => self.date_static(),
-                    b"JSON" | b"Object" | b"Array" | b"Number" if self.tok == Tok::Punct(b'.') => self.statics(name),
+                    b"JSON" | b"Object" | b"Array" | b"Number" | b"Promise" if self.tok == Tok::Punct(b'.') => self.statics(name),
                     b"String" if self.tok == Tok::Punct(b'.') => self.string_static(),
-                    b"String" | b"Number" | b"parseInt" | b"parseFloat" | b"isNaN" | b"encodeURIComponent" | b"decodeURIComponent" | b"Boolean" if self.tok == Tok::Punct(b'(') => self.convert(name),
+                    b"String" | b"Number" | b"parseInt" | b"parseFloat" | b"isNaN" | b"encodeURIComponent" | b"decodeURIComponent" | b"Boolean" | b"isFinite" if self.tok == Tok::Punct(b'(') => self.convert(name),
+                    b"structuredClone" if self.tok == Tok::Punct(b'(') && self.lookup(name).is_none() => self.structured_clone(),
                     b"String" | b"Number" | b"Boolean" if self.lookup(name).is_none() => Ok(Value::Func(BUILTIN_FUNCS + match name { b"String" => 0, b"Number" => 1, _ => 2 })),
                     _ if self.tok == Tok::Punct(b'(') => self.call(name),
                     // `n++` / `n--` in an expression: the old value (a `++` on
@@ -1969,12 +2842,72 @@ impl<'a> Machine<'a> {
         }
     }
     /// The declared function behind a function value (closure or not).
-    fn real_func(&self, f: u8) -> u8 { if f as usize >= FUNCS { self.closures[f as usize - FUNCS].0 } else { f } }
+    fn real_func(&self, f: u8) -> u8 {
+        if (BOUND..BOUND + BOUNDS as u8).contains(&f) { self.real_func(self.bounds[(f - BOUND) as usize].0) }
+        else if f as usize >= FUNCS && (f as usize) < FUNCS + CLOSURES { self.closures[f as usize - FUNCS].0 } else { f }
+    }
+    /// `arguments`: the running call's arguments as a new array.
+    #[inline(never)]
+    fn arguments_array(&mut self) -> Result<Value, Error> {
+        // SAFETY: `args_now` is set by `invoke` to its `args` slice, which
+        // outlives the body, and restored before `invoke` returns; it is only
+        // read here, while a function body runs (`func_now` is set).
+        let args: Vec<Value> = unsafe { (*self.args_now).to_vec() };
+        self.new_array(&args)
+    }
+    /// Copies every property of object `from` onto object `to`.
+    fn copy_props(&mut self, from: u8, to: u8) -> Result<(), Error> {
+        let (start, len, _) = self.objects[from as usize];
+        for k in start as usize..start as usize + len as usize {
+            let (ns, nn, value) = self.props[k];
+            let key = self.arena[ns as usize..ns as usize + nn as usize].to_vec();
+            self.set_prop(to, &key, value)?;
+        }
+        Ok(())
+    }
+    /// The object behind `F.prototype`, made on first use.
+    fn prototype(&mut self, f: u8) -> Result<u8, Error> {
+        let real = self.real_func(f);
+        if let Some(p) = self.protos.iter().find(|p| p.0 == real) { return Ok(p.1); }
+        if self.protos.len() == 32 { return Err(Error::Limit); }
+        let id = self.new_object()?;
+        self.protos.push((real, id));
+        Ok(id)
+    }
+    /// `F.prototype`, `f.call(this, ...)`, `f.apply(this, [...])`, `f.bind(this, ...)`.
+    #[inline(never)]
+    fn function_member(&mut self, f: u8, name: &[u8]) -> Result<Value, Error> {
+        if name == b"prototype" { return Ok(Value::Obj(self.prototype(f)?)); }
+        if !matches!(name, b"call" | b"apply" | b"bind") { return Err(Error::Unsupported); }
+        let (args, n) = self.arguments()?;
+        if !self.live { return Ok(Value::Undef); }
+        let this = if n > 0 { args[0] } else { Value::Undef };
+        let rest = if n > 1 { &args[1..n] } else { &[][..] };
+        match name {
+            b"call" => { self.this_next = Some(this); self.invoke(f, rest) }
+            b"apply" => {
+                let items = match args[1] { Value::Undef | Value::Null => Vec::new(), v @ Value::Arr(_) => self.iterate(v)?, _ => return Err(Error::Unsupported) };
+                self.this_next = Some(this);
+                self.invoke(f, &items)
+            }
+            _ => {
+                if self.bounds.len() == BOUNDS { return Err(Error::Limit); }
+                self.bounds.push((f, this, rest.to_vec()));
+                Ok(Value::Func(BOUND + (self.bounds.len() - 1) as u8))
+            }
+        }
+    }
     /// Run function `f` with `args`. Parameters bind for the call (shadowing,
     /// then restored); names it declares end with it. Arrow functions with
     /// an expression body return that expression.
     fn invoke(&mut self, f: u8, args: &[Value]) -> Result<Value, Error> {
         let receiver = self.this_next.take().unwrap_or(Value::Undef);
+        if (RESOLVERS..BUILTIN_FUNCS).contains(&f) {
+            let (p, reject) = self.resolvers[(f - RESOLVERS) as usize];
+            let v = args.first().copied().unwrap_or(Value::Undef);
+            if reject { self.settle(p, 2, v)?; } else { self.resolve(p, v)?; }
+            return Ok(Value::Undef);
+        }
         if f >= BUILTIN_FUNCS {
             let v = args.first().copied().unwrap_or(Value::Undef);
             return Ok(match f - BUILTIN_FUNCS {
@@ -1983,11 +2916,18 @@ impl<'a> Machine<'a> {
                 _ => Value::Bool(self.truthy(v)),
             });
         }
-        if self.depth >= MAX_DEPTH { return Err(Error::Limit); }
+        if self.too_deep() { return Err(Error::Limit); }
         self.depth += 1;
         let back = self.pos();
         let base = self.nvars;
         // A closure starts with its captured variables (written back after).
+        if (BOUND..BOUND + BOUNDS as u8).contains(&f) {
+            let (g, this, pre) = self.bounds[(f - BOUND) as usize].clone();
+            let mut all = pre;
+            all.extend_from_slice(args);
+            self.this_next = Some(this);
+            return self.invoke(g, &all);
+        }
         let (f, env) = if f as usize >= FUNCS { let (g, e) = self.closures[f as usize - FUNCS]; (g, Some(e as usize)) } else { (f, None) };
         if let Some(e) = env {
             for j in 0..self.envs[e].len() { let (n, l, v) = self.envs[e][j]; self.declare(&n[..l as usize], v, 0)?; }
@@ -2002,6 +2942,16 @@ impl<'a> Machine<'a> {
             // an `undefined` argument (the default runs only then).
             let rest = parens && self.tok == Tok::Punct(b'S');
             if rest { self.next()?; }
+            if parens && !rest && matches!(self.tok, Tok::Punct(b'[' | b'{')) {
+                // `({x, y = 2})` / `([k, v])`: the argument is destructured.
+                if i == PARAMS { return Err(Error::Limit); }
+                let v = args.get(i).copied().unwrap_or(Value::Undef);
+                self.pattern(Some(v))?;
+                i += 1;
+                if self.tok != Tok::Punct(b',') { break; }
+                self.next()?;
+                continue;
+            }
             let Tok::Ident(param) = self.tok else { if rest { return Err(Error::Syntax); } break };
             if i == PARAMS { return Err(Error::Limit); }
             self.next()?;
@@ -2026,9 +2976,11 @@ impl<'a> Machine<'a> {
         let loops = core::mem::replace(&mut self.loops, 0);
         let live = core::mem::replace(&mut self.live, true);
         let now = self.func_now.replace(f);
+        let args_before = core::mem::replace(&mut self.args_now, args as *const [Value]);
         let body = if self.tok == Tok::Punct(b'{') { self.statement(true).map(|_| self.ret.take().unwrap_or(Value::Undef)) } else { self.expr().and_then(|v| self.escape(v)) };
         if let Some(e) = env { for j in 0..self.envs[e].len() { self.envs[e][j].2 = self.vars[base + j].2; } }
         self.frame_base = frame;
+        self.args_now = args_before;
         self.func_now = now;
         self.live = live;
         self.loops = loops;
@@ -2069,8 +3021,11 @@ impl<'a> Machine<'a> {
                 let Tok::Ident(_) = self.tok else { return Err(Error::Syntax) };
                 return self.next();
             }
-            let Tok::Ident(_) = self.tok else { return Ok(()) };
-            self.next()?;
+            if matches!(self.tok, Tok::Punct(b'[' | b'{')) { self.pattern(None)?; }
+            else {
+                let Tok::Ident(_) = self.tok else { return Ok(()) };
+                self.next()?;
+            }
             if self.tok == Tok::Punct(b'=') { self.next()?; self.only_if(false, |m| m.expr())?; }
             if self.tok != Tok::Punct(b',') { return Ok(()); }
             self.next()?;
@@ -2142,8 +3097,9 @@ impl<'a> Machine<'a> {
     }
     /// One statement. With `run == false` (an untaken branch) it is parsed
     /// and checked the same way but writes and assigns nothing.
+    fn too_deep(&self) -> bool { self.depth >= MAX_DEPTH || stack_low() }
     fn statement(&mut self, run: bool) -> Result<(), Error> {
-        if self.depth >= MAX_DEPTH { return Err(Error::Limit); }
+        if self.too_deep() { return Err(Error::Limit); }
         // After `return`, the rest of the function body is checked, not run.
         let run = run && self.ret.is_none() && self.jump.is_none() && !self.skim;
         if run { self.steps += 1; if self.steps > STEPS { return Err(Error::Limit); } }
@@ -2187,11 +3143,18 @@ impl<'a> Machine<'a> {
             let Tok::Ident(key) = self.tok else { return Err(Error::Syntax) };
             self.next()?;
             let mut name = key;
+            let mut nested = None;
             if close == b'}' && !rest && self.tok == Tok::Punct(b':') {
                 self.next()?;
-                let Tok::Ident(alias) = self.tok else { return Err(Error::Syntax) };
-                self.next()?;
-                name = alias;
+                if matches!(self.tok, Tok::Punct(b'[' | b'{')) {
+                    // `{a: {b}}` / `{a: [x, y]}`: a pattern for the member.
+                    nested = Some(self.pos());
+                    self.pattern(None)?;
+                } else {
+                    let Tok::Ident(alias) = self.tok else { return Err(Error::Syntax) };
+                    self.next()?;
+                    name = alias;
+                }
             }
             if seen.len() == 8 || name.len() > NAME { return Err(Error::Limit); }
             let mut item = match (close, v, rest) {
@@ -2218,7 +3181,12 @@ impl<'a> Machine<'a> {
                 let d = self.only_if(missing, |m| m.expr())?;
                 if missing { item = d; }
             }
-            if v.is_some() { self.bind_var(name, Some(item))?; }
+            if let (Some(p), Some(_)) = (nested, v) {
+                let back = self.pos();
+                self.restore(p);
+                self.pattern(Some(item))?;
+                self.restore(back);
+            } else if v.is_some() { self.bind_var(name, Some(item))?; }
             seen.push(key);
             index += 1;
             if rest || self.tok != Tok::Punct(b',') { break; }
@@ -2284,8 +3252,11 @@ impl<'a> Machine<'a> {
         } else { None };
         self.expect(b'{')?;
         let (mut ctor, mut methods) = (None, Vec::new());
-        let (mut statics, mut accessors) = (Vec::new(), Vec::new());
+        let (mut statics, mut accessors, mut fields, mut static_fields) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        // Static fields live on an object of their own (`C.x`, `C.x = v`).
+        let static_obj = if run { self.new_object()? } else { 0 };
         while self.tok != Tok::Punct(b'}') {
+            if self.tok == Tok::Punct(b';') { self.next()?; continue; }
             let Tok::Ident(mut m) = self.tok else { return Err(Error::Syntax) };
             self.next()?;
             // `static name(...)`, `get name()`, `set name(v)` (methods may
@@ -2295,6 +3266,13 @@ impl<'a> Machine<'a> {
             let access = !fixed && matches!(m, b"get" | b"set") && matches!(self.tok, Tok::Ident(_));
             let setter = m == b"set";
             if access { let Tok::Ident(n) = self.tok else { return Err(Error::Syntax) }; m = n; self.next()?; }
+            if !access && self.tok != Tok::Punct(b'(') {
+                // A field: `x = expr` / `x;` (per instance), `static x = expr`.
+                let init = if self.tok == Tok::Punct(b'=') { self.next()?; let at = self.pos(); self.only_if(false, |m| m.expr())?; Some(at) } else { None };
+                if run { if fixed { static_fields.push((m, init)); } else { fields.push((m, init)); } }
+                if self.tok == Tok::Punct(b';') { self.next()?; } else if !self.nl && self.tok != Tok::Punct(b'}') { return Err(Error::Syntax); }
+                continue;
+            }
             let at = self.pos();
             self.expect(b'(')?;
             self.skip_params()?;
@@ -2308,8 +3286,13 @@ impl<'a> Machine<'a> {
         }
         self.next()?;
         if run {
-            if self.classes.len() == 8 { return Err(Error::Limit); }
-            self.classes.push((name, ctor, methods, parent, statics, accessors));
+            if self.classes.len() == 16 { return Err(Error::Limit); }
+            self.classes.push((name, ctor, methods, parent, statics, accessors, fields, static_obj));
+            // Static fields in order, once the class exists (`static b = C.a + 1`).
+            for (m, init) in static_fields {
+                let v = match init { Some(at) => self.eval_at(at, Value::Obj(static_obj))?, None => Value::Undef };
+                self.set_prop(static_obj, m, v)?;
+            }
         }
         Ok(())
     }
@@ -2544,7 +3527,7 @@ impl<'a> Machine<'a> {
                 if self.jump_label == Some(name) { (self.jump, self.jump_label) = (None, None); }
                 r
             }
-            Tok::Ident(name) if !matches!(name, b"else") => {
+            Tok::Ident(name) if !matches!(name, b"else" | b"new" | b"void" | b"typeof") => {
                 // `f(...)` as a statement calls for its effects.
                 let at = self.pos();
                 self.next()?;
@@ -2552,6 +3535,7 @@ impl<'a> Machine<'a> {
                 let call = !self.assigns_ahead()? && matches!(self.tok, Tok::Punct(b'(' | b'.' | b'['));
                 self.restore(at);
                 if call { self.expr()?; } else { self.assignment(run)?; }
+                while self.tok == Tok::Punct(b',') { self.next()?; self.expr()?; }
                 self.end()
             }
             Tok::Punct(op @ (b'I' | b'D')) => {
@@ -2562,7 +3546,7 @@ impl<'a> Machine<'a> {
                 if run { let old = self.lookup(name).ok_or(Error::Unsupported)?; self.assign(name, Value::Num(self.to_number(old) + if op == b'I' { 1.0 } else { -1.0 }), false)?; }
                 self.end()
             }
-            Tok::Punct(b'[' | b'(') | Tok::Num(_) | Tok::Str(_) | Tok::Template(_) => { self.expr()?; self.end() }
+            Tok::Punct(b'[' | b'(') | Tok::Num(_) | Tok::Str(_) | Tok::Template(_) | Tok::Ident(b"new" | b"void" | b"typeof") => { self.expr()?; self.end() }
             _ => Err(Error::Unsupported),
         }
     }
@@ -2600,14 +3584,22 @@ impl<'a> Machine<'a> {
             let go = if self.tok == Tok::Punct(b';') { true } else { let c = self.expr()?; self.truthy(c) };
             self.expect(b';')?;
             let update = self.pos();
-            if self.tok != Tok::Punct(b')') { self.assignment(false)?; }
+            if self.tok != Tok::Punct(b')') { self.update_list(false)?; }
             self.expect(b')')?;
             let go = run && self.ret.is_none() && go;
             self.statement(go)?;
             // The body statement was parsed to its end either way.
             if !go || self.loop_jump(label) == Some(true) { self.loops -= 1; return Ok(()); }
             self.restore(update);
-            if self.tok != Tok::Punct(b')') { self.assignment(true)?; }
+            if self.tok != Tok::Punct(b')') { self.update_list(true)?; }
+        }
+    }
+    /// A `for` update: expressions separated by commas (`i++, j--`).
+    fn update_list(&mut self, run: bool) -> Result<(), Error> {
+        loop {
+            self.only_if(run, |m| m.expr())?;
+            if self.tok != Tok::Punct(b',') { return Ok(()); }
+            self.next()?;
         }
     }
     /// `for (name of xs)` (array elements, string characters) and
@@ -2622,9 +3614,15 @@ impl<'a> Machine<'a> {
         let mut i = 0usize;
         loop {
             self.restore(body);
+            if let (Value::Obj(id), false, true) = (coll, of, run) {
+                // `for...in` skips private fields and class methods.
+                let (start, len, _) = self.objects[id as usize];
+                while i < len as usize && self.hidden_prop(id, start as usize + i) { i += 1; }
+            }
             let item = if !run || self.ret.is_some() { None } else {
                 match (coll, of) {
                     (Value::Arr(id), true) => { let (start, len, _) = self.arrays[id as usize]; (i < len as usize).then(|| self.elems[start as usize + i]) }
+                    (Value::Obj(id), true) if matches!(self.made_by[id as usize], 65 | 66) => self.collection_item(id, i)?,
                     (Value::Str(_, n), true) => if i < n as usize { Some(self.index(coll, i as f64)?) } else { None },
                     (Value::Obj(id), false) => { let (start, len, _) = self.objects[id as usize]; if i < len as usize { let (ns, nn, _) = self.props[start as usize + i]; Some(Value::Str(ns, nn)) } else { None } }
                     (Value::Arr(id), false) => if i < self.arrays[id as usize].1 as usize { Some(self.number_text(i as f64)?) } else { None },
@@ -2652,15 +3650,23 @@ impl<'a> Machine<'a> {
         }
     }
     /// `name = expr`, `name += expr`, `name -= expr`, `name++`, `name--`.
-    fn assignment(&mut self, run: bool) -> Result<(), Error> {
+    fn assignment(&mut self, run: bool) -> Result<Value, Error> {
         let Tok::Ident(name) = self.tok else { return Err(Error::Syntax) };
         self.next()?;
-        let found = if name == b"this" { Some(self.this) } else { self.lookup(name) };
+        let mut found = if name == b"this" { Some(self.this) } else { self.lookup(name) };
+        // `C.x = v` / `C.count++`: a class's static fields.
+        if found.is_none() && self.tok == Tok::Punct(b'.') {
+            if let Some(Tok::Ident(key)) = { let at = self.pos(); self.next()?; let t = self.tok; self.restore(at); Some(t) } {
+                found = self.static_home(name, key).map(Value::Obj);
+            }
+            // `F.prototype...` for a declared function.
+            if found.is_none() { found = self.funcs[..self.nfuncs].iter().position(|(n, l, _)| *l != 0 && &n[..*l as usize] == name).map(|i| Value::Func(i as u8)); }
+        }
         let Some(old) = found.or((self.skim || !run).then_some(Value::Undef)) else { return Err(Error::Unsupported) };
         if !matches!(self.tok, Tok::Punct(b'.' | b'[')) {
             let v = self.update(old)?;
             if run { self.assign(name, v, false)?; }
-            return Ok(());
+            return Ok(v);
         }
         // A member chain `a.b[c].d op= v`: every key but the last is read.
         let mut base = old;
@@ -2680,7 +3686,7 @@ impl<'a> Machine<'a> {
             if matches!(self.tok, Tok::Punct(b'.' | b'[')) { base = current; continue; }
             let v = self.update(current)?;
             if run { self.set_member(base, key, v)?; }
-            return Ok(());
+            return Ok(v);
         }
     }
     fn key_text(&mut self, key: Key<'a>) -> Result<Vec<u8>, Error> {
@@ -2691,6 +3697,7 @@ impl<'a> Machine<'a> {
         match (base, key) {
             (Value::Obj(id), k) => { let k = self.key_text(k)?; self.read_prop(id, &k) }
             (Value::Arr(id), Key::Name(b"length")) => Ok(Value::Num(self.arrays[id as usize].1 as f64)),
+            (Value::Func(f), Key::Name(b"prototype")) => Ok(Value::Obj(self.prototype(f)?)),
             (Value::Arr(_) | Value::Str(..), Key::Value(i)) => { let i = self.to_number(i); self.index(base, i) }
             _ => Err(Error::Unsupported),
         }
@@ -2699,6 +3706,15 @@ impl<'a> Machine<'a> {
     /// appends) or an array's `length` (shrinking only).
     fn set_member(&mut self, base: Value, key: Key<'a>, v: Value) -> Result<(), Error> {
         match (base, key) {
+            // `F.prototype = {...}` replaces what new instances copy.
+            (Value::Func(f), Key::Name(b"prototype")) => {
+                let Value::Obj(obj) = v else { return Err(Error::Unsupported) };
+                let real = self.real_func(f);
+                match self.protos.iter().position(|p| p.0 == real) { Some(k) => self.protos[k].1 = obj, None => { if self.protos.len() == 32 { return Err(Error::Limit); } self.protos.push((real, obj)); } }
+                Ok(())
+            }
+            // Assignments to a frozen object are ignored (sloppy mode).
+            (Value::Obj(id), _) if self.frozen.contains(&id) => Ok(()),
             (Value::Obj(id), k) => {
                 let k = self.key_text(k)?;
                 match self.accessor(id, &k) {
@@ -2728,7 +3744,8 @@ impl<'a> Machine<'a> {
         }
     }
     /// After a name: does a member chain (`.a[b].c`) lead to an assignment?
-    fn assigns_ahead(&mut self) -> Result<bool, Error> {
+    fn assigns_ahead(&mut self) -> Result<bool, Error> { self.assigns_ahead_with(true) }
+    fn assigns_ahead_with(&mut self, steps: bool) -> Result<bool, Error> {
         let at = self.pos();
         loop {
             match self.tok {
@@ -2744,7 +3761,8 @@ impl<'a> Machine<'a> {
                 _ => break,
             }
         }
-        let assigns = matches!(self.tok, Tok::Punct(b'=' | b'P' | b'M' | b'T' | b'Q' | b'R' | b'I' | b'D' | b'W' | b'v' | b'w' | b'x' | b'y' | b'z' | b'q'));
+        let assigns = matches!(self.tok, Tok::Punct(b'=' | b'P' | b'M' | b'T' | b'Q' | b'R' | b'W' | b'v' | b'w' | b'x' | b'y' | b'z' | b'q'))
+            || (steps && matches!(self.tok, Tok::Punct(b'I' | b'D')));
         self.restore(at);
         Ok(assigns)
     }
@@ -2799,6 +3817,7 @@ fn rem(a: f64, b: f64) -> f64 {
 }
 /// Correctly rounded square root without libm: an exact integer square
 /// root of the scaled significand, rounded once with a sticky bit.
+pub fn sqrt_f64(x: f64) -> f64 { sqrt(x) }
 fn sqrt(x: f64) -> f64 {
     if x.is_nan() || x < 0.0 { return f64::NAN; }
     if x == 0.0 || x.is_infinite() { return x; }
@@ -2886,6 +3905,38 @@ fn json_ws(t: &[u8], at: &mut usize) { while t.get(*at).is_some_and(|c| matches!
 fn s_is_plain(t: &[u8]) -> bool {
     t.iter().all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-')) && t.iter().any(u8::is_ascii_digit)
 }
+/// The closing backtick of a template starting at `i`: skips `\x` escapes
+/// and `${...}` substitutions (with their own strings, braces and nested
+/// templates).
+fn template_end(s: &[u8], mut i: usize) -> Option<usize> {
+    while i < s.len() {
+        match s[i] {
+            b'\\' => i += 2,
+            b'`' => return Some(i),
+            b'$' if s.get(i + 1) == Some(&b'{') => i = substitution_end(s, i + 2)?,
+            _ => i += 1,
+        }
+    }
+    None
+}
+/// Just past the `}` closing a `${` whose body starts at `i`.
+fn substitution_end(s: &[u8], mut i: usize) -> Option<usize> {
+    let mut depth = 1;
+    while i < s.len() {
+        match s[i] {
+            b'{' => depth += 1,
+            b'}' => { depth -= 1; if depth == 0 { return Some(i + 1); } }
+            q @ (b'\'' | b'"') => {
+                i += 1;
+                while *s.get(i)? != q { if s[i] == b'\\' { i += 1; } i += 1; }
+            }
+            b'`' => i = template_end(s, i + 1)?,
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
 /// JavaScript ToInt32 (for the bitwise operators).
 fn int32(x: f64) -> i32 {
     if !x.is_finite() { return 0; }
@@ -2923,10 +3974,13 @@ pub fn run(source: &[u8]) -> Result<Vec<u8>, Error> {
     elems.try_reserve_exact(ELEMS).map_err(|_| Error::Limit)?;
     let mut props = Vec::new();
     props.try_reserve_exact(PROPS).map_err(|_| Error::Limit)?;
-    let mut m = Machine { src: source, at: 0, tok: Tok::End, nl: false, arena, vars: [([0; NAME], 0, Value::Num(0.0)); VARS], kinds: [0; VARS], block_base: 0, nvars: 0, out, depth: 0, steps: 0,
-        funcs: [([0; NAME], 0, Pos { at: 0, tok: Tok::End, nl: false }); FUNCS], nfuncs: 0, skim: false, live: true, ret: None, jump: None, jump_label: None, label_next: None, labels: 0, this: Value::Undef, this_next: None, thrown: None, regexes: Vec::new(), classes: Vec::new(), accessors: Vec::new(), made_by: [0; OBJECTS], func_now: None, frame_base: 0, closures: Vec::new(), envs: Vec::new(), loops: 0,
-        elems, arrays: [(0, 0, 0); ARRAYS], narrays: 0, props, objects: [(0, 0, 0); OBJECTS], nobjects: 0 };
+    // Fixed tables live on the heap too: the Browser stack is for nesting.
+    fn table<T: Clone>(n: usize, v: T) -> Result<Vec<T>, Error> { let mut t = Vec::new(); t.try_reserve_exact(n).map_err(|_| Error::Limit)?; t.resize(n, v); Ok(t) }
+    let mut m = Machine { src: source, at: 0, tok: Tok::End, nl: false, arena, vars: table(VARS, ([0; NAME], 0, Value::Num(0.0)))?, kinds: table(VARS, 0)?, block_base: 0, nvars: 0, out, depth: 0, steps: 0,
+        funcs: table(FUNCS, ([0; NAME], 0, Pos { at: 0, tok: Tok::End, nl: false }))?, nfuncs: 0, skim: false, live: true, ret: None, jump: None, jump_label: None, label_next: None, labels: 0, this: Value::Undef, this_next: None, thrown: None, regexes: Vec::new(), re_last: Vec::new(), frozen: Vec::new(), classes: Vec::new(), accessors: Vec::new(), promises: Vec::new(), jobs: Vec::new(), resolvers: Vec::new(), gathers: Vec::new(), collections: Vec::new(), made_by: table(OBJECTS, 0)?, func_now: None, protos: Vec::new(), bounds: Vec::new(), args_now: core::ptr::slice_from_raw_parts(core::ptr::null(), 0), frame_base: 0, closures: Vec::new(), envs: Vec::new(), loops: 0,
+        elems, arrays: table(ARRAYS, (0, 0, 0))?, narrays: 0, props, objects: table(OBJECTS, (0, 0, 0))?, nobjects: 0 };
     m.next()?;
     while m.tok != Tok::End { m.statement(true)?; }
+    m.drain_jobs()?;
     Ok(m.out)
 }

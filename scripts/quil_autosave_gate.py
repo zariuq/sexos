@@ -119,6 +119,22 @@ def main():
   g['chord']('ctrl','ret',r'\[quil.replace.all\] count=2 start=7 end=12 new_bytes=5 applied=1 len=14')
   g['key']('esc',r'\[quil.find.mode\] on=0 reason=escape')
   g['chord']('ctrl','l',r'\[quil.select.line\] start=0 end=14 extended=0 ok=1')
+  # A second line "x", then Ctrl+Up moves it above the first.
+  g['key']('end',r'\[quil.cursor.move\] old=\d+ new=14 len=14 dir=end ok=1');s0=len(t());g['q'].key('ret');g['q'].key('x')
+  g['wait'](r'\[quil.document.edit\] revision=\d+ pending=\d+ bytes=16',s0,30)
+  g['chord']('ctrl','up',r'\[quil.line.move\] up=1 start=0 end=16 caret=1 applied=1 len=16')
+  # Select all, Ctrl+] indents both lines, Ctrl+[ outdents them again.
+  g['chord']('ctrl','a',r'\[quil.selection\] generation=\d+ revision=\d+ bytes=16 anchor=0 caret=16')
+  g['chord']('ctrl','bracket_right',r'\[quil.indent\] lines=2 out=0 start=0 end=18 applied=1 len=18')
+  g['chord']('ctrl','bracket_left',r'\[quil.indent\] lines=2 out=1 start=0 end=16 applied=1 len=16')
+  # Ctrl+Shift+D copies the caret's (second) line below it.
+  s0=len(t());g['q'].cmd('send-key',{'keys':[{'type':'qcode','data':'ctrl'},{'type':'qcode','data':'shift'},{'type':'qcode','data':'d'}],'hold-time':80})
+  g['wait'](r'\[quil.line.duplicate\] start=16 bytes=14 caret=31 applied=1 len=31',s0,30)
+  # Home, Ctrl+K kills the copied line's text; Ctrl+Home, Ctrl+J joins lines 1 and 2.
+  g['key']('home',r'\[quil.cursor.move\] old=31 new=17 len=31 dir=home ok=1')
+  g['chord']('ctrl','k',r'\[quil.line.kill\] start=17 removed=14 applied=1 len=17')
+  g['chord']('ctrl','home',r'\[quil.cursor.move\] old=17 new=0 len=17 dir=doc_start ok=1')
+  g['chord']('ctrl','j',r'\[quil.line.join\] start=1 removed=1 applied=1 len=17')
   settle(g,60)
   g['q'].cmd('screendump',{'filename':str(out/'recovered.ppm')})
  except Exception as exc:failure=repr(exc)

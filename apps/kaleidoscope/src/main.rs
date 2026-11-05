@@ -30,6 +30,7 @@ mod text_delivery;
 mod browser_command;
 mod html_text;
 mod regex;
+mod fmath;
 mod script;
 mod stack_probe;
 use browser_command::Intent;
@@ -81,6 +82,8 @@ struct Browser {
     page_path:Option<sex_tls::HttpPath>,
     /// Heap-held: the Browser's main task has a 4-page stack quota.
     page_links:alloc::boxed::Box<[(usize,usize);16]>,
+    /// Find in page: the query while `/` mode is open.
+    find:Option<([u8;FIND_MAX],u8)>,
     /// Pages left by following links (None = /page.html); Backspace returns.
     page_history:alloc::boxed::Box<[Option<sex_tls::HttpPath>;8]>,
     page_depth:usize,
@@ -152,6 +155,36 @@ impl Browser {
     fn clear_selection(&mut self){
         self.selection.clear();self.selection_body=None;
         unsafe{CLIPBOARD.cancel(sex_pdx::get_ticks());}
+    }
+    /// `/` opens find in the visible reader; letters, digits and space edit
+    /// the query, Backspace erases, Enter selects the next match (ASCII
+    /// case-insensitive, wrapping once) and scrolls to it, Esc closes.
+    fn find_key(&mut self,code:u8)->bool{
+        let Some((mut query,mut len))=self.find else{
+            if code==0x35&&self.visible_reader(){self.find=Some(([0;FIND_MAX],0));sex_pdx::serial_record!("[browser.find.mode] on=1");return true}
+            return false
+        };
+        match code {
+            0x01=>{self.find=None;sex_pdx::serial_record!("[browser.find.mode] on=0");return true}
+            0x0E=>{len=len.saturating_sub(1);}
+            0x1C=>{self.find_next(&query[..len as usize]);return true}
+            _=>{if let Some(c)=find_char(code){if (len as usize)<FIND_MAX{query[len as usize]=c;len+=1;}}}
+        }
+        self.find=Some((query,len));true
+    }
+    fn find_next(&mut self,query:&[u8]){
+        if !self.visible_reader()||query.is_empty(){return}
+        let Some(snapshot)=self.selection.snapshot()else{return};
+        let from=snapshot.range().1;
+        let body=self.reader_body();
+        let at=|i:usize|body.len()>=i+query.len()&&body[i..i+query.len()].eq_ignore_ascii_case(query);
+        let found=(from..body.len()).find(|&i|at(i)).map(|i|(i,false)).or_else(|| (0..from.min(body.len())).find(|&i|at(i)).map(|i|(i,true)));
+        let Some((start,wrapped))=found else{sex_pdx::serial_record!("[browser.find] query_bytes={} found=0",query.len());return};
+        let source=snapshot.source();
+        let selected=self.selection.move_to(source,start,false).is_ok()&&self.selection.move_to(source,start+query.len(),true).is_ok();
+        let body=if self.reading_https{if self.exchange.has_document(){self.exchange.document()}else if let Some(b)=self.import_source.as_ref(){b.as_bytes()}else{self.importer.document().map_or(&[][..],|b|b.as_bytes())}}else{self.http.document()};
+        self.reader.reveal(body,start);
+        sex_pdx::serial_record!("[browser.find] query_bytes={} start={} end={} wrapped={} found=1 selected={}",query.len(),start,start+query.len(),wrapped as u8,selected as u8);
     }
     fn reader_body(&self)->&[u8]{if self.reading_https{self.https_body()}else{self.http.document()}}
     // Match the rendered source, including overlay precedence and release state.
@@ -234,6 +267,8 @@ impl Browser {
                 }
             }
         }
+        // Shift+1..6 follow links 11..16 (`0` is link 10, see `key`).
+        if key.shift&&(0x02..=0x07).contains(&key.code)&&self.page_html&&self.visible_reader()&&self.reading_https&&self.exchange.has_document(){self.follow_link(10+(key.code-1) as usize);return;}
         self.key(key.code as u64);
     }
     fn selection_horizontal(&mut self,right:bool,extend:bool){
@@ -420,6 +455,7 @@ impl Browser {
     }
     fn key(&mut self,raw:u64){
         let Ok(code)=u8::try_from(raw)else{return;};
+        if self.find_key(code){return;}
         if self.ui_failed{self.ui_failed=false;self.ui_retries=0;self.ui_dirty=true;}
         if self.import_editor.active{
             match self.import_editor.key(code){import_view::Key::Submit=>self.submit_import(),import_view::Key::Cancel=>{self.import_status=import_view::Status::Cancelled;self.dismiss_import(true);},_=>{}}
@@ -431,7 +467,7 @@ impl Browser {
             if !self.importer.busy()||self.importer.view()==document_import::View::Uncertain{self.workspace.changed();self.files_pending=true;}else{sex_pdx::serial_record!("[browser.import.files.blocked] pending=1 effects=0");}return;
         }
         if self.dismiss_import_key(code){return;}
-        if (0x02..=0x0A).contains(&code)&&self.page_html&&self.visible_reader()&&self.reading_https&&self.exchange.has_document(){self.follow_link((code-1) as usize);return;}
+        if (0x02..=0x0B).contains(&code)&&self.page_html&&self.visible_reader()&&self.reading_https&&self.exchange.has_document(){self.follow_link(if code==0x0B{10}else{(code-1) as usize});return;}
         if code==0x0E&&self.page_html&&self.visible_reader()&&self.reading_https&&self.exchange.has_document(){self.page_back();return;}
         if matches!(code,0x10|0x24){self.clear_selection();}
         if code==0x10&&(self.import_panel||self.importer.has_document()||self.import_source.is_some()||self.importer.busy()){
@@ -638,7 +674,7 @@ impl Browser {
         unsafe{assert!(CLIPBOARD.bind(sex_pdx::clipboard::Participant::from_catalog(identity).expect("BROWSER_CLIPBOARD_POLICY")));}
         #[cfg(app_resource_cleanup_proof)]
         if selected.is_original(){full_resource_cleanup_proof();}
-        Self { identity,viewport_sequence:0,viewport_ready:true,reader:document_reader::Reader::new(),selection:sex_pdx::text_selection::Selection::new(),selection_generation:0,selection_body:None,clipboard_view:sex_pdx::clipboard_client::View::Idle,ui_last_selection:(0,0),reading:false,reading_https:false,https_panel:false,page_html:false,page_path:None,page_links:alloc::boxed::Box::new([(0,0);16]),page_history:alloc::boxed::Box::new([None;8]),page_depth:0,https_view:tls_exchange::View::Idle,https_progress_logged:0,
+        Self { identity,viewport_sequence:0,viewport_ready:true,reader:document_reader::Reader::new(),selection:sex_pdx::text_selection::Selection::new(),selection_generation:0,selection_body:None,clipboard_view:sex_pdx::clipboard_client::View::Idle,ui_last_selection:(0,0),reading:false,reading_https:false,https_panel:false,page_html:false,page_path:None,page_links:alloc::boxed::Box::new([(0,0);16]),find:None,page_history:alloc::boxed::Box::new([None;8]),page_depth:0,https_view:tls_exchange::View::Idle,https_progress_logged:0,
             asset_panel:false,asset_png:false,asset_ticket:0,asset_status:asset_view::Status::Cleared,asset_peer_view:tls_exchange::View::Idle,image:asset_decode::Image::new(),bitmap:bitmap_delivery::Outbox::new(selected),asset_presentation:asset_presentation::Presentation::new(),asset_fenced:false,
             importer:document_import::Client::new(),import_source:None,import_editor:import_view::Editor::new(),import_status:import_view::Status::NoDocument,import_panel:false,import_ticket:0,import_viewport:(0,0),workspace:sex_pdx::document_view::WorkspaceRefresh::new(identity.target_pd,identity.task_id),files_pending:false,
             live_text,live_len,probe:network_probe::Probe::new(),probe_view:network_probe::View::Pending,
@@ -823,7 +859,7 @@ impl Browser {
         let received=self.exchange.document_received();
         if self.asset_panel&&received>self.https_progress_logged{self.https_progress_logged=received;sex_pdx::serial_record!("[browser.asset.progress] ticket={} body_received={} authenticated=1 body_visible=0",peer_ticket,received);}
         if self.exchange.is_document()&&received>self.https_progress_logged{self.https_progress_logged=received;sex_pdx::serial_record!("[browser.https.progress] ticket={} body_received={} authenticated=1 body_visible=0",peer_ticket,received);}
-        if self.exchange.take_response_verified(){if let Some(p)=self.exchange.take_page_stats(){*self.page_links=p.targets;sex_pdx::serial_record!("[browser.html.converted] source_bytes={} text_bytes={} links={} truncated={} scripts_run={} scripts_refused={} ticks={}",p.source,p.len,p.links,p.truncated as u8,p.scripts_run,p.scripts_refused,p.ticks);if let Some(depth)=stack_probe::high_water(){let (painted,untouched)=stack_probe::detail();sex_pdx::serial_record!("[browser.stack.high_water] bytes={} mapped=65536 painted_at={} untouched={}",depth,painted,untouched);}}if self.exchange.resource_kind().is_some_and(sex_tls::Resource::is_image){sex_pdx::serial_record!("[browser.asset.body] ticket={} bytes={} hash={:#x} parsed=1 authenticated=1 visible=0",peer_ticket,self.exchange.retained_asset_len(),self.exchange.retained_asset_hash());}else if self.exchange.is_document(){sex_pdx::serial_record!("[browser.https.body] ticket={} bytes={} hash={:#x} parsed=1 authenticated=1 visible=0",peer_ticket,self.exchange.retained_document_len(),self.exchange.retained_document_hash());}else{sex_pdx::serial_record!("[browser.tls.peer.response] ticket={} bytes={} hash={:#x} authenticated=1 source=guest_aead",peer_ticket,sex_tls::EXCHANGE_RESPONSE.len(),public_fingerprint(sex_tls::EXCHANGE_RESPONSE));}}
+        if self.exchange.take_response_verified(){if let Some(p)=self.exchange.take_page_stats(){*self.page_links=p.targets;sex_pdx::serial_record!("[browser.html.converted] source_bytes={} text_bytes={} links={} truncated={} scripts_run={} scripts_refused={} ticks={}",p.source,p.len,p.links,p.truncated as u8,p.scripts_run,p.scripts_refused,p.ticks);if let Some(depth)=stack_probe::high_water(){let (painted,untouched)=stack_probe::detail();sex_pdx::serial_record!("[browser.stack.high_water] bytes={} mapped=65536 painted_at={} untouched={}",depth,painted,untouched);sex_pdx::serial_record!("[browser.script.stack_floor] floor_offset=10240 hits={}",script::floor_hits());}}if self.exchange.resource_kind().is_some_and(sex_tls::Resource::is_image){sex_pdx::serial_record!("[browser.asset.body] ticket={} bytes={} hash={:#x} parsed=1 authenticated=1 visible=0",peer_ticket,self.exchange.retained_asset_len(),self.exchange.retained_asset_hash());}else if self.exchange.is_document(){sex_pdx::serial_record!("[browser.https.body] ticket={} bytes={} hash={:#x} parsed=1 authenticated=1 visible=0",peer_ticket,self.exchange.retained_document_len(),self.exchange.retained_document_hash());}else{sex_pdx::serial_record!("[browser.tls.peer.response] ticket={} bytes={} hash={:#x} authenticated=1 source=guest_aead",peer_ticket,sex_tls::EXCHANGE_RESPONSE.len(),public_fingerprint(sex_tls::EXCHANGE_RESPONSE));}}
         let peer_view=if matches!(self.intent,Some(Intent::TlsDns|Intent::TlsAssetDns|Intent::TlsStart)){
             if self.waiting_receipt(){tls_exchange::View::Uncertain}else{tls_exchange::View::Pending}
         }else{self.exchange.view()};
@@ -925,7 +961,11 @@ impl Browser {
         if let Some((mut text,metadata))=composed{
             if reader_layout.is_some(){
                 let view=self.clipboard_view;
-                let label:&[u8]=match view{
+                let mut find_label=[0u8;FIND_MAX+24];
+                let label:&[u8]=if let Some((q,n))=self.find{
+                    let n=n as usize;find_label[..6].copy_from_slice(b"FIND: ");find_label[6..6+n].copy_from_slice(&q[..n]);
+                    find_label[6+n..6+n+16].copy_from_slice(b"_ ENTER NEXT/ESC");&find_label[..22+n]
+                }else{match view{
                     sex_pdx::clipboard_client::View::Pending=>b"COPY PENDING / ESC CANCEL",
                     sex_pdx::clipboard_client::View::Copied=>b"COPIED / CTRL A C / SHIFT SELECT",
                     sex_pdx::clipboard_client::View::Empty=>b"EMPTY SELECTION / CTRL A",
@@ -935,7 +975,7 @@ impl Browser {
                     sex_pdx::clipboard_client::View::Busy=>b"CLIPBOARD BUSY",
                     sex_pdx::clipboard_client::View::Cancelled=>b"COPY CANCELLED / CTRL A C",
                     _=>if self.selection.range().map_or(false,|(lo,hi)|hi>lo){b"CTRL C COPY / SHIFT SELECT"}else{b""},
-                };
+                }};
                 if !label.is_empty(){if let Some((_,_,_,rows,cols,_))=reader_layout{if rows>1{document_reader::replace_footer(&mut text.bytes,text.len,cols,label);}}}
             }
             if reader_layout.is_none()&&!self.asset_panel&&!self.import_panel&&self.https_panel&&self.ui_last!=text.bytes{sex_pdx::serial_record!("[browser.https.layout] base={} bytes=64 viewport={} state={:?} pixels=unconfirmed",text.len-64,self.viewport_sequence,self.https_view);}
@@ -1010,11 +1050,19 @@ fn full_resource_cleanup_proof()->! {
 /// The Browser state lives here, not in `_start`'s frame: held on the stack
 /// it kept ~19 KiB (and a construction copy) live for the whole session, and
 /// the measured stack high water was within 256 bytes of the mapped 64 KiB.
+const FIND_MAX:usize=24;
+/// Set-1 scan codes the find query accepts (lower-case letters, digits, space, `-.,`).
+fn find_char(code:u8)->Option<u8>{
+    const ROWS:[(u8,&[u8]);4]=[(0x02,b"1234567890-"),(0x10,b"qwertyuiop"),(0x1E,b"asdfghjkl"),(0x2C,b"zxcvbnm,.")];
+    if code==0x39{return Some(b' ')}
+    ROWS.iter().find_map(|(first,keys)|code.checked_sub(*first).and_then(|i|keys.get(i as usize)).copied())
+}
 static mut BROWSER: core::mem::MaybeUninit<Browser> = core::mem::MaybeUninit::uninit();
 struct App;
 impl SexApp for App {
     fn new(pdx: u32) -> Self {
         stack_probe::paint();
+        script::set_stack_floor(stack_probe::script_floor());
         unsafe { (*core::ptr::addr_of_mut!(BROWSER)).write(Browser::new(pdx)); }
         App
     }

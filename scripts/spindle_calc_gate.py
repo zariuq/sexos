@@ -21,6 +21,8 @@ CASES=[('calc ans',r'\[spindle.calc\] expr_bytes=3 error=NoAnswer ok=0'),
        ('calc 0xff+1',r'\[spindle.calc\] expr_bytes=6 result== 256 ok=1'),
        ('calc ans in hex',r'\[spindle.calc\] expr_bytes=10 result== 0x100 ok=1'),
        ('calc 1/2 in bin',r'\[spindle.calc\] expr_bytes=10 error=NotWhole ok=0'),
+       ('calc ln(2)',r'\[spindle.calc\] expr_bytes=5 result=~ 0\.693147181 ok=1'),
+       ('calc 2**0.5',r'\[spindle.calc\] expr_bytes=6 result=~ 1\.414213562 ok=1'),
        ('calc 7%0',r'\[spindle.calc\] expr_bytes=3 error=DivideByZero ok=0')]
 
 def type_line(g,value):
@@ -50,6 +52,13 @@ def main():
   s=len(g['text']());g['q'].key('tab');g['wait'](r'\[spindle.complete\] matches=2 added=0 len=14',s)
   for _ in range(14):
    s=len(g['text']());g['q'].key('backspace');g['wait'](r'\[spindle.line.backspace\]',s)
+  # Ctrl editing: Ctrl+W drops a word, Ctrl+U the line, Ctrl+R recalls history.
+  type_line(g,'echo ab cd');g['chord']('ctrl','w',r'\[spindle.line.ctrl\] key=w len=8 cur=8')
+  g['chord']('ctrl','u',r'\[spindle.line.ctrl\] key=u len=0 cur=0')
+  type_line(g,'0xff');g['chord']('ctrl','r',r'\[spindle.line.ctrl\] key=r len=11 cur=11')
+  s=len(g['text']());g['q'].key('ret');rows.append(dict(input='0xff<Ctrl+R>',record=g['wait'](r'\[spindle.calc\] expr_bytes=6 result== 256 ok=1',s)[0]))
+  # `history ln` lists the one calc line containing "ln".
+  type_line(g,'history ln');s=len(g['text']());g['q'].key('ret');rows.append(dict(input='history ln',record=g['wait'](r'\[spindle.history.search\] bytes=2 found=1',s)[0]))
   # Spindle's display outbox must drain: its last batch is admitted after the last command.
   last=len(g['text']());import time as _t;d=_t.monotonic()+30
   while _t.monotonic()<d and not re.search(r'\[spindle.display.batch.admitted\]',g['text']()[last-20000 if last>20000 else 0:]):_t.sleep(.2)

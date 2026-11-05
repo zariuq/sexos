@@ -460,6 +460,44 @@ fn complete_command(line: &mut CmdLine) -> bool {
     true
 }
 
+/// Ctrl+U clears the line, Ctrl+W deletes the word before the cursor,
+/// Ctrl+L clears the scrollback, Ctrl+R recalls the newest history entry
+/// containing the typed text (again: the next older one).
+fn line_control(code: u8, line: &mut CmdLine, hist: &History, sb: &mut Scrollback) {
+    // Ctrl+R: the text searched for, and the last entry recalled.
+    static mut SEARCH: ([u8; CMD_MAX], usize, [u8; CMD_MAX], usize, usize) = ([0; CMD_MAX], 0, [0; CMD_MAX], 0, 0);
+    let s = unsafe { &mut *core::ptr::addr_of_mut!(SEARCH) };
+    let key = match code {
+        0x16 => { line.clear(); "u" }
+        0x11 => {
+            let mut a = line.cur;
+            while a > 0 && line.buf[a - 1] == b' ' { a -= 1; }
+            while a > 0 && line.buf[a - 1] != b' ' { a -= 1; }
+            for _ in a..line.cur { line.delete_at(a); }
+            line.cur = a;
+            "w"
+        }
+        0x26 => { *sb = Scrollback::new(); "l" }
+        0x13 => {
+            // Continue only while the line still shows the last recalled entry.
+            if line.buf[..line.len] != s.2[..s.3] { s.0[..line.len].copy_from_slice(&line.buf[..line.len]); s.1 = line.len; s.4 = 0; }
+            let needle = &s.0[..s.1];
+            let count = (hist.total as usize).min(MAX_HISTORY);
+            let found = (s.4..count).find(|&i| hist.get(i).is_some_and(|e| needle.is_empty() || e.windows(needle.len()).any(|w| w == needle)));
+            if let Some(i) = found {
+                let entry = hist.get(i).unwrap_or(b"");
+                line.clear();
+                for &b in entry { line.insert_at(line.len, b); }
+                s.2[..line.len].copy_from_slice(&line.buf[..line.len]); s.3 = line.len; s.4 = i + 1;
+            }
+            "r"
+        }
+        _ => "other",
+    };
+    line.hist_nav = None;
+    sex_pdx::serial_record!("[spindle.line.ctrl] key={} len={} cur={}", key, line.len, line.cur);
+}
+
 /// Accept the current ghost suggestion (if any) into the live command line.
 fn ghost_accept(line: &mut CmdLine, hist: &History) -> bool {
     if let Some((suffix, slen)) = ghost_suffix(line, hist) {
@@ -736,6 +774,7 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
             sb.push(b"  calc <expr>  exact + - * / % ** sqrt abs min max round floor ceil ans");
             sb.push(b"  calc x = 2   name a value (up to 8)");
             sb.push(b"  calc 255 in hex   also in bin / in oct");
+            sb.push(b"  calc ln(2)   exp ln log sin cos tan, 2**0.5");
             sb.push(b"  Tab          complete a command name");
             sb.push(b"  about        Spindle version + identity");
             sb.push(b"  route        input/surface route info");
@@ -777,6 +816,7 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
             sb.push(b"--- History & Events ---");
             sb.push(b"  history      show command history");
             sb.push(b"  history clear  clear and save history");
+            sb.push(b"  history <text>  entries containing text");
             sb.push(b"  events       show event log");
             sb.push(b"  events clr   clear event log");
             serial_println!("[spindle.help.command] name=history ok=1");
@@ -872,7 +912,7 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
                         calc_command::Error::Overflow => b"calc: number too large",
                         calc_command::Error::TooDeep => b"calc: nested too deeply",
                         calc_command::Error::NoAnswer => b"calc: no previous answer (ans)",
-                        calc_command::Error::Exponent => b"calc: ** needs a whole exponent up to 64",
+                        calc_command::Error::Exponent => b"calc: ** whole exponents go up to 64",
                         calc_command::Error::Domain => b"calc: square root of a negative number",
                         calc_command::Error::Unknown => b"calc: unknown name (set one with  calc x = 2)",
                         calc_command::Error::NotWhole => b"calc: only whole results show in hex/bin/oct",
@@ -1219,6 +1259,20 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
             if args == b"clear" {
                 hist.clear();
                 sb.push(b"History cleared.");
+            } else if !args.is_empty() {
+                // `history <text>`: entries containing the text, newest first
+                // (history searches themselves are left out).
+                let count = (hist.total as usize).min(MAX_HISTORY);
+                let mut found = 0;
+                for i in 0..count {
+                    if let Some(entry) = hist.get(i) {
+                        if entry.starts_with(b"history ") || !entry.windows(args.len()).any(|w| w == args) { continue; }
+                        sb.push(entry);
+                        found += 1;
+                    }
+                }
+                if found == 0 { sb.push(b"No history entries match."); }
+                sex_pdx::serial_record!("[spindle.history.search] bytes={} found={}", args.len(), found);
             } else {
                 if hist.total == 0 {
                     sb.push(b"History: empty.");
@@ -2578,6 +2632,12 @@ pub extern "C" fn _start() -> ! {
                 }
             }
             if value != 1 { continue; }
+            // Ctrl chords edit the line; they never insert text.
+            if (msg.arg0 >> 9) & 1 == 1 {
+                line_control(scancode, &mut line, hist, sb);
+                unsafe { content_render(&line, sb); }
+                continue;
+            }
 
             // On Enter, record command, persist, dispatch, and optionally Bell-notify.
             if scancode == 0x1C && line.len > 0 {

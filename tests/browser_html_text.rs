@@ -3,6 +3,7 @@
 extern crate alloc;
 #[path="../apps/kaleidoscope/src/html_text.rs"] mod html_text;
 #[path="../apps/kaleidoscope/src/regex.rs"] mod regex;
+#[path="../apps/kaleidoscope/src/fmath.rs"] mod fmath;
 #[path="../apps/kaleidoscope/src/script.rs"] mod script;
 use html_text::{convert, looks_like_html, MAX_LINKS};
 
@@ -76,9 +77,9 @@ fn malformed_markup_terminates() {
 #[test]
 fn table_cells_are_separated() {
     let (t, _) = text("<table><tr><th>k</th><th>v</th></tr><tr><td>a</td><td>1</td></tr></table>", 256);
-    assert_eq!(t, "k | v\na | 1");
+    assert_eq!(t, "k | v\n--+--\na | 1");
     let (t, _) = text("<table><tr><th>name</th><th>size</th><th>kind</th></tr><tr><td>Quil</td><td>12 KiB</td><td>editor</td></tr><tr><td>Spindle shell</td><td>8</td></tr></table><p>after</p>", 512);
-    assert_eq!(t, "name          | size   | kind\nQuil          | 12 KiB | editor\nSpindle shell | 8\n\nafter");
+    assert_eq!(t, "name          | size   | kind\n--------------+--------+-------\nQuil          | 12 KiB | editor\nSpindle shell | 8\n\nafter");
 }
 
 #[test]
@@ -183,4 +184,30 @@ fn declared_latin_charset_becomes_utf8() {
     let utf8 = "<p>caf\u{e9}</p>";
     let c = convert(utf8.as_bytes(), &mut out);
     assert_eq!(std::str::from_utf8(&out[..c.len]).unwrap(), "caf\u{e9}", "undeclared pages are UTF-8");
+}
+
+#[test]
+fn latin1_greek_and_symbol_entities() {
+    let (t, _) = text("<p>&eacute;&Eacute;&ntilde;&szlig;&AElig;&yuml;&ETH; &le;&ge;&ne; &micro; &alpha;&pi;&Omega;&sigmaf; &check;&infin;&frac14;&sup2;&dagger;&hearts; a&shy;b &bogus; &Sigmaf;</p>", 512);
+    assert_eq!(t.trim(), "éÉñßÆÿÐ ≤≥≠ µ απΩς ✓∞¼²†♥ ab &bogus; &Sigmaf;");
+}
+
+#[test]
+fn list_paragraphs_marker_styles_media_and_preformatted_code() {
+    let (t, _) = text("<ul><li><p>para in li</p></li><li>two</li></ul><p>after</p><ol type=a><li>x<li>y</ol><ol type=I start=4><li>x<li>y</ol>", 512);
+    assert_eq!(t.trim(), "- para in li\n- two\n\nafter\n\na. x\nb. y\n\nIV. x\nV. y");
+    let (t, _) = text("<video src=v.mp4 title='Demo clip'>Your browser cannot play this.</video><p>next</p><iframe src=x>fallback</iframe><p>tab&#9;stop</p><pre><code>fn main() {\n  x\n}</code></pre>", 512);
+    assert_eq!(t.trim(), "[video: Demo clip]\n\nnext\n\n[frame]\n\ntab stop\n\nfn main() {\n  x\n}");
+}
+
+#[test]
+fn table_captions_and_implicit_row_ends() {
+    let (t, _) = text("<table><caption>Prices</caption><thead><tr><th>Item</th><th>Cost</th></tr></thead><tbody><tr><td>Tea</td><td>2</td></tr><tr><td>Coffee</td><td>3</td></tr></tbody></table><table><tr><td>a<td>b<tr><td>longer cell<td>x</table>", 512);
+    assert_eq!(t.trim(), "Prices\nItem   | Cost\n-------+-----\nTea    | 2\nCoffee | 3\n\na           | b\nlonger cell | x");
+}
+
+#[test]
+fn repeated_breaks_and_no_break_spaces() {
+    let (t, _) = text("<p>Line<br><br>gap<br>x</p><p>A&nbsp;&nbsp;B &nbsp;C</p>", 512);
+    assert_eq!(t.trim(), "Line\n\ngap\nx\n\nA  B  C");
 }

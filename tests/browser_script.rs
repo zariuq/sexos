@@ -2,6 +2,7 @@
 //! Host tests of the Browser's bounded inline script subset.
 extern crate alloc;
 #[path="../apps/kaleidoscope/src/regex.rs"] mod regex;
+#[path="../apps/kaleidoscope/src/fmath.rs"] mod fmath;
 #[path="../apps/kaleidoscope/src/script.rs"] mod script;
 use script::{run, Error};
 
@@ -37,16 +38,16 @@ fn anything_outside_the_subset_writes_nothing() {
 
 #[test]
 fn bounds_hold() {
-    let deep = format!("document.write({}1{})", "(".repeat(40), ")".repeat(40));
+    let deep = format!("document.write({}1{})", "(".repeat(80), ")".repeat(80));
     assert_eq!(out(&deep).err(), Some(Error::Limit));
-    let negs = format!("document.write({}1)", "- ".repeat(40));
+    let negs = format!("document.write({}1)", "- ".repeat(80));
     assert_eq!(out(&negs).err(), Some(Error::Limit));
-    let big = format!("var s = '{}'; s = s + s; s = s + s; s = s + s; s = s + s;", "a".repeat(600));
+    let big = format!("var s = '{}'; s = s + s; s = s + s; s = s + s; s = s + s;", "a".repeat(2400));
     assert_eq!(out(&big).err(), Some(Error::Limit));
     let mut many = String::new();
-    for i in 0..33 { many += &format!("var v{i} = {i};"); }
+    for i in 0..49 { many += &format!("var v{i} = {i};"); }
     assert_eq!(out(&many).err(), Some(Error::Limit));
-    let long = format!("document.write('{}')", "x".repeat(1100));
+    let long = format!("document.write('{}')", "x".repeat(4100));
     assert_eq!(out(&long).err(), Some(Error::Limit));
     assert_eq!(run(&vec![b' '; script::MAX_SOURCE + 1]).err(), Some(Error::Limit));
 }
@@ -77,7 +78,7 @@ fn loops_run_within_the_step_budget() {
     assert_eq!(out("var x = 0; while (false) { y = = 1 }").err(), Some(Error::Syntax), "but it must parse");
     assert_eq!(out("var x = 3; while (false) x = 9; document.write(x)").unwrap(), "3");
     assert!(out("var i = 0; while (i < 9000) i++; document.write(i)").is_ok());
-    assert_eq!(out("var i = 0; while (i < 20000) i++").err(), Some(Error::Limit));
+    assert_eq!(out("var i = 0; while (i < 60000) i++").err(), Some(Error::Limit));
 }
 
 #[test]
@@ -87,7 +88,7 @@ fn functions_with_parameters_and_return() {
     assert_eq!(out("function sign(n) { if (n < 0) return -1; if (n > 0) return 1; return 0 } document.write(sign(-5), sign(0), sign(9))").unwrap(), "-101");
     assert_eq!(out("function sum(a, b, c) { var t = a + b; return t + (c === undefined ? 0 : c) } document.write(sum(1, 2), sum(1, 2, 3))").unwrap(), "36", "missing argument is undefined");
     assert_eq!(out("function noop() {} document.write(noop())").unwrap(), "undefined");
-    assert_eq!(out("function fact(n) { if (n <= 1) return 1; return n * fact(n - 1) } document.write(fact(7))").unwrap(), "5040");
+    assert_eq!(out("function fact(n) { if (n <= 1) return 1; return n * fact(n - 1) } document.write(fact(7), fact(15))").unwrap(), "50401307674368000");
     assert_eq!(out("function fact(n) { if (n <= 1) return 1; return n * fact(n - 1) } document.write(fact(30))").err(), Some(Error::Limit), "recursion bounded by depth");
     assert_eq!(out("document.write(later(1)); function later(x) { return x }").err(), Some(Error::Unsupported), "declare before use");
     assert_eq!(out("function f() { while (true) {} } f()").err(), Some(Error::Limit));
@@ -130,7 +131,7 @@ fn break_continue_and_templates() {
     assert_eq!(out("function f() { break } for (;;) { f() }").err(), Some(Error::Syntax), "break does not cross a call");
     let name = "var who = 'SexOS'; var n = 3; document.write(`Hello ${who}, ${n} x ${n} = ${n * n}!\\n`)";
     assert_eq!(out(name).unwrap(), "Hello SexOS, 3 x 3 = 9!\n");
-    assert_eq!(out("document.write(`${'a' + `b`}`)").err().is_some(), true, "no nested templates");
+    assert_eq!(out("document.write(`${'a' + `b`}`)").unwrap(), "ab", "nested templates");
     assert_eq!(out("document.write(`${1 + }`)").err(), Some(Error::Syntax));
 }
 
@@ -368,4 +369,115 @@ fn labelled_break_and_continue() {
 fn builtin_conversions_as_function_values() {
     assert_eq!(out("var f = Number; document.write([1, 2, 3].map(String).join('-'), ' ', ['1', '2.5'].map(Number), ' ', [0, 'a', '', null, 3].filter(Boolean), ' ', Boolean(''), Boolean('x'), typeof String, typeof Boolean, ' ', f('7') + 1)").unwrap(), "1-2-3 1,2.5 a,3 falsetruefunctionfunction 8");
     assert_eq!(out("var String = 5; document.write(String)").unwrap(), "5", "a script's own binding wins");
+}
+
+#[test]
+fn sets_maps_and_assignment_expressions() {
+    assert_eq!(out("var s = new Set([1, 2, 2, 3]); s.add(4).add(1); var z = new Set(); z.add(NaN).add(NaN); var o = {}; z.add(o).add(o).add({}); document.write(s.size, s.has(2), s.has(9), ' ', [...s], ' ', [...new Set('hello')].join(''), ' ', z.size, z instanceof Set, JSON.stringify(z))").unwrap(), "4truefalse 1,2,3,4 helo 3true{}");
+    assert_eq!(out("var m = new Map([['a', 1]]); m.set('b', 2).set('a', 3); var t = ''; for (const [k, v] of m) t += k + v; m.forEach((v, k) => t += '|' + k + '=' + v); document.write(m.size, m.get('a'), m.get('z'), ' ', t, ' ', m.delete('a'), m.size, ' ', [...m.keys()], ' ', Array.from(m.values()), m instanceof Map)").unwrap(), "23undefined a3b2|a=3|b=2 true1 b 2true");
+    assert_eq!(out("var a, b; a = b = 5; var o = {}; var r = (o.k = 2) * 3; var n = 0; [1, 2, 3].forEach(x => n += x); var x = 1; if (x = 2) document.write(a, b, r, o.k, n, x)").unwrap(), "556262");
+}
+
+#[test]
+fn number_formatting_regex_exec_and_object_helpers() {
+    assert_eq!(out("document.write((1234.5).toLocaleString(), ' ', (-1234567.891).toLocaleString(), ' ', (0.0004).toLocaleString(), ' ', (12.345).toPrecision(3), ' ', (123456).toPrecision(2), ' ', (0.000001234).toPrecision(2), ' ', (9.99).toPrecision(2), ' ', (0).toPrecision(3))").unwrap(), "1,234.5 -1,234,567.891 0 12.3 1.2e+5 0.0000012 10 0.00");
+    assert_eq!(out(r"var re = /(\w)(\d)/g; var m; var t = ''; while ((m = re.exec('a1 b2')) !== null) t += m[1] + re.lastIndex; document.write(t, re.lastIndex, ' ', /x(y)/.exec('axy'), ' ', 'a1b2'.matchAll(/(\w)(\d)/g).map(m => m[2]).join('+'))").unwrap(), "a2b50 xy,y 1+2");
+    assert_eq!(out("document.write('b'.localeCompare('a'), ['b', 'a', 'C', 'A'].sort((x, y) => x.localeCompare(y)))").unwrap(), "1a,A,b,C");
+    assert_eq!(out("var o = Object.freeze({a: 1}); o.a = 2; o.b = 3; var a = [7, 8]; var t = ''; for (const [i, v] of a.entries()) t += i + '' + v; document.write(o.a, o.b, Object.isFrozen(o), ' ', Number.MAX_SAFE_INTEGER, ' ', t, a.keys(), ' ', ({a: 1}).hasOwnProperty('a'), Object.hasOwn({k: 0}, 'z'))").unwrap(), "1undefinedtrue 9007199254740991 07180,1 truefalse");
+}
+
+#[test]
+fn nested_templates_named_function_expressions_and_more_builtins() {
+    assert_eq!(out(r#"var a = [1, 2]; var o = {n: 2}; document.write(`list: ${a.map(x => `<${x}>`).join("")}`, ' ', `${o.n > 1 ? `${o.n} items` : "one"}`, ' ', `x\`y`, `${`${`deep`}`}`, `a${"`"}b`)"#).unwrap(), "list: <1><2> 2 items x`ydeepa`b");
+    assert_eq!(out("var f = function fact(n) { return n < 2 ? 1 : n * fact(n - 1) }; var {a: {b}, c: [d, e = 4]} = {a: {b: 7}, c: [1]}; var t = ''; for (const {p: {q}} of [{p: {q: 1}}, {p: {q: 2}}]) t += q; document.write(f(5), b, d, e, t)").unwrap(), "12071412");
+    assert_eq!(out("document.write([1, 2, 3].reduceRight((a, b) => a + '' + b), ' ', ['a', 'b'].reduceRight((a, b) => a + b, '>'), ' ', 'abcb'.replace('b', m => m.toUpperCase()), 'abcb'.replaceAll('b', (m, i) => i), ' ', Array.from({length: 3}, (_, i) => i * i), Array.from([1, 2], x => x * 10))").unwrap(), "321 >ba aBcba1c3 0,1,410,20");
+}
+
+#[test]
+fn destructured_parameters_pretty_json_and_write_expressions() {
+    assert_eq!(out("function f({x, y = 2}, [p, q]) { return x + y + p + q } document.write(Object.entries({a: 1, b: 2}).map(([k, v]) => k + v).join(), ' ', f({x: 1}, [10, 20]), ' '); [[1, 2]].forEach(([a, b]) => document.write(a + b))").unwrap(), "a1,b2 33 3");
+    assert_eq!(out("document.write(JSON.stringify({a: [1, {b: 2}], e: [], o: {}}, null, 2))").unwrap(), "{\n  \"a\": [\n    1,\n    {\n      \"b\": 2\n    }\n  ],\n  \"e\": [],\n  \"o\": {}\n}");
+    assert_eq!(out("document.write(JSON.stringify({a: 1, b: 'x', c: {a: 2, z: 3}}, ['a', 'c']), JSON.stringify([1, 'a'], null, '--'))").unwrap(), "{\"a\":1,\"c\":{\"a\":2}}[\n--1,\n--\"a\"\n]");
+    assert_eq!(out("JSON.stringify({}, (k, v) => v)").err(), Some(Error::Unsupported), "function replacer");
+}
+
+#[test]
+fn larger_budgets_for_bigger_pages() {
+    assert_eq!(out("var big = Array.from({length: 400}, (_, i) => i); var ob = {}; for (var i = 0; i < 40; i++) ob['k' + i] = i; document.write('big ', big.reduce((a, b) => a + b), ' ', Object.keys(ob).length, ' ', 'a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s'.split(',').length)").unwrap(), "big 79800 40 19");
+    assert!(out("var i = 0; while (i < 45000) i++; document.write(i)").is_ok(), "50,000 steps");
+}
+
+#[test]
+fn promises_run_as_ordered_microtasks_after_the_script() {
+    assert_eq!(out("Promise.resolve(1).then(v => document.write('a')); Promise.resolve(2).then(v => document.write('b')); document.write('c')").unwrap(), "cab");
+    assert_eq!(out("new Promise((res, rej) => { document.write('exec '); res(5) }).then(v => v * 2).then(v => document.write(v))").unwrap(), "exec 10");
+    assert_eq!(out("Promise.reject(new Error('bad')).then(() => document.write('no')).catch(e => document.write('caught ', e.message)).finally(() => document.write(' fin'))").unwrap(), "caught bad fin");
+    assert_eq!(out("Promise.all([1, Promise.resolve(2), new Promise(r => r(3))]).then(xs => document.write(xs.join('+'))); new Promise(() => { throw new Error('x') }).catch(e => document.write(' ', e.message)); Promise.resolve(1).then(() => { throw 7 }).then(() => 0, e => document.write(' r', e))").unwrap(), " x1+2+3 r7", "JavaScript job order: Promise.all settles after its items' reactions");
+    assert_eq!(out("var p = Promise.resolve(Promise.resolve(9)); p.then(v => document.write(v)); document.write(p instanceof Promise)").unwrap(), "true9");
+    assert_eq!(out("async function f() {}").err(), Some(Error::Unsupported), "no async functions");
+}
+
+#[test]
+fn optional_calls_tagged_templates_and_string_raw() {
+    assert_eq!(out("var f = null; var g = x => x * 2; document.write(f?.(1), g?.(4), ({m: null}).m?.(), ({k: () => 3}).k?.())").unwrap(), "undefined8undefined3");
+    assert_eq!(out(r#"function tag(s, a, b) { return s.join("|") + ":" + a + "," + b } var x = 1; document.write(tag`A${x}B${x + 1}C`, ' ', String.raw`a\nb${1 + 1}\t`)"#).unwrap(), "A|B|C:1,2 a\\nb2\\t");
+}
+
+#[test]
+fn elementary_functions_stay_within_a_few_ulps_of_std() {
+    let ulps = |a: f64, b: f64| if a == b { 0 } else { (a.to_bits() as i64 - b.to_bits() as i64).unsigned_abs() };
+    let mut x = -40.0f64;
+    while x < 40.0 {
+        let (s, c) = fmath::sin_cos(x);
+        assert!(ulps(s, x.sin()) <= 4 || (s - x.sin()).abs() < 1e-16, "sin {x}: {s} vs {}", x.sin());
+        assert!(ulps(c, x.cos()) <= 4 || (c - x.cos()).abs() < 1e-16, "cos {x}");
+        assert!(ulps(fmath::exp(x), x.exp()) <= 4, "exp {x}: {} vs {}", fmath::exp(x), x.exp());
+        assert!(ulps(fmath::atan(x), x.atan()) <= 4, "atan {x}");
+        if x > 0.0 { assert!(ulps(fmath::ln(x), x.ln()) <= 4, "ln {x}: {} vs {}", fmath::ln(x), x.ln()); }
+        x += 0.0937;
+    }
+    for &(y, x) in &[(1.0, 1.0), (1.0, -1.0), (-1.0, -1.0), (0.0, -1.0), (-0.0, -1.0), (3.0, 0.0), (-2.0, 5.0)] {
+        assert!(ulps(fmath::atan2(y, x), f64::atan2(y, x)) <= 4, "atan2 {y} {x}");
+    }
+    assert_eq!(fmath::exp(0.0), 1.0);
+    assert_eq!(fmath::ln(1.0), 0.0);
+    assert!(fmath::ln(-1.0).is_nan());
+    assert_eq!(fmath::exp(1000.0), f64::INFINITY);
+    assert_eq!(out("document.write(Math.round(Math.sin(Math.PI / 6) * 1e6) / 1e6, ' ', Math.log(Math.E), ' ', Math.log10(1000), ' ', Math.log2(8), ' ', Math.cbrt(27), ' ', Math.hypot(3, 4), ' ', Math.atan2(1, 1) * 4 === Math.PI, ' ', Math.exp(0), ' ', Math.cos(0))").unwrap(), "0.5 1 3 3 3 5 true 1 1");
+}
+
+#[test]
+fn class_fields_static_fields_and_private_names() {
+    assert_eq!(out("class Counter { count = 0; #step = 2; static made = 0; constructor() { Counter.made++ } inc() { this.count += this.#step; return this } } var a = new Counter(); a.inc().inc(); new Counter(); document.write(a.count, ' ', Counter.made, ' ', JSON.stringify(a), Object.keys(a))").unwrap(), "4 2 {\"count\":4}count");
+    assert_eq!(out("class P { x = 1; y = this.x + 1 } class Q extends P { z = this.y * 10; static label = 'q' } class S { static a = 1; static b = S.a + 1; static c } var q = new Q(); document.write(q.x, q.y, q.z, Q.label, S.b, S.c)").unwrap(), "1220q2undefined");
+    assert_eq!(out("class C { a = 1; #b = 2; m() {} } var c = new C(); c.extra = () => 0; var t = ''; for (var k in c) t += k; document.write(Object.keys(c), ' ', t)").unwrap(), "a,extra aextra", "methods and #private fields are not listed");
+}
+
+#[test]
+fn copying_array_methods_group_by_and_structured_clone() {
+    assert_eq!(out("var a = [3, 1, 2]; document.write(a.toSorted(), ' ', a.toReversed(), ' ', a.with(-1, 9), ' ', a.toSpliced(1, 1, 'x', 'y'), ' ', a)").unwrap(), "1,2,3 2,1,3 3,1,9 3,x,y,2 3,1,2");
+    assert_eq!(out("var g = Object.groupBy([1, 2, 3, 4, 5], x => x % 2 ? 'odd' : 'even'); var o = {a: [1, {b: 2}]}; var c = structuredClone(o); c.a[1].b = 9; document.write(JSON.stringify(g), o.a[1].b, c.a[1].b)").unwrap(), "{\"odd\":[1,3,5],\"even\":[2,4]}29");
+    assert_eq!(out("structuredClone(() => 1)").err(), Some(Error::Unsupported));
+}
+
+#[test]
+fn arguments_call_apply_and_bind() {
+    assert_eq!(out("function f() { return arguments.length + ':' + arguments[1] } function sum() { var t = 0; for (var i = 0; i < arguments.length; i++) t += arguments[i]; return t } document.write(f(1, 2), ' ', sum(1, 2, 3, 4), ' ', typeof arguments)").unwrap(), "2:2 10 undefined");
+    assert_eq!(out("function h(a, b) { return this.k + a + (b || 0) } document.write(h.call({k: 1}, 2), ' ', h.apply({k: 2}, [3, 4]), ' ', h.bind({k: 3}, 1)(1), ' ', h.bind({k: 3}).call({k: 9}, 1))").unwrap(), "3 9 5 4", "a bound this cannot be replaced");
+    assert_eq!(out("var o = {n: 1, m() { return [1].map(function () { return this.n }.bind(this))[0] }}; var g = function () { return this.x }.bind({x: 5}); document.write(o.m(), g())").unwrap(), "15");
+}
+
+#[test]
+fn prototypes_and_object_create() {
+    assert_eq!(out("function F(x) { this.x = x } F.prototype.get = function () { return this.x * 2 }; F.prototype.k = 7; var a = new F(4); document.write(a.get(), a.k, ' ', JSON.stringify(a), Object.keys(a), a instanceof F)").unwrap(), "87 {\"x\":4}xtrue");
+    assert_eq!(out("function A(n) { this.n = n } A.prototype = {hi: function () { return 'hi ' + this.n }}; var V = function () {}; V.prototype.v = 1; document.write(new A('z').hi(), new V().v)").unwrap(), "hi z1");
+    assert_eq!(out("function P(x) { this.x = x } P.prototype.who = function () { return 'P' + this.x }; function C(x) { P.call(this, x) } C.prototype = Object.create(P.prototype); C.prototype.extra = function () { return 'E' }; var c = new C(3); var b = Object.create({q: 1}); document.write(c.who(), c.extra(), b.q, Object.create(null).z)").unwrap(), "P3E1undefined");
+}
+
+#[test]
+fn comma_operator_console_and_small_builtins() {
+    assert_eq!(out("var x = 1, y = (x++, x * 2); for (var i = 0, j = 9; i < j; i++, j--) {} var a; a = 1, x = 5; var t = ''; for (var k = 0; k < 2; ++k) t += k; document.write(y, i, j, a, x, t)").unwrap(), "4541501");
+    assert_eq!(out("console.log('hi', 1 + 1); console.error(); document.write('ok')").unwrap(), "ok");
+    assert_eq!(out("document.write('abcdef'.substr(1, 2), 'abcdef'.substr(-2), 'abc'.substr(1), isFinite('3'), isFinite(1 / 0), Number.parseFloat('1.5'), Number.parseInt('7x'))").unwrap(), "bcefbctruefalse1.57");
+    assert_eq!(out("var o = {}; Object.defineProperty(o, 'x', {value: 1}); Object.defineProperty(o, 'y', {get() { return 2 }}); document.write(o.x, o.y, Object.getOwnPropertyNames({a: 1}), Array(2).length, Error('m').message)").unwrap(), "12a2m");
 }
