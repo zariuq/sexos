@@ -1,4 +1,6 @@
 #include "silk_shell_atlas.h"
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
 #if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
 _Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
 #else
@@ -8,6 +10,8 @@ _Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI p
 _Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
 #endif
 _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
+
 #include "silk_shell_atlas.h"
 #define U64(x) ((unsigned long long)(x))
 #define BUDGET(field) atlas_budget(&ctx->atlas->field)
@@ -24,7 +28,7 @@ _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) ==
 #define SCENE_APPEARANCE_STATE (ctx->models->SCENE_APPEARANCE_STATE)
 #define collect_atlas_snapshot() shell_atlas_collect_atlas_snapshot(ctx)
 #define surface_in_active_scene(sid) shell_atlas_surface_in_active_scene(ctx, sid)
-#define surface_scene_id(sid,out_scene_id) shell_atlas_surface_scene_id(ctx, sid,out_scene_id)
+#define surface_scene_id(sid, out_scene_id) shell_atlas_surface_scene_id(ctx, sid, out_scene_id)
 #define clear_focus_if_wrong_scene() shell_atlas_clear_focus_if_wrong_scene(ctx)
 #define sync_lifecycle_scene_visibility() shell_atlas_sync_lifecycle_scene_visibility(ctx)
 #define sync_scene_visibility() shell_atlas_sync_scene_visibility(ctx)
@@ -39,17 +43,21 @@ _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) ==
 #define atlas_is_enabled() shell_atlas_atlas_is_enabled(ctx)
 #define atlas_toggle() shell_atlas_atlas_toggle(ctx)
 #define atlas_exit() shell_atlas_atlas_exit(ctx)
-#define atlas_card_pos(scene_idx,cw,out_x,out_y,out_w,out_h) shell_atlas_atlas_card_pos(ctx, scene_idx,cw,out_x,out_y,out_w,out_h)
-#define atlas_scene_at_point(px,py,out_scene_id) shell_atlas_atlas_scene_at_point(ctx, px,py,out_scene_id)
+#define atlas_card_pos(scene_idx, cw, out_x, out_y, out_w, out_h)                                  \
+    shell_atlas_atlas_card_pos(ctx, scene_idx, cw, out_x, out_y, out_w, out_h)
+#define atlas_scene_at_point(px, py, out_scene_id)                                                 \
+    shell_atlas_atlas_scene_at_point(ctx, px, py, out_scene_id)
 #define handle_atlas_keyboard(scancode) shell_atlas_handle_atlas_keyboard(ctx, scancode)
 #define atlas_render_stub() shell_atlas_atlas_render_stub(ctx)
 #define atlas_clear_stub() shell_atlas_atlas_clear_stub(ctx)
-#define atlas_apply_scene_accent_to_chrome(scene_idx) shell_atlas_atlas_apply_scene_accent_to_chrome(ctx, scene_idx)
+#define atlas_apply_scene_accent_to_chrome(scene_idx)                                              \
+    shell_atlas_atlas_apply_scene_accent_to_chrome(ctx, scene_idx)
 #define switch_scene(scene_idx) shell_atlas_switch_scene(ctx, scene_idx)
 #define next_scene() shell_atlas_next_scene(ctx)
 #define prev_scene() shell_atlas_prev_scene(ctx)
-#define atlas_cycle_scene(delta,reason) shell_atlas_atlas_cycle_scene(ctx, delta,reason)
-#define next_frame_in_scene(start_frame_id,forward,out_frame_id) shell_atlas_next_frame_in_scene(ctx, start_frame_id,forward,out_frame_id)
+#define atlas_cycle_scene(delta, reason) shell_atlas_atlas_cycle_scene(ctx, delta, reason)
+#define next_frame_in_scene(start_frame_id, forward, out_frame_id)                                 \
+    shell_atlas_next_frame_in_scene(ctx, start_frame_id, forward, out_frame_id)
 #define focus_next_frame() shell_atlas_focus_next_frame(ctx)
 #define focus_prev_frame() shell_atlas_focus_prev_frame(ctx)
 #define focus_next_tab() shell_atlas_focus_next_tab(ctx)
@@ -57,24 +65,29 @@ _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) ==
 #define toggle_minimize_focused_frame() shell_atlas_toggle_minimize_focused_frame(ctx)
 #define toggle_zoom_focused_frame() shell_atlas_toggle_zoom_focused_frame(ctx)
 #define close_focused_tab_or_frame_safe() shell_atlas_close_focused_tab_or_frame_safe(ctx)
-#define atlas_same_scene_drop_noop(frame_id,source_scene,target_scene) shell_atlas_atlas_same_scene_drop_noop(ctx, frame_id,source_scene,target_scene)
-#define reparent_frame_to_scene(frame_id,target_scene,reason) shell_atlas_reparent_frame_to_scene(ctx, frame_id,target_scene,reason)
-#define atlas_pointer_drag_begin_at(px,py) shell_atlas_atlas_pointer_drag_begin_at(ctx, px,py)
-#define atlas_pointer_drop_at(px,py) shell_atlas_atlas_pointer_drop_at(ctx, px,py)
+#define atlas_same_scene_drop_noop(frame_id, source_scene, target_scene)                           \
+    shell_atlas_atlas_same_scene_drop_noop(ctx, frame_id, source_scene, target_scene)
+#define reparent_frame_to_scene(frame_id, target_scene, reason)                                    \
+    shell_atlas_reparent_frame_to_scene(ctx, frame_id, target_scene, reason)
+#define atlas_pointer_drag_begin_at(px, py) shell_atlas_atlas_pointer_drag_begin_at(ctx, px, py)
+#define atlas_pointer_drop_at(px, py) shell_atlas_atlas_pointer_drop_at(ctx, px, py)
 #define atlas_pointer_drag_cancel(reason) shell_atlas_atlas_pointer_drag_cancel(ctx, reason)
 #define snap_compute_checksum(snap) shell_atlas_snap_compute_checksum(ctx, snap)
 #define snap_capture_layout() shell_atlas_snap_capture_layout(ctx)
 #define snap_validate(snap) shell_atlas_snap_validate(ctx, snap)
 #define snap_restore_layout() shell_atlas_snap_restore_layout(ctx)
-#define active_surface_for_frame(frame,out) shell_atlas_peer_active_surface_for_frame(ctx, frame,out)
+#define active_surface_for_frame(frame, out)                                                       \
+    shell_atlas_peer_active_surface_for_frame(ctx, frame, out)
 #define surface_is_alive(sid) shell_atlas_peer_surface_is_alive(ctx, sid)
-#define surface_is_lifecycle_focusable(sid) shell_atlas_peer_surface_is_lifecycle_focusable(ctx, sid)
+#define surface_is_lifecycle_focusable(sid)                                                        \
+    shell_atlas_peer_surface_is_lifecycle_focusable(ctx, sid)
 #define is_tombstoned(sid) shell_atlas_peer_is_tombstoned(ctx, sid)
 #define try_set_focus(sid) shell_atlas_peer_try_set_focus(ctx, sid)
-#define lifecycle_state(sid,out) shell_atlas_peer_lifecycle_state(ctx, sid,out)
-#define set_lifecycle_state(sid,state) shell_atlas_peer_set_lifecycle_state(ctx, sid,state)
-#define get_surface_bounds(sid,x,y,w,h) shell_atlas_peer_get_surface_bounds(ctx, sid,x,y,w,h)
-#define make_focus_ref(sid,out) shell_atlas_peer_make_focus_ref(ctx, sid,out)
+#define lifecycle_state(sid, out) shell_atlas_peer_lifecycle_state(ctx, sid, out)
+#define set_lifecycle_state(sid, state) shell_atlas_peer_set_lifecycle_state(ctx, sid, state)
+#define get_surface_bounds(sid, x, y, w, h)                                                        \
+    shell_atlas_peer_get_surface_bounds(ctx, sid, x, y, w, h)
+#define make_focus_ref(sid, out) shell_atlas_peer_make_focus_ref(ctx, sid, out)
 #define focus_ref_is_current(ref) shell_atlas_peer_focus_ref_is_current(ctx, ref)
 #define selected_frame_id(out) shell_atlas_peer_selected_frame_id(ctx, out)
 #define clear_focus_if_dead() shell_atlas_peer_clear_focus_if_dead(ctx)
@@ -85,401 +98,591 @@ _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) ==
 #define launcher_focus_discard() shell_atlas_peer_launcher_focus_discard(ctx)
 #define tile_active_scene_frames() shell_atlas_peer_tile_active_scene_frames(ctx)
 #define cycle_scene_render_token_preset() shell_atlas_peer_cycle_scene_render_token_preset(ctx)
-#define cycle_prev_scene_render_token_preset() shell_atlas_peer_cycle_prev_scene_render_token_preset(ctx)
+#define cycle_prev_scene_render_token_preset()                                                     \
+    shell_atlas_peer_cycle_prev_scene_render_token_preset(ctx)
 #define get_preset_name(idx) shell_atlas_peer_get_preset_name(ctx, idx)
 #define apply_custom_tint_bundle(idx) shell_atlas_peer_apply_custom_tint_bundle(ctx, idx)
 #define resolve_scene_render_tokens(out) shell_atlas_peer_resolve_scene_render_tokens(ctx, out)
 #define push_token_preset(tokens) shell_atlas_peer_push_token_preset(ctx, tokens)
-#define send_silkbar_phase2_update(kind,a,b) shell_atlas_peer_send_silkbar_phase2_update(ctx, kind,a,b)
+#define send_silkbar_phase2_update(kind, a, b)                                                     \
+    shell_atlas_peer_send_silkbar_phase2_update(ctx, kind, a, b)
 #define bell_ring_count() shell_atlas_peer_bell_ring_count(ctx)
 #define frame_is_minimized(id) shell_atlas_peer_frame_is_minimized(ctx, id)
 #define minimize_frame(id) shell_atlas_peer_minimize_frame(ctx, id)
 #define restore_minimized_frame(id) shell_atlas_peer_restore_minimized_frame(ctx, id)
 #define toggle_zoom_frame(id) shell_atlas_peer_toggle_zoom_frame(ctx, id)
-#define switch_to_tab(frame,tab) shell_atlas_peer_switch_to_tab(ctx, frame,tab)
+#define switch_to_tab(frame, tab) shell_atlas_peer_switch_to_tab(ctx, frame, tab)
 #define is_closeable_surface(sid) shell_atlas_peer_is_closeable_surface(ctx, sid)
-#define close_surface_from_frame_light(sid) shell_atlas_peer_close_surface_from_frame_light(ctx, sid)
-#define clamp_position(x,y,w,h,out_x,out_y) shell_atlas_peer_clamp_position(ctx, x,y,w,h,out_x,out_y)
-#define clamp_surface_size(x,y,w,h,out_w,out_h) shell_atlas_peer_clamp_surface_size(ctx, x,y,w,h,out_w,out_h)
+#define close_surface_from_frame_light(sid)                                                        \
+    shell_atlas_peer_close_surface_from_frame_light(ctx, sid)
+#define clamp_position(x, y, w, h, out_x, out_y)                                                   \
+    shell_atlas_peer_clamp_position(ctx, x, y, w, h, out_x, out_y)
+#define clamp_surface_size(x, y, w, h, out_w, out_h)                                               \
+    shell_atlas_peer_clamp_surface_size(ctx, x, y, w, h, out_w, out_h)
 #define desktop_width() shell_atlas_peer_desktop_width(ctx)
 #define desktop_height() shell_atlas_peer_desktop_height(ctx)
-#define shell_custody_has_surface(sid,terminal_only) shell_atlas_peer_shell_custody_has_surface(ctx, sid,terminal_only)
-enum { ATLAS_UPDATE_SET_ACTIVE_APP=8, ATLAS_UPDATE_SET_TINT_ACCENT=9 };
+#define shell_custody_has_surface(sid, terminal_only)                                              \
+    shell_atlas_peer_shell_custody_has_surface(ctx, sid, terminal_only)
 
-static bool atlas_budget(uint32_t *value)
-{
-    if (!*value) return false;
+enum {
+    ATLAS_UPDATE_SET_ACTIVE_APP = 8,
+    ATLAS_UPDATE_SET_TINT_ACCENT = 9
+};
+
+static bool atlas_budget(uint32_t *value) {
+    if (!*value)
+        return false;
     --*value;
     return true;
 }
-static int32_t atlas_add(int32_t a,int32_t b) { return (int32_t)((uint32_t)a+(uint32_t)b); }
-static int32_t atlas_sub(int32_t a,int32_t b) { return (int32_t)((uint32_t)a-(uint32_t)b); }
-static int32_t atlas_mul(int32_t a,int32_t b) { return (int32_t)((uint32_t)a*(uint32_t)b); }
-static uint8_t atlas_xor_word(uint64_t value)
-{
-    uint8_t out=0;
-    for (unsigned i=0;i<8;++i) { out^=(uint8_t)value;
-        value>>=8; }
+
+static int32_t atlas_add(int32_t a, int32_t b) {
+    return (int32_t)((uint32_t)a + (uint32_t)b);
+}
+
+static int32_t atlas_sub(int32_t a, int32_t b) {
+    return (int32_t)((uint32_t)a - (uint32_t)b);
+}
+
+static int32_t atlas_mul(int32_t a, int32_t b) {
+    return (int32_t)((uint32_t)a * (uint32_t)b);
+}
+
+static uint8_t atlas_xor_word(uint64_t value) {
+    uint8_t out = 0;
+    for (unsigned i = 0; i < 8; ++i) {
+        out ^= (uint8_t)value;
+        value >>= 8;
+    }
     return out;
 }
 
-void shell_atlas_collect_atlas_snapshot(ShellAtlasContext *ctx)
-{
-    uint8_t active=ACTIVE_SCENE_IDX,total=0,visible_total=0,minimized_total=0;
-    sexos_line("[silk.atlas.snapshot.begin] scenes=%zu active=%u",ATLAS_SNAPSHOT_MAX_SCENES,(unsigned)active);
-    for(uint8_t scene=0;scene<ATLAS_SNAPSHOT_MAX_SCENES;++scene){
-        uint8_t count=0,visible_count=0,minimized_count=0;
-        uint32_t active_frame=0;
-        bool any=false;
-        for(size_t i=0;i<MAX_FRAMES;++i){
-            ShellFrame frame=FRAMES[i];
-            if(!frame.present || frame.scene_id!=scene)continue;
-            any=true;
-            if(count>=ATLAS_SNAPSHOT_MAX_FRAMES_PER_SCENE)break;
-            bool minimized=(frame.flags&FRAME_FLAG_MINIMIZED)!=0;
-            uint64_t sid=0;
-            (void)active_surface_for_frame(frame.frame_id,&sid);
-            bool alive=sid!=0 && surface_is_alive(sid),visible=scene==active && !minimized && alive;
-            if(minimized && minimized_count!=UINT8_MAX)++minimized_count;
-            if(visible && visible_count!=UINT8_MAX)++visible_count;
-            if(visible || active_frame==0)active_frame=frame.frame_id;
-            sexos_line("[silk.atlas.snapshot.frame] scene=%u frame=%u surface=%llu x=%d y=%d w=%u h=%u visible=%u minimized=%u tabs=%u",
-                (unsigned)scene,frame.frame_id,U64(sid),frame.normal_x,frame.normal_y,frame.normal_w,frame.normal_h,
-                (unsigned)visible,(unsigned)minimized,(unsigned)(frame.tab_count?frame.tab_count:1));
-            if(count!=UINT8_MAX)++count;
-        }
-        if(!any)sexos_line("[silk.atlas.snapshot.empty] scene=%u reason=no_frames",(unsigned)scene);
-        total=(uint8_t)((unsigned)total+count>UINT8_MAX?UINT8_MAX:(unsigned)total+count);
-        visible_total=(uint8_t)((unsigned)visible_total+visible_count>UINT8_MAX?UINT8_MAX:(unsigned)visible_total+visible_count);
-        minimized_total=(uint8_t)((unsigned)minimized_total+minimized_count>UINT8_MAX?UINT8_MAX:(unsigned)minimized_total+minimized_count);
-        sexos_line("[silk.atlas.snapshot.scene] scene=%u frames=%u visible=%u minimized=%u active_frame=%u",
-            (unsigned)scene,(unsigned)count,(unsigned)visible_count,(unsigned)minimized_count,active_frame);
-    }
-    sexos_line("[silk.atlas.snapshot.done] scenes=%zu frames=%u visible=%u minimized=%u ok=1",ATLAS_SNAPSHOT_MAX_SCENES,(unsigned)total,(unsigned)visible_total,(unsigned)minimized_total);
-}
-bool shell_atlas_surface_in_active_scene(ShellAtlasContext *ctx,uint64_t sid)
-{
-    if(shell_custody_has_surface(sid,true))return false;
-    for(size_t i=0;i<MAX_FRAMES;++i)if(FRAMES[i].present)
-        for(size_t j=0;j<MAX_TABS_PER_FRAME;++j)
-            if(FRAMES[i].tabs[j].present && FRAMES[i].tabs[j].surface_id==sid)return FRAMES[i].scene_id==ACTIVE_SCENE_IDX;
-    if(shell_custody_has_surface(sid,false))return false;
-    return sid!=SURFACE_ID_LINEN && sid!=SURFACE_ID_QUIL && sid!=SURFACE_ID_MESH && sid!=SURFACE_ID_COLLAR && sid!=SURFACE_ID_BELL_PLACEHOLDER;
-}
-bool shell_atlas_surface_scene_id(ShellAtlasContext *ctx,uint64_t sid,uint8_t *out)
-{
-    for(size_t i=0;i<MAX_FRAMES;++i)if(FRAMES[i].present)
-        for(size_t j=0;j<MAX_TABS_PER_FRAME;++j)
-            if(FRAMES[i].tabs[j].present && FRAMES[i].tabs[j].surface_id==sid){if(out)*out=FRAMES[i].scene_id;
-        return true;}
-    return false;
-}
-void shell_atlas_clear_focus_if_wrong_scene(ShellAtlasContext *ctx)
-{
-    uint64_t focused=FOCUSED_SURFACE_ID;
-    if(!focused || surface_in_active_scene(focused))return;
-    sexos_line("[scene.focus.reject.inactive] sid=%llu scene=wrong_focused",U64(focused));
-    sexos_line("[shell.scene.focus.clear.wrong-scene] id=%llu",U64(focused));
-    bool found=false;
-    for(size_t i=0;i<MAX_FRAMES;++i){
-        ShellFrame frame=FRAMES[i];
-        if(!frame.present || frame.scene_id!=ACTIVE_SCENE_IDX)continue;
-        if(frame.active_tab>=MAX_TABS_PER_FRAME){sexos_fail();
-            return;}
-        ShellTab tab=frame.tabs[frame.active_tab];
-        if(tab.present && surface_is_alive(tab.surface_id) && !is_tombstoned(tab.surface_id) && surface_is_lifecycle_focusable(tab.surface_id) && try_set_focus(tab.surface_id)){found=true;
-            break;}
-    }
-    if(!found){(void)try_set_focus(0);
-        sexos_line("[shell.scene.focus.clear.none]");}
-}
-void shell_atlas_sync_lifecycle_scene_visibility(ShellAtlasContext *ctx)
-{
-    for(size_t i=0;i<MAX_FRAMES;++i){
-        ShellFrame frame=FRAMES[i];
-        if(!frame.present)continue;
-        bool active=frame.scene_id==ACTIVE_SCENE_IDX,minimized=(frame.flags&FRAME_FLAG_MINIMIZED)!=0;
-        for(size_t j=0;j<MAX_TABS_PER_FRAME;++j){
-            ShellTab tab=frame.tabs[j];
-            if(!tab.present || !surface_is_alive(tab.surface_id) || minimized)continue;
-            uint8_t state=0;
-            if(lifecycle_state(tab.surface_id,&state) && (state==LIFECYCLE_CLOSING || state==LIFECYCLE_TOMBSTONED || state==LIFECYCLE_DESTROYED))continue;
-            (void)set_lifecycle_state(tab.surface_id,active?LIFECYCLE_VISIBLE:LIFECYCLE_HIDDEN);
-        }
-    }
-    if(BUDGET(sync_lifecycle_scene_visibility__SCENE_LIFECYCLE_VIS_BUDGET))sexos_line("[lifecycle.scene.sync] active=%u",(unsigned)ACTIVE_SCENE_IDX);
-}
-void shell_atlas_sync_scene_visibility(ShellAtlasContext *ctx)
-{
-    launcher_focus_discard();
-    sync_lifecycle_scene_visibility();
-    for(size_t i=0;i<MAX_FRAMES;++i){
-        ShellFrame frame=FRAMES[i];
-        if(!frame.present)continue;
-        bool active=frame.scene_id==ACTIVE_SCENE_IDX;
-        for(size_t j=0;j<MAX_TABS_PER_FRAME;++j){
-            ShellTab tab=frame.tabs[j];
-            if(!tab.present)continue;
-            uint64_t sid=tab.surface_id;
-            if(surface_is_alive(sid) && active && !(frame.flags&FRAME_FLAG_MINIMIZED)){
-                int32_t x=0,y=0;
-                uint32_t width=0,height=0;
-                if(get_surface_bounds(sid,&x,&y,&width,&height))
-                    (void)sexos_pdx_call(SLOT_DISPLAY,0xEC,sid,((uint64_t)y<<32)|(uint64_t)x,((uint64_t)height<<32)|width);
-            }else if(surface_is_alive(sid) && (!active || (frame.flags&FRAME_FLAG_MINIMIZED)))
-                (void)sexos_pdx_call(SLOT_DISPLAY,0xEE,sid,0,0);
-        }
-    }
-    if(BUDGET(sync_scene_visibility__SCENE_VISIBILITY_BUDGET))sexos_line("[shell.scene.visibility] sync");
-}
-ShellAtlasLabel shell_atlas_atlas_default_label(ShellAtlasContext *ctx,uint32_t scene)
-{
-    (void)ctx;
-    ShellAtlasLabel value={0};
-    const uint8_t prefix[6]={'S','c','e','n','e',' '};
-    size_t n=ATLAS_LABEL_LEN<2?0:ATLAS_LABEL_LEN-2;
-    if(n>6)n=6;
-    for(size_t i=0;i<n;++i)value.bytes[i]=prefix[i];
-    if(n<ATLAS_LABEL_LEN){uint8_t digit=(uint8_t)scene;
-        if(digit>9)digit=9;
-        value.bytes[n]=(uint8_t)('0'+digit);}
-    return value;
-}
-void shell_atlas_scene_init_all(ShellAtlasContext *ctx)
-{
-    const uint8_t accents[5]={ACCENT_DEFAULT,ACCENT_WARM,ACCENT_COOL,ACCENT_CORAL,ACCENT_GOLD};
-    for(size_t i=0;i<ATLAS_MAX_SCENES;++i){
-        SCENES[i]=(Scene){.flags=SCENE_FLAG_EMPTY,.accent=accents[i]};
-        ShellAtlasLabel label=shell_atlas_atlas_default_label(ctx,(uint32_t)i);
-        for(size_t j=0;j<ATLAS_LABEL_LEN;++j)SCENES[i].label[j]=label.bytes[j];
-    }
-    for(size_t i=0;i<ATLAS_MAX_SCENES;++i)scene_update_flags((uint8_t)i);
-    if(BUDGET(scene_init_all__SETTINGS_INIT_BUDGET))sexos_line("[atlas.scene.settings.init] scenes=%zu accents=[%u,%u,%u,%u,%u]",ATLAS_MAX_SCENES,(unsigned)SCENES[0].accent,(unsigned)SCENES[1].accent,(unsigned)SCENES[2].accent,(unsigned)SCENES[3].accent,(unsigned)SCENES[4].accent);
-    sexos_line("[scene.core.init] scenes=%zu",ATLAS_MAX_SCENES);
-}
-void shell_atlas_scene_update_flags(ShellAtlasContext *ctx,uint8_t scene)
-{
-    if(scene>=ATLAS_MAX_SCENES)return;
-    uint8_t flags=0;
-    bool any=false;
-    for(size_t i=0;i<MAX_FRAMES;++i){
-        ShellFrame frame=FRAMES[i];
-        if(!frame.present || frame.scene_id!=scene)continue;
-        uint64_t sid=0;
-        if(active_surface_for_frame(frame.frame_id,&sid) && (!surface_is_alive(sid) || is_tombstoned(sid)))continue;
-        any=true;
-        if(frame.flags&FRAME_FLAG_MINIMIZED)flags|=SCENE_FLAG_HAS_MINIMIZED;
-        if(frame.flags&FRAME_FLAG_ZOOMED)flags|=SCENE_FLAG_HAS_ZOOMED;
-    }
-    if(!any)flags|=SCENE_FLAG_EMPTY;
-    SCENES[scene].flags=flags;
-}
-bool shell_atlas_validate_scene_id(ShellAtlasContext *ctx,uint8_t scene) { (void)ctx;
-    return scene<ATLAS_MAX_SCENES; }
-uint8_t shell_atlas_scene_accent_token(ShellAtlasContext *ctx,uint8_t scene)
-{
-    if(scene<ATLAS_MAX_SCENES)return SCENES[scene].accent;
-    if(BUDGET(scene_accent_token__SETTINGS_REJECT_BUDGET))sexos_line("[atlas.scene.settings.reject] fn=accent id=%u",(unsigned)scene);
-    return ACCENT_DEFAULT;
-}
-bool shell_atlas_scene_is_pinned(ShellAtlasContext *ctx,uint8_t scene)
-{
-    if(scene>=ATLAS_MAX_SCENES){if(BUDGET(scene_is_pinned__SETTINGS_REJECT_BUDGET))sexos_line("[atlas.scene.settings.reject] fn=pinned id=%u",(unsigned)scene);
-        return false;}
-    if(BUDGET(scene_is_pinned__SETTINGS_READ_BUDGET))sexos_line("[atlas.scene.settings.read] fn=pinned id=%u val=%s",(unsigned)scene,SCENES[scene].pinned?"true":"false");
-    return SCENES[scene].pinned;
-}
-ShellAtlasLabel shell_atlas_scene_label_token(ShellAtlasContext *ctx,uint8_t scene)
-{
-    ShellAtlasLabel value={0};
-    if(scene>=ATLAS_MAX_SCENES){
-        if(BUDGET(scene_label_token__SETTINGS_REJECT_BUDGET))sexos_line("[atlas.scene.settings.reject] fn=label id=%u",(unsigned)scene);
-        return value;
-    }
-    for(size_t i=0;i<ATLAS_LABEL_LEN;++i)value.bytes[i]=SCENES[scene].label[i];
-    return value;
-}
-void shell_atlas_atlas_capture_snapshot(ShellAtlasContext *ctx)
-{
-    AtlasSnapshot snapshot={.active_scene_id=ACTIVE_SCENE_IDX,.scene_count=(uint8_t)ATLAS_MAX_SCENES};
-    sexos_line("[atlas.snapshot.start]");
-    uint32_t focused=0;
-    (void)selected_frame_id(&focused);
-    for(size_t i=0;i<ATLAS_MAX_SCENES;++i)scene_update_flags((uint8_t)i);
-    for(size_t scene=0;scene<ATLAS_MAX_SCENES;++scene){
-        snapshot.scenes[scene].scene_id=(uint32_t)scene;
-        for(size_t j=0;j<ATLAS_LABEL_LEN;++j)snapshot.scenes[scene].label[j]=SCENES[scene].label[j];
-        snapshot.scenes[scene].accent=SCENES[scene].accent;
-        snapshot.scenes[scene].pinned=SCENES[scene].pinned;
-        uint8_t count=0;
-        for(size_t i=0;i<MAX_FRAMES;++i){
-            ShellFrame frame=FRAMES[i];
-            if(!frame.present || frame.scene_id!=scene)continue;
-            if(frame.flags&FRAME_FLAG_MINIMIZED){sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u reason=minimized",scene,frame.frame_id);
-                continue;}
-            uint64_t sid=0;
-            if(!active_surface_for_frame(frame.frame_id,&sid))continue;
-            if(!surface_is_alive(sid)){sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u sid=%llu reason=dead",scene,frame.frame_id,U64(sid));
-                continue;}
-            if(is_tombstoned(sid)){sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u sid=%llu reason=tombstoned",scene,frame.frame_id,U64(sid));
-                continue;}
-            uint8_t state=0;
-            if(lifecycle_state(sid,&state) && (state==LIFECYCLE_CLOSING || state==LIFECYCLE_DESTROYED || state==LIFECYCLE_HIDDEN)){
-                sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u sid=%llu reason=lifecycle:%s",scene,frame.frame_id,U64(sid),state==LIFECYCLE_CLOSING?"Closing":state==LIFECYCLE_DESTROYED?"Destroyed":"Hidden");
+void shell_atlas_collect_atlas_snapshot(ShellAtlasContext *ctx) {
+    uint8_t active = ACTIVE_SCENE_IDX, total = 0, visible_total = 0, minimized_total = 0;
+    sexos_line("[silk.atlas.snapshot.begin] scenes=%zu active=%u", ATLAS_SNAPSHOT_MAX_SCENES,
+               (unsigned)active);
+    for (uint8_t scene = 0; scene < ATLAS_SNAPSHOT_MAX_SCENES; ++scene) {
+        uint8_t count = 0, visible_count = 0, minimized_count = 0;
+        uint32_t active_frame = 0;
+        bool any = false;
+        for (size_t i = 0; i < MAX_FRAMES; ++i) {
+            ShellFrame frame = FRAMES[i];
+            if (!frame.present || frame.scene_id != scene)
                 continue;
-            }
-            FocusRef ref={0};
-            if(make_focus_ref(sid,&ref) && !focus_ref_is_current(&ref)){sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u sid=%llu reason=generation",scene,frame.frame_id,U64(sid));
-                continue;}
-            if(count>=ATLAS_MAX_FRAMES_PER_SCENE)break;
-            snapshot.scenes[scene].frame_ids[count++]=frame.frame_id;
-            sexos_line("[atlas.snapshot.frame] scene=%zu frame=%u",scene,frame.frame_id);
+            any = true;
+            if (count >= ATLAS_SNAPSHOT_MAX_FRAMES_PER_SCENE)
+                break;
+            bool minimized = (frame.flags & FRAME_FLAG_MINIMIZED) != 0;
+            uint64_t sid = 0;
+            (void)active_surface_for_frame(frame.frame_id, &sid);
+            bool alive = sid != 0 && surface_is_alive(sid),
+                 visible = scene == active && !minimized && alive;
+            if (minimized && minimized_count != UINT8_MAX)
+                ++minimized_count;
+            if (visible && visible_count != UINT8_MAX)
+                ++visible_count;
+            if (visible || active_frame == 0)
+                active_frame = frame.frame_id;
+            sexos_line(
+                "[silk.atlas.snapshot.frame] scene=%u frame=%u surface=%llu x=%d y=%d w=%u h=%u visible=%u minimized=%u tabs=%u",
+                (unsigned)scene, frame.frame_id, U64(sid), frame.normal_x, frame.normal_y,
+                frame.normal_w, frame.normal_h, (unsigned)visible, (unsigned)minimized,
+                (unsigned)(frame.tab_count ? frame.tab_count : 1));
+            if (count != UINT8_MAX)
+                ++count;
         }
-        snapshot.scenes[scene].frame_count=count;
-        snapshot.scenes[scene].flags=SCENES[scene].flags;
-        if(scene==ACTIVE_SCENE_IDX){snapshot.scenes[scene].flags|=SCENE_FLAG_ACTIVE;
-            if(focused){snapshot.scenes[scene].focused_frame_id=focused;
-                snapshot.scenes[scene].flags|=SCENE_FLAG_HAS_FOCUS;}}
-        sexos_line("[atlas.snapshot.scene] scene=%zu frames=%u flags=0x%x",scene,(unsigned)count,(unsigned)snapshot.scenes[scene].flags);
+        if (!any)
+            sexos_line("[silk.atlas.snapshot.empty] scene=%u reason=no_frames", (unsigned)scene);
+        total =
+            (uint8_t)((unsigned)total + count > UINT8_MAX ? UINT8_MAX : (unsigned)total + count);
+        visible_total = (uint8_t)((unsigned)visible_total + visible_count > UINT8_MAX
+                                      ? UINT8_MAX
+                                      : (unsigned)visible_total + visible_count);
+        minimized_total = (uint8_t)((unsigned)minimized_total + minimized_count > UINT8_MAX
+                                        ? UINT8_MAX
+                                        : (unsigned)minimized_total + minimized_count);
+        sexos_line(
+            "[silk.atlas.snapshot.scene] scene=%u frames=%u visible=%u minimized=%u active_frame=%u",
+            (unsigned)scene, (unsigned)count, (unsigned)visible_count, (unsigned)minimized_count,
+            active_frame);
     }
-    ATLAS_SNAPSHOT=snapshot;
-    if(BUDGET(atlas_capture_snapshot__ATLAS_CAPTURE_BUDGET))sexos_line("[shell.atlas.capture] scenes=%zu active=%u",ATLAS_MAX_SCENES,(unsigned)ACTIVE_SCENE_IDX);
+    sexos_line("[silk.atlas.snapshot.done] scenes=%zu frames=%u visible=%u minimized=%u ok=1",
+               ATLAS_SNAPSHOT_MAX_SCENES, (unsigned)total, (unsigned)visible_total,
+               (unsigned)minimized_total);
 }
 
-bool shell_atlas_atlas_is_enabled(ShellAtlasContext *ctx) { return ATLAS_MODE_ENABLED; }
-void shell_atlas_atlas_toggle(ShellAtlasContext *ctx)
-{
-    if(ATLAS_MODE_ENABLED){
+bool shell_atlas_surface_in_active_scene(ShellAtlasContext *ctx, uint64_t sid) {
+    if (shell_custody_has_surface(sid, true))
+        return false;
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        if (FRAMES[i].present)
+            for (size_t j = 0; j < MAX_TABS_PER_FRAME; ++j)
+                if (FRAMES[i].tabs[j].present && FRAMES[i].tabs[j].surface_id == sid)
+                    return FRAMES[i].scene_id == ACTIVE_SCENE_IDX;
+    if (shell_custody_has_surface(sid, false))
+        return false;
+    return sid != SURFACE_ID_LINEN && sid != SURFACE_ID_QUIL && sid != SURFACE_ID_MESH &&
+           sid != SURFACE_ID_COLLAR && sid != SURFACE_ID_BELL_PLACEHOLDER;
+}
+
+bool shell_atlas_surface_scene_id(ShellAtlasContext *ctx, uint64_t sid, uint8_t *out) {
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        if (FRAMES[i].present)
+            for (size_t j = 0; j < MAX_TABS_PER_FRAME; ++j)
+                if (FRAMES[i].tabs[j].present && FRAMES[i].tabs[j].surface_id == sid) {
+                    if (out)
+                        *out = FRAMES[i].scene_id;
+                    return true;
+                }
+    return false;
+}
+
+void shell_atlas_clear_focus_if_wrong_scene(ShellAtlasContext *ctx) {
+    uint64_t focused = FOCUSED_SURFACE_ID;
+    if (!focused || surface_in_active_scene(focused))
+        return;
+    sexos_line("[scene.focus.reject.inactive] sid=%llu scene=wrong_focused", U64(focused));
+    sexos_line("[shell.scene.focus.clear.wrong-scene] id=%llu", U64(focused));
+    bool found = false;
+    for (size_t i = 0; i < MAX_FRAMES; ++i) {
+        ShellFrame frame = FRAMES[i];
+        if (!frame.present || frame.scene_id != ACTIVE_SCENE_IDX)
+            continue;
+        if (frame.active_tab >= MAX_TABS_PER_FRAME) {
+            sexos_fail();
+            return;
+        }
+        ShellTab tab = frame.tabs[frame.active_tab];
+        if (tab.present && surface_is_alive(tab.surface_id) && !is_tombstoned(tab.surface_id) &&
+            surface_is_lifecycle_focusable(tab.surface_id) && try_set_focus(tab.surface_id)) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        (void)try_set_focus(0);
+        sexos_line("[shell.scene.focus.clear.none]");
+    }
+}
+
+void shell_atlas_sync_lifecycle_scene_visibility(ShellAtlasContext *ctx) {
+    for (size_t i = 0; i < MAX_FRAMES; ++i) {
+        ShellFrame frame = FRAMES[i];
+        if (!frame.present)
+            continue;
+        bool active = frame.scene_id == ACTIVE_SCENE_IDX,
+             minimized = (frame.flags & FRAME_FLAG_MINIMIZED) != 0;
+        for (size_t j = 0; j < MAX_TABS_PER_FRAME; ++j) {
+            ShellTab tab = frame.tabs[j];
+            if (!tab.present || !surface_is_alive(tab.surface_id) || minimized)
+                continue;
+            uint8_t state = 0;
+            if (lifecycle_state(tab.surface_id, &state) &&
+                (state == LIFECYCLE_CLOSING || state == LIFECYCLE_TOMBSTONED ||
+                 state == LIFECYCLE_DESTROYED))
+                continue;
+            (void)set_lifecycle_state(tab.surface_id,
+                                      active ? LIFECYCLE_VISIBLE : LIFECYCLE_HIDDEN);
+        }
+    }
+    if (BUDGET(sync_lifecycle_scene_visibility__SCENE_LIFECYCLE_VIS_BUDGET))
+        sexos_line("[lifecycle.scene.sync] active=%u", (unsigned)ACTIVE_SCENE_IDX);
+}
+
+void shell_atlas_sync_scene_visibility(ShellAtlasContext *ctx) {
+    launcher_focus_discard();
+    sync_lifecycle_scene_visibility();
+    for (size_t i = 0; i < MAX_FRAMES; ++i) {
+        ShellFrame frame = FRAMES[i];
+        if (!frame.present)
+            continue;
+        bool active = frame.scene_id == ACTIVE_SCENE_IDX;
+        for (size_t j = 0; j < MAX_TABS_PER_FRAME; ++j) {
+            ShellTab tab = frame.tabs[j];
+            if (!tab.present)
+                continue;
+            uint64_t sid = tab.surface_id;
+            if (surface_is_alive(sid) && active && !(frame.flags & FRAME_FLAG_MINIMIZED)) {
+                int32_t x = 0, y = 0;
+                uint32_t width = 0, height = 0;
+                if (get_surface_bounds(sid, &x, &y, &width, &height))
+                    (void)sexos_pdx_call(SLOT_DISPLAY, 0xEC, sid, ((uint64_t)y << 32) | (uint64_t)x,
+                                         ((uint64_t)height << 32) | width);
+            } else if (surface_is_alive(sid) && (!active || (frame.flags & FRAME_FLAG_MINIMIZED)))
+                (void)sexos_pdx_call(SLOT_DISPLAY, 0xEE, sid, 0, 0);
+        }
+    }
+    if (BUDGET(sync_scene_visibility__SCENE_VISIBILITY_BUDGET))
+        sexos_line("[shell.scene.visibility] sync");
+}
+
+ShellAtlasLabel shell_atlas_atlas_default_label(ShellAtlasContext *ctx, uint32_t scene) {
+    (void)ctx;
+    ShellAtlasLabel value = {0};
+    const uint8_t prefix[6] = {'S', 'c', 'e', 'n', 'e', ' '};
+    size_t n = ATLAS_LABEL_LEN < 2 ? 0 : ATLAS_LABEL_LEN - 2;
+    if (n > 6)
+        n = 6;
+    for (size_t i = 0; i < n; ++i)
+        value.bytes[i] = prefix[i];
+    if (n < ATLAS_LABEL_LEN) {
+        uint8_t digit = (uint8_t)scene;
+        if (digit > 9)
+            digit = 9;
+        value.bytes[n] = (uint8_t)('0' + digit);
+    }
+    return value;
+}
+
+void shell_atlas_scene_init_all(ShellAtlasContext *ctx) {
+    const uint8_t accents[5] = {ACCENT_DEFAULT, ACCENT_WARM, ACCENT_COOL, ACCENT_CORAL,
+                                ACCENT_GOLD};
+    for (size_t i = 0; i < ATLAS_MAX_SCENES; ++i) {
+        SCENES[i] = (Scene){.flags = SCENE_FLAG_EMPTY, .accent = accents[i]};
+        ShellAtlasLabel label = shell_atlas_atlas_default_label(ctx, (uint32_t)i);
+        for (size_t j = 0; j < ATLAS_LABEL_LEN; ++j)
+            SCENES[i].label[j] = label.bytes[j];
+    }
+    for (size_t i = 0; i < ATLAS_MAX_SCENES; ++i)
+        scene_update_flags((uint8_t)i);
+    if (BUDGET(scene_init_all__SETTINGS_INIT_BUDGET))
+        sexos_line("[atlas.scene.settings.init] scenes=%zu accents=[%u,%u,%u,%u,%u]",
+                   ATLAS_MAX_SCENES, (unsigned)SCENES[0].accent, (unsigned)SCENES[1].accent,
+                   (unsigned)SCENES[2].accent, (unsigned)SCENES[3].accent,
+                   (unsigned)SCENES[4].accent);
+    sexos_line("[scene.core.init] scenes=%zu", ATLAS_MAX_SCENES);
+}
+
+void shell_atlas_scene_update_flags(ShellAtlasContext *ctx, uint8_t scene) {
+    if (scene >= ATLAS_MAX_SCENES)
+        return;
+    uint8_t flags = 0;
+    bool any = false;
+    for (size_t i = 0; i < MAX_FRAMES; ++i) {
+        ShellFrame frame = FRAMES[i];
+        if (!frame.present || frame.scene_id != scene)
+            continue;
+        uint64_t sid = 0;
+        if (active_surface_for_frame(frame.frame_id, &sid) &&
+            (!surface_is_alive(sid) || is_tombstoned(sid)))
+            continue;
+        any = true;
+        if (frame.flags & FRAME_FLAG_MINIMIZED)
+            flags |= SCENE_FLAG_HAS_MINIMIZED;
+        if (frame.flags & FRAME_FLAG_ZOOMED)
+            flags |= SCENE_FLAG_HAS_ZOOMED;
+    }
+    if (!any)
+        flags |= SCENE_FLAG_EMPTY;
+    SCENES[scene].flags = flags;
+}
+
+bool shell_atlas_validate_scene_id(ShellAtlasContext *ctx, uint8_t scene) {
+    (void)ctx;
+    return scene < ATLAS_MAX_SCENES;
+}
+
+uint8_t shell_atlas_scene_accent_token(ShellAtlasContext *ctx, uint8_t scene) {
+    if (scene < ATLAS_MAX_SCENES)
+        return SCENES[scene].accent;
+    if (BUDGET(scene_accent_token__SETTINGS_REJECT_BUDGET))
+        sexos_line("[atlas.scene.settings.reject] fn=accent id=%u", (unsigned)scene);
+    return ACCENT_DEFAULT;
+}
+
+bool shell_atlas_scene_is_pinned(ShellAtlasContext *ctx, uint8_t scene) {
+    if (scene >= ATLAS_MAX_SCENES) {
+        if (BUDGET(scene_is_pinned__SETTINGS_REJECT_BUDGET))
+            sexos_line("[atlas.scene.settings.reject] fn=pinned id=%u", (unsigned)scene);
+        return false;
+    }
+    if (BUDGET(scene_is_pinned__SETTINGS_READ_BUDGET))
+        sexos_line("[atlas.scene.settings.read] fn=pinned id=%u val=%s", (unsigned)scene,
+                   SCENES[scene].pinned ? "true" : "false");
+    return SCENES[scene].pinned;
+}
+
+ShellAtlasLabel shell_atlas_scene_label_token(ShellAtlasContext *ctx, uint8_t scene) {
+    ShellAtlasLabel value = {0};
+    if (scene >= ATLAS_MAX_SCENES) {
+        if (BUDGET(scene_label_token__SETTINGS_REJECT_BUDGET))
+            sexos_line("[atlas.scene.settings.reject] fn=label id=%u", (unsigned)scene);
+        return value;
+    }
+    for (size_t i = 0; i < ATLAS_LABEL_LEN; ++i)
+        value.bytes[i] = SCENES[scene].label[i];
+    return value;
+}
+
+void shell_atlas_atlas_capture_snapshot(ShellAtlasContext *ctx) {
+    AtlasSnapshot snapshot = {.active_scene_id = ACTIVE_SCENE_IDX,
+                              .scene_count = (uint8_t)ATLAS_MAX_SCENES};
+    sexos_line("[atlas.snapshot.start]");
+    uint32_t focused = 0;
+    (void)selected_frame_id(&focused);
+    for (size_t i = 0; i < ATLAS_MAX_SCENES; ++i)
+        scene_update_flags((uint8_t)i);
+    for (size_t scene = 0; scene < ATLAS_MAX_SCENES; ++scene) {
+        snapshot.scenes[scene].scene_id = (uint32_t)scene;
+        for (size_t j = 0; j < ATLAS_LABEL_LEN; ++j)
+            snapshot.scenes[scene].label[j] = SCENES[scene].label[j];
+        snapshot.scenes[scene].accent = SCENES[scene].accent;
+        snapshot.scenes[scene].pinned = SCENES[scene].pinned;
+        uint8_t count = 0;
+        for (size_t i = 0; i < MAX_FRAMES; ++i) {
+            ShellFrame frame = FRAMES[i];
+            if (!frame.present || frame.scene_id != scene)
+                continue;
+            if (frame.flags & FRAME_FLAG_MINIMIZED) {
+                sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u reason=minimized", scene,
+                           frame.frame_id);
+                continue;
+            }
+            uint64_t sid = 0;
+            if (!active_surface_for_frame(frame.frame_id, &sid))
+                continue;
+            if (!surface_is_alive(sid)) {
+                sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u sid=%llu reason=dead", scene,
+                           frame.frame_id, U64(sid));
+                continue;
+            }
+            if (is_tombstoned(sid)) {
+                sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u sid=%llu reason=tombstoned",
+                           scene, frame.frame_id, U64(sid));
+                continue;
+            }
+            uint8_t state = 0;
+            if (lifecycle_state(sid, &state) &&
+                (state == LIFECYCLE_CLOSING || state == LIFECYCLE_DESTROYED ||
+                 state == LIFECYCLE_HIDDEN)) {
+                sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u sid=%llu reason=lifecycle:%s",
+                           scene, frame.frame_id, U64(sid),
+                           state == LIFECYCLE_CLOSING     ? "Closing"
+                           : state == LIFECYCLE_DESTROYED ? "Destroyed"
+                                                          : "Hidden");
+                continue;
+            }
+            FocusRef ref = {0};
+            if (make_focus_ref(sid, &ref) && !focus_ref_is_current(&ref)) {
+                sexos_line("[atlas.snapshot.skip] scene=%zu frame=%u sid=%llu reason=generation",
+                           scene, frame.frame_id, U64(sid));
+                continue;
+            }
+            if (count >= ATLAS_MAX_FRAMES_PER_SCENE)
+                break;
+            snapshot.scenes[scene].frame_ids[count++] = frame.frame_id;
+            sexos_line("[atlas.snapshot.frame] scene=%zu frame=%u", scene, frame.frame_id);
+        }
+        snapshot.scenes[scene].frame_count = count;
+        snapshot.scenes[scene].flags = SCENES[scene].flags;
+        if (scene == ACTIVE_SCENE_IDX) {
+            snapshot.scenes[scene].flags |= SCENE_FLAG_ACTIVE;
+            if (focused) {
+                snapshot.scenes[scene].focused_frame_id = focused;
+                snapshot.scenes[scene].flags |= SCENE_FLAG_HAS_FOCUS;
+            }
+        }
+        sexos_line("[atlas.snapshot.scene] scene=%zu frames=%u flags=0x%x", scene, (unsigned)count,
+                   (unsigned)snapshot.scenes[scene].flags);
+    }
+    ATLAS_SNAPSHOT = snapshot;
+    if (BUDGET(atlas_capture_snapshot__ATLAS_CAPTURE_BUDGET))
+        sexos_line("[shell.atlas.capture] scenes=%zu active=%u", ATLAS_MAX_SCENES,
+                   (unsigned)ACTIVE_SCENE_IDX);
+}
+
+bool shell_atlas_atlas_is_enabled(ShellAtlasContext *ctx) {
+    return ATLAS_MODE_ENABLED;
+}
+
+void shell_atlas_atlas_toggle(ShellAtlasContext *ctx) {
+    if (ATLAS_MODE_ENABLED) {
         atlas_clear_stub();
-        ATLAS_MODE_ENABLED=false;
+        ATLAS_MODE_ENABLED = false;
         sexos_line("[atlas.view.exit]");
-        if(BUDGET(atlas_toggle__ATLAS_EXIT_BUDGET))sexos_line("[shell.atlas.exit]");
+        if (BUDGET(atlas_toggle__ATLAS_EXIT_BUDGET))
+            sexos_line("[shell.atlas.exit]");
         sexos_line("[atlas.overlay.toggle] enabled=0 ok=1 reason=closed");
-    }else{
-        ATLAS_MODE_ENABLED=true;
-        ATLAS_SELECTED_SCENE=ACTIVE_SCENE_IDX;
-        sexos_line("[atlas.nav.enter.select] scene=%u",(unsigned)ATLAS_SELECTED_SCENE);
+    } else {
+        ATLAS_MODE_ENABLED = true;
+        ATLAS_SELECTED_SCENE = ACTIVE_SCENE_IDX;
+        sexos_line("[atlas.nav.enter.select] scene=%u", (unsigned)ATLAS_SELECTED_SCENE);
         atlas_render_stub();
         clear_hover_if_wrong_scene();
         clear_drag_if_dead();
         sexos_line("[atlas.view.enter]");
-        if(BUDGET(atlas_toggle__ATLAS_ENTER_BUDGET))sexos_line("[shell.atlas.enter]");
+        if (BUDGET(atlas_toggle__ATLAS_ENTER_BUDGET))
+            sexos_line("[shell.atlas.enter]");
         sexos_line("[atlas.overlay.toggle] enabled=1 ok=1 reason=opened");
     }
 }
-void shell_atlas_atlas_exit(ShellAtlasContext *ctx)
-{
-    if(ATLAS_MODE_ENABLED){ATLAS_MODE_ENABLED=false;
+
+void shell_atlas_atlas_exit(ShellAtlasContext *ctx) {
+    if (ATLAS_MODE_ENABLED) {
+        ATLAS_MODE_ENABLED = false;
         atlas_capture_snapshot();
-        if(BUDGET(atlas_exit__ATLAS_EXIT_BUDGET))sexos_line("[shell.atlas.exit]");}
+        if (BUDGET(atlas_exit__ATLAS_EXIT_BUDGET))
+            sexos_line("[shell.atlas.exit]");
+    }
 }
-void shell_atlas_atlas_card_pos(ShellAtlasContext *ctx,size_t scene,uint32_t width,int32_t *x,int32_t *y,uint32_t *w,uint32_t *h)
-{
+
+void shell_atlas_atlas_card_pos(ShellAtlasContext *ctx, size_t scene, uint32_t width, int32_t *x,
+                                int32_t *y, uint32_t *w, uint32_t *h) {
     (void)ctx;
-    int32_t row=scene<ATLAS_CARDS_ROW0?0:1,col=(int32_t)(uint32_t)(scene<ATLAS_CARDS_ROW0?scene:scene-ATLAS_CARDS_ROW0);
-    uint32_t n=(uint32_t)(row==0?ATLAS_CARDS_ROW0:ATLAS_CARDS_ROW1);
-    uint32_t total=ATLAS_CARD_W*n+(uint32_t)ATLAS_CARD_GAP*(n-1);
-    int32_t start=atlas_sub((int32_t)width,(int32_t)total)/2;
-    if(start<0)start=0;
-    if(x)*x=atlas_add(start,atlas_mul(col,atlas_add((int32_t)ATLAS_CARD_W,ATLAS_CARD_GAP)));
-    if(y)*y=atlas_add(30,atlas_mul(row,atlas_add((int32_t)ATLAS_CARD_H,ATLAS_CARD_GAP)));
-    if(w)*w=ATLAS_CARD_W;
-    if(h)*h=ATLAS_CARD_H;
+    int32_t row = scene < ATLAS_CARDS_ROW0 ? 0 : 1,
+            col = (int32_t)(uint32_t)(scene < ATLAS_CARDS_ROW0 ? scene : scene - ATLAS_CARDS_ROW0);
+    uint32_t n = (uint32_t)(row == 0 ? ATLAS_CARDS_ROW0 : ATLAS_CARDS_ROW1);
+    uint32_t total = ATLAS_CARD_W * n + (uint32_t)ATLAS_CARD_GAP * (n - 1);
+    int32_t start = atlas_sub((int32_t)width, (int32_t)total) / 2;
+    if (start < 0)
+        start = 0;
+    if (x)
+        *x = atlas_add(start, atlas_mul(col, atlas_add((int32_t)ATLAS_CARD_W, ATLAS_CARD_GAP)));
+    if (y)
+        *y = atlas_add(30, atlas_mul(row, atlas_add((int32_t)ATLAS_CARD_H, ATLAS_CARD_GAP)));
+    if (w)
+        *w = ATLAS_CARD_W;
+    if (h)
+        *h = ATLAS_CARD_H;
 }
-bool shell_atlas_atlas_scene_at_point(ShellAtlasContext *ctx,int32_t x,int32_t y,uint8_t *out)
-{
-    uint32_t width=(uint32_t)desktop_width();
-    int32_t local=atlas_sub(y,P.bar_height);
-    if(!width || local<0)return false;
-    for(size_t scene=0;scene<ATLAS_MAX_SCENES;++scene){
-        int32_t cx=0,cy=0;
-        uint32_t w=0,h=0;
-        atlas_card_pos(scene,width,&cx,&cy,&w,&h);
-        if(x>=cx && x<atlas_add(cx,(int32_t)w) && local>=cy && local<atlas_add(cy,(int32_t)h)){if(out)*out=(uint8_t)scene;
-            return true;}
+
+bool shell_atlas_atlas_scene_at_point(ShellAtlasContext *ctx, int32_t x, int32_t y, uint8_t *out) {
+    uint32_t width = (uint32_t)desktop_width();
+    int32_t local = atlas_sub(y, P.bar_height);
+    if (!width || local < 0)
+        return false;
+    for (size_t scene = 0; scene < ATLAS_MAX_SCENES; ++scene) {
+        int32_t cx = 0, cy = 0;
+        uint32_t w = 0, h = 0;
+        atlas_card_pos(scene, width, &cx, &cy, &w, &h);
+        if (x >= cx && x < atlas_add(cx, (int32_t)w) && local >= cy &&
+            local < atlas_add(cy, (int32_t)h)) {
+            if (out)
+                *out = (uint8_t)scene;
+            return true;
+        }
     }
     return false;
 }
 
-static void atlas_fill(ShellAtlasContext *ctx,uint64_t x,uint64_t y,uint64_t width,uint64_t height,uint32_t color)
-{
+static void atlas_fill(ShellAtlasContext *ctx, uint64_t x, uint64_t y, uint64_t width,
+                       uint64_t height, uint32_t color) {
     (void)ctx;
-    (void)sexos_pdx_call(SLOT_DISPLAY,0xEF,SURFACE_ID_ATLAS_OVERLAY,(y<<32)|x,((uint64_t)color<<32)|(height<<16)|width);
+    (void)sexos_pdx_call(SLOT_DISPLAY, 0xEF, SURFACE_ID_ATLAS_OVERLAY, (y << 32) | x,
+                         ((uint64_t)color << 32) | (height << 16) | width);
 }
-static void atlas_border(ShellAtlasContext *ctx,int32_t x,int32_t y,uint32_t width,uint32_t height,int32_t edge,uint32_t color)
-{
-    atlas_fill(ctx,(uint64_t)x,(uint64_t)y,width,(uint64_t)edge,color);
-    atlas_fill(ctx,(uint64_t)x,(uint64_t)atlas_sub(atlas_add(y,(int32_t)height),edge),width,(uint64_t)edge,color);
-    atlas_fill(ctx,(uint64_t)x,(uint64_t)y,(uint64_t)edge,height,color);
-    atlas_fill(ctx,(uint64_t)atlas_sub(atlas_add(x,(int32_t)width),edge),(uint64_t)y,(uint64_t)edge,height,color);
+
+static void atlas_border(ShellAtlasContext *ctx, int32_t x, int32_t y, uint32_t width,
+                         uint32_t height, int32_t edge, uint32_t color) {
+    atlas_fill(ctx, (uint64_t)x, (uint64_t)y, width, (uint64_t)edge, color);
+    atlas_fill(ctx, (uint64_t)x, (uint64_t)atlas_sub(atlas_add(y, (int32_t)height), edge), width,
+               (uint64_t)edge, color);
+    atlas_fill(ctx, (uint64_t)x, (uint64_t)y, (uint64_t)edge, height, color);
+    atlas_fill(ctx, (uint64_t)atlas_sub(atlas_add(x, (int32_t)width), edge), (uint64_t)y,
+               (uint64_t)edge, height, color);
 }
-void shell_atlas_atlas_render_stub(ShellAtlasContext *ctx)
-{
+
+void shell_atlas_atlas_render_stub(ShellAtlasContext *ctx) {
     atlas_capture_snapshot();
-    uint32_t width=(uint32_t)desktop_width(),height=(uint32_t)atlas_sub(desktop_height(),P.bar_height);
-    if(!width || !height)return;
-    (void)sexos_pdx_call(SLOT_DISPLAY,0xEC,SURFACE_ID_ATLAS_OVERLAY,(uint64_t)P.bar_height<<32,((uint64_t)height<<32)|width);
-    (void)set_lifecycle_state(SURFACE_ID_ATLAS_OVERLAY,LIFECYCLE_MAPPED);
-    atlas_fill(ctx,0,0,width,height,ATLAS_COLOR_BG);
+    uint32_t width = (uint32_t)desktop_width(),
+             height = (uint32_t)atlas_sub(desktop_height(), P.bar_height);
+    if (!width || !height)
+        return;
+    (void)sexos_pdx_call(SLOT_DISPLAY, 0xEC, SURFACE_ID_ATLAS_OVERLAY, (uint64_t)P.bar_height << 32,
+                         ((uint64_t)height << 32) | width);
+    (void)set_lifecycle_state(SURFACE_ID_ATLAS_OVERLAY, LIFECYCLE_MAPPED);
+    atlas_fill(ctx, 0, 0, width, height, ATLAS_COLOR_BG);
     sexos_line("[atlas.visual.tokens]");
-    for(size_t scene=0;scene<ATLAS_MAX_SCENES;++scene){
-        SceneDescriptor sd=ATLAS_SNAPSHOT.scenes[scene];
-        int32_t x=0,y=0;
-        uint32_t w=0,h=0;
-        atlas_card_pos(scene,width,&x,&y,&w,&h);
-        bool selected=ATLAS_SELECTED_SCENE<ATLAS_MAX_SCENES && scene==ATLAS_SELECTED_SCENE;
+    for (size_t scene = 0; scene < ATLAS_MAX_SCENES; ++scene) {
+        SceneDescriptor sd = ATLAS_SNAPSHOT.scenes[scene];
+        int32_t x = 0, y = 0;
+        uint32_t w = 0, h = 0;
+        atlas_card_pos(scene, width, &x, &y, &w, &h);
+        bool selected = ATLAS_SELECTED_SCENE < ATLAS_MAX_SCENES && scene == ATLAS_SELECTED_SCENE;
         uint32_t color;
-        if(selected){sexos_line("[atlas.visual.selected] scene=%zu",scene);
-            color=ATLAS_CARD_SELECTED_COLOR;}
-        else if(sd.flags&SCENE_FLAG_EMPTY)color=ATLAS_CARD_EMPTY_COLOR;
-        else if(sd.accent!=ACCENT_DEFAULT && sd.accent<ACCENT_COUNT){
-            color=ATLAS_ACCENT_COLORS[sd.accent];
-            if(BUDGET(atlas_render_stub__ATLAS_ACCENT_VISUAL_BUDGET))sexos_line("[atlas.scene.visual.accent] scene=%zu accent=%u",scene,(unsigned)sd.accent);
-        }else{
-            if(sd.accent!=ACCENT_DEFAULT && BUDGET(atlas_render_stub__ATLAS_VISUAL_REJECT_BUDGET))sexos_line("[atlas.scene.visual.reject] scene=%zu reason=accent_oob accent=%u",scene,(unsigned)sd.accent);
-            color=(sd.flags&SCENE_FLAG_ACTIVE)?ATLAS_CARD_ACTIVE_COLOR:ATLAS_CARD_COLOR;
+        if (selected) {
+            sexos_line("[atlas.visual.selected] scene=%zu", scene);
+            color = ATLAS_CARD_SELECTED_COLOR;
+        } else if (sd.flags & SCENE_FLAG_EMPTY)
+            color = ATLAS_CARD_EMPTY_COLOR;
+        else if (sd.accent != ACCENT_DEFAULT && sd.accent < ACCENT_COUNT) {
+            color = ATLAS_ACCENT_COLORS[sd.accent];
+            if (BUDGET(atlas_render_stub__ATLAS_ACCENT_VISUAL_BUDGET))
+                sexos_line("[atlas.scene.visual.accent] scene=%zu accent=%u", scene,
+                           (unsigned)sd.accent);
+        } else {
+            if (sd.accent != ACCENT_DEFAULT &&
+                BUDGET(atlas_render_stub__ATLAS_VISUAL_REJECT_BUDGET))
+                sexos_line("[atlas.scene.visual.reject] scene=%zu reason=accent_oob accent=%u",
+                           scene, (unsigned)sd.accent);
+            color = (sd.flags & SCENE_FLAG_ACTIVE) ? ATLAS_CARD_ACTIVE_COLOR : ATLAS_CARD_COLOR;
         }
-        sexos_line("[atlas.visual.card] scene=%zu color=0x%x",scene,color);
-        uint32_t top=ATLAS_CARD_TOP_H<h?ATLAS_CARD_TOP_H:h;
-        atlas_fill(ctx,(uint64_t)x,(uint64_t)y,w,top,color);
-        size_t count=sd.frame_count;
-        uint32_t total=(uint32_t)(count?count-1:0)*(ATLAS_FRAME_BLOCK_W+(uint32_t)ATLAS_FRAME_BLOCK_GAP)+ATLAS_FRAME_BLOCK_W;
-        int32_t start_x=atlas_add(x,atlas_sub((int32_t)w,(int32_t)total)/2),frame_y=atlas_add(atlas_add(y,(int32_t)ATLAS_CARD_TOP_H),ATLAS_FRAME_PAD);
-        for(size_t i=0;i<count && i<ATLAS_MAX_FRAMES_PER_SCENE;++i){
-            int32_t frame_x=atlas_add(start_x,atlas_mul((int32_t)(uint32_t)i,atlas_add((int32_t)ATLAS_FRAME_BLOCK_W,ATLAS_FRAME_BLOCK_GAP)));
-            uint32_t frame_color=(sd.flags&SCENE_FLAG_HAS_ZOOMED)?ATLAS_CARD_ZOOMED_HINT_COLOR:(sd.flags&SCENE_FLAG_HAS_MINIMIZED)?ATLAS_CARD_MINIMIZED_HINT_COLOR:ATLAS_COLOR_FRAME_NORMAL;
-            atlas_fill(ctx,(uint64_t)frame_x,(uint64_t)frame_y,ATLAS_FRAME_BLOCK_W,ATLAS_FRAME_BLOCK_H,frame_color);
+        sexos_line("[atlas.visual.card] scene=%zu color=0x%x", scene, color);
+        uint32_t top = ATLAS_CARD_TOP_H < h ? ATLAS_CARD_TOP_H : h;
+        atlas_fill(ctx, (uint64_t)x, (uint64_t)y, w, top, color);
+        size_t count = sd.frame_count;
+        uint32_t total = (uint32_t)(count ? count - 1 : 0) *
+                             (ATLAS_FRAME_BLOCK_W + (uint32_t)ATLAS_FRAME_BLOCK_GAP) +
+                         ATLAS_FRAME_BLOCK_W;
+        int32_t start_x = atlas_add(x, atlas_sub((int32_t)w, (int32_t)total) / 2),
+                frame_y = atlas_add(atlas_add(y, (int32_t)ATLAS_CARD_TOP_H), ATLAS_FRAME_PAD);
+        for (size_t i = 0; i < count && i < ATLAS_MAX_FRAMES_PER_SCENE; ++i) {
+            int32_t frame_x = atlas_add(
+                start_x, atlas_mul((int32_t)(uint32_t)i,
+                                   atlas_add((int32_t)ATLAS_FRAME_BLOCK_W, ATLAS_FRAME_BLOCK_GAP)));
+            uint32_t frame_color = (sd.flags & SCENE_FLAG_HAS_ZOOMED) ? ATLAS_CARD_ZOOMED_HINT_COLOR
+                                   : (sd.flags & SCENE_FLAG_HAS_MINIMIZED)
+                                       ? ATLAS_CARD_MINIMIZED_HINT_COLOR
+                                       : ATLAS_COLOR_FRAME_NORMAL;
+            atlas_fill(ctx, (uint64_t)frame_x, (uint64_t)frame_y, ATLAS_FRAME_BLOCK_W,
+                       ATLAS_FRAME_BLOCK_H, frame_color);
         }
-        if(sd.pinned){
-            int32_t dot_x=atlas_sub(atlas_sub(atlas_add(x,(int32_t)w),8),4),dot_y=atlas_add(y,4);
-            atlas_fill(ctx,(uint64_t)dot_x,(uint64_t)dot_y,8,8,ATLAS_PIN_COLOR);
-            if(BUDGET(atlas_render_stub__ATLAS_PIN_VISUAL_BUDGET))sexos_line("[atlas.scene.visual.pinned] scene=%zu",scene);
+        if (sd.pinned) {
+            int32_t dot_x = atlas_sub(atlas_sub(atlas_add(x, (int32_t)w), 8), 4),
+                    dot_y = atlas_add(y, 4);
+            atlas_fill(ctx, (uint64_t)dot_x, (uint64_t)dot_y, 8, 8, ATLAS_PIN_COLOR);
+            if (BUDGET(atlas_render_stub__ATLAS_PIN_VISUAL_BUDGET))
+                sexos_line("[atlas.scene.visual.pinned] scene=%zu", scene);
         }
-        sexos_line("[atlas.visual.flags] scene=%zu flags=0x%x frames=%zu",scene,(unsigned)sd.flags,count);
-        if(selected)atlas_border(ctx,x,y,w,h,2,ATLAS_COLOR_SELECT);
-        else if(sd.flags&SCENE_FLAG_ACTIVE){sexos_line("[atlas.visual.active] scene=%zu",scene);
-            atlas_border(ctx,x,y,w,h,2,ATLAS_CARD_ACTIVE_RIM_COLOR);}
-        else if(!(sd.flags&SCENE_FLAG_EMPTY))atlas_border(ctx,x,y,w,h,1,ATLAS_CARD_INACTIVE_RIM_COLOR);
-        if(sd.flags&SCENE_FLAG_HAS_FOCUS){
-            atlas_fill(ctx,(uint64_t)x+4,(uint64_t)y+4,ATLAS_FOCUS_MARKER_SIZE,ATLAS_FOCUS_MARKER_SIZE,ATLAS_FOCUS_MARKER_COLOR);
-            if(BUDGET(atlas_render_stub__ATLAS_FOCUS_MARKER_BUDGET))sexos_line("[atlas.preview.focus_marker] scene=%zu",scene);
+        sexos_line("[atlas.visual.flags] scene=%zu flags=0x%x frames=%zu", scene,
+                   (unsigned)sd.flags, count);
+        if (selected)
+            atlas_border(ctx, x, y, w, h, 2, ATLAS_COLOR_SELECT);
+        else if (sd.flags & SCENE_FLAG_ACTIVE) {
+            sexos_line("[atlas.visual.active] scene=%zu", scene);
+            atlas_border(ctx, x, y, w, h, 2, ATLAS_CARD_ACTIVE_RIM_COLOR);
+        } else if (!(sd.flags & SCENE_FLAG_EMPTY))
+            atlas_border(ctx, x, y, w, h, 1, ATLAS_CARD_INACTIVE_RIM_COLOR);
+        if (sd.flags & SCENE_FLAG_HAS_FOCUS) {
+            atlas_fill(ctx, (uint64_t)x + 4, (uint64_t)y + 4, ATLAS_FOCUS_MARKER_SIZE,
+                       ATLAS_FOCUS_MARKER_SIZE, ATLAS_FOCUS_MARKER_COLOR);
+            if (BUDGET(atlas_render_stub__ATLAS_FOCUS_MARKER_BUDGET))
+                sexos_line("[atlas.preview.focus_marker] scene=%zu", scene);
         }
-        if(count>1){
-            int32_t bar_y=atlas_add(atlas_add(y,(int32_t)ATLAS_CARD_TOP_H),2),bar_width=atlas_sub((int32_t)w,32);
-            if(bar_width>0){
-                atlas_fill(ctx,(uint64_t)x+16,(uint64_t)bar_y,(uint64_t)bar_width,ATLAS_TILE_COUNT_BAR_H,ATLAS_TILE_COUNT_BAR_COLOR);
-                if(BUDGET(atlas_render_stub__ATLAS_TILE_COUNT_BUDGET))sexos_line("[atlas.preview.tile_count] scene=%zu frames=%zu",scene,count);
+        if (count > 1) {
+            int32_t bar_y = atlas_add(atlas_add(y, (int32_t)ATLAS_CARD_TOP_H), 2),
+                    bar_width = atlas_sub((int32_t)w, 32);
+            if (bar_width > 0) {
+                atlas_fill(ctx, (uint64_t)x + 16, (uint64_t)bar_y, (uint64_t)bar_width,
+                           ATLAS_TILE_COUNT_BAR_H, ATLAS_TILE_COUNT_BAR_COLOR);
+                if (BUDGET(atlas_render_stub__ATLAS_TILE_COUNT_BUDGET))
+                    sexos_line("[atlas.preview.tile_count] scene=%zu frames=%zu", scene, count);
             }
         }
-        if(BUDGET(atlas_render_stub__ATLAS_POLISH_BUDGET))sexos_line("[atlas.preview.polish] scene=%zu active=%d focus=%d frames=%zu",scene,(sd.flags&SCENE_FLAG_ACTIVE)?1:0,(sd.flags&SCENE_FLAG_HAS_FOCUS)?1:0,count);
+        if (BUDGET(atlas_render_stub__ATLAS_POLISH_BUDGET))
+            sexos_line("[atlas.preview.polish] scene=%zu active=%d focus=%d frames=%zu", scene,
+                       (sd.flags & SCENE_FLAG_ACTIVE) ? 1 : 0,
+                       (sd.flags & SCENE_FLAG_HAS_FOCUS) ? 1 : 0, count);
     }
-    if(BUDGET(atlas_render_stub__ATLAS_RENDER_BUDGET))sexos_line("[shell.atlas.render]");
-    if(BUDGET(atlas_render_stub__ATLAS_PREVIEW_REFRESH_BUDGET))sexos_line("[atlas.preview.refresh] scenes=%zu",ATLAS_MAX_SCENES);
+    if (BUDGET(atlas_render_stub__ATLAS_RENDER_BUDGET))
+        sexos_line("[shell.atlas.render]");
+    if (BUDGET(atlas_render_stub__ATLAS_PREVIEW_REFRESH_BUDGET))
+        sexos_line("[atlas.preview.refresh] scenes=%zu", ATLAS_MAX_SCENES);
 }
-void shell_atlas_atlas_clear_stub(ShellAtlasContext *ctx)
-{
-    (void)sexos_pdx_call(SLOT_DISPLAY,0xEE,SURFACE_ID_ATLAS_OVERLAY,0,0);
-    (void)set_lifecycle_state(SURFACE_ID_ATLAS_OVERLAY,LIFECYCLE_ALLOCATED);
+
+void shell_atlas_atlas_clear_stub(ShellAtlasContext *ctx) {
+    (void)sexos_pdx_call(SLOT_DISPLAY, 0xEE, SURFACE_ID_ATLAS_OVERLAY, 0, 0);
+    (void)set_lifecycle_state(SURFACE_ID_ATLAS_OVERLAY, LIFECYCLE_ALLOCATED);
     sync_scene_visibility();
     clear_focus_if_dead();
     clear_drag_if_dead();
@@ -487,29 +690,42 @@ void shell_atlas_atlas_clear_stub(ShellAtlasContext *ctx)
     clear_hover_if_wrong_scene();
     tile_active_scene_frames();
     snap_capture_layout();
-    if(BUDGET(atlas_clear_stub__ATLAS_CLEAR_BUDGET))sexos_line("[shell.atlas.clear] restore");
+    if (BUDGET(atlas_clear_stub__ATLAS_CLEAR_BUDGET))
+        sexos_line("[shell.atlas.clear] restore");
 }
-void shell_atlas_atlas_apply_scene_accent_to_chrome(ShellAtlasContext *ctx,uint8_t scene)
-{
-    uint8_t index=scene<WORKSPACE_COUNT?scene:WORKSPACE_COUNT-1,accent=SCENES[index].accent,old=ACTIVE_TINT_IDX,preset=SCENE_APPEARANCE_STATE.preset_idx;
-    uint8_t custom=SCENE_APPEARANCE_STATE.use_custom_colors;
-    sexos_line("[atlas.theme.before] scene=%u accent=%u tint=%u preset=%u custom=%u",(unsigned)index,(unsigned)accent,(unsigned)old,(unsigned)preset,(unsigned)custom);
-    ACTIVE_TINT_IDX=accent;
+
+void shell_atlas_atlas_apply_scene_accent_to_chrome(ShellAtlasContext *ctx, uint8_t scene) {
+    uint8_t index = scene < WORKSPACE_COUNT ? scene : WORKSPACE_COUNT - 1,
+            accent = SCENES[index].accent, old = ACTIVE_TINT_IDX,
+            preset = SCENE_APPEARANCE_STATE.preset_idx;
+    uint8_t custom = SCENE_APPEARANCE_STATE.use_custom_colors;
+    sexos_line("[atlas.theme.before] scene=%u accent=%u tint=%u preset=%u custom=%u",
+               (unsigned)index, (unsigned)accent, (unsigned)old, (unsigned)preset,
+               (unsigned)custom);
+    ACTIVE_TINT_IDX = accent;
     apply_custom_tint_bundle(accent);
-    uint32_t tokens[8]={0};
+    uint32_t tokens[8] = {0};
     resolve_scene_render_tokens(tokens);
     push_token_preset(tokens);
-    uint8_t changed=old!=accent;
-    sexos_line("[atlas.theme.apply] old_scene=%u new_scene=%u old_accent=%u new_accent=%u ok=1 reason=%s",(unsigned)old,(unsigned)accent,(unsigned)old,(unsigned)accent,changed?"applied":"no_change");
-    sexos_line("[atlas.theme.after] scene=%u accent=%u tint=%u preset=%u custom=%u changed=%u",(unsigned)index,(unsigned)accent,(unsigned)ACTIVE_TINT_IDX,(unsigned)SCENE_APPEARANCE_STATE.preset_idx,(unsigned)SCENE_APPEARANCE_STATE.use_custom_colors,(unsigned)changed);
-    if(changed)(void)send_silkbar_phase2_update(ATLAS_UPDATE_SET_TINT_ACCENT,ACTIVE_TINT_IDX,0);
+    uint8_t changed = old != accent;
+    sexos_line(
+        "[atlas.theme.apply] old_scene=%u new_scene=%u old_accent=%u new_accent=%u ok=1 reason=%s",
+        (unsigned)old, (unsigned)accent, (unsigned)old, (unsigned)accent,
+        changed ? "applied" : "no_change");
+    sexos_line("[atlas.theme.after] scene=%u accent=%u tint=%u preset=%u custom=%u changed=%u",
+               (unsigned)index, (unsigned)accent, (unsigned)ACTIVE_TINT_IDX,
+               (unsigned)SCENE_APPEARANCE_STATE.preset_idx,
+               (unsigned)SCENE_APPEARANCE_STATE.use_custom_colors, (unsigned)changed);
+    if (changed)
+        (void)send_silkbar_phase2_update(ATLAS_UPDATE_SET_TINT_ACCENT, ACTIVE_TINT_IDX, 0);
 }
-void shell_atlas_switch_scene(ShellAtlasContext *ctx,uint8_t scene)
-{
-    uint8_t index=scene<WORKSPACE_COUNT?scene:WORKSPACE_COUNT-1;
-    if(index==ACTIVE_SCENE_IDX)return;
-    uint8_t previous=ACTIVE_SCENE_IDX;
-    ACTIVE_SCENE_IDX=index;
+
+void shell_atlas_switch_scene(ShellAtlasContext *ctx, uint8_t scene) {
+    uint8_t index = scene < WORKSPACE_COUNT ? scene : WORKSPACE_COUNT - 1;
+    if (index == ACTIVE_SCENE_IDX)
+        return;
+    uint8_t previous = ACTIVE_SCENE_IDX;
+    ACTIVE_SCENE_IDX = index;
     sync_scene_visibility();
     clear_focus_if_wrong_scene();
     clear_drag_if_dead();
@@ -522,41 +738,68 @@ void shell_atlas_switch_scene(ShellAtlasContext *ctx,uint8_t scene)
     scene_update_flags(index);
     atlas_capture_snapshot();
     atlas_apply_scene_accent_to_chrome(index);
-    (void)sexos_pdx_call(SLOT_SILKBAR,OP_SILKBAR_WORKSPACE_ACTIVE,index,0,0);
-    size_t bells=bell_ring_count();
-    sexos_line("[shell.silkbar.status.send] focus=%llu app=Scene tint=%u bell=%zu ok=1 reason=workspace_switch",U64(FOCUSED_SURFACE_ID),(unsigned)ACTIVE_TINT_IDX,bells);
-    (void)send_silkbar_phase2_update(ATLAS_UPDATE_SET_ACTIVE_APP,FOCUSED_SURFACE_ID,0);
-    (void)send_silkbar_phase2_update(ATLAS_UPDATE_SET_TINT_ACCENT,ACTIVE_TINT_IDX,0);
-    if(BUDGET(switch_scene__SCENE_SWITCH_SHORTCUT_BUDGET))sexos_line("[shell.scene.shortcut.switch] from=%u to=%u",(unsigned)previous,(unsigned)ACTIVE_SCENE_IDX);
-    sexos_line("[scene.switch] from=%u to=%u",(unsigned)previous,(unsigned)index);
-    sexos_line("[shell.interact.scene.switch] from=%u to=%u",(unsigned)previous,(unsigned)index);
+    (void)sexos_pdx_call(SLOT_SILKBAR, OP_SILKBAR_WORKSPACE_ACTIVE, index, 0, 0);
+    size_t bells = bell_ring_count();
+    sexos_line(
+        "[shell.silkbar.status.send] focus=%llu app=Scene tint=%u bell=%zu ok=1 reason=workspace_switch",
+        U64(FOCUSED_SURFACE_ID), (unsigned)ACTIVE_TINT_IDX, bells);
+    (void)send_silkbar_phase2_update(ATLAS_UPDATE_SET_ACTIVE_APP, FOCUSED_SURFACE_ID, 0);
+    (void)send_silkbar_phase2_update(ATLAS_UPDATE_SET_TINT_ACCENT, ACTIVE_TINT_IDX, 0);
+    if (BUDGET(switch_scene__SCENE_SWITCH_SHORTCUT_BUDGET))
+        sexos_line("[shell.scene.shortcut.switch] from=%u to=%u", (unsigned)previous,
+                   (unsigned)ACTIVE_SCENE_IDX);
+    sexos_line("[scene.switch] from=%u to=%u", (unsigned)previous, (unsigned)index);
+    sexos_line("[shell.interact.scene.switch] from=%u to=%u", (unsigned)previous, (unsigned)index);
 }
-void shell_atlas_next_scene(ShellAtlasContext *ctx) { uint8_t next=(uint8_t)(ACTIVE_SCENE_IDX+1);
-    switch_scene((uint8_t)(next%WORKSPACE_COUNT)); }
-void shell_atlas_prev_scene(ShellAtlasContext *ctx) { switch_scene(ACTIVE_SCENE_IDX==0?WORKSPACE_COUNT-1:(uint8_t)(ACTIVE_SCENE_IDX-1)); }
-bool shell_atlas_atlas_cycle_scene(ShellAtlasContext *ctx,int32_t delta,const char *reason)
-{
-    if(WORKSPACE_COUNT<=1){sexos_line("[silk.atlas.key.scene.noop] active=%u reason=single_scene ok=1",(unsigned)ACTIVE_SCENE_IDX);
-        return false;}
-    uint8_t previous=ACTIVE_SCENE_IDX,next;
-    if(delta>0)next=(uint8_t)((uint8_t)(previous+1)%WORKSPACE_COUNT);
-    else if(delta<0)next=previous==0?WORKSPACE_COUNT-1:(uint8_t)(previous-1);
-    else {sexos_line("[silk.atlas.key.scene.noop] active=%u reason=delta_zero ok=1",(unsigned)ACTIVE_SCENE_IDX);
-        return false;}
-    if(next==previous){sexos_line("[silk.atlas.key.scene.noop] active=%u reason=no_change ok=1",(unsigned)ACTIVE_SCENE_IDX);
-        return false;}
-    sexos_line(delta>0?"[silk.atlas.key.scene.next] from=%u to=%u ok=1":"[silk.atlas.key.scene.prev] from=%u to=%u ok=1",(unsigned)previous,(unsigned)next);
+
+void shell_atlas_next_scene(ShellAtlasContext *ctx) {
+    uint8_t next = (uint8_t)(ACTIVE_SCENE_IDX + 1);
+    switch_scene((uint8_t)(next % WORKSPACE_COUNT));
+}
+
+void shell_atlas_prev_scene(ShellAtlasContext *ctx) {
+    switch_scene(ACTIVE_SCENE_IDX == 0 ? WORKSPACE_COUNT - 1 : (uint8_t)(ACTIVE_SCENE_IDX - 1));
+}
+
+bool shell_atlas_atlas_cycle_scene(ShellAtlasContext *ctx, int32_t delta, const char *reason) {
+    if (WORKSPACE_COUNT <= 1) {
+        sexos_line("[silk.atlas.key.scene.noop] active=%u reason=single_scene ok=1",
+                   (unsigned)ACTIVE_SCENE_IDX);
+        return false;
+    }
+    uint8_t previous = ACTIVE_SCENE_IDX, next;
+    if (delta > 0)
+        next = (uint8_t)((uint8_t)(previous + 1) % WORKSPACE_COUNT);
+    else if (delta < 0)
+        next = previous == 0 ? WORKSPACE_COUNT - 1 : (uint8_t)(previous - 1);
+    else {
+        sexos_line("[silk.atlas.key.scene.noop] active=%u reason=delta_zero ok=1",
+                   (unsigned)ACTIVE_SCENE_IDX);
+        return false;
+    }
+    if (next == previous) {
+        sexos_line("[silk.atlas.key.scene.noop] active=%u reason=no_change ok=1",
+                   (unsigned)ACTIVE_SCENE_IDX);
+        return false;
+    }
+    sexos_line(delta > 0 ? "[silk.atlas.key.scene.next] from=%u to=%u ok=1"
+                         : "[silk.atlas.key.scene.prev] from=%u to=%u ok=1",
+               (unsigned)previous, (unsigned)next);
     switch_scene(next);
-    sexos_line("[silk.scene.active.set] from=%u to=%u reason=%s",(unsigned)previous,(unsigned)next,reason);
+    sexos_line("[silk.scene.active.set] from=%u to=%u reason=%s", (unsigned)previous,
+               (unsigned)next, reason);
     return true;
 }
-static void atlas_confirm(ShellAtlasContext *ctx,uint8_t scene,bool enter)
-{
-    if(scene>=ATLAS_MAX_SCENES){sexos_fail();
-        return;}
-    sexos_line("[atlas.nav.activate] scene=%u keys=number",(unsigned)scene);
-    (void)sexos_pdx_call(SLOT_DISPLAY,0xEE,SURFACE_ID_ATLAS_OVERLAY,0,0);
-    if(scene!=ACTIVE_SCENE_IDX)switch_scene(scene);
+
+static void atlas_confirm(ShellAtlasContext *ctx, uint8_t scene, bool enter) {
+    if (scene >= ATLAS_MAX_SCENES) {
+        sexos_fail();
+        return;
+    }
+    sexos_line("[atlas.nav.activate] scene=%u keys=number", (unsigned)scene);
+    (void)sexos_pdx_call(SLOT_DISPLAY, 0xEE, SURFACE_ID_ATLAS_OVERLAY, 0, 0);
+    if (scene != ACTIVE_SCENE_IDX)
+        switch_scene(scene);
     else {
         sync_scene_visibility();
         clear_focus_if_dead();
@@ -565,327 +808,489 @@ static void atlas_confirm(ShellAtlasContext *ctx,uint8_t scene,bool enter)
         clear_hover_if_wrong_scene();
         tile_active_scene_frames();
         snap_capture_layout();
-        if(enter)atlas_apply_scene_accent_to_chrome(scene);
+        if (enter)
+            atlas_apply_scene_accent_to_chrome(scene);
     }
-    sexos_line("[atlas.scene.apply] scene=%u accent=%u ok=1 reason=ok",(unsigned)scene,(unsigned)SCENES[scene].accent);
-    if(enter){uint8_t preset=SCENE_APPEARANCE_STATE.preset_idx;
-        const char *name=get_preset_name(preset);
-        sexos_line("[atlas.preset.apply] idx=%u name=%s ok=1",(unsigned)preset,name);}
-    if(FOCUSED_SURFACE_ID)sexos_line("[atlas.nav.focus.commit] scene=%u sid=%llu",(unsigned)scene,U64(FOCUSED_SURFACE_ID));
-    else sexos_line("[atlas.nav.focus.empty] scene=%u",(unsigned)scene);
-    ATLAS_MODE_ENABLED=false;
-    if(enter){if(BUDGET(handle_atlas_keyboard__ATLAS_CONFIRM_BUDGET_L11622))sexos_line("[shell.atlas.confirm] id=%u",(unsigned)scene);}
-    else if(BUDGET(handle_atlas_keyboard__ATLAS_CONFIRM_BUDGET_L11526))sexos_line("[shell.atlas.confirm] id=%u",(unsigned)scene);
+    sexos_line("[atlas.scene.apply] scene=%u accent=%u ok=1 reason=ok", (unsigned)scene,
+               (unsigned)SCENES[scene].accent);
+    if (enter) {
+        uint8_t preset = SCENE_APPEARANCE_STATE.preset_idx;
+        const char *name = get_preset_name(preset);
+        sexos_line("[atlas.preset.apply] idx=%u name=%s ok=1", (unsigned)preset, name);
+    }
+    if (FOCUSED_SURFACE_ID)
+        sexos_line("[atlas.nav.focus.commit] scene=%u sid=%llu", (unsigned)scene,
+                   U64(FOCUSED_SURFACE_ID));
+    else
+        sexos_line("[atlas.nav.focus.empty] scene=%u", (unsigned)scene);
+    ATLAS_MODE_ENABLED = false;
+    if (enter) {
+        if (BUDGET(handle_atlas_keyboard__ATLAS_CONFIRM_BUDGET_L11622))
+            sexos_line("[shell.atlas.confirm] id=%u", (unsigned)scene);
+    } else if (BUDGET(handle_atlas_keyboard__ATLAS_CONFIRM_BUDGET_L11526))
+        sexos_line("[shell.atlas.confirm] id=%u", (unsigned)scene);
 }
-bool shell_atlas_handle_atlas_keyboard(ShellAtlasContext *ctx,uint8_t code)
-{
-    if(code>=2 && code<=6){uint8_t scene=(uint8_t)(code-2);
-        if(scene<ATLAS_MAX_SCENES){atlas_confirm(ctx,scene,false);
-            return true;}}
-    uint8_t old=ATLAS_SELECTED_SCENE,next=old;
-    if(code==0x4B || code==0x4D){
-        if(old<3)next=code==0x4B?(old==0?2:(uint8_t)(old-1)):(uint8_t)((old+1)%3);
-        else if(old==3 || old==4)next=old==3?4:3;
-        ATLAS_SELECTED_SCENE=next;
-        if(next!=old){sexos_line("[atlas.nav.move] dir=%s from=%u to=%u",code==0x4B?"left":"right",(unsigned)old,(unsigned)next);
-            sexos_line("[atlas.scene.nav] old=%u new=%u count=%zu",(unsigned)old,(unsigned)next,ATLAS_MAX_SCENES);}
+
+bool shell_atlas_handle_atlas_keyboard(ShellAtlasContext *ctx, uint8_t code) {
+    if (code >= 2 && code <= 6) {
+        uint8_t scene = (uint8_t)(code - 2);
+        if (scene < ATLAS_MAX_SCENES) {
+            atlas_confirm(ctx, scene, false);
+            return true;
+        }
+    }
+    uint8_t old = ATLAS_SELECTED_SCENE, next = old;
+    if (code == 0x4B || code == 0x4D) {
+        if (old < 3)
+            next = code == 0x4B ? (old == 0 ? 2 : (uint8_t)(old - 1)) : (uint8_t)((old + 1) % 3);
+        else if (old == 3 || old == 4)
+            next = old == 3 ? 4 : 3;
+        ATLAS_SELECTED_SCENE = next;
+        if (next != old) {
+            sexos_line("[atlas.nav.move] dir=%s from=%u to=%u", code == 0x4B ? "left" : "right",
+                       (unsigned)old, (unsigned)next);
+            sexos_line("[atlas.scene.nav] old=%u new=%u count=%zu", (unsigned)old, (unsigned)next,
+                       ATLAS_MAX_SCENES);
+        }
         atlas_render_stub();
-        if(code==0x4B){if(BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11546))sexos_line("[shell.atlas.key] dir=right sel=%u",(unsigned)next);}
-        else if(BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11562))sexos_line("[shell.atlas.key] dir=right sel=%u",(unsigned)next);
-    }else if(code==0x48 || code==0x50){
-        if(code==0x48){if(old==3)next=0;
-            else if(old==4)next=1;}
-        else if(old==0)next=3;
-        else if(old==1 || old==2)next=4;
-        ATLAS_SELECTED_SCENE=next;
-        if(next!=old){
-            sexos_line("[atlas.nav.move] dir=%s from=%u to=%u",code==0x48?"up":"down",(unsigned)old,(unsigned)next);
-            sexos_line("[atlas.scene.nav] old=%u new=%u count=%zu",(unsigned)old,(unsigned)next,ATLAS_MAX_SCENES);
+        if (code == 0x4B) {
+            if (BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11546))
+                sexos_line("[shell.atlas.key] dir=right sel=%u", (unsigned)next);
+        } else if (BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11562))
+            sexos_line("[shell.atlas.key] dir=right sel=%u", (unsigned)next);
+    } else if (code == 0x48 || code == 0x50) {
+        if (code == 0x48) {
+            if (old == 3)
+                next = 0;
+            else if (old == 4)
+                next = 1;
+        } else if (old == 0)
+            next = 3;
+        else if (old == 1 || old == 2)
+            next = 4;
+        ATLAS_SELECTED_SCENE = next;
+        if (next != old) {
+            sexos_line("[atlas.nav.move] dir=%s from=%u to=%u", code == 0x48 ? "up" : "down",
+                       (unsigned)old, (unsigned)next);
+            sexos_line("[atlas.scene.nav] old=%u new=%u count=%zu", (unsigned)old, (unsigned)next,
+                       ATLAS_MAX_SCENES);
             atlas_render_stub();
-            if(code==0x48){if(BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11576))sexos_line("[shell.atlas.key] dir=up sel=%u",(unsigned)next);}
-            else if(BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11591))sexos_line("[shell.atlas.key] dir=down sel=%u",(unsigned)next);
+            if (code == 0x48) {
+                if (BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11576))
+                    sexos_line("[shell.atlas.key] dir=up sel=%u", (unsigned)next);
+            } else if (BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11591))
+                sexos_line("[shell.atlas.key] dir=down sel=%u", (unsigned)next);
         }
-    }else if(code==0x1C)atlas_confirm(ctx,ATLAS_SELECTED_SCENE,true);
-    else if(code==1){
-        sexos_line("[atlas.nav.cancel] scene=%u",(unsigned)ACTIVE_SCENE_IDX);
+    } else if (code == 0x1C)
+        atlas_confirm(ctx, ATLAS_SELECTED_SCENE, true);
+    else if (code == 1) {
+        sexos_line("[atlas.nav.cancel] scene=%u", (unsigned)ACTIVE_SCENE_IDX);
         atlas_clear_stub();
-        if(FOCUSED_SURFACE_ID)sexos_line("[atlas.nav.focus.commit] scene=%u sid=%llu",(unsigned)ACTIVE_SCENE_IDX,U64(FOCUSED_SURFACE_ID));
-        else sexos_line("[atlas.nav.focus.empty] scene=%u",(unsigned)ACTIVE_SCENE_IDX);
-        ATLAS_MODE_ENABLED=false;
+        if (FOCUSED_SURFACE_ID)
+            sexos_line("[atlas.nav.focus.commit] scene=%u sid=%llu", (unsigned)ACTIVE_SCENE_IDX,
+                       U64(FOCUSED_SURFACE_ID));
+        else
+            sexos_line("[atlas.nav.focus.empty] scene=%u", (unsigned)ACTIVE_SCENE_IDX);
+        ATLAS_MODE_ENABLED = false;
         sexos_line("[atlas.overlay.toggle] enabled=0 ok=1 reason=cancel_close");
-        if(BUDGET(handle_atlas_keyboard__ATLAS_CANCEL_BUDGET))sexos_line("[shell.atlas.cancel]");
-    }else if(code==0x1E || code==0x2C){
-        uint8_t scene=ATLAS_SELECTED_SCENE;
-        if(validate_scene_id(scene)){
-            uint8_t before=SCENES[scene].accent;
-            uint8_t accent=code==0x1E?(uint8_t)((uint8_t)(before+1)%ACCENT_COUNT):before==0?ACCENT_COUNT-1:(uint8_t)(before-1);
-            SCENES[scene].accent=accent;
-            sexos_line("[atlas.accent.nav] old=%u new=%u count=%u",(unsigned)before,(unsigned)accent,(unsigned)ACCENT_COUNT);
-            if(code==0x1E){if(BUDGET(handle_atlas_keyboard__ATLAS_ACCENT_BUDGET_L11649))sexos_line("[atlas.scene.settings.accent] scene=%u accent=%u",(unsigned)scene,(unsigned)accent);}
-            else if(BUDGET(handle_atlas_keyboard__ATLAS_ACCENT_BUDGET_L11666))sexos_line("[atlas.scene.settings.accent] scene=%u accent=%u",(unsigned)scene,(unsigned)accent);
-        }else{
-            if(code==0x1E){if(BUDGET(handle_atlas_keyboard__ATLAS_UI_REJECT_BUDGET_L11653))sexos_line("[atlas.scene.settings.ui.reject] fn=accent scene=%u",(unsigned)scene);}
-            else if(BUDGET(handle_atlas_keyboard__ATLAS_UI_REJECT_BUDGET_L11670))sexos_line("[atlas.scene.settings.ui.reject] fn=accent scene=%u",(unsigned)scene);
+        if (BUDGET(handle_atlas_keyboard__ATLAS_CANCEL_BUDGET))
+            sexos_line("[shell.atlas.cancel]");
+    } else if (code == 0x1E || code == 0x2C) {
+        uint8_t scene = ATLAS_SELECTED_SCENE;
+        if (validate_scene_id(scene)) {
+            uint8_t before = SCENES[scene].accent;
+            uint8_t accent = code == 0x1E  ? (uint8_t)((uint8_t)(before + 1) % ACCENT_COUNT)
+                             : before == 0 ? ACCENT_COUNT - 1
+                                           : (uint8_t)(before - 1);
+            SCENES[scene].accent = accent;
+            sexos_line("[atlas.accent.nav] old=%u new=%u count=%u", (unsigned)before,
+                       (unsigned)accent, (unsigned)ACCENT_COUNT);
+            if (code == 0x1E) {
+                if (BUDGET(handle_atlas_keyboard__ATLAS_ACCENT_BUDGET_L11649))
+                    sexos_line("[atlas.scene.settings.accent] scene=%u accent=%u", (unsigned)scene,
+                               (unsigned)accent);
+            } else if (BUDGET(handle_atlas_keyboard__ATLAS_ACCENT_BUDGET_L11666))
+                sexos_line("[atlas.scene.settings.accent] scene=%u accent=%u", (unsigned)scene,
+                           (unsigned)accent);
+        } else {
+            if (code == 0x1E) {
+                if (BUDGET(handle_atlas_keyboard__ATLAS_UI_REJECT_BUDGET_L11653))
+                    sexos_line("[atlas.scene.settings.ui.reject] fn=accent scene=%u",
+                               (unsigned)scene);
+            } else if (BUDGET(handle_atlas_keyboard__ATLAS_UI_REJECT_BUDGET_L11670))
+                sexos_line("[atlas.scene.settings.ui.reject] fn=accent scene=%u", (unsigned)scene);
         }
-    }else if(code==0x1F || code==0x11){
-        uint8_t previous=SCENE_APPEARANCE_STATE.preset_idx;
-        if(code==0x1F)cycle_scene_render_token_preset();
-        else cycle_prev_scene_render_token_preset();
-        uint8_t preset=SCENE_APPEARANCE_STATE.preset_idx;
-        if(previous!=preset){const char *name=get_preset_name(preset);
-            sexos_line("[atlas.preset.nav] old=%u new=%u name=%s",(unsigned)previous,(unsigned)preset,name);}
+    } else if (code == 0x1F || code == 0x11) {
+        uint8_t previous = SCENE_APPEARANCE_STATE.preset_idx;
+        if (code == 0x1F)
+            cycle_scene_render_token_preset();
+        else
+            cycle_prev_scene_render_token_preset();
+        uint8_t preset = SCENE_APPEARANCE_STATE.preset_idx;
+        if (previous != preset) {
+            const char *name = get_preset_name(preset);
+            sexos_line("[atlas.preset.nav] old=%u new=%u name=%s", (unsigned)previous,
+                       (unsigned)preset, name);
+        }
         atlas_render_stub();
-    }else if(code==0x19){
-        uint8_t scene=ATLAS_SELECTED_SCENE;
-        if(validate_scene_id(scene)){SCENES[scene].pinned=!SCENES[scene].pinned;
-            if(BUDGET(handle_atlas_keyboard__ATLAS_PIN_BUDGET))sexos_line("[atlas.scene.settings.pin] scene=%u pinned=%s",(unsigned)scene,SCENES[scene].pinned?"true":"false");}
-        else if(BUDGET(handle_atlas_keyboard__ATLAS_UI_REJECT_BUDGET_L11705))sexos_line("[atlas.scene.settings.ui.reject] fn=pin scene=%u",(unsigned)scene);
-    }else if(BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11711))sexos_line("[shell.atlas.key] scancode=0x%x noop",(unsigned)code);
+    } else if (code == 0x19) {
+        uint8_t scene = ATLAS_SELECTED_SCENE;
+        if (validate_scene_id(scene)) {
+            SCENES[scene].pinned = !SCENES[scene].pinned;
+            if (BUDGET(handle_atlas_keyboard__ATLAS_PIN_BUDGET))
+                sexos_line("[atlas.scene.settings.pin] scene=%u pinned=%s", (unsigned)scene,
+                           SCENES[scene].pinned ? "true" : "false");
+        } else if (BUDGET(handle_atlas_keyboard__ATLAS_UI_REJECT_BUDGET_L11705))
+            sexos_line("[atlas.scene.settings.ui.reject] fn=pin scene=%u", (unsigned)scene);
+    } else if (BUDGET(handle_atlas_keyboard__ATLAS_KEY_BUDGET_L11711))
+        sexos_line("[shell.atlas.key] scancode=0x%x noop", (unsigned)code);
     return true;
 }
 
-bool shell_atlas_next_frame_in_scene(ShellAtlasContext *ctx,uint32_t start,bool forward,uint32_t *out)
-{
-    uint32_t best=0;
-    bool present=false;
-    for(unsigned pass=0;pass<2 && !present;++pass){
-        for(size_t i=0;i<MAX_FRAMES;++i){
-            ShellFrame frame=FRAMES[i];
-            if(!frame.present || frame.scene_id!=ACTIVE_SCENE_IDX || (frame.flags&FRAME_FLAG_MINIMIZED))continue;
-            if(frame.active_tab>=MAX_TABS_PER_FRAME){sexos_fail();
-                return false;}
-            ShellTab tab=frame.tabs[frame.active_tab];
-            if(!tab.present || !surface_is_alive(tab.surface_id) || is_tombstoned(tab.surface_id))continue;
-            bool eligible=forward?(pass==0?frame.frame_id>start:frame.frame_id<start):(pass==0?frame.frame_id<start:frame.frame_id>start);
-            if(eligible && (!present || (forward?frame.frame_id<best:frame.frame_id>best))){best=frame.frame_id;
-                present=true;}
+bool shell_atlas_next_frame_in_scene(ShellAtlasContext *ctx, uint32_t start, bool forward,
+                                     uint32_t *out) {
+    uint32_t best = 0;
+    bool present = false;
+    for (unsigned pass = 0; pass < 2 && !present; ++pass) {
+        for (size_t i = 0; i < MAX_FRAMES; ++i) {
+            ShellFrame frame = FRAMES[i];
+            if (!frame.present || frame.scene_id != ACTIVE_SCENE_IDX ||
+                (frame.flags & FRAME_FLAG_MINIMIZED))
+                continue;
+            if (frame.active_tab >= MAX_TABS_PER_FRAME) {
+                sexos_fail();
+                return false;
+            }
+            ShellTab tab = frame.tabs[frame.active_tab];
+            if (!tab.present || !surface_is_alive(tab.surface_id) || is_tombstoned(tab.surface_id))
+                continue;
+            bool eligible = forward ? (pass == 0 ? frame.frame_id > start : frame.frame_id < start)
+                                    : (pass == 0 ? frame.frame_id < start : frame.frame_id > start);
+            if (eligible &&
+                (!present || (forward ? frame.frame_id < best : frame.frame_id > best))) {
+                best = frame.frame_id;
+                present = true;
+            }
         }
     }
-    if(present && out)*out=best;
+    if (present && out)
+        *out = best;
     return present;
 }
-void shell_atlas_focus_next_frame(ShellAtlasContext *ctx)
-{
-    uint32_t current=0,next=0;
-    uint64_t sid=0;
+
+void shell_atlas_focus_next_frame(ShellAtlasContext *ctx) {
+    uint32_t current = 0, next = 0;
+    uint64_t sid = 0;
     (void)selected_frame_id(&current);
-    if(next_frame_in_scene(current,true,&next) && active_surface_for_frame(next,&sid) && try_set_focus(sid) && BUDGET(focus_next_frame__FOCUS_NEXT_FRAME_BUDGET))sexos_line("[shell.shortcut.focus_next_frame] frame=%u",next);
+    if (next_frame_in_scene(current, true, &next) && active_surface_for_frame(next, &sid) &&
+        try_set_focus(sid) && BUDGET(focus_next_frame__FOCUS_NEXT_FRAME_BUDGET))
+        sexos_line("[shell.shortcut.focus_next_frame] frame=%u", next);
 }
-void shell_atlas_focus_prev_frame(ShellAtlasContext *ctx)
-{
-    uint32_t current=(uint32_t)MAX_FRAMES,next=0;
-    uint64_t sid=0;
+
+void shell_atlas_focus_prev_frame(ShellAtlasContext *ctx) {
+    uint32_t current = (uint32_t)MAX_FRAMES, next = 0;
+    uint64_t sid = 0;
     (void)selected_frame_id(&current);
-    if(next_frame_in_scene(current,false,&next) && active_surface_for_frame(next,&sid) && try_set_focus(sid) && BUDGET(focus_prev_frame__FOCUS_PREV_FRAME_BUDGET))sexos_line("[shell.shortcut.focus_prev_frame] frame=%u",next);
+    if (next_frame_in_scene(current, false, &next) && active_surface_for_frame(next, &sid) &&
+        try_set_focus(sid) && BUDGET(focus_prev_frame__FOCUS_PREV_FRAME_BUDGET))
+        sexos_line("[shell.shortcut.focus_prev_frame] frame=%u", next);
 }
-void shell_atlas_focus_next_tab(ShellAtlasContext *ctx)
-{
-    uint32_t id=0;
-    if(!selected_frame_id(&id))return;
-    for(size_t i=0;i<MAX_FRAMES;++i)if(FRAMES[i].present && FRAMES[i].frame_id==id){
-        ShellFrame frame=FRAMES[i];
-        if(frame.tab_count<=1)return;
-        uint32_t next=((uint32_t)frame.active_tab+1)%frame.tab_count;
-        if(switch_to_tab(id,next) && BUDGET(focus_next_tab__FOCUS_NEXT_TAB_BUDGET))sexos_line("[shell.shortcut.focus_next_tab] frame=%u tab=%u",id,next);
+
+void shell_atlas_focus_next_tab(ShellAtlasContext *ctx) {
+    uint32_t id = 0;
+    if (!selected_frame_id(&id))
         return;
-    }
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        if (FRAMES[i].present && FRAMES[i].frame_id == id) {
+            ShellFrame frame = FRAMES[i];
+            if (frame.tab_count <= 1)
+                return;
+            uint32_t next = ((uint32_t)frame.active_tab + 1) % frame.tab_count;
+            if (switch_to_tab(id, next) && BUDGET(focus_next_tab__FOCUS_NEXT_TAB_BUDGET))
+                sexos_line("[shell.shortcut.focus_next_tab] frame=%u tab=%u", id, next);
+            return;
+        }
 }
-void shell_atlas_focus_prev_tab(ShellAtlasContext *ctx)
-{
-    uint32_t id=0;
-    if(!selected_frame_id(&id))return;
-    for(size_t i=0;i<MAX_FRAMES;++i)if(FRAMES[i].present && FRAMES[i].frame_id==id){
-        ShellFrame frame=FRAMES[i];
-        if(frame.tab_count<=1)return;
-        uint32_t next=frame.active_tab==0?(uint32_t)frame.tab_count-1:(uint32_t)frame.active_tab-1;
-        if(switch_to_tab(id,next) && BUDGET(focus_prev_tab__FOCUS_PREV_TAB_BUDGET))sexos_line("[shell.shortcut.focus_prev_tab] frame=%u tab=%u",id,next);
+
+void shell_atlas_focus_prev_tab(ShellAtlasContext *ctx) {
+    uint32_t id = 0;
+    if (!selected_frame_id(&id))
         return;
-    }
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        if (FRAMES[i].present && FRAMES[i].frame_id == id) {
+            ShellFrame frame = FRAMES[i];
+            if (frame.tab_count <= 1)
+                return;
+            uint32_t next = frame.active_tab == 0 ? (uint32_t)frame.tab_count - 1
+                                                  : (uint32_t)frame.active_tab - 1;
+            if (switch_to_tab(id, next) && BUDGET(focus_prev_tab__FOCUS_PREV_TAB_BUDGET))
+                sexos_line("[shell.shortcut.focus_prev_tab] frame=%u tab=%u", id, next);
+            return;
+        }
 }
-bool shell_atlas_toggle_minimize_focused_frame(ShellAtlasContext *ctx)
-{
-    uint32_t id=0;
-    if(!selected_frame_id(&id))return false;
-    return frame_is_minimized(id)?restore_minimized_frame(id):minimize_frame(id);
+
+bool shell_atlas_toggle_minimize_focused_frame(ShellAtlasContext *ctx) {
+    uint32_t id = 0;
+    if (!selected_frame_id(&id))
+        return false;
+    return frame_is_minimized(id) ? restore_minimized_frame(id) : minimize_frame(id);
 }
-bool shell_atlas_toggle_zoom_focused_frame(ShellAtlasContext *ctx)
-{
-    uint32_t id=0;
-    if(!selected_frame_id(&id))return false;
+
+bool shell_atlas_toggle_zoom_focused_frame(ShellAtlasContext *ctx) {
+    uint32_t id = 0;
+    if (!selected_frame_id(&id))
+        return false;
     return toggle_zoom_frame(id);
 }
-bool shell_atlas_close_focused_tab_or_frame_safe(ShellAtlasContext *ctx)
-{
-    uint32_t id=0;
-    uint64_t sid=0;
-    if(!selected_frame_id(&id) || !active_surface_for_frame(id,&sid))return false;
-    return is_closeable_surface(sid)?close_surface_from_frame_light(sid):false;
+
+bool shell_atlas_close_focused_tab_or_frame_safe(ShellAtlasContext *ctx) {
+    uint32_t id = 0;
+    uint64_t sid = 0;
+    if (!selected_frame_id(&id) || !active_surface_for_frame(id, &sid))
+        return false;
+    return is_closeable_surface(sid) ? close_surface_from_frame_light(sid) : false;
 }
-bool shell_atlas_atlas_same_scene_drop_noop(ShellAtlasContext *ctx,uint32_t frame,uint8_t source,uint8_t target)
-{
+
+bool shell_atlas_atlas_same_scene_drop_noop(ShellAtlasContext *ctx, uint32_t frame, uint8_t source,
+                                            uint8_t target) {
     (void)ctx;
-    if(source!=target)return false;
-    sexos_line("[silk.frame.scene.move.noop] frame=%u scene=%u reason=same_scene ok=1",frame,(unsigned)source);
+    if (source != target)
+        return false;
+    sexos_line("[silk.frame.scene.move.noop] frame=%u scene=%u reason=same_scene ok=1", frame,
+               (unsigned)source);
     return true;
 }
-bool shell_atlas_reparent_frame_to_scene(ShellAtlasContext *ctx,uint32_t id,uint8_t target,const char *reason)
-{
-    if(target>=ATLAS_MAX_SCENES){sexos_line("[silk.frame.scene.move.reject] frame=%u reason=bad_target ok=0",id);
-        return false;}
-    bool found=false;
-    uint8_t source=0;
-    for(size_t i=0;i<MAX_FRAMES;++i)if(FRAMES[i].present && FRAMES[i].frame_id==id){source=FRAMES[i].scene_id;
-        found=true;
-        break;}
-    if(!found){sexos_line("[silk.frame.scene.move.reject] frame=%u reason=no_frame ok=0",id);
-        return false;}
-    if(source==target)return atlas_same_scene_drop_noop(id,source,target);
-    sexos_line("[silk.frame.scene.move.begin] frame=%u from=%u to=%u reason=%s",id,(unsigned)source,(unsigned)target,reason);
-    for(size_t i=0;i<MAX_FRAMES;++i)if(FRAMES[i].present && FRAMES[i].frame_id==id){FRAMES[i].scene_id=target;
-        break;}
+
+bool shell_atlas_reparent_frame_to_scene(ShellAtlasContext *ctx, uint32_t id, uint8_t target,
+                                         const char *reason) {
+    if (target >= ATLAS_MAX_SCENES) {
+        sexos_line("[silk.frame.scene.move.reject] frame=%u reason=bad_target ok=0", id);
+        return false;
+    }
+    bool found = false;
+    uint8_t source = 0;
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        if (FRAMES[i].present && FRAMES[i].frame_id == id) {
+            source = FRAMES[i].scene_id;
+            found = true;
+            break;
+        }
+    if (!found) {
+        sexos_line("[silk.frame.scene.move.reject] frame=%u reason=no_frame ok=0", id);
+        return false;
+    }
+    if (source == target)
+        return atlas_same_scene_drop_noop(id, source, target);
+    sexos_line("[silk.frame.scene.move.begin] frame=%u from=%u to=%u reason=%s", id,
+               (unsigned)source, (unsigned)target, reason);
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        if (FRAMES[i].present && FRAMES[i].frame_id == id) {
+            FRAMES[i].scene_id = target;
+            break;
+        }
     clear_focus_if_wrong_scene();
     clear_drag_if_wrong_scene();
     clear_hover_if_wrong_scene();
     sync_scene_visibility();
     tile_active_scene_frames();
     atlas_capture_snapshot();
-    if(ATLAS_DRAG_INTENT.active)ATLAS_DRAG_INTENT.active=false;
+    if (ATLAS_DRAG_INTENT.active)
+        ATLAS_DRAG_INTENT.active = false;
     sexos_line("[silk.atlas.drag.clear] reason=cross_scene_reparent ok=1");
-    unsigned valid=FOCUSED_SURFACE_ID?(unsigned)surface_in_active_scene(FOCUSED_SURFACE_ID):1;
-    sexos_line("[silk.frame.scene.move.done] frame=%u from=%u to=%u ownership_unique=1 focus_valid=%u ok=1",id,(unsigned)source,(unsigned)target,valid);
-    return true;
-}
-bool shell_atlas_atlas_pointer_drag_begin_at(ShellAtlasContext *ctx,int32_t x,int32_t y)
-{
-    if(!ATLAS_MODE_ENABLED)return false;
-    uint8_t scene=0;
-    if(!atlas_scene_at_point(x,y,&scene))return false;
-    bool found=false;
-    uint32_t id=0;
-    for(size_t i=0;i<MAX_FRAMES;++i)if(FRAMES[i].present && FRAMES[i].scene_id==scene && !(FRAMES[i].flags&FRAME_FLAG_MINIMIZED)){id=FRAMES[i].frame_id;
-        found=true;
-        break;}
-    if(!found)return false;
-    ATLAS_DRAG_INTENT=(AtlasDragIntent){.active=true,.scene_id=scene,.frame_id=id,.start_x=x,.start_y=y};
-    sexos_line("[silk.atlas.pointer.drag.begin] frame=%u scene=%u x=%d y=%d source=real_path ok=1",id,(unsigned)scene,x,y);
-    return true;
-}
-bool shell_atlas_atlas_pointer_drop_at(ShellAtlasContext *ctx,int32_t x,int32_t y)
-{
-    if(!ATLAS_MODE_ENABLED || !ATLAS_DRAG_INTENT.active)return false;
-    uint32_t id=ATLAS_DRAG_INTENT.frame_id;
-    uint8_t source=ATLAS_DRAG_INTENT.scene_id,target=0;
-    if(!atlas_scene_at_point(x,y,&target)){
-        sexos_line("[silk.atlas.pointer.drop.reject] frame=%u reason=no_target",id);
-        ATLAS_DRAG_INTENT.active=false;
-        sexos_line("[silk.atlas.drag.clear] reason=pointer_cancel ok=1");
-        return true;
-    }
-    if(target==source){(void)atlas_same_scene_drop_noop(id,source,target);
-        sexos_line("[silk.atlas.pointer.drop.noop] frame=%u scene=%u reason=same_scene ok=1",id,(unsigned)source);}
-    else{
-        sexos_line("[silk.atlas.pointer.drop.target] frame=%u from=%u to=%u x=%d y=%d ok=1",id,(unsigned)source,(unsigned)target,x,y);
-        (void)reparent_frame_to_scene(id,target,"atlas_pointer_drop");
-    }
-    unsigned count=0;
-    for(size_t i=0;i<MAX_FRAMES;++i)if(FRAMES[i].present && FRAMES[i].frame_id==id && count<UINT8_MAX)++count;
-    unsigned valid=FOCUSED_SURFACE_ID?(unsigned)surface_in_active_scene(FOCUSED_SURFACE_ID):1;
-    ATLAS_DRAG_INTENT.active=false;
-    sexos_line("[silk.atlas.drag.clear] reason=pointer_drop ok=1");
-    sexos_line("[silk.atlas.pointer.drop.done] frame=%u from=%u to=%u ownership_unique=%u focus_valid=%u ok=1",id,(unsigned)source,(unsigned)target,count==1?1u:0u,valid);
-    atlas_exit();
-    sexos_line("[silk.atlas.mode.exit] active=%u reason=atlas_pointer_drop_done view=desktop ok=1",(unsigned)ACTIVE_SCENE_IDX);
-    return true;
-}
-bool shell_atlas_atlas_pointer_drag_cancel(ShellAtlasContext *ctx,const char *reason)
-{
-    if(!ATLAS_DRAG_INTENT.active)return false;
-    ATLAS_DRAG_INTENT.active=false;
-    sexos_line("[silk.atlas.drag.clear] reason=%s ok=1",reason);
+    unsigned valid = FOCUSED_SURFACE_ID ? (unsigned)surface_in_active_scene(FOCUSED_SURFACE_ID) : 1;
+    sexos_line(
+        "[silk.frame.scene.move.done] frame=%u from=%u to=%u ownership_unique=1 focus_valid=%u ok=1",
+        id, (unsigned)source, (unsigned)target, valid);
     return true;
 }
 
-uint8_t shell_atlas_snap_compute_checksum(ShellAtlasContext *ctx,const SceneLayoutSnapshot *snap)
-{
+bool shell_atlas_atlas_pointer_drag_begin_at(ShellAtlasContext *ctx, int32_t x, int32_t y) {
+    if (!ATLAS_MODE_ENABLED)
+        return false;
+    uint8_t scene = 0;
+    if (!atlas_scene_at_point(x, y, &scene))
+        return false;
+    bool found = false;
+    uint32_t id = 0;
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        if (FRAMES[i].present && FRAMES[i].scene_id == scene &&
+            !(FRAMES[i].flags & FRAME_FLAG_MINIMIZED)) {
+            id = FRAMES[i].frame_id;
+            found = true;
+            break;
+        }
+    if (!found)
+        return false;
+    ATLAS_DRAG_INTENT = (AtlasDragIntent){
+        .active = true, .scene_id = scene, .frame_id = id, .start_x = x, .start_y = y};
+    sexos_line("[silk.atlas.pointer.drag.begin] frame=%u scene=%u x=%d y=%d source=real_path ok=1",
+               id, (unsigned)scene, x, y);
+    return true;
+}
+
+bool shell_atlas_atlas_pointer_drop_at(ShellAtlasContext *ctx, int32_t x, int32_t y) {
+    if (!ATLAS_MODE_ENABLED || !ATLAS_DRAG_INTENT.active)
+        return false;
+    uint32_t id = ATLAS_DRAG_INTENT.frame_id;
+    uint8_t source = ATLAS_DRAG_INTENT.scene_id, target = 0;
+    if (!atlas_scene_at_point(x, y, &target)) {
+        sexos_line("[silk.atlas.pointer.drop.reject] frame=%u reason=no_target", id);
+        ATLAS_DRAG_INTENT.active = false;
+        sexos_line("[silk.atlas.drag.clear] reason=pointer_cancel ok=1");
+        return true;
+    }
+    if (target == source) {
+        (void)atlas_same_scene_drop_noop(id, source, target);
+        sexos_line("[silk.atlas.pointer.drop.noop] frame=%u scene=%u reason=same_scene ok=1", id,
+                   (unsigned)source);
+    } else {
+        sexos_line("[silk.atlas.pointer.drop.target] frame=%u from=%u to=%u x=%d y=%d ok=1", id,
+                   (unsigned)source, (unsigned)target, x, y);
+        (void)reparent_frame_to_scene(id, target, "atlas_pointer_drop");
+    }
+    unsigned count = 0;
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        if (FRAMES[i].present && FRAMES[i].frame_id == id && count < UINT8_MAX)
+            ++count;
+    unsigned valid = FOCUSED_SURFACE_ID ? (unsigned)surface_in_active_scene(FOCUSED_SURFACE_ID) : 1;
+    ATLAS_DRAG_INTENT.active = false;
+    sexos_line("[silk.atlas.drag.clear] reason=pointer_drop ok=1");
+    sexos_line(
+        "[silk.atlas.pointer.drop.done] frame=%u from=%u to=%u ownership_unique=%u focus_valid=%u ok=1",
+        id, (unsigned)source, (unsigned)target, count == 1 ? 1u : 0u, valid);
+    atlas_exit();
+    sexos_line("[silk.atlas.mode.exit] active=%u reason=atlas_pointer_drop_done view=desktop ok=1",
+               (unsigned)ACTIVE_SCENE_IDX);
+    return true;
+}
+
+bool shell_atlas_atlas_pointer_drag_cancel(ShellAtlasContext *ctx, const char *reason) {
+    if (!ATLAS_DRAG_INTENT.active)
+        return false;
+    ATLAS_DRAG_INTENT.active = false;
+    sexos_line("[silk.atlas.drag.clear] reason=%s ok=1", reason);
+    return true;
+}
+
+uint8_t shell_atlas_snap_compute_checksum(ShellAtlasContext *ctx, const SceneLayoutSnapshot *snap) {
     (void)ctx;
-    uint8_t sum=snap->magic^snap->version^snap->active_scene^snap->frame_count;
-    for(size_t i=0;i<3;++i)sum^=snap->_reserved[i];
-    for(size_t i=0;i<MAX_FRAMES;++i){
-        FrameSnapshot frame=snap->frames[i];
-        sum^=frame.present^frame.scene_id^frame.active_tab^frame.tab_count;
-        sum^=atlas_xor_word(frame.frame_id)^atlas_xor_word(frame.flags)^atlas_xor_word((uint32_t)frame.normal_x)^atlas_xor_word((uint32_t)frame.normal_y)^atlas_xor_word(frame.normal_w)^atlas_xor_word(frame.normal_h);
-        for(size_t j=0;j<MAX_TABS_PER_FRAME;++j)sum^=atlas_xor_word(frame.tab_surfaces[j]);
+    uint8_t sum = snap->magic ^ snap->version ^ snap->active_scene ^ snap->frame_count;
+    for (size_t i = 0; i < 3; ++i)
+        sum ^= snap->_reserved[i];
+    for (size_t i = 0; i < MAX_FRAMES; ++i) {
+        FrameSnapshot frame = snap->frames[i];
+        sum ^= frame.present ^ frame.scene_id ^ frame.active_tab ^ frame.tab_count;
+        sum ^= atlas_xor_word(frame.frame_id) ^ atlas_xor_word(frame.flags) ^
+               atlas_xor_word((uint32_t)frame.normal_x) ^ atlas_xor_word((uint32_t)frame.normal_y) ^
+               atlas_xor_word(frame.normal_w) ^ atlas_xor_word(frame.normal_h);
+        for (size_t j = 0; j < MAX_TABS_PER_FRAME; ++j)
+            sum ^= atlas_xor_word(frame.tab_surfaces[j]);
     }
     return sum;
 }
-void shell_atlas_snap_capture_layout(ShellAtlasContext *ctx)
-{
-    SceneLayoutSnapshot next={.magic=SNAP_MAGIC,.version=SNAP_VERSION,.active_scene=ACTIVE_SCENE_IDX};
-    for(size_t i=0;i<MAX_FRAMES;++i){
-        ShellFrame frame=FRAMES[i];
-        if(!frame.present)continue;
-        next.frames[i]=(FrameSnapshot){.present=1,.frame_id=frame.frame_id,.scene_id=frame.scene_id,.active_tab=frame.active_tab,.tab_count=frame.tab_count,.flags=frame.flags,
-            .normal_x=frame.normal_x,.normal_y=frame.normal_y,.normal_w=frame.normal_w,.normal_h=frame.normal_h};
-        for(size_t j=0;j<MAX_TABS_PER_FRAME;++j)next.frames[i].tab_surfaces[j]=frame.tabs[j].present?frame.tabs[j].surface_id:0;
+
+void shell_atlas_snap_capture_layout(ShellAtlasContext *ctx) {
+    SceneLayoutSnapshot next = {
+        .magic = SNAP_MAGIC, .version = SNAP_VERSION, .active_scene = ACTIVE_SCENE_IDX};
+    for (size_t i = 0; i < MAX_FRAMES; ++i) {
+        ShellFrame frame = FRAMES[i];
+        if (!frame.present)
+            continue;
+        next.frames[i] = (FrameSnapshot){.present = 1,
+                                         .frame_id = frame.frame_id,
+                                         .scene_id = frame.scene_id,
+                                         .active_tab = frame.active_tab,
+                                         .tab_count = frame.tab_count,
+                                         .flags = frame.flags,
+                                         .normal_x = frame.normal_x,
+                                         .normal_y = frame.normal_y,
+                                         .normal_w = frame.normal_w,
+                                         .normal_h = frame.normal_h};
+        for (size_t j = 0; j < MAX_TABS_PER_FRAME; ++j)
+            next.frames[i].tab_surfaces[j] = frame.tabs[j].present ? frame.tabs[j].surface_id : 0;
         ++next.frame_count;
     }
-    next.checksum=snap_compute_checksum(&next);
-    SCENE_SNAPSHOT=next;
+    next.checksum = snap_compute_checksum(&next);
+    SCENE_SNAPSHOT = next;
 }
-bool shell_atlas_snap_validate(ShellAtlasContext *ctx,const SceneLayoutSnapshot *snap)
-{
-    if(snap->magic!=SNAP_MAGIC || snap->version!=SNAP_VERSION || snap->frame_count>MAX_FRAMES || snap->active_scene>=WORKSPACE_COUNT)return false;
-    for(size_t i=0;i<3;++i)if(snap->_reserved[i])return false;
-    unsigned count=0;
-    for(size_t i=0;i<MAX_FRAMES;++i){
-        FrameSnapshot frame=snap->frames[i];
-        if(!frame.present)continue;
-        if(frame.present!=1 || frame.scene_id>=WORKSPACE_COUNT || !frame.tab_count || frame.tab_count>MAX_TABS_PER_FRAME || frame.active_tab>=frame.tab_count || (frame.flags&~(FRAME_FLAG_MINIMIZED|FRAME_FLAG_ZOOMED|FRAME_FLAG_TOP_BAR)))return false;
-        for(size_t j=0;j<i;++j)if(snap->frames[j].present && snap->frames[j].frame_id==frame.frame_id)return false;
+
+bool shell_atlas_snap_validate(ShellAtlasContext *ctx, const SceneLayoutSnapshot *snap) {
+    if (snap->magic != SNAP_MAGIC || snap->version != SNAP_VERSION ||
+        snap->frame_count > MAX_FRAMES || snap->active_scene >= WORKSPACE_COUNT)
+        return false;
+    for (size_t i = 0; i < 3; ++i)
+        if (snap->_reserved[i])
+            return false;
+    unsigned count = 0;
+    for (size_t i = 0; i < MAX_FRAMES; ++i) {
+        FrameSnapshot frame = snap->frames[i];
+        if (!frame.present)
+            continue;
+        if (frame.present != 1 || frame.scene_id >= WORKSPACE_COUNT || !frame.tab_count ||
+            frame.tab_count > MAX_TABS_PER_FRAME || frame.active_tab >= frame.tab_count ||
+            (frame.flags & ~(FRAME_FLAG_MINIMIZED | FRAME_FLAG_ZOOMED | FRAME_FLAG_TOP_BAR)))
+            return false;
+        for (size_t j = 0; j < i; ++j)
+            if (snap->frames[j].present && snap->frames[j].frame_id == frame.frame_id)
+                return false;
         ++count;
     }
-    return count==snap->frame_count && snap->checksum==snap_compute_checksum(snap);
+    return count == snap->frame_count && snap->checksum == snap_compute_checksum(snap);
 }
-bool shell_atlas_snap_restore_layout(ShellAtlasContext *ctx)
-{
-    SceneLayoutSnapshot snap=SCENE_SNAPSHOT;
-    if(!snap_validate(&snap)){if(BUDGET(snap_restore_layout__SNAP_RESTORE_REJECT_BUDGET))sexos_line("[shell.snapshot.restore.reject] reason=invalid");
-        return false;}
-    ShellFrame pending[MAX_FRAMES]={0};
-    for(size_t i=0;i<MAX_FRAMES;++i)pending[i]=FRAMES[i];
-    unsigned restored=0;
-    for(size_t i=0;i<MAX_FRAMES;++i){
-        FrameSnapshot frame=snap.frames[i];
-        if(!frame.present){pending[i]=(ShellFrame){0};
-            continue;}
-        ShellFrame next={.present=true,.frame_id=frame.frame_id};
-        uint8_t count=0;
-        for(size_t j=0;j<frame.tab_count;++j){
-            uint64_t sid=frame.tab_surfaces[j];
-            if(!sid || is_tombstoned(sid) || !surface_is_alive(sid))continue;
-            next.tabs[count++]=(ShellTab){.present=true,.surface_id=sid};
+
+bool shell_atlas_snap_restore_layout(ShellAtlasContext *ctx) {
+    SceneLayoutSnapshot snap = SCENE_SNAPSHOT;
+    if (!snap_validate(&snap)) {
+        if (BUDGET(snap_restore_layout__SNAP_RESTORE_REJECT_BUDGET))
+            sexos_line("[shell.snapshot.restore.reject] reason=invalid");
+        return false;
+    }
+    ShellFrame pending[MAX_FRAMES] = {0};
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        pending[i] = FRAMES[i];
+    unsigned restored = 0;
+    for (size_t i = 0; i < MAX_FRAMES; ++i) {
+        FrameSnapshot frame = snap.frames[i];
+        if (!frame.present) {
+            pending[i] = (ShellFrame){0};
+            continue;
         }
-        if(!count)continue;
-        int32_t x=0,y=0;
-        uint32_t width=frame.normal_w?frame.normal_w:1,height=frame.normal_h?frame.normal_h:1,w=0,h=0;
-        clamp_position(frame.normal_x<0?0:frame.normal_x,frame.normal_y<0?0:frame.normal_y,width,height,&x,&y);
-        clamp_surface_size(x,y,width,height,&w,&h);
-        next.active_tab=frame.active_tab<count?frame.active_tab:(uint8_t)(count-1);
-        next.tab_count=count;
-        next.scene_id=frame.scene_id<WORKSPACE_COUNT?frame.scene_id:WORKSPACE_COUNT-1;
-        next.flags=frame.flags&(FRAME_FLAG_MINIMIZED|FRAME_FLAG_ZOOMED|FRAME_FLAG_TOP_BAR);
-        next.normal_x=x;
-        next.normal_y=y;
-        next.normal_w=w;
-        next.normal_h=h;
-        pending[i]=next;
+        ShellFrame next = {.present = true, .frame_id = frame.frame_id};
+        uint8_t count = 0;
+        for (size_t j = 0; j < frame.tab_count; ++j) {
+            uint64_t sid = frame.tab_surfaces[j];
+            if (!sid || is_tombstoned(sid) || !surface_is_alive(sid))
+                continue;
+            next.tabs[count++] = (ShellTab){.present = true, .surface_id = sid};
+        }
+        if (!count)
+            continue;
+        int32_t x = 0, y = 0;
+        uint32_t width = frame.normal_w ? frame.normal_w : 1,
+                 height = frame.normal_h ? frame.normal_h : 1, w = 0, h = 0;
+        clamp_position(frame.normal_x < 0 ? 0 : frame.normal_x,
+                       frame.normal_y < 0 ? 0 : frame.normal_y, width, height, &x, &y);
+        clamp_surface_size(x, y, width, height, &w, &h);
+        next.active_tab = frame.active_tab < count ? frame.active_tab : (uint8_t)(count - 1);
+        next.tab_count = count;
+        next.scene_id = frame.scene_id < WORKSPACE_COUNT ? frame.scene_id : WORKSPACE_COUNT - 1;
+        next.flags = frame.flags & (FRAME_FLAG_MINIMIZED | FRAME_FLAG_ZOOMED | FRAME_FLAG_TOP_BAR);
+        next.normal_x = x;
+        next.normal_y = y;
+        next.normal_w = w;
+        next.normal_h = h;
+        pending[i] = next;
         ++restored;
     }
-    if(!restored){if(BUDGET(snap_restore_layout__SNAP_RESTORE_EMPTY_BUDGET))sexos_line("[shell.snapshot.restore.reject] reason=no_valid_frames");
-        return false;}
-    for(size_t i=0;i<MAX_FRAMES;++i)FRAMES[i]=pending[i];
-    ACTIVE_SCENE_IDX=snap.active_scene;
-    (void)sexos_pdx_call(SLOT_SILKBAR,OP_SILKBAR_WORKSPACE_ACTIVE,ACTIVE_SCENE_IDX,0,0);
+    if (!restored) {
+        if (BUDGET(snap_restore_layout__SNAP_RESTORE_EMPTY_BUDGET))
+            sexos_line("[shell.snapshot.restore.reject] reason=no_valid_frames");
+        return false;
+    }
+    for (size_t i = 0; i < MAX_FRAMES; ++i)
+        FRAMES[i] = pending[i];
+    ACTIVE_SCENE_IDX = snap.active_scene;
+    (void)sexos_pdx_call(SLOT_SILKBAR, OP_SILKBAR_WORKSPACE_ACTIVE, ACTIVE_SCENE_IDX, 0, 0);
     sync_scene_visibility();
     clear_focus_if_dead();
     clear_focus_if_wrong_scene();
@@ -893,7 +1298,9 @@ bool shell_atlas_snap_restore_layout(ShellAtlasContext *ctx)
     clear_drag_if_wrong_scene();
     clear_hover_if_wrong_scene();
     tile_active_scene_frames();
-    if(BUDGET(snap_restore_layout__SNAP_RESTORE_OK_BUDGET))sexos_line("[shell.snapshot.restore.ok] frames=%u scene=%u",restored,(unsigned)ACTIVE_SCENE_IDX);
+    if (BUDGET(snap_restore_layout__SNAP_RESTORE_OK_BUDGET))
+        sexos_line("[shell.snapshot.restore.ok] frames=%u scene=%u", restored,
+                   (unsigned)ACTIVE_SCENE_IDX);
     return true;
 }
 

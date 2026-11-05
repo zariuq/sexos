@@ -13,7 +13,7 @@
       (uint64_t pfn_base))
       SexWindowCreateParams)
 
-    (native "_Static_assert(sizeof(SexWindowCreateParams) == 24 && offsetof(SexWindowCreateParams, pfn_base) == 16, \"repr(C) SexWindowCreateParams\");\n")
+    (_Static_assert (&& (== (sizeof type SexWindowCreateParams) 24) (== (__builtin_offsetof SexWindowCreateParams pfn_base) 16)) "\"repr(C) SexWindowCreateParams\"")
 
     (typedef (struct PurpleScanout
       (uint32_t ([] fb_page 1024))

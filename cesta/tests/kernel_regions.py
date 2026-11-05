@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -25,7 +26,8 @@ def main():
     args = ap.parse_args()
     work = args.work or Path(tempfile.mkdtemp(prefix='kernel-regions-', dir=HERE/'build'))
     work.mkdir(parents=True, exist_ok=True)
-    units = ('kernel_domains', 'kernel_syscalls', 'kernel_rpc', 'memory_regions', 'kernel_task_wait', 'kernel_sources', 'source_policy','kernel_pci','pci_policy','network_config','kernel_history','history_recovery')
+    units = ('kernel_domains', 'kernel_syscalls', 'kernel_rpc', 'memory_regions', 'kernel_task_wait', 'kernel_sources', 'source_policy','kernel_pci','pci_policy','network_config','kernel_history','history_recovery',
+             'region_writer', 'kernel_region_writer', 'device_reset', 'kernel_device_reset')
     for unit in units:
         (work/(unit+'.c')).write_bytes(run([args.cesta, 'export-c', 'src/'+unit+'.cesta',
             '--std=c11', '--', '-Igenerated/include', '-Iruntime/kernel']))
@@ -35,7 +37,8 @@ def main():
 
     def compile(cc, extra, name):
         binary = work/name
-        run([cc, *flags, *extra, HERE/'tests/kernel_regions/host.c', work/'memory_regions.c', work/'source_policy.c',work/'pci_policy.c',work/'network_config.c',work/'history_recovery.c', '-o', binary])
+        run([cc, *flags, *extra, HERE/'tests/kernel_regions/host.c', work/'memory_regions.c', work/'source_policy.c',work/'pci_policy.c',work/'network_config.c',work/'history_recovery.c',
+             work/'region_writer.c', work/'kernel_region_writer.c', work/'device_reset.c', work/'kernel_device_reset.c', '-o', binary])
         return binary
 
     builds = []
@@ -68,7 +71,7 @@ def main():
     caught = []
     if args.mutations:
         for name, unit, before, after in mutants:
-            path = work/(unit+'.c'); original = path.read_text()
+            path = work/(unit+'.c'); original = LayoutText(path.read_text())
             assert original.count(before) == 1, (name, 'mutation anchor changed')
             try:
                 path.write_text(original.replace(before, after))

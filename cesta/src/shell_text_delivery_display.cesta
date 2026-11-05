@@ -1,1 +1,13 @@
-(cesta native-c/1 compact-c/2 (unit (ownership (check-all) (foreign sexos_pdx_call (obligation "Invokes the fixed held BOOT grant with register-only arguments; returns the actual admission status without retaining pointers."))) (native "#include \"shell_text_delivery.h\"\nShellTextAdmission shell_text_display_admit(ShellTextOperation operation)\n{\n    SexosReply reply=sexos_pdx_call(SEXOS_SLOT_display,operation.opcode,operation.surface,operation.packed,operation.control);\n    if(reply.status==0)return(ShellTextAdmission){SHELL_TEXT_ACCEPTED,0};\n    if(reply.status==UINT64_C(0xfffffffffffffffe))return(ShellTextAdmission){SHELL_TEXT_FULL,0};\n    return(ShellTextAdmission){SHELL_TEXT_REJECTED,reply.status};\n}\n")))
+(cesta native-c/1 compact-c/2 (unit (ownership (check-all) (foreign sexos_pdx_call (obligation "Invokes the fixed held BOOT grant with register-only arguments; returns the actual admission status without retaining pointers."))) (native "
+#include \"shell_text_delivery.h\"
+
+ShellTextAdmission shell_text_display_admit(ShellTextOperation operation) {
+    SexosReply reply = sexos_pdx_call(SEXOS_SLOT_display, operation.opcode, operation.surface,
+                                      operation.packed, operation.control);
+    if (reply.status == 0)
+        return (ShellTextAdmission){SHELL_TEXT_ACCEPTED, 0};
+    if (reply.status == UINT64_C(0xfffffffffffffffe))
+        return (ShellTextAdmission){SHELL_TEXT_FULL, 0};
+    return (ShellTextAdmission){SHELL_TEXT_REJECTED, reply.status};
+}
+")))

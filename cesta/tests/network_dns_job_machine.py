@@ -1,6 +1,7 @@
 """Qualify the current-upstream fixed-name DNS custody machine in Cesta."""
 import argparse,hashlib,importlib,json,os,subprocess,sys
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(cmd,*,cwd=HERE,env=None):
  r=subprocess.run(list(map(str,cmd)),cwd=cwd,capture_output=True,env=env);assert r.returncode==0,(cmd,r.returncode,r.stdout[-3000:],r.stderr[-10000:]);return r.stdout
@@ -53,7 +54,7 @@ def main():
    run(cmd+['--','-Igenerated/include']);sources.append(out)
   for mode,flags in (('O0',['-O0']),('O2',['-O2']),('SAN',['-O1','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie'])):
    b=w/f'{cc}-{mode}';run([cc,'-std=c11','-Wall','-Wextra','-Wpedantic','-Werror',*flags,'-Igenerated/include',*sources,host,'-o',b]);actual=run([b],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=1:abort_on_error=1'});configs.append({'compiler':cc,'mode':mode,'sha256':hashlib.sha256(actual).hexdigest()})
- base=exports['gcc'].read_text();mutations=[('owner-enforcement','if(!m->owner_present||!network_job_identity_equal(m->owner,owner))','if(!m->owner_present&&!network_job_identity_equal(m->owner,owner))'),('ticket-enforcement','if(m->ticket!=request.ticket)','if(false)'),('transmit-waiting','m->state==NETWORK_DNS_JOB_WAITING','true'),('expiry-exclusive','now<record->expires_tick','now<=record->expires_tick'),('release-complete','m->candidate_present&&m->state==NETWORK_DNS_JOB_COMPLETE','m->candidate_present'),('receive-scrub','i<sizeof(m->receive)','i<sizeof(m->receive)-1'),('clock-rollback','if(now<m->last||now>=m->deadline)','if(now>=m->deadline)'),('unrelated-inert','if(parsed.kind==NETWORK_DNS_RESULT_UNRELATED)return','if(parsed.kind==NETWORK_DNS_RESULT_UNRELATED){parsed.kind=NETWORK_DNS_RESULT_ANSWER;}')];caught=[];prefix=[w/f'{n}-gcc.c' for n in names if n!='network_dns_job_machine']
+ base=LayoutText(exports['gcc'].read_text());mutations=[('owner-enforcement','if(!m->owner_present||!network_job_identity_equal(m->owner,owner))','if(!m->owner_present&&!network_job_identity_equal(m->owner,owner))'),('ticket-enforcement','if(m->ticket!=request.ticket)','if(false)'),('transmit-waiting','m->state==NETWORK_DNS_JOB_WAITING','true'),('expiry-exclusive','now<record->expires_tick','now<=record->expires_tick'),('release-complete','m->candidate_present&&m->state==NETWORK_DNS_JOB_COMPLETE','m->candidate_present'),('receive-scrub','i<sizeof(m->receive)','i<sizeof(m->receive)-1'),('clock-rollback','if(now<m->last||now>=m->deadline)','if(now>=m->deadline)'),('unrelated-inert','if(parsed.kind==NETWORK_DNS_RESULT_UNRELATED)return','if(parsed.kind==NETWORK_DNS_RESULT_UNRELATED){parsed.kind=NETWORK_DNS_RESULT_ANSWER;}')];caught=[];prefix=[w/f'{n}-gcc.c' for n in names if n!='network_dns_job_machine']
  for name,old,new in mutations:
   assert base.count(old)>=1,(name,base.count(old));mut=w/f'mutant-{name}.c';mut.write_text(base.replace(old,new));b=w/f'mutant-{name}';run(['gcc','-std=c11','-O2','-Igenerated/include',*prefix,mut,host,'-o',b]);r=subprocess.run([b],cwd=HERE,capture_output=True);assert r.returncode!=0,('survived',name,r.stdout,r.stderr);caught.append(name)
  admission=[]

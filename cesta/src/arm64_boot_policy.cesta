@@ -3,12 +3,12 @@
     (include "sexos_arm64_boot.h")
     (ownership (check-all))
     (native "
-Arm64BootStatus arm64_boot_validate(Arm64BootObservation observation)
-{
-    if(observation.entered_el!=1u && observation.entered_el!=2u)
+Arm64BootStatus arm64_boot_validate(Arm64BootObservation observation) {
+    if (observation.entered_el != 1u && observation.entered_el != 2u)
         return ARM64_BOOT_BAD_ENTERED_EL;
-    if(observation.current_el!=1u)return ARM64_BOOT_BAD_CURRENT_EL;
-    if(observation.dtb && ((observation.dtb&7u)!=0 || !observation.dtb_magic_ok))
+    if (observation.current_el != 1u)
+        return ARM64_BOOT_BAD_CURRENT_EL;
+    if (observation.dtb && ((observation.dtb & 7u) != 0 || !observation.dtb_magic_ok))
         return ARM64_BOOT_BAD_DTB;
     return ARM64_BOOT_OK;
 }

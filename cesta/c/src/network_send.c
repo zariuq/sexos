@@ -65,8 +65,7 @@ static void tx_transfer(TxContext *c) {
   c->held = false;
 }
 #define network_tx_run_CHECKED 1
-#define network_tx_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()
-
+#define network_tx_run_CHECK_FAILURE(ctx,kind,id,expected) sexos_fail()
 /* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
 
 #ifdef CESTA_PROTOCOL_network_tx_run_DEFINED

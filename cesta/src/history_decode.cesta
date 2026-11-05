@@ -4,31 +4,42 @@
       (foreign history_valid (obligation "Checked immutable roster policy; observes only the value supplied."))
       (foreign history_query_provider (obligation "Performs one held-capability query, returns all five register words and retains no caller data. Context is a selector,not authority.")))
     (native "
-static uint64_t history_reply_error(HistoryReply r)
-{
-    return r.status && (r.value0|r.value1|r.value2|r.value3)?1:r.status;
+static uint64_t history_reply_error(HistoryReply r) {
+    return r.status && (r.value0 | r.value1 | r.value2 | r.value3) ? 1 : r.status;
 }
-HistoryDecode history_decode_for(uint32_t holder,uint32_t logical,HistoryTargets targets,HistoryQueryContext context)
-{
-    size_t n=HISTORY_ROSTER_COUNT;
-    if(!HISTORY_ROSTER_COUNT || HISTORY_ROSTER_COUNT>64 || !holder || !logical)return (HistoryDecode){.status=1};
-    HistoryReply header=history_query_provider(context,0);
-    uint64_t error=history_reply_error(header);
-    if(error)return (HistoryDecode){.status=error};
-    if(header.value0!=logical || header.value1!=holder || header.value2!=HISTORY_ROSTER_COUNT || header.value3!=HISTORY_VERSION)
-        return (HistoryDecode){.status=1};
-    HistoryReply extent=history_query_provider(context,1);error=history_reply_error(extent);
-    if(error)return (HistoryDecode){.status=error};
-    if(extent.value2 || extent.value3)return (HistoryDecode){.status=1};
-    HistoryGrant g={.holder=holder,.logical=logical,.base=extent.value0,.sectors=extent.value1};
-    for(size_t i=0;i<n;++i){
-        HistoryReply raw=history_query_provider(context,2+i);error=history_reply_error(raw);
-        if(error)return (HistoryDecode){.status=error};
-        if(raw.value0!=targets.values[i] || raw.value1>UINT32_MAX || raw.value2!=i || raw.value3)
-            return (HistoryDecode){.status=1};
-        g.participants[i]=(HistoryParticipant){(uint32_t)raw.value0,(uint32_t)raw.value1};
+
+HistoryDecode history_decode_for(uint32_t holder, uint32_t logical, HistoryTargets targets,
+                                 HistoryQueryContext context) {
+    size_t n = HISTORY_ROSTER_COUNT;
+    if (!HISTORY_ROSTER_COUNT || HISTORY_ROSTER_COUNT > 64 || !holder || !logical)
+        return (HistoryDecode){.status = 1};
+    HistoryReply header = history_query_provider(context, 0);
+    uint64_t error = history_reply_error(header);
+    if (error)
+        return (HistoryDecode){.status = error};
+    if (header.value0 != logical || header.value1 != holder ||
+        header.value2 != HISTORY_ROSTER_COUNT || header.value3 != HISTORY_VERSION)
+        return (HistoryDecode){.status = 1};
+    HistoryReply extent = history_query_provider(context, 1);
+    error = history_reply_error(extent);
+    if (error)
+        return (HistoryDecode){.status = error};
+    if (extent.value2 || extent.value3)
+        return (HistoryDecode){.status = 1};
+    HistoryGrant g = {
+        .holder = holder, .logical = logical, .base = extent.value0, .sectors = extent.value1};
+    for (size_t i = 0; i < n; ++i) {
+        HistoryReply raw = history_query_provider(context, 2 + i);
+        error = history_reply_error(raw);
+        if (error)
+            return (HistoryDecode){.status = error};
+        if (raw.value0 != targets.values[i] || raw.value1 > UINT32_MAX || raw.value2 != i ||
+            raw.value3)
+            return (HistoryDecode){.status = 1};
+        g.participants[i] = (HistoryParticipant){(uint32_t)raw.value0, (uint32_t)raw.value1};
     }
-    if(!history_valid(g))return (HistoryDecode){.status=3};
-    return (HistoryDecode){0,g};
+    if (!history_valid(g))
+        return (HistoryDecode){.status = 3};
+    return (HistoryDecode){0, g};
 }
 ")))

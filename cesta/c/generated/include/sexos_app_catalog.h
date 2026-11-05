@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include "app_catalog_rows.h"
 #define COUNT_LIFECYCLE_SLOT(slot) +1
-enum { SEXOS_APP_CATALOG_COUNT=0 SEXOS_APP_LIFECYCLE_ROWS(COUNT_LIFECYCLE_SLOT) };
+
+enum {
+    SEXOS_APP_CATALOG_COUNT = 0 SEXOS_APP_LIFECYCLE_ROWS(COUNT_LIFECYCLE_SLOT)
+};
+
 #undef COUNT_LIFECYCLE_SLOT
 #endif

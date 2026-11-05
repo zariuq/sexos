@@ -37,11 +37,9 @@ typedef struct WindowBuffer {
 }
 WindowBuffer;
 
-_Static_assert(sizeof(SexGraphicsRect) == 16 && offsetof(SexGraphicsRect, height) == 12, "SexGraphicsRect ABI");
+_Static_assert(sizeof(SexGraphicsRect) == 16 && __builtin_offsetof(SexGraphicsRect, height) == 12, "SexGraphicsRect ABI");
 
-
-_Static_assert(sizeof(WindowBuffer) == 24 && offsetof(WindowBuffer, width) == 8 && offsetof(WindowBuffer, stride) == 16, "WindowBuffer ABI");
-
+_Static_assert(sizeof(WindowBuffer) == 24 && __builtin_offsetof(WindowBuffer, width) == 8 && __builtin_offsetof(WindowBuffer, stride) == 16, "WindowBuffer ABI");
 
 extern const uint8_t SEX_GRAPHICS_FONT[SEX_GRAPHICS_FONT_GLYPHS][SEX_GRAPHICS_FONT_ROWS];
 

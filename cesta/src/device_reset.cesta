@@ -3,79 +3,102 @@
     (include "sexos_device_reset.h")
     (ownership (check-all))
     (native "
-bool device_reset_state_valid(const DeviceResetState *s)
-{
-    return s && s->present && s->owner && s->slot && s->device && s->identity &&
-        s->vector>=32 && s->generation && s->phase<=DEVICE_RESET_ORPHANED;
+bool device_reset_state_valid(const DeviceResetState *s) {
+    return s && s->present && s->owner && s->slot && s->device && s->identity && s->vector >= 32 &&
+           s->generation && s->phase <= DEVICE_RESET_ORPHANED;
 }
-DeviceResetState device_reset_init(uint32_t owner,uint64_t slot,uint32_t device,
-    uint32_t identity,uint8_t vector,uint64_t interrupt_revision)
-{
-    DeviceResetState state={.present=true,.owner=owner,.device=device,.identity=identity,
-        .slot=slot,.generation=1,.interrupt_revision=interrupt_revision,
-        .acknowledged_revision=interrupt_revision,.vector=vector,.phase=DEVICE_RESET_ACTIVE};
-    return device_reset_state_valid(&state)?state:(DeviceResetState){0};
+
+DeviceResetState device_reset_init(uint32_t owner, uint64_t slot, uint32_t device,
+                                   uint32_t identity, uint8_t vector, uint64_t interrupt_revision) {
+    DeviceResetState state = {.present = true,
+                              .owner = owner,
+                              .device = device,
+                              .identity = identity,
+                              .slot = slot,
+                              .generation = 1,
+                              .interrupt_revision = interrupt_revision,
+                              .acknowledged_revision = interrupt_revision,
+                              .vector = vector,
+                              .phase = DEVICE_RESET_ACTIVE};
+    return device_reset_state_valid(&state) ? state : (DeviceResetState){0};
 }
+
 static DeviceResetReceipt device_reset_receipt(DeviceResetStatus status,
-    const DeviceResetState *state,DeviceResetRequest request)
-{
-    return(DeviceResetReceipt){.status=status,.generation=state?state->generation:0,
-        .interrupt_revision=state?state->interrupt_revision:0,
-        .acknowledged_revision=state?state->acknowledged_revision:0,
-        .phase=state?state->phase:DEVICE_RESET_ACTIVE,.cc=request.cc,.csts=request.csts};
+                                               const DeviceResetState *state,
+                                               DeviceResetRequest request) {
+    return (DeviceResetReceipt){.status = status,
+                                .generation = state ? state->generation : 0,
+                                .interrupt_revision = state ? state->interrupt_revision : 0,
+                                .acknowledged_revision = state ? state->acknowledged_revision : 0,
+                                .phase = state ? state->phase : DEVICE_RESET_ACTIVE,
+                                .cc = request.cc,
+                                .csts = request.csts};
 }
-DeviceResetReceipt device_reset_apply(DeviceResetState *state,DeviceResetRequest q)
-{
-    if(!device_reset_state_valid(state))return device_reset_receipt(DEVICE_RESET_INVALID,state,q);
-    if(q.action==DEVICE_RESET_QUERY){
-        DeviceResetReceipt receipt=device_reset_receipt(DEVICE_RESET_OK,state,q);
-        receipt.interrupt_revision=q.interrupt_revision;
-        receipt.acknowledged_revision=q.acknowledged_revision;
+
+DeviceResetReceipt device_reset_apply(DeviceResetState *state, DeviceResetRequest q) {
+    if (!device_reset_state_valid(state))
+        return device_reset_receipt(DEVICE_RESET_INVALID, state, q);
+    if (q.action == DEVICE_RESET_QUERY) {
+        DeviceResetReceipt receipt = device_reset_receipt(DEVICE_RESET_OK, state, q);
+        receipt.interrupt_revision = q.interrupt_revision;
+        receipt.acknowledged_revision = q.acknowledged_revision;
         return receipt;
     }
-    if(q.expected_generation!=state->generation)return device_reset_receipt(DEVICE_RESET_STALE,state,q);
-    if(q.action==DEVICE_RESET_OWNER_DEAD){
-        if(state->phase==DEVICE_RESET_ORPHANED)return device_reset_receipt(DEVICE_RESET_INVALID,state,q);
-        state->phase=DEVICE_RESET_ORPHANED;
-        return device_reset_receipt(DEVICE_RESET_OK,state,q);
+    if (q.expected_generation != state->generation)
+        return device_reset_receipt(DEVICE_RESET_STALE, state, q);
+    if (q.action == DEVICE_RESET_OWNER_DEAD) {
+        if (state->phase == DEVICE_RESET_ORPHANED)
+            return device_reset_receipt(DEVICE_RESET_INVALID, state, q);
+        state->phase = DEVICE_RESET_ORPHANED;
+        return device_reset_receipt(DEVICE_RESET_OK, state, q);
     }
-    if(state->phase==DEVICE_RESET_ORPHANED)return device_reset_receipt(DEVICE_RESET_INVALID,state,q);
-    if(q.action==DEVICE_RESET_ACK_INTERRUPT){
-        if(state->acknowledged_revision==UINT64_MAX ||
-           q.acknowledged_revision!=state->acknowledged_revision+1 ||
-           q.acknowledged_revision>q.interrupt_revision)
-            return device_reset_receipt(DEVICE_RESET_INTERRUPTED,state,q);
-        state->acknowledged_revision=q.acknowledged_revision;
-        return device_reset_receipt(DEVICE_RESET_OK,state,q);
+    if (state->phase == DEVICE_RESET_ORPHANED)
+        return device_reset_receipt(DEVICE_RESET_INVALID, state, q);
+    if (q.action == DEVICE_RESET_ACK_INTERRUPT) {
+        if (state->acknowledged_revision == UINT64_MAX ||
+            q.acknowledged_revision != state->acknowledged_revision + 1 ||
+            q.acknowledged_revision > q.interrupt_revision)
+            return device_reset_receipt(DEVICE_RESET_INTERRUPTED, state, q);
+        state->acknowledged_revision = q.acknowledged_revision;
+        return device_reset_receipt(DEVICE_RESET_OK, state, q);
     }
-    if(q.action==DEVICE_RESET_BEGIN){
-        if(state->phase!=DEVICE_RESET_ACTIVE)return device_reset_receipt(DEVICE_RESET_INVALID,state,q);
-        if(state->generation==UINT64_MAX)return device_reset_receipt(DEVICE_RESET_EXHAUSTED,state,q);
-        if(q.interrupt_revision!=q.acknowledged_revision)
-            return device_reset_receipt(DEVICE_RESET_INTERRUPTED,state,q);
-        state->phase=DEVICE_RESET_RESETTING;state->interrupt_revision=q.interrupt_revision;
-        state->acknowledged_revision=q.acknowledged_revision;
-        return device_reset_receipt(DEVICE_RESET_OK,state,q);
+    if (q.action == DEVICE_RESET_BEGIN) {
+        if (state->phase != DEVICE_RESET_ACTIVE)
+            return device_reset_receipt(DEVICE_RESET_INVALID, state, q);
+        if (state->generation == UINT64_MAX)
+            return device_reset_receipt(DEVICE_RESET_EXHAUSTED, state, q);
+        if (q.interrupt_revision != q.acknowledged_revision)
+            return device_reset_receipt(DEVICE_RESET_INTERRUPTED, state, q);
+        state->phase = DEVICE_RESET_RESETTING;
+        state->interrupt_revision = q.interrupt_revision;
+        state->acknowledged_revision = q.acknowledged_revision;
+        return device_reset_receipt(DEVICE_RESET_OK, state, q);
     }
-    if(q.interrupt_revision!=q.acknowledged_revision)
-        return device_reset_receipt(DEVICE_RESET_INTERRUPTED,state,q);
-    if(q.action==DEVICE_RESET_OBSERVE_QUIESCENT){
-        if(state->phase!=DEVICE_RESET_RESETTING)return device_reset_receipt(DEVICE_RESET_INVALID,state,q);
-        if((q.cc&1u)||(q.csts&1u))return device_reset_receipt(DEVICE_RESET_HARDWARE,state,q);
-        state->phase=DEVICE_RESET_QUIESCENT;state->interrupt_revision=q.interrupt_revision;
-        state->acknowledged_revision=q.acknowledged_revision;
-        return device_reset_receipt(DEVICE_RESET_OK,state,q);
+    if (q.interrupt_revision != q.acknowledged_revision)
+        return device_reset_receipt(DEVICE_RESET_INTERRUPTED, state, q);
+    if (q.action == DEVICE_RESET_OBSERVE_QUIESCENT) {
+        if (state->phase != DEVICE_RESET_RESETTING)
+            return device_reset_receipt(DEVICE_RESET_INVALID, state, q);
+        if ((q.cc & 1u) || (q.csts & 1u))
+            return device_reset_receipt(DEVICE_RESET_HARDWARE, state, q);
+        state->phase = DEVICE_RESET_QUIESCENT;
+        state->interrupt_revision = q.interrupt_revision;
+        state->acknowledged_revision = q.acknowledged_revision;
+        return device_reset_receipt(DEVICE_RESET_OK, state, q);
     }
-    if(q.action==DEVICE_RESET_RESUME){
-        if(state->phase!=DEVICE_RESET_QUIESCENT || !q.queues_ready)
-            return device_reset_receipt(DEVICE_RESET_INVALID,state,q);
-        if(q.interrupt_revision!=state->interrupt_revision)
-            return device_reset_receipt(DEVICE_RESET_INTERRUPTED,state,q);
-        if(!(q.cc&1u)||!(q.csts&1u))return device_reset_receipt(DEVICE_RESET_HARDWARE,state,q);
-        if(state->generation==UINT64_MAX)return device_reset_receipt(DEVICE_RESET_EXHAUSTED,state,q);
-        ++state->generation;state->phase=DEVICE_RESET_ACTIVE;
-        return device_reset_receipt(DEVICE_RESET_OK,state,q);
+    if (q.action == DEVICE_RESET_RESUME) {
+        if (state->phase != DEVICE_RESET_QUIESCENT || !q.queues_ready)
+            return device_reset_receipt(DEVICE_RESET_INVALID, state, q);
+        if (q.interrupt_revision != state->interrupt_revision)
+            return device_reset_receipt(DEVICE_RESET_INTERRUPTED, state, q);
+        if (!(q.cc & 1u) || !(q.csts & 1u))
+            return device_reset_receipt(DEVICE_RESET_HARDWARE, state, q);
+        if (state->generation == UINT64_MAX)
+            return device_reset_receipt(DEVICE_RESET_EXHAUSTED, state, q);
+        ++state->generation;
+        state->phase = DEVICE_RESET_ACTIVE;
+        return device_reset_receipt(DEVICE_RESET_OK, state, q);
     }
-    return device_reset_receipt(DEVICE_RESET_INVALID,state,q);
+    return device_reset_receipt(DEVICE_RESET_INVALID, state, q);
 }
 ")))

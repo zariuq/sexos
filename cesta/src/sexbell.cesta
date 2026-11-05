@@ -59,7 +59,10 @@
       (comment "1 once dismissed by CLOSE or CLEAR; LIST skips it.")
       (uint8_t dismissed)
       (uint8_t ([] pad 2))) BellQueueEntry)
-    (native "_Static_assert(sizeof(BellQueueEntry) == 32 && offsetof(BellQueueEntry, dismissed) == 22, \"repr(C) BellQueueEntry\");\n")
+    (native "
+_Static_assert(sizeof(BellQueueEntry) == 32 && offsetof(BellQueueEntry, dismissed) == 22,
+               \"repr(C) BellQueueEntry\");
+")
 
     (typedef (struct BellQueue
       (comment "Monotonic; 0 is reserved.")

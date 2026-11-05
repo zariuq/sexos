@@ -3,48 +3,153 @@
   (include "kaleidoscope_qoi.h")
   (ownership (check-all))
   (native "
-static const uint8_t qoi_end[8]={0,0,0,0,0,0,0,1};
-static void qoi_erase_pixels(KaleidoscopeQoiPixels *pixels)
-{for(size_t i=0;i<KALEIDOSCOPE_QOI_MAX_PIXELS;i++)pixels->values[i]=0;}
-static uint32_t qoi_argb(uint8_t r,uint8_t g,uint8_t b,uint8_t a)
-{return((uint32_t)a<<24)|((uint32_t)r<<16)|((uint32_t)g<<8)|b;}
-static uint8_t qoi_add(uint8_t value,int delta)
-{return(uint8_t)(value+(uint8_t)delta);}
-static KaleidoscopeQoiStep qoi_fail(KaleidoscopeQoiDecoder *decoder,KaleidoscopeQoiPixels *pixels,uint8_t error)
-{qoi_erase_pixels(pixels);for(size_t i=0;i<64;i++)decoder->index[i]=0;decoder->pixel=0;decoder->run_remaining=0;decoder->last_index_present=false;decoder->produced=0;decoder->ready=false;decoder->error=error;return(KaleidoscopeQoiStep){error,KALEIDOSCOPE_QOI_PENDING};}
-uint8_t kaleidoscope_qoi_init(const KaleidoscopeQoiSource *source,KaleidoscopeQoiDecoder *decoder)
-{
- if(!source||!decoder){return KALEIDOSCOPE_QOI_INVALID_HEADER;}*decoder=(KaleidoscopeQoiDecoder){0};
- if(source->len>KALEIDOSCOPE_QOI_MAX_INPUT)return KALEIDOSCOPE_QOI_INPUT_TOO_LARGE;
- if(source->len<22)return KALEIDOSCOPE_QOI_TRUNCATED;
- size_t width=((size_t)source->bytes[4]<<24)|((size_t)source->bytes[5]<<16)|((size_t)source->bytes[6]<<8)|source->bytes[7];
- size_t height=((size_t)source->bytes[8]<<24)|((size_t)source->bytes[9]<<16)|((size_t)source->bytes[10]<<8)|source->bytes[11];
- if(source->bytes[0]!='q'||source->bytes[1]!='o'||source->bytes[2]!='i'||source->bytes[3]!='f'||!width||!height||width>48||height>48||(source->bytes[12]!=3&&source->bytes[12]!=4)||source->bytes[13]>1)return KALEIDOSCOPE_QOI_INVALID_HEADER;
- for(size_t i=0;i<14;i++){decoder->header[i]=source->bytes[i];}decoder->input_len=source->len;decoder->width=width;decoder->height=height;decoder->cursor=14;decoder->pixel=UINT32_C(0xff000000);return 0;
+static const uint8_t qoi_end[8] = {0, 0, 0, 0, 0, 0, 0, 1};
+
+static void qoi_erase_pixels(KaleidoscopeQoiPixels *pixels) {
+    for (size_t i = 0; i < KALEIDOSCOPE_QOI_MAX_PIXELS; i++)
+        pixels->values[i] = 0;
 }
-KaleidoscopeQoiStep kaleidoscope_qoi_advance(KaleidoscopeQoiDecoder *decoder,const KaleidoscopeQoiSource *source,KaleidoscopeQoiPixels *pixels)
-{
- if(!decoder||!source||!pixels)return(KaleidoscopeQoiStep){KALEIDOSCOPE_QOI_INVALID_HEADER,KALEIDOSCOPE_QOI_PENDING};
- if(decoder->error){qoi_erase_pixels(pixels);return(KaleidoscopeQoiStep){decoder->error,KALEIDOSCOPE_QOI_PENDING};}
- bool same=source->len==decoder->input_len;for(size_t i=0;same&&i<14;i++)same=source->bytes[i]==decoder->header[i];if(!same)return qoi_fail(decoder,pixels,KALEIDOSCOPE_QOI_INPUT_CHANGED);
- if(decoder->ready){return(KaleidoscopeQoiStep){0,KALEIDOSCOPE_QOI_READY};}if(!decoder->started){qoi_erase_pixels(pixels);decoder->started=true;}
- size_t total=decoder->width*decoder->height,data_end=source->len-8,turn=0;
- while(decoder->produced<total&&turn<KALEIDOSCOPE_QOI_PIXELS_PER_TURN){
-  if(decoder->run_remaining)decoder->run_remaining--;else{
-   if(decoder->cursor>=data_end)return qoi_fail(decoder,pixels,KALEIDOSCOPE_QOI_TRUNCATED);
-   uint8_t tag=source->bytes[decoder->cursor++],previous=decoder->last_index;bool previous_present=decoder->last_index_present;decoder->last_index_present=false;
-   uint8_t r=(uint8_t)(decoder->pixel>>16),g=(uint8_t)(decoder->pixel>>8),b=(uint8_t)decoder->pixel,a=(uint8_t)(decoder->pixel>>24);
-   if(tag==0xfe||tag==0xff){size_t needed=tag==0xfe?3:4;if(data_end-decoder->cursor<needed)return qoi_fail(decoder,pixels,KALEIDOSCOPE_QOI_TRUNCATED);decoder->pixel=qoi_argb(source->bytes[decoder->cursor],source->bytes[decoder->cursor+1],source->bytes[decoder->cursor+2],needed==4?source->bytes[decoder->cursor+3]:a);decoder->cursor+=needed;}
-   else if((tag>>6)==0){uint8_t slot=tag&63;if(previous_present&&previous==slot)return qoi_fail(decoder,pixels,KALEIDOSCOPE_QOI_CONSECUTIVE_INDEX);decoder->pixel=decoder->index[slot];decoder->last_index=slot;decoder->last_index_present=true;}
-   else if((tag>>6)==1)decoder->pixel=qoi_argb(qoi_add(r,(int)((tag>>4)&3)-2),qoi_add(g,(int)((tag>>2)&3)-2),qoi_add(b,(int)(tag&3)-2),a);
-   else if((tag>>6)==2){if(decoder->cursor>=data_end)return qoi_fail(decoder,pixels,KALEIDOSCOPE_QOI_TRUNCATED);uint8_t second=source->bytes[decoder->cursor++];int dg=(int)(tag&63)-32;decoder->pixel=qoi_argb(qoi_add(r,dg+(int)(second>>4)-8),qoi_add(g,dg),qoi_add(b,dg+(int)(second&15)-8),a);}
-   else{size_t run=(tag&63)+1;if(run>total-decoder->produced)return qoi_fail(decoder,pixels,KALEIDOSCOPE_QOI_RUN_OVERFLOW);decoder->run_remaining=run-1;}
-  }
-  pixels->values[decoder->produced]=decoder->pixel;uint8_t r=(uint8_t)(decoder->pixel>>16),g=(uint8_t)(decoder->pixel>>8),b=(uint8_t)decoder->pixel,a=(uint8_t)(decoder->pixel>>24);size_t hash=((size_t)r*3+(size_t)g*5+(size_t)b*7+(size_t)a*11)%64;decoder->index[hash]=decoder->pixel;decoder->produced++;turn++;
- }
- if(decoder->produced==total){if(decoder->cursor!=data_end)return qoi_fail(decoder,pixels,KALEIDOSCOPE_QOI_TRAILING_DATA);for(size_t i=0;i<8;i++)if(source->bytes[data_end+i]!=qoi_end[i])return qoi_fail(decoder,pixels,KALEIDOSCOPE_QOI_INVALID_END);decoder->ready=true;return(KaleidoscopeQoiStep){0,KALEIDOSCOPE_QOI_READY};}
- return(KaleidoscopeQoiStep){0,KALEIDOSCOPE_QOI_PENDING};
+
+static uint32_t qoi_argb(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    return ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
 }
-void kaleidoscope_qoi_cancel(KaleidoscopeQoiDecoder *decoder,KaleidoscopeQoiPixels *pixels)
-{if(decoder&&pixels)(void)qoi_fail(decoder,pixels,KALEIDOSCOPE_QOI_CANCELLED);}
+
+static uint8_t qoi_add(uint8_t value, int delta) {
+    return (uint8_t)(value + (uint8_t)delta);
+}
+
+static KaleidoscopeQoiStep qoi_fail(KaleidoscopeQoiDecoder *decoder, KaleidoscopeQoiPixels *pixels,
+                                    uint8_t error) {
+    qoi_erase_pixels(pixels);
+    for (size_t i = 0; i < 64; i++)
+        decoder->index[i] = 0;
+    decoder->pixel = 0;
+    decoder->run_remaining = 0;
+    decoder->last_index_present = false;
+    decoder->produced = 0;
+    decoder->ready = false;
+    decoder->error = error;
+    return (KaleidoscopeQoiStep){error, KALEIDOSCOPE_QOI_PENDING};
+}
+
+uint8_t kaleidoscope_qoi_init(const KaleidoscopeQoiSource *source,
+                              KaleidoscopeQoiDecoder *decoder) {
+    if (!source || !decoder) {
+        return KALEIDOSCOPE_QOI_INVALID_HEADER;
+    }
+    *decoder = (KaleidoscopeQoiDecoder){0};
+    if (source->len > KALEIDOSCOPE_QOI_MAX_INPUT)
+        return KALEIDOSCOPE_QOI_INPUT_TOO_LARGE;
+    if (source->len < 22)
+        return KALEIDOSCOPE_QOI_TRUNCATED;
+    size_t width = ((size_t)source->bytes[4] << 24) | ((size_t)source->bytes[5] << 16) |
+                   ((size_t)source->bytes[6] << 8) | source->bytes[7];
+    size_t height = ((size_t)source->bytes[8] << 24) | ((size_t)source->bytes[9] << 16) |
+                    ((size_t)source->bytes[10] << 8) | source->bytes[11];
+    if (source->bytes[0] != 'q' || source->bytes[1] != 'o' || source->bytes[2] != 'i' ||
+        source->bytes[3] != 'f' || !width || !height || width > 48 || height > 48 ||
+        (source->bytes[12] != 3 && source->bytes[12] != 4) || source->bytes[13] > 1)
+        return KALEIDOSCOPE_QOI_INVALID_HEADER;
+    for (size_t i = 0; i < 14; i++) {
+        decoder->header[i] = source->bytes[i];
+    }
+    decoder->input_len = source->len;
+    decoder->width = width;
+    decoder->height = height;
+    decoder->cursor = 14;
+    decoder->pixel = UINT32_C(0xff000000);
+    return 0;
+}
+
+KaleidoscopeQoiStep kaleidoscope_qoi_advance(KaleidoscopeQoiDecoder *decoder,
+                                             const KaleidoscopeQoiSource *source,
+                                             KaleidoscopeQoiPixels *pixels) {
+    if (!decoder || !source || !pixels)
+        return (KaleidoscopeQoiStep){KALEIDOSCOPE_QOI_INVALID_HEADER, KALEIDOSCOPE_QOI_PENDING};
+    if (decoder->error) {
+        qoi_erase_pixels(pixels);
+        return (KaleidoscopeQoiStep){decoder->error, KALEIDOSCOPE_QOI_PENDING};
+    }
+    bool same = source->len == decoder->input_len;
+    for (size_t i = 0; same && i < 14; i++)
+        same = source->bytes[i] == decoder->header[i];
+    if (!same)
+        return qoi_fail(decoder, pixels, KALEIDOSCOPE_QOI_INPUT_CHANGED);
+    if (decoder->ready) {
+        return (KaleidoscopeQoiStep){0, KALEIDOSCOPE_QOI_READY};
+    }
+    if (!decoder->started) {
+        qoi_erase_pixels(pixels);
+        decoder->started = true;
+    }
+    size_t total = decoder->width * decoder->height, data_end = source->len - 8, turn = 0;
+    while (decoder->produced < total && turn < KALEIDOSCOPE_QOI_PIXELS_PER_TURN) {
+        if (decoder->run_remaining)
+            decoder->run_remaining--;
+        else {
+            if (decoder->cursor >= data_end)
+                return qoi_fail(decoder, pixels, KALEIDOSCOPE_QOI_TRUNCATED);
+            uint8_t tag = source->bytes[decoder->cursor++], previous = decoder->last_index;
+            bool previous_present = decoder->last_index_present;
+            decoder->last_index_present = false;
+            uint8_t r = (uint8_t)(decoder->pixel >> 16), g = (uint8_t)(decoder->pixel >> 8),
+                    b = (uint8_t)decoder->pixel, a = (uint8_t)(decoder->pixel >> 24);
+            if (tag == 0xfe || tag == 0xff) {
+                size_t needed = tag == 0xfe ? 3 : 4;
+                if (data_end - decoder->cursor < needed)
+                    return qoi_fail(decoder, pixels, KALEIDOSCOPE_QOI_TRUNCATED);
+                decoder->pixel =
+                    qoi_argb(source->bytes[decoder->cursor], source->bytes[decoder->cursor + 1],
+                             source->bytes[decoder->cursor + 2],
+                             needed == 4 ? source->bytes[decoder->cursor + 3] : a);
+                decoder->cursor += needed;
+            } else if ((tag >> 6) == 0) {
+                uint8_t slot = tag & 63;
+                if (previous_present && previous == slot)
+                    return qoi_fail(decoder, pixels, KALEIDOSCOPE_QOI_CONSECUTIVE_INDEX);
+                decoder->pixel = decoder->index[slot];
+                decoder->last_index = slot;
+                decoder->last_index_present = true;
+            } else if ((tag >> 6) == 1)
+                decoder->pixel = qoi_argb(qoi_add(r, (int)((tag >> 4) & 3) - 2),
+                                          qoi_add(g, (int)((tag >> 2) & 3) - 2),
+                                          qoi_add(b, (int)(tag & 3) - 2), a);
+            else if ((tag >> 6) == 2) {
+                if (decoder->cursor >= data_end)
+                    return qoi_fail(decoder, pixels, KALEIDOSCOPE_QOI_TRUNCATED);
+                uint8_t second = source->bytes[decoder->cursor++];
+                int dg = (int)(tag & 63) - 32;
+                decoder->pixel = qoi_argb(qoi_add(r, dg + (int)(second >> 4) - 8), qoi_add(g, dg),
+                                          qoi_add(b, dg + (int)(second & 15) - 8), a);
+            } else {
+                size_t run = (tag & 63) + 1;
+                if (run > total - decoder->produced)
+                    return qoi_fail(decoder, pixels, KALEIDOSCOPE_QOI_RUN_OVERFLOW);
+                decoder->run_remaining = run - 1;
+            }
+        }
+        pixels->values[decoder->produced] = decoder->pixel;
+        uint8_t r = (uint8_t)(decoder->pixel >> 16), g = (uint8_t)(decoder->pixel >> 8),
+                b = (uint8_t)decoder->pixel, a = (uint8_t)(decoder->pixel >> 24);
+        size_t hash = ((size_t)r * 3 + (size_t)g * 5 + (size_t)b * 7 + (size_t)a * 11) % 64;
+        decoder->index[hash] = decoder->pixel;
+        decoder->produced++;
+        turn++;
+    }
+    if (decoder->produced == total) {
+        if (decoder->cursor != data_end)
+            return qoi_fail(decoder, pixels, KALEIDOSCOPE_QOI_TRAILING_DATA);
+        for (size_t i = 0; i < 8; i++)
+            if (source->bytes[data_end + i] != qoi_end[i])
+                return qoi_fail(decoder, pixels, KALEIDOSCOPE_QOI_INVALID_END);
+        decoder->ready = true;
+        return (KaleidoscopeQoiStep){0, KALEIDOSCOPE_QOI_READY};
+    }
+    return (KaleidoscopeQoiStep){0, KALEIDOSCOPE_QOI_PENDING};
+}
+
+void kaleidoscope_qoi_cancel(KaleidoscopeQoiDecoder *decoder, KaleidoscopeQoiPixels *pixels) {
+    if (decoder && pixels)
+        (void)qoi_fail(decoder, pixels, KALEIDOSCOPE_QOI_CANCELLED);
+}
 ")))

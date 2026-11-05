@@ -1,5 +1,6 @@
 (cesta native-c/1 compact-c/2
- (unit (native "#ifndef KALEIDOSCOPE_REGEX_H
+ (unit (native "
+#ifndef KALEIDOSCOPE_REGEX_H
 #define KALEIDOSCOPE_REGEX_H
 #include <stdbool.h>
 #include <stddef.h>
@@ -9,28 +10,69 @@
 #define KALEIDOSCOPE_REGEX_CAPTURES ((size_t)10)
 #define KALEIDOSCOPE_REGEX_MAX_INSTS ((size_t)2048)
 #define KALEIDOSCOPE_REGEX_MAX_CLASSES ((size_t)128)
-enum {KALEIDOSCOPE_REGEX_OK=0,KALEIDOSCOPE_REGEX_SYNTAX=1,KALEIDOSCOPE_REGEX_LIMIT=2};
-enum {KALEIDOSCOPE_RE_BYTE=1,KALEIDOSCOPE_RE_ANY=2,KALEIDOSCOPE_RE_CLASS=3,
- KALEIDOSCOPE_RE_START=4,KALEIDOSCOPE_RE_END=5,KALEIDOSCOPE_RE_BOUNDARY=6,
- KALEIDOSCOPE_RE_SPLIT=7,KALEIDOSCOPE_RE_JMP=8,KALEIDOSCOPE_RE_SAVE=9,
- KALEIDOSCOPE_RE_MARK=10,KALEIDOSCOPE_RE_PROGRESS=11,KALEIDOSCOPE_RE_MATCH=12};
+
+enum {
+    KALEIDOSCOPE_REGEX_OK = 0,
+    KALEIDOSCOPE_REGEX_SYNTAX = 1,
+    KALEIDOSCOPE_REGEX_LIMIT = 2
+};
+
+enum {
+    KALEIDOSCOPE_RE_BYTE = 1,
+    KALEIDOSCOPE_RE_ANY = 2,
+    KALEIDOSCOPE_RE_CLASS = 3,
+    KALEIDOSCOPE_RE_START = 4,
+    KALEIDOSCOPE_RE_END = 5,
+    KALEIDOSCOPE_RE_BOUNDARY = 6,
+    KALEIDOSCOPE_RE_SPLIT = 7,
+    KALEIDOSCOPE_RE_JMP = 8,
+    KALEIDOSCOPE_RE_SAVE = 9,
+    KALEIDOSCOPE_RE_MARK = 10,
+    KALEIDOSCOPE_RE_PROGRESS = 11,
+    KALEIDOSCOPE_RE_MATCH = 12
+};
+
 typedef struct KaleidoscopeRegexSource {
- uint8_t pattern[KALEIDOSCOPE_REGEX_MAX_PATTERN];size_t pattern_len;
- uint8_t flags[8];size_t flags_len;
+    uint8_t pattern[KALEIDOSCOPE_REGEX_MAX_PATTERN];
+    size_t pattern_len;
+    uint8_t flags[8];
+    size_t flags_len;
 } KaleidoscopeRegexSource;
-typedef struct KaleidoscopeRegexText {uint8_t bytes[KALEIDOSCOPE_REGEX_MAX_TEXT];size_t len;} KaleidoscopeRegexText;
-typedef struct KaleidoscopeRegexInst {uint8_t kind,byte;uint16_t a,b;} KaleidoscopeRegexInst;
+
+typedef struct KaleidoscopeRegexText {
+    uint8_t bytes[KALEIDOSCOPE_REGEX_MAX_TEXT];
+    size_t len;
+} KaleidoscopeRegexText;
+
+typedef struct KaleidoscopeRegexInst {
+    uint8_t kind, byte;
+    uint16_t a, b;
+} KaleidoscopeRegexInst;
+
 typedef struct KaleidoscopeRegex {
- KaleidoscopeRegexInst program[KALEIDOSCOPE_REGEX_MAX_INSTS];size_t program_len;
- uint64_t classes[KALEIDOSCOPE_REGEX_MAX_CLASSES][4];size_t class_count;
- size_t groups;bool icase;bool valid;
+    KaleidoscopeRegexInst program[KALEIDOSCOPE_REGEX_MAX_INSTS];
+    size_t program_len;
+    uint64_t classes[KALEIDOSCOPE_REGEX_MAX_CLASSES][4];
+    size_t class_count;
+    size_t groups;
+    bool icase;
+    bool valid;
 } KaleidoscopeRegex;
-typedef struct KaleidoscopeRegexCapture {bool present;size_t start,end;} KaleidoscopeRegexCapture;
+
+typedef struct KaleidoscopeRegexCapture {
+    bool present;
+    size_t start, end;
+} KaleidoscopeRegexCapture;
+
 typedef struct KaleidoscopeRegexFind {
- uint8_t error;bool matched;size_t groups;
- KaleidoscopeRegexCapture captures[KALEIDOSCOPE_REGEX_CAPTURES];
+    uint8_t error;
+    bool matched;
+    size_t groups;
+    KaleidoscopeRegexCapture captures[KALEIDOSCOPE_REGEX_CAPTURES];
 } KaleidoscopeRegexFind;
-uint8_t kaleidoscope_regex_compile(const KaleidoscopeRegexSource *source,KaleidoscopeRegex *regex);
-KaleidoscopeRegexFind kaleidoscope_regex_find(const KaleidoscopeRegex *regex,const KaleidoscopeRegexText *text,size_t from);
+
+uint8_t kaleidoscope_regex_compile(const KaleidoscopeRegexSource *source, KaleidoscopeRegex *regex);
+KaleidoscopeRegexFind kaleidoscope_regex_find(const KaleidoscopeRegex *regex,
+                                              const KaleidoscopeRegexText *text, size_t from);
 #endif
 ")))

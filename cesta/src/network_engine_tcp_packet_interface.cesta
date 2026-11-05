@@ -3,16 +3,28 @@
 #ifndef SEXOS_NETWORK_ENGINE_TCP_PACKET_H
 #define SEXOS_NETWORK_ENGINE_TCP_PACKET_H
 #include \"network_engine_packet.h\"
-enum { NETWORK_TCP_FIN=0x01,NETWORK_TCP_SYN=0x02,NETWORK_TCP_RST=0x04,NETWORK_TCP_PSH=0x08,NETWORK_TCP_ACK=0x10 };
+
+enum {
+    NETWORK_TCP_FIN = 0x01,
+    NETWORK_TCP_SYN = 0x02,
+    NETWORK_TCP_RST = 0x04,
+    NETWORK_TCP_PSH = 0x08,
+    NETWORK_TCP_ACK = 0x10
+};
+
 typedef struct NetworkTcpPacket {
-    bool valid; uint16_t source_port,destination_port,window;
-    uint32_t sequence,acknowledgment; uint8_t flags;
-    size_t header_length,payload_offset,payload_length;
+    bool valid;
+    uint16_t source_port, destination_port, window;
+    uint32_t sequence, acknowledgment;
+    uint8_t flags;
+    size_t header_length, payload_offset, payload_length;
 } NetworkTcpPacket;
+
 NetworkTcpPacket network_engine_tcp_decode(const NetworkEngineFrame *frame);
-bool network_engine_tcp_build(NetworkEngineFrame *frame, NetworkEngineMac destination_mac, NetworkEngineMac source_mac,
-    uint32_t source_ip, uint32_t destination_ip, uint16_t source_port, uint16_t destination_port,
-    uint32_t sequence, uint32_t acknowledgment, uint8_t flags, uint16_t window,
-    const NetworkEnginePayload *payload);
+bool network_engine_tcp_build(NetworkEngineFrame *frame, NetworkEngineMac destination_mac,
+                              NetworkEngineMac source_mac, uint32_t source_ip,
+                              uint32_t destination_ip, uint16_t source_port,
+                              uint16_t destination_port, uint32_t sequence, uint32_t acknowledgment,
+                              uint8_t flags, uint16_t window, const NetworkEnginePayload *payload);
 #endif
 ")))

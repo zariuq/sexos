@@ -158,8 +158,12 @@
         (comment "repr(C) ring buffer; one slot stays free to tell full from empty.")
         (typedef (struct SilkBarUpdateQueue
           (uint32_t head) (uint32_t tail) (SilkBarUpdate ([] updates UPDATE_QUEUE_CAP))) SilkBarUpdateQueue)
-        (native "_Static_assert(sizeof(SilkBarUpdate) == 16 && offsetof(SilkBarUpdate, a) == 8, \"SilkBarUpdate ABI\");\n")
-        (native "_Static_assert(sizeof(SilkBarUpdateQueue) == 520, \"SilkBarUpdateQueue ABI\");\n")
+        (native "
+_Static_assert(sizeof(SilkBarUpdate) == 16 && offsetof(SilkBarUpdate, a) == 8, \"SilkBarUpdate ABI\");
+")
+        (native "
+_Static_assert(sizeof(SilkBarUpdateQueue) == 520, \"SilkBarUpdateQueue ABI\");
+")
 
         (var (extern const SilkBar) DEFAULT_SILK_BAR)
         (var (extern const SilkBarTheme) DEFAULT_THEME)

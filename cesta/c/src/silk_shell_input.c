@@ -1,4 +1,6 @@
 #include "silk_shell_input.h"
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
 #if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
 _Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
 #else
@@ -8,6 +10,7 @@ _Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI p
 _Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
 #endif
 _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 #define INPUT_TRACE_APPLIES (ctx->shell.input->INPUT_TRACE_APPLIES)
 #define INPUT_TRACE_BUDGET_HIT (ctx->shell.input->INPUT_TRACE_BUDGET_HIT)
 #define INPUT_TRACE_DRAG_MOVES (ctx->shell.input->INPUT_TRACE_DRAG_MOVES)
@@ -142,65 +145,97 @@ _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) ==
 #define handle_hid_event__INLINE_CLICK_TARGET_BUDGET (ctx->shell.input->handle_hid_event__INLINE_CLICK_TARGET_BUDGET)
 #define clear_drag_if_wrong_scene__DRAG_SCENE_BUDGET (ctx->shell.input->clear_drag_if_wrong_scene__DRAG_SCENE_BUDGET)
 #define WINDOWS_len (ctx->shell.chrome->WINDOWS_len)
-static int32_t input_i32(uint32_t value)
-{
+
+static int32_t input_i32(uint32_t value) {
     return value <= INT32_MAX ? (int32_t)value : -1 - (int32_t)(UINT32_MAX - value);
 }
-static int32_t input_wrap_add(int32_t a, int32_t b) { return input_i32((uint32_t)a + (uint32_t)b); }
-static int32_t input_wrap_sub(int32_t a, int32_t b) { return input_i32((uint32_t)a - (uint32_t)b); }
-static uint32_t input_abs(int32_t value) { return value < 0 ? 0u - (uint32_t)value : (uint32_t)value; }
-static int32_t input_clamp(int32_t value, int32_t low, int32_t high)
-{ if(low>high){sexos_fail();for(;;){}} return value < low ? low : value > high ? high : value; }
-static uint32_t input_sat_add(uint32_t value, uint32_t add)
-{ return value > UINT32_MAX - add ? UINT32_MAX : value + add; }
-static int32_t input_transfer(int32_t raw)
-{
+
+static int32_t input_wrap_add(int32_t a, int32_t b) {
+    return input_i32((uint32_t)a + (uint32_t)b);
+}
+
+static int32_t input_wrap_sub(int32_t a, int32_t b) {
+    return input_i32((uint32_t)a - (uint32_t)b);
+}
+
+static uint32_t input_abs(int32_t value) {
+    return value < 0 ? 0u - (uint32_t)value : (uint32_t)value;
+}
+
+static int32_t input_clamp(int32_t value, int32_t low, int32_t high) {
+    if (low > high) {
+        sexos_fail();
+        for (;;) {
+        }
+    }
+    return value < low ? low : value > high ? high : value;
+}
+
+static uint32_t input_sat_add(uint32_t value, uint32_t add) {
+    return value > UINT32_MAX - add ? UINT32_MAX : value + add;
+}
+
+static int32_t input_transfer(int32_t raw) {
     uint32_t value = input_abs(raw);
     int32_t gain = value <= 3 ? (int32_t)value : value <= 16 ? (int32_t)(value / 2) : 18;
     return raw < 0 ? -gain : gain;
 }
 
 uint32_t shell_chrome_peer_load_dimension(const atomic_uint_least32_t *dimension);
-static int32_t input_dimension(const atomic_uint_least32_t *dimension){return input_i32(shell_chrome_peer_load_dimension(dimension));}
 
-void shell_input_input_trace_shell_summary(ShellInputContext *ctx)
-{
-    sexos_line("[input.trace.shell.summary] applies=%u sends=%u drag_moves=%u max_jump=%d budget_hit=%u",
-        INPUT_TRACE_APPLIES, INPUT_TRACE_SENDS, INPUT_TRACE_DRAG_MOVES, INPUT_TRACE_MAX_JUMP, INPUT_TRACE_BUDGET_HIT);
+static int32_t input_dimension(const atomic_uint_least32_t *dimension) {
+    return input_i32(shell_chrome_peer_load_dimension(dimension));
 }
-void shell_input_flush_pending_cursor_send(ShellInputContext *ctx)
-{
-    if (!CURSOR_SEND_PENDING) return;
+
+void shell_input_input_trace_shell_summary(ShellInputContext *ctx) {
+    sexos_line(
+        "[input.trace.shell.summary] applies=%u sends=%u drag_moves=%u max_jump=%d budget_hit=%u",
+        INPUT_TRACE_APPLIES, INPUT_TRACE_SENDS, INPUT_TRACE_DRAG_MOVES, INPUT_TRACE_MAX_JUMP,
+        INPUT_TRACE_BUDGET_HIT);
+}
+
+void shell_input_flush_pending_cursor_send(ShellInputContext *ctx) {
+    if (!CURSOR_SEND_PENDING)
+        return;
     shell_input_send_cursor_checked(ctx, POINTER_X, POINTER_Y, "rel");
 }
-void shell_input_send_cursor_checked(ShellInputContext *ctx, int32_t x, int32_t y, const char *source)
-{
+
+void shell_input_send_cursor_checked(ShellInputContext *ctx, int32_t x, int32_t y,
+                                     const char *source) {
     int32_t old_x = POINTER_X, old_y = POINTER_Y;
-    int32_t cx = input_clamp(x, 0, input_wrap_sub(input_dimension(&ctx->shell.apps->width),1)), cy = input_clamp(y, 0, input_wrap_sub(input_dimension(&ctx->shell.apps->height),1));
+    int32_t cx = input_clamp(x, 0, input_wrap_sub(input_dimension(&ctx->shell.apps->width), 1)),
+            cy = input_clamp(y, 0, input_wrap_sub(input_dimension(&ctx->shell.apps->height), 1));
     if ((cx != x || cy != y) && send_cursor_checked__CURSOR_CLAMP_SEND_BUDGET > 0) {
         --send_cursor_checked__CURSOR_CLAMP_SEND_BUDGET;
-        sexos_line("[shell.cursor.final.clamp] source=%s raw_x=%d raw_y=%d clamped_x=%d clamped_y=%d", source, x, y, cx, cy);
+        sexos_line(
+            "[shell.cursor.final.clamp] source=%s raw_x=%d raw_y=%d clamped_x=%d clamped_y=%d",
+            source, x, y, cx, cy);
     }
-    POINTER_X = cx; POINTER_Y = cy;
+    POINTER_X = cx;
+    POINTER_Y = cy;
     uint64_t a = ((uint64_t)INPUT_TRACE_SEQ << 32) | (uint32_t)cx;
     uint64_t b = ((uint64_t)SHELL_APPLY_TICK << 32) | (uint32_t)cy;
-    SexosReply admission=sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_CURSOR, a, b);
-    if(admission.status){
-        CURSOR_SEND_PENDING=admission.status==ERR_SERVICE_NOT_READY;
-        if(!CURSOR_SEND_PENDING)sexos_line("[shell.cursor.rejected] status=0x%llx x=%d y=%d",(unsigned long long)admission.status,cx,cy);
+    SexosReply admission = sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_CURSOR, a, b);
+    if (admission.status) {
+        CURSOR_SEND_PENDING = admission.status == ERR_SERVICE_NOT_READY;
+        if (!CURSOR_SEND_PENDING)
+            sexos_line("[shell.cursor.rejected] status=0x%llx x=%d y=%d",
+                       (unsigned long long)admission.status, cx, cy);
         return;
     }
-    CURSOR_SEND_PENDING=false;CURSOR_APPLIES_SINCE_SEND=0;
+    CURSOR_SEND_PENDING = false;
+    CURSOR_APPLIES_SINCE_SEND = 0;
     CURSOR_SEND_COUNT = input_sat_add(CURSOR_SEND_COUNT, 1);
     INPUT_TRACE_SENDS += 1;
     if (send_cursor_checked__INPUT_TRACE_SEND_BUDGET > 0) {
         --send_cursor_checked__INPUT_TRACE_SEND_BUDGET;
-        sexos_line("[input.trace.shell.cursor.send] seq=%u tick=%u x=%d y=%d", INPUT_TRACE_SEQ, SHELL_APPLY_TICK, cx, cy);
+        sexos_line("[input.trace.shell.cursor.send] seq=%u tick=%u x=%d y=%d", INPUT_TRACE_SEQ,
+                   SHELL_APPLY_TICK, cx, cy);
     }
     if (send_cursor_checked__CURSOR_DELTA_BUDGET > 0) {
         --send_cursor_checked__CURSOR_DELTA_BUDGET;
-        sexos_line("[shell.cursor.delta] old_x=%d old_y=%d new_x=%d new_y=%d dx=%d dy=%d",
-            old_x, old_y, cx, cy, input_wrap_sub(cx, old_x), input_wrap_sub(cy, old_y));
+        sexos_line("[shell.cursor.delta] old_x=%d old_y=%d new_x=%d new_y=%d dx=%d dy=%d", old_x,
+                   old_y, cx, cy, input_wrap_sub(cx, old_x), input_wrap_sub(cy, old_y));
     }
     if (send_cursor_checked__CURSOR_SEND_BUDGET > 0) {
         --send_cursor_checked__CURSOR_SEND_BUDGET;
@@ -208,277 +243,454 @@ void shell_input_send_cursor_checked(ShellInputContext *ctx, int32_t x, int32_t 
     }
     if (send_cursor_checked__CURSOR_RATE_BUDGET > 0 && CURSOR_SEND_COUNT % 16 == 0) {
         --send_cursor_checked__CURSOR_RATE_BUDGET;
-        sexos_line("[shell.cursor.rate] samples=%u sends=%u draws=0", ABS_SAMPLE_COUNT, CURSOR_SEND_COUNT);
+        sexos_line("[shell.cursor.rate] samples=%u sends=%u draws=0", ABS_SAMPLE_COUNT,
+                   CURSOR_SEND_COUNT);
     }
 }
-void shell_input_apply_rel_pointer(ShellInputContext *ctx, int32_t dx_raw, int32_t dy_raw, int32_t *out_x, int32_t *out_y)
-{
+
+void shell_input_apply_rel_pointer(ShellInputContext *ctx, int32_t dx_raw, int32_t dy_raw,
+                                   int32_t *out_x, int32_t *out_y) {
     REAL_POINTER_SEEN = true;
     int32_t dx = input_transfer(dx_raw), dy = input_transfer(dy_raw);
     if (apply_rel_pointer__POINTER_GAIN_BUDGET > 0 && (dx_raw != dx || dy_raw != dy)) {
         --apply_rel_pointer__POINTER_GAIN_BUDGET;
         sexos_line("[shell.pointer.filter.v2] raw_dx=%d raw_dy=%d out_dx=%d out_dy=%d x=%d y=%d",
-            dx_raw, dy_raw, dx, dy, POINTER_X, POINTER_Y);
+                   dx_raw, dy_raw, dx, dy, POINTER_X, POINTER_Y);
     }
     if (apply_rel_pointer__REL_TRANSFER_BUDGET > 0) {
         --apply_rel_pointer__REL_TRANSFER_BUDGET;
-        const char *reason = dx_raw == 0 && dy_raw == 0 ? "zero" :
-            input_abs(dx_raw) <= 3 && input_abs(dy_raw) <= 3 ? "micro_keep" :
-            input_abs(dx_raw) > 16 || input_abs(dy_raw) > 16 ? "large_cap18" : "medium_half";
-        sexos_line("[shell.rel.transfer] raw_dx=%d raw_dy=%d out_dx=%d out_dy=%d x=%d y=%d reason=%s",
+        const char *reason = dx_raw == 0 && dy_raw == 0                         ? "zero"
+                             : input_abs(dx_raw) <= 3 && input_abs(dy_raw) <= 3 ? "micro_keep"
+                             : input_abs(dx_raw) > 16 || input_abs(dy_raw) > 16 ? "large_cap18"
+                                                                                : "medium_half";
+        sexos_line(
+            "[shell.rel.transfer] raw_dx=%d raw_dy=%d out_dx=%d out_dy=%d x=%d y=%d reason=%s",
             dx_raw, dy_raw, dx, dy, POINTER_X, POINTER_Y, reason);
     }
-    PENDING_DX = 0; PENDING_DY = 0; PENDING_COUNT = 0;
+    PENDING_DX = 0;
+    PENDING_DY = 0;
+    PENDING_COUNT = 0;
     if (!POINTER_USB_STATE_INIT) {
-        POINTER_X = input_dimension(&ctx->shell.apps->width) / 2; POINTER_Y = input_dimension(&ctx->shell.apps->height) / 2; POINTER_USB_STATE_INIT = true;
+        POINTER_X = input_dimension(&ctx->shell.apps->width) / 2;
+        POINTER_Y = input_dimension(&ctx->shell.apps->height) / 2;
+        POINTER_USB_STATE_INIT = true;
     }
     int32_t old_x = POINTER_X, old_y = POINTER_Y;
     int32_t raw_x = input_wrap_add(POINTER_X, dx), raw_y = input_wrap_add(POINTER_Y, dy);
-    POINTER_X = raw_x; POINTER_Y = raw_y;
-    int32_t x = input_clamp(raw_x, 0, input_wrap_sub(input_dimension(&ctx->shell.apps->width),1)), y = input_clamp(raw_y, 0, input_wrap_sub(input_dimension(&ctx->shell.apps->height),1));
+    POINTER_X = raw_x;
+    POINTER_Y = raw_y;
+    int32_t x = input_clamp(raw_x, 0, input_wrap_sub(input_dimension(&ctx->shell.apps->width), 1)),
+            y = input_clamp(raw_y, 0, input_wrap_sub(input_dimension(&ctx->shell.apps->height), 1));
     unsigned clamped = raw_x != x || raw_y != y;
-    unsigned valid = x >= 0 && x < input_dimension(&ctx->shell.apps->width) && y >= 0 && y < input_dimension(&ctx->shell.apps->height);
-    if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED && apply_rel_pointer__CURSOR_MOTION_BOUNDS_REL_BUDGET > 0) {
+    unsigned valid = x >= 0 && x < input_dimension(&ctx->shell.apps->width) && y >= 0 &&
+                     y < input_dimension(&ctx->shell.apps->height);
+    if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED &&
+        apply_rel_pointer__CURSOR_MOTION_BOUNDS_REL_BUDGET > 0) {
         --apply_rel_pointer__CURSOR_MOTION_BOUNDS_REL_BUDGET;
-        sexos_line("[cursor.motion.bounds] source=rel old_x=%d old_y=%d new_x=%d new_y=%d w=%d h=%d clamped=%u ok=%u",
-            old_x, old_y, x, y, input_dimension(&ctx->shell.apps->width), input_dimension(&ctx->shell.apps->height), clamped, valid);
+        sexos_line(
+            "[cursor.motion.bounds] source=rel old_x=%d old_y=%d new_x=%d new_y=%d w=%d h=%d clamped=%u ok=%u",
+            old_x, old_y, x, y, input_dimension(&ctx->shell.apps->width),
+            input_dimension(&ctx->shell.apps->height), clamped, valid);
     }
     if ((x != old_x || y != old_y) && apply_rel_pointer__CURSOR_CLAMP_BUDGET > 0) {
         --apply_rel_pointer__CURSOR_CLAMP_BUDGET;
-        sexos_line("[silk-shell.cursor.clamp] old_x=%d old_y=%d new_x=%d new_y=%d", old_x, old_y, x, y);
+        sexos_line("[silk-shell.cursor.clamp] old_x=%d old_y=%d new_x=%d new_y=%d", old_x, old_y, x,
+                   y);
     }
     if (apply_rel_pointer__USB_POINTER_CURSOR_BOUNDS_BUDGET > 0) {
         --apply_rel_pointer__USB_POINTER_CURSOR_BOUNDS_BUDGET;
         sexos_line("[usb.pointer.cursor.bounds] x=%d y=%d ok=1", x, y);
     }
-    POINTER_X = x; POINTER_Y = y;
-    ++INPUT_TRACE_SEQ; ++INPUT_TRACE_APPLIES; ++SHELL_APPLY_TICK;
+    POINTER_X = x;
+    POINTER_Y = y;
+    ++INPUT_TRACE_SEQ;
+    ++INPUT_TRACE_APPLIES;
+    ++SHELL_APPLY_TICK;
     int32_t jump = (int32_t)(input_abs(dx) > input_abs(dy) ? input_abs(dx) : input_abs(dy));
-    if (jump > INPUT_TRACE_MAX_JUMP) INPUT_TRACE_MAX_JUMP = jump;
+    if (jump > INPUT_TRACE_MAX_JUMP)
+        INPUT_TRACE_MAX_JUMP = jump;
     if (apply_rel_pointer__INPUT_TRACE_APPLY_BUDGET > 0) {
         --apply_rel_pointer__INPUT_TRACE_APPLY_BUDGET;
         sexos_line("[input.trace.shell.apply] seq=%u tick=%u x=%d y=%d dx=%d dy=%d source=usb",
-            INPUT_TRACE_SEQ, SHELL_APPLY_TICK, x, y, dx, dy);
-        if (apply_rel_pointer__INPUT_TRACE_APPLY_BUDGET == 0) INPUT_TRACE_BUDGET_HIT = 1;
+                   INPUT_TRACE_SEQ, SHELL_APPLY_TICK, x, y, dx, dy);
+        if (apply_rel_pointer__INPUT_TRACE_APPLY_BUDGET == 0)
+            INPUT_TRACE_BUDGET_HIT = 1;
     }
     CURSOR_SEND_PENDING = true;
     ++CURSOR_APPLIES_SINCE_SEND;
-    if (CURSOR_APPLIES_SINCE_SEND >= CURSOR_SEND_APPLY_CAP) shell_input_flush_pending_cursor_send(ctx);
-    if (INPUT_TRACE_APPLIES == 4 || INPUT_TRACE_APPLIES % 32 == 0) shell_input_input_trace_shell_summary(ctx);
-    if (out_x) *out_x = dx;
-    if (out_y) *out_y = dy;
+    if (CURSOR_APPLIES_SINCE_SEND >= CURSOR_SEND_APPLY_CAP)
+        shell_input_flush_pending_cursor_send(ctx);
+    if (INPUT_TRACE_APPLIES == 4 || INPUT_TRACE_APPLIES % 32 == 0)
+        shell_input_input_trace_shell_summary(ctx);
+    if (out_x)
+        *out_x = dx;
+    if (out_y)
+        *out_y = dy;
 }
-int32_t shell_input_normalize_abs_coord(ShellInputContext *ctx, int32_t raw, int32_t screen_dim)
-{
+
+int32_t shell_input_normalize_abs_coord(ShellInputContext *ctx, int32_t raw, int32_t screen_dim) {
     (void)ctx;
-    if (raw <= 0) return 0;
-    if (raw >= TABLET_RAW_MAX) return input_wrap_sub(screen_dim,1);
-    int32_t scaled = input_i32((uint32_t)raw * (uint32_t)(input_wrap_sub(screen_dim,1))) / TABLET_RAW_MAX;
-    return input_clamp(scaled, 0, input_wrap_sub(screen_dim,1));
+    if (raw <= 0)
+        return 0;
+    if (raw >= TABLET_RAW_MAX)
+        return input_wrap_sub(screen_dim, 1);
+    int32_t scaled =
+        input_i32((uint32_t)raw * (uint32_t)(input_wrap_sub(screen_dim, 1))) / TABLET_RAW_MAX;
+    return input_clamp(scaled, 0, input_wrap_sub(screen_dim, 1));
 }
-void shell_input_process_abs_tablet(ShellInputContext *ctx, int32_t raw_x, int32_t raw_y)
-{
+
+void shell_input_process_abs_tablet(ShellInputContext *ctx, int32_t raw_x, int32_t raw_y) {
     ABS_SAMPLE_COUNT = input_sat_add(ABS_SAMPLE_COUNT, 1);
-    int32_t x = shell_input_normalize_abs_coord(ctx, raw_x, input_dimension(&ctx->shell.apps->width));
-    int32_t y = shell_input_normalize_abs_coord(ctx, raw_y, input_dimension(&ctx->shell.apps->height));
+    int32_t x =
+        shell_input_normalize_abs_coord(ctx, raw_x, input_dimension(&ctx->shell.apps->width));
+    int32_t y =
+        shell_input_normalize_abs_coord(ctx, raw_y, input_dimension(&ctx->shell.apps->height));
     int32_t old_x = LAST_VALID_ABS_X, old_y = LAST_VALID_ABS_Y;
     unsigned buttons = (unsigned)(POINTER_BUTTONS & 7);
     bool accepted = true;
     const char *reason = "ok";
     if (process_abs_tablet__USB_TABLET_ABS_SCALE_BUDGET > 0) {
         --process_abs_tablet__USB_TABLET_ABS_SCALE_BUDGET;
-        sexos_line("[usb.tablet.abs.scale] x=%d y=%d screen_w=%d screen_h=%d ok=1", x, y, input_dimension(&ctx->shell.apps->width), input_dimension(&ctx->shell.apps->height));
+        sexos_line("[usb.tablet.abs.scale] x=%d y=%d screen_w=%d screen_h=%d ok=1", x, y,
+                   input_dimension(&ctx->shell.apps->width),
+                   input_dimension(&ctx->shell.apps->height));
     }
-    if (!ABS_SEEN_VALID && x <= 1 && y <= 1) { accepted = false; reason = "zero_init"; }
-    else if (!ABS_SEEN_VALID && x >= input_wrap_sub(input_dimension(&ctx->shell.apps->width),1) && y >= input_wrap_sub(input_dimension(&ctx->shell.apps->height),1)) { accepted = false; reason = "edge_before_ready"; }
-    else if (ABS_SEEN_VALID) {
+    if (!ABS_SEEN_VALID && x <= 1 && y <= 1) {
+        accepted = false;
+        reason = "zero_init";
+    } else if (!ABS_SEEN_VALID &&
+               x >= input_wrap_sub(input_dimension(&ctx->shell.apps->width), 1) &&
+               y >= input_wrap_sub(input_dimension(&ctx->shell.apps->height), 1)) {
+        accepted = false;
+        reason = "edge_before_ready";
+    } else if (ABS_SEEN_VALID) {
         uint32_t dx = input_abs(input_wrap_sub(x, old_x)), dy = input_abs(input_wrap_sub(y, old_y));
         bool held = (POINTER_BUTTONS & 1) != 0;
         if (x <= 40 && y <= 20 && !held && old_x >= 0 && old_y >= 0 &&
-            (dx > (uint32_t)input_dimension(&ctx->shell.apps->width) / 4 || dy > (uint32_t)input_dimension(&ctx->shell.apps->height) / 4)) {
-            accepted = false; reason = "corner_poison_after_ready";
-        } else if (x >= input_wrap_sub(input_dimension(&ctx->shell.apps->width),1) && y >= input_wrap_sub(input_dimension(&ctx->shell.apps->height),1) && !held && old_x >= 0 && old_y >= 0 &&
-            dx > (uint32_t)input_dimension(&ctx->shell.apps->width) / 3 && dy > (uint32_t)input_dimension(&ctx->shell.apps->height) / 3) {
-            accepted = false; reason = "edge_poison_after_ready";
-        } else if (x == old_x && y == old_y) { accepted = false; reason = "duplicate_sample"; }
+            (dx > (uint32_t)input_dimension(&ctx->shell.apps->width) / 4 ||
+             dy > (uint32_t)input_dimension(&ctx->shell.apps->height) / 4)) {
+            accepted = false;
+            reason = "corner_poison_after_ready";
+        } else if (x >= input_wrap_sub(input_dimension(&ctx->shell.apps->width), 1) &&
+                   y >= input_wrap_sub(input_dimension(&ctx->shell.apps->height), 1) && !held &&
+                   old_x >= 0 && old_y >= 0 &&
+                   dx > (uint32_t)input_dimension(&ctx->shell.apps->width) / 3 &&
+                   dy > (uint32_t)input_dimension(&ctx->shell.apps->height) / 3) {
+            accepted = false;
+            reason = "edge_poison_after_ready";
+        } else if (x == old_x && y == old_y) {
+            accepted = false;
+            reason = "duplicate_sample";
+        }
     }
     if (accepted) {
-        if (!ABS_SEEN_VALID) sexos_line("[usb.tablet.abs.init] x=%d y=%d ok=1", x, y);
+        if (!ABS_SEEN_VALID)
+            sexos_line("[usb.tablet.abs.init] x=%d y=%d ok=1", x, y);
         int32_t dx = old_x >= 0 ? input_wrap_sub(x, old_x) : 0;
         int32_t dy = old_y >= 0 ? input_wrap_sub(y, old_y) : 0;
         sexos_line("[usb.tablet.abs.delta] dx=%d dy=%d buttons=%u ok=1", dx, dy, buttons);
-        ABS_SEEN_VALID = true; LAST_VALID_ABS_X = x; LAST_VALID_ABS_Y = y;
-        POINTER_X = x; POINTER_Y = y; REAL_POINTER_SEEN = true;
-        if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED && process_abs_tablet__CURSOR_MOTION_BOUNDS_ABS_BUDGET > 0) {
+        ABS_SEEN_VALID = true;
+        LAST_VALID_ABS_X = x;
+        LAST_VALID_ABS_Y = y;
+        POINTER_X = x;
+        POINTER_Y = y;
+        REAL_POINTER_SEEN = true;
+        if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED &&
+            process_abs_tablet__CURSOR_MOTION_BOUNDS_ABS_BUDGET > 0) {
             --process_abs_tablet__CURSOR_MOTION_BOUNDS_ABS_BUDGET;
-            sexos_line("[cursor.motion.bounds] source=abs old_x=%d old_y=%d new_x=%d new_y=%d w=%d h=%d clamped=0 ok=1",
-                old_x, old_y, x, y, input_dimension(&ctx->shell.apps->width), input_dimension(&ctx->shell.apps->height));
+            sexos_line(
+                "[cursor.motion.bounds] source=abs old_x=%d old_y=%d new_x=%d new_y=%d w=%d h=%d clamped=0 ok=1",
+                old_x, old_y, x, y, input_dimension(&ctx->shell.apps->width),
+                input_dimension(&ctx->shell.apps->height));
         }
         shell_input_send_cursor_checked(ctx, POINTER_X, POINTER_Y, "abs");
         sexos_line("[usb.tablet.abs.pass] ok=1");
     } else {
         if (reason[0] == 'z' || reason[0] == 'd')
-            sexos_line("[usb.tablet.abs.no_motion] reason=raw_constant_or_no_stimulus actionable=1");
-        sexos_line("[shell.abs.reject] reason=%s raw_x=%d raw_y=%d last_x=%d last_y=%d", reason, raw_x, raw_y, old_x, old_y);
+            sexos_line(
+                "[usb.tablet.abs.no_motion] reason=raw_constant_or_no_stimulus actionable=1");
+        sexos_line("[shell.abs.reject] reason=%s raw_x=%d raw_y=%d last_x=%d last_y=%d", reason,
+                   raw_x, raw_y, old_x, old_y);
     }
-    sexos_line("[shell.abs.normalize] raw_x=%d raw_y=%d sx=%d sy=%d accepted=%u reason=%s", raw_x, raw_y, x, y, (unsigned)accepted, reason);
+    sexos_line("[shell.abs.normalize] raw_x=%d raw_y=%d sx=%d sy=%d accepted=%u reason=%s", raw_x,
+               raw_y, x, y, (unsigned)accepted, reason);
     if (process_abs_tablet__ABS_SAMPLE_BUDGET > 0) {
         --process_abs_tablet__ABS_SAMPLE_BUDGET;
-        sexos_line("[shell.abs.sample] raw_x=%d raw_y=%d sx=%d sy=%d dt=0 accepted=%u reason=%s", raw_x, raw_y, x, y, (unsigned)accepted, reason);
+        sexos_line("[shell.abs.sample] raw_x=%d raw_y=%d sx=%d sy=%d dt=0 accepted=%u reason=%s",
+                   raw_x, raw_y, x, y, (unsigned)accepted, reason);
     }
 }
 
-void shell_input_clamp_surface_size(ShellInputContext *ctx, int32_t x, int32_t y,
-    uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h)
-{
+void shell_input_clamp_surface_size(ShellInputContext *ctx, int32_t x, int32_t y, uint32_t w,
+                                    uint32_t h, uint32_t *out_w, uint32_t *out_h) {
     (void)ctx;
-    int32_t remaining_w = input_wrap_sub(input_dimension(&ctx->shell.apps->width), x), remaining_h = input_wrap_sub(input_dimension(&ctx->shell.apps->height), y);
-    uint32_t max_w = (uint32_t)(remaining_w > (int32_t)P.min_width ? remaining_w : (int32_t)P.min_width);
-    uint32_t max_h = (uint32_t)(remaining_h > (int32_t)P.min_height ? remaining_h : (int32_t)P.min_height);
+    int32_t remaining_w = input_wrap_sub(input_dimension(&ctx->shell.apps->width), x),
+            remaining_h = input_wrap_sub(input_dimension(&ctx->shell.apps->height), y);
+    uint32_t max_w =
+        (uint32_t)(remaining_w > (int32_t)P.min_width ? remaining_w : (int32_t)P.min_width);
+    uint32_t max_h =
+        (uint32_t)(remaining_h > (int32_t)P.min_height ? remaining_h : (int32_t)P.min_height);
     uint32_t width = w < max_w ? w : max_w, height = h < max_h ? h : max_h;
-    if (width < P.min_width) width = P.min_width;
-    if (height < P.min_height) height = P.min_height;
-    if (out_w) *out_w = width;
-    if (out_h) *out_h = height;
+    if (width < P.min_width)
+        width = P.min_width;
+    if (height < P.min_height)
+        height = P.min_height;
+    if (out_w)
+        *out_w = width;
+    if (out_h)
+        *out_h = height;
 }
+
 bool shell_input_get_surface_bounds(ShellInputContext *ctx, uint64_t sid, int32_t *out_x,
-    int32_t *out_y, uint32_t *out_w, uint32_t *out_h)
-{
-    for(size_t i=0;i<SHELL_APP_COUNT;++i){
-        if(!ctx->shell.apps->present[i])continue;
-        ShellAppCustody entry=ctx->shell.apps->entries[i];
-        if((entry.dead || entry.close_pending) && shell_custody_owns_surface(&entry,sid))return false;
+                                    int32_t *out_y, uint32_t *out_w, uint32_t *out_h) {
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        if (!ctx->shell.apps->present[i])
+            continue;
+        ShellAppCustody entry = ctx->shell.apps->entries[i];
+        if ((entry.dead || entry.close_pending) && shell_custody_owns_surface(&entry, sid))
+            return false;
     }
-    for(size_t i=0;i<SHELL_APP_COUNT;++i){
-        if(!ctx->shell.apps->present[i])continue;
-        ShellAppCustody entry=ctx->shell.apps->entries[i];
-        if(entry.surface==sid || shell_custody_is_successor_frame(&entry,sid)){
-            if(entry.dead || !entry.has_bounds)return false;
-            if(out_x){*out_x=entry.x;}
-            if(out_y){*out_y=entry.y;}
-            if(out_w){*out_w=entry.w;}
-            if(out_h){*out_h=entry.h;}
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        if (!ctx->shell.apps->present[i])
+            continue;
+        ShellAppCustody entry = ctx->shell.apps->entries[i];
+        if (entry.surface == sid || shell_custody_is_successor_frame(&entry, sid)) {
+            if (entry.dead || !entry.has_bounds)
+                return false;
+            if (out_x) {
+                *out_x = entry.x;
+            }
+            if (out_y) {
+                *out_y = entry.y;
+            }
+            if (out_w) {
+                *out_w = entry.w;
+            }
+            if (out_h) {
+                *out_h = entry.h;
+            }
             return true;
         }
     }
-    int32_t x = 0, y = 0; uint32_t w = 0, h = 0;
+    int32_t x = 0, y = 0;
+    uint32_t w = 0, h = 0;
     if (sid == SURFACE_ID_APP) {
-        if (WINDOWS_len < 2) return false;
-        x = WINDOWS[1].desc.x; y = WINDOWS[1].desc.y;
-        w = WINDOWS[1].desc.width; h = WINDOWS[1].desc.height;
-    } else if (sid == SURFACE_ID_STATIC) { x = SURFACE_101_X; y = SURFACE_101_Y; w = SURFACE_101_W; h = SURFACE_101_H; }
-    else if (sid == SURFACE_ID_TEST3) { x = SURFACE_102_X; y = SURFACE_102_Y; w = SURFACE_102_W; h = SURFACE_102_H; }
-    else if (sid == SURFACE_ID_TEST4) { x = SURFACE_103_X; y = SURFACE_103_Y; w = SURFACE_103_W; h = SURFACE_103_H; }
-    else if (sid == SURFACE_ID_LINEN) { x = SURFACE_200_X; y = SURFACE_200_Y; w = SURFACE_200_W; h = SURFACE_200_H; }
-    else if (sid == SURFACE_ID_QUIL) { x = SURFACE_201_X; y = SURFACE_201_Y; w = SURFACE_201_W; h = SURFACE_201_H; }
-    else if (sid == SURFACE_ID_MESH) { x = SURFACE_202_X; y = SURFACE_202_Y; w = SURFACE_202_W; h = SURFACE_202_H; }
-    else if (sid == SURFACE_ID_COLLAR) { x = SURFACE_203_X; y = SURFACE_203_Y; w = SURFACE_203_W; h = SURFACE_203_H; }
-    else if (sid == SURFACE_ID_BELL_PLACEHOLDER) { x = SURFACE_204_X; y = SURFACE_204_Y; w = SURFACE_204_W; h = SURFACE_204_H; }
-    else if (sid == SURFACE_ID_BROWSER) { x = SURFACE_205_X; y = SURFACE_205_Y; w = SURFACE_205_W; h = SURFACE_205_H; }
-    else if (sid == SURFACE_ID_SPINDLE) { x = SURFACE_0x99_X; y = SURFACE_0x99_Y; w = SURFACE_0x99_W; h = SURFACE_0x99_H; }
-    else return false;
-    if (out_x) *out_x = x;
-    if (out_y) *out_y = y;
-    if (out_w) *out_w = w;
-    if (out_h) *out_h = h;
+        if (WINDOWS_len < 2)
+            return false;
+        x = WINDOWS[1].desc.x;
+        y = WINDOWS[1].desc.y;
+        w = WINDOWS[1].desc.width;
+        h = WINDOWS[1].desc.height;
+    } else if (sid == SURFACE_ID_STATIC) {
+        x = SURFACE_101_X;
+        y = SURFACE_101_Y;
+        w = SURFACE_101_W;
+        h = SURFACE_101_H;
+    } else if (sid == SURFACE_ID_TEST3) {
+        x = SURFACE_102_X;
+        y = SURFACE_102_Y;
+        w = SURFACE_102_W;
+        h = SURFACE_102_H;
+    } else if (sid == SURFACE_ID_TEST4) {
+        x = SURFACE_103_X;
+        y = SURFACE_103_Y;
+        w = SURFACE_103_W;
+        h = SURFACE_103_H;
+    } else if (sid == SURFACE_ID_LINEN) {
+        x = SURFACE_200_X;
+        y = SURFACE_200_Y;
+        w = SURFACE_200_W;
+        h = SURFACE_200_H;
+    } else if (sid == SURFACE_ID_QUIL) {
+        x = SURFACE_201_X;
+        y = SURFACE_201_Y;
+        w = SURFACE_201_W;
+        h = SURFACE_201_H;
+    } else if (sid == SURFACE_ID_MESH) {
+        x = SURFACE_202_X;
+        y = SURFACE_202_Y;
+        w = SURFACE_202_W;
+        h = SURFACE_202_H;
+    } else if (sid == SURFACE_ID_COLLAR) {
+        x = SURFACE_203_X;
+        y = SURFACE_203_Y;
+        w = SURFACE_203_W;
+        h = SURFACE_203_H;
+    } else if (sid == SURFACE_ID_BELL_PLACEHOLDER) {
+        x = SURFACE_204_X;
+        y = SURFACE_204_Y;
+        w = SURFACE_204_W;
+        h = SURFACE_204_H;
+    } else if (sid == SURFACE_ID_BROWSER) {
+        x = SURFACE_205_X;
+        y = SURFACE_205_Y;
+        w = SURFACE_205_W;
+        h = SURFACE_205_H;
+    } else if (sid == SURFACE_ID_SPINDLE) {
+        x = SURFACE_0x99_X;
+        y = SURFACE_0x99_Y;
+        w = SURFACE_0x99_W;
+        h = SURFACE_0x99_H;
+    } else
+        return false;
+    if (out_x)
+        *out_x = x;
+    if (out_y)
+        *out_y = y;
+    if (out_w)
+        *out_w = w;
+    if (out_h)
+        *out_h = h;
     return true;
 }
-bool shell_input_surface_is_alive(ShellInputContext *ctx, uint64_t sid)
-{
-    for(size_t i=0;i<SHELL_APP_COUNT;++i){
-        if(!ctx->shell.apps->present[i])continue;
-        ShellAppCustody entry=ctx->shell.apps->entries[i];
-        if((entry.dead || entry.close_pending) && shell_custody_owns_surface(&entry,sid))return false;
+
+bool shell_input_surface_is_alive(ShellInputContext *ctx, uint64_t sid) {
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        if (!ctx->shell.apps->present[i])
+            continue;
+        ShellAppCustody entry = ctx->shell.apps->entries[i];
+        if ((entry.dead || entry.close_pending) && shell_custody_owns_surface(&entry, sid))
+            return false;
     }
-    for(size_t i=0;i<SHELL_APP_COUNT;++i){
-        if(!ctx->shell.apps->present[i])continue;
-        ShellAppCustody entry=ctx->shell.apps->entries[i];
-        if(entry.surface==sid || shell_custody_is_successor_frame(&entry,sid))
-            return !entry.dead && entry.has_bounds && shell_input_peer_surface_is_lifecycle_live(ctx,sid);
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        if (!ctx->shell.apps->present[i])
+            continue;
+        ShellAppCustody entry = ctx->shell.apps->entries[i];
+        if (entry.surface == sid || shell_custody_is_successor_frame(&entry, sid))
+            return !entry.dead && entry.has_bounds &&
+                   shell_input_peer_surface_is_lifecycle_live(ctx, sid);
     }
-    if (sid == SURFACE_ID_APP) return SURFACE_100_ALIVE;
-    if (sid == SURFACE_ID_STATIC) return SURFACE_101_ALIVE;
-    if (sid == SURFACE_ID_TEST3) return SURFACE_102_ALIVE;
-    if (sid == SURFACE_ID_TEST4) return SURFACE_103_ALIVE;
+    if (sid == SURFACE_ID_APP)
+        return SURFACE_100_ALIVE;
+    if (sid == SURFACE_ID_STATIC)
+        return SURFACE_101_ALIVE;
+    if (sid == SURFACE_ID_TEST3)
+        return SURFACE_102_ALIVE;
+    if (sid == SURFACE_ID_TEST4)
+        return SURFACE_103_ALIVE;
     if (sid == SURFACE_ID_LINEN || sid == SURFACE_ID_QUIL || sid == SURFACE_ID_MESH ||
-        sid == SURFACE_ID_COLLAR || sid == SURFACE_ID_BELL_PLACEHOLDER || sid == SURFACE_ID_SPINDLE || sid == SURFACE_ID_CURSOR) return true;
-    if (sid == SURFACE_ID_LAUNCHER) return LAUNCHER_ACTIVE;
-    if (sid == SURFACE_ID_STATUS) return STATUS_ACTIVE;
-    if (sid == SURFACE_ID_CLOCK) return CLOCK_ACTIVE;
-    if (sid == SURFACE_ID_BELL) return BELL_ACTIVE;
-    if (sid == SURFACE_ID_SCENE_SETTINGS) return SCENE_SETTINGS_ACTIVE;
+        sid == SURFACE_ID_COLLAR || sid == SURFACE_ID_BELL_PLACEHOLDER ||
+        sid == SURFACE_ID_SPINDLE || sid == SURFACE_ID_CURSOR)
+        return true;
+    if (sid == SURFACE_ID_LAUNCHER)
+        return LAUNCHER_ACTIVE;
+    if (sid == SURFACE_ID_STATUS)
+        return STATUS_ACTIVE;
+    if (sid == SURFACE_ID_CLOCK)
+        return CLOCK_ACTIVE;
+    if (sid == SURFACE_ID_BELL)
+        return BELL_ACTIVE;
+    if (sid == SURFACE_ID_SCENE_SETTINGS)
+        return SCENE_SETTINGS_ACTIVE;
     sexos_line("[shell.surface.unknown.reject] surface_is_alive id=%llu", (unsigned long long)sid);
     return false;
 }
-bool shell_input_point_in_surface(ShellInputContext *ctx, int32_t px, int32_t py, uint64_t sid)
-{
+
+bool shell_input_point_in_surface(ShellInputContext *ctx, int32_t px, int32_t py, uint64_t sid) {
     if (!shell_input_surface_is_alive(ctx, sid)) {
         sexos_line("[shell.surface.dead.skip] id=%llu reason=inactive", (unsigned long long)sid);
         return false;
     }
-    for(size_t i=0;i<SHELL_APP_COUNT;++i){
-        if(!ctx->shell.apps->present[i])continue;
-        ShellAppCustody entry=ctx->shell.apps->entries[i];
-        if(entry.surface==sid || shell_custody_is_successor_frame(&entry,sid)){
-            int32_t x=0,y=0;uint32_t w=0,h=0;
-            return shell_input_get_surface_bounds(ctx,sid,&x,&y,&w,&h) && px>=x && py>=y &&
-                (int64_t)px<(int64_t)x+w && (int64_t)py<(int64_t)y+h;
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        if (!ctx->shell.apps->present[i])
+            continue;
+        ShellAppCustody entry = ctx->shell.apps->entries[i];
+        if (entry.surface == sid || shell_custody_is_successor_frame(&entry, sid)) {
+            int32_t x = 0, y = 0;
+            uint32_t w = 0, h = 0;
+            return shell_input_get_surface_bounds(ctx, sid, &x, &y, &w, &h) && px >= x && py >= y &&
+                   (int64_t)px < (int64_t)x + w && (int64_t)py < (int64_t)y + h;
         }
     }
-    int32_t x = 0, y = 0; uint32_t w = 0, h = 0;
+    int32_t x = 0, y = 0;
+    uint32_t w = 0, h = 0;
     bool focusable = shell_input_get_surface_bounds(ctx, sid, &x, &y, &w, &h);
-    if (!focusable && sid == SURFACE_ID_APP) focusable = true;
+    if (!focusable && sid == SURFACE_ID_APP)
+        focusable = true;
     if (!focusable) {
         if (sid == SURFACE_ID_CURSOR || sid == SURFACE_ID_LAUNCHER || sid == SURFACE_ID_STATUS ||
             sid == SURFACE_ID_CLOCK || sid == SURFACE_ID_BELL)
-            sexos_line("[shell.surface.nonfocusable.reject] point_in_surface id=0x%llx", (unsigned long long)sid);
-        else sexos_line("[shell.surface.unknown.reject] point_in_surface id=%llu", (unsigned long long)sid);
+            sexos_line("[shell.surface.nonfocusable.reject] point_in_surface id=0x%llx",
+                       (unsigned long long)sid);
+        else
+            sexos_line("[shell.surface.unknown.reject] point_in_surface id=%llu",
+                       (unsigned long long)sid);
         return false;
     }
-    return px >= x && px < input_wrap_add(x, input_i32(w)) && py >= y && py < input_wrap_add(y, input_i32(h));
+    return px >= x && px < input_wrap_add(x, input_i32(w)) && py >= y &&
+           py < input_wrap_add(y, input_i32(h));
 }
-void shell_input_record_tombstone_event(ShellInputContext *ctx, uint64_t sid,
-    uint8_t old_state, uint8_t new_state, uint8_t reason)
-{
-    uint64_t generation = 0; uint32_t frame = 0;
+
+void shell_input_record_tombstone_event(ShellInputContext *ctx, uint64_t sid, uint8_t old_state,
+                                        uint8_t new_state, uint8_t reason) {
+    uint64_t generation = 0;
+    uint32_t frame = 0;
     (void)shell_input_peer_surface_generation(ctx, sid, &generation);
     (void)shell_input_peer_frame_for_surface(ctx, sid, &frame);
     size_t index = TOMBSTONE_RING_NEXT;
-    if (index >= TOMBSTONE_RING_SIZE) { sexos_fail(); for (;;) {} }
-    TOMBSTONE_RING[index] = (TombstoneEvent){.present = true, .surface_id = sid,
-        .generation = generation, .old_state = old_state, .new_state = new_state,
-        .reason = reason, .frame_id = frame, .tab_index = 0};
+    if (index >= TOMBSTONE_RING_SIZE) {
+        sexos_fail();
+        for (;;) {
+        }
+    }
+    TOMBSTONE_RING[index] = (TombstoneEvent){.present = true,
+                                             .surface_id = sid,
+                                             .generation = generation,
+                                             .old_state = old_state,
+                                             .new_state = new_state,
+                                             .reason = reason,
+                                             .frame_id = frame,
+                                             .tab_index = 0};
     TOMBSTONE_RING_NEXT = (index + 1) % TOMBSTONE_RING_SIZE;
-    write_str("[tombstone.event.record] sid="); write_u64_dec(sid);
-    write_str(" old="); write_debug_lifecycle_state(old_state);
-    write_str(" new="); write_debug_lifecycle_state(new_state);
-    write_str(" reason="); write_debug_tombstone_reason(reason);
-    write_str(" gen="); write_u64_dec(generation); write_str("\n");
-    write_str("[lifecycle.tombstone.record] sid="); write_u64_dec(sid);
-    write_str(" old="); write_debug_lifecycle_state(old_state);
-    write_str(" new="); write_debug_lifecycle_state(new_state);
-    write_str(" reason="); write_debug_tombstone_reason(reason);
-    write_str(" gen="); write_u64_dec(generation); write_str("\n");
+    write_str("[tombstone.event.record] sid=");
+    write_u64_dec(sid);
+    write_str(" old=");
+    write_debug_lifecycle_state(old_state);
+    write_str(" new=");
+    write_debug_lifecycle_state(new_state);
+    write_str(" reason=");
+    write_debug_tombstone_reason(reason);
+    write_str(" gen=");
+    write_u64_dec(generation);
+    write_str("\n");
+    write_str("[lifecycle.tombstone.record] sid=");
+    write_u64_dec(sid);
+    write_str(" old=");
+    write_debug_lifecycle_state(old_state);
+    write_str(" new=");
+    write_debug_lifecycle_state(new_state);
+    write_str(" reason=");
+    write_debug_tombstone_reason(reason);
+    write_str(" gen=");
+    write_u64_dec(generation);
+    write_str("\n");
 }
-bool shell_input_is_tombstoned(ShellInputContext *ctx, uint64_t sid)
-{
+
+bool shell_input_is_tombstoned(ShellInputContext *ctx, uint64_t sid) {
     for (size_t i = 0; i < TOMBSTONE_RING_SIZE; ++i)
-        if (TOMBSTONE_RING[i].present && TOMBSTONE_RING[i].surface_id == sid) return true;
+        if (TOMBSTONE_RING[i].present && TOMBSTONE_RING[i].surface_id == sid)
+            return true;
     return false;
 }
-void shell_input_clear_focus_if_dead(ShellInputContext *ctx)
-{
+
+void shell_input_clear_focus_if_dead(ShellInputContext *ctx) {
     uint64_t focused = FOCUSED_SURFACE_ID;
-    if (!focused || (shell_input_surface_is_alive(ctx, focused) && shell_input_peer_surface_is_lifecycle_focusable(ctx, focused))) return;
+    if (!focused || (shell_input_surface_is_alive(ctx, focused) &&
+                     shell_input_peer_surface_is_lifecycle_focusable(ctx, focused)))
+        return;
     sexos_line("[shell.focus.clear_dead] sid=%llu reason=invalid", (unsigned long long)focused);
     shell_input_peer_surface_input_lifetime_mark_dead_clear(ctx, focused);
     shell_input_peer_surface_input_lifetime_try_done(ctx);
     if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED) {
-        sexos_line("[shell.interact.stage.dead_target_guard] kind=focus target=%llu action=clear ok=1", (unsigned long long)focused);
-        shell_input_peer_shell_interaction_contract_mark_stage(ctx, SHELL_INTERACTION_STAGE_DEAD_GUARD);
+        sexos_line(
+            "[shell.interact.stage.dead_target_guard] kind=focus target=%llu action=clear ok=1",
+            (unsigned long long)focused);
+        shell_input_peer_shell_interaction_contract_mark_stage(ctx,
+                                                               SHELL_INTERACTION_STAGE_DEAD_GUARD);
         shell_input_peer_shell_interaction_contract_try_done(ctx);
     }
-    sexos_line("[silk.lifecycle.focus.clear_dead] sid=%llu reason=surface_dead_or_unfocusable", (unsigned long long)focused);
+    sexos_line("[silk.lifecycle.focus.clear_dead] sid=%llu reason=surface_dead_or_unfocusable",
+               (unsigned long long)focused);
     if (!shell_input_surface_is_alive(ctx, focused)) {
         sexos_line("[focus.ref.clear] id=%llu reason=dead", (unsigned long long)focused);
         uint8_t state = LIFECYCLE_ALLOCATED;
@@ -487,21 +699,30 @@ void shell_input_clear_focus_if_dead(ShellInputContext *ctx)
     } else {
         uint8_t state = 0;
         bool present = shell_input_peer_lifecycle_state(ctx, focused, &state);
-        write_str("[focus.ref.clear] id="); write_u64_dec(focused);
+        write_str("[focus.ref.clear] id=");
+        write_u64_dec(focused);
         write_str(" reason=not_focusable lifecycle=");
         if (present) {
-            write_str("Some("); write_debug_lifecycle_state(state); write_str(")");
-        } else write_str("None");
+            write_str("Some(");
+            write_debug_lifecycle_state(state);
+            write_str(")");
+        } else
+            write_str("None");
         write_str("\n");
     }
-    const uint64_t order[9] = {SURFACE_ID_QUIL, SURFACE_ID_MESH, SURFACE_ID_COLLAR,
-        SURFACE_ID_BELL_PLACEHOLDER, SURFACE_ID_LINEN, SURFACE_ID_TEST4, SURFACE_ID_TEST3, SURFACE_ID_STATIC, SURFACE_ID_APP};
+    const uint64_t order[9] = {
+        SURFACE_ID_QUIL,  SURFACE_ID_MESH,  SURFACE_ID_COLLAR, SURFACE_ID_BELL_PLACEHOLDER,
+        SURFACE_ID_LINEN, SURFACE_ID_TEST4, SURFACE_ID_TEST3,  SURFACE_ID_STATIC,
+        SURFACE_ID_APP};
     bool found = false;
     for (size_t i = 0; i < 9; ++i) {
         uint64_t sid = order[i];
-        if (sid == focused) continue;
-        if (shell_input_surface_is_alive(ctx, sid) && shell_input_peer_surface_is_lifecycle_focusable(ctx, sid)) {
-            if (shell_input_peer_try_set_focus(ctx, sid)) found = true;
+        if (sid == focused)
+            continue;
+        if (shell_input_surface_is_alive(ctx, sid) &&
+            shell_input_peer_surface_is_lifecycle_focusable(ctx, sid)) {
+            if (shell_input_peer_try_set_focus(ctx, sid))
+                found = true;
             break;
         }
     }
@@ -510,16 +731,22 @@ void shell_input_clear_focus_if_dead(ShellInputContext *ctx)
         sexos_line("[shell.surface.focus.clear.none]");
     }
 }
-void shell_input_clear_drag_if_dead(ShellInputContext *ctx)
-{
-    if (INTERACTION.tag != INTERACTION_DRAGGING) return;
+
+void shell_input_clear_drag_if_dead(ShellInputContext *ctx) {
+    if (INTERACTION.tag != INTERACTION_DRAGGING)
+        return;
     uint64_t sid = INTERACTION.surface_id;
-    if (shell_input_surface_is_alive(ctx, sid) && shell_input_peer_surface_is_lifecycle_focusable(ctx, sid)) return;
+    if (shell_input_surface_is_alive(ctx, sid) &&
+        shell_input_peer_surface_is_lifecycle_focusable(ctx, sid))
+        return;
     sexos_line("[shell.drag.clear_dead] sid=%llu reason=invalid", (unsigned long long)sid);
     sexos_line("[shell.surface.drag.cancel.dead] id=%llu", (unsigned long long)sid);
     if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED) {
-        sexos_line("[shell.interact.stage.dead_target_guard] kind=drag target=%llu action=cancel ok=1", (unsigned long long)sid);
-        shell_input_peer_shell_interaction_contract_mark_stage(ctx, SHELL_INTERACTION_STAGE_DEAD_GUARD);
+        sexos_line(
+            "[shell.interact.stage.dead_target_guard] kind=drag target=%llu action=cancel ok=1",
+            (unsigned long long)sid);
+        shell_input_peer_shell_interaction_contract_mark_stage(ctx,
+                                                               SHELL_INTERACTION_STAGE_DEAD_GUARD);
         shell_input_peer_shell_interaction_contract_try_done(ctx);
     }
     uint8_t state = LIFECYCLE_ALLOCATED;
@@ -527,25 +754,36 @@ void shell_input_clear_drag_if_dead(ShellInputContext *ctx)
     shell_input_record_tombstone_event(ctx, sid, state, state, TOMBSTONE_DRAG_CANCELLED);
     shell_input_peer_try_transition(ctx, (InteractionState){.tag = INTERACTION_IDLE});
 }
-void shell_input_clear_hover_if_dead(ShellInputContext *ctx)
-{
-    if (!HOVERED_FRAME_ID) return;
+
+void shell_input_clear_hover_if_dead(ShellInputContext *ctx) {
+    if (!HOVERED_FRAME_ID)
+        return;
     uint64_t sid = 0;
-    if (!shell_input_peer_active_surface_for_frame(ctx, HOVERED_FRAME_ID, &sid)) return;
-    if (shell_input_surface_is_alive(ctx, sid) && !shell_input_is_tombstoned(ctx, sid)) return;
-    sexos_line("[shell.hover.clear.dead] frame=%u surface=%llu reason=dead", HOVERED_FRAME_ID, (unsigned long long)sid);
+    if (!shell_input_peer_active_surface_for_frame(ctx, HOVERED_FRAME_ID, &sid))
+        return;
+    if (shell_input_surface_is_alive(ctx, sid) && !shell_input_is_tombstoned(ctx, sid))
+        return;
+    sexos_line("[shell.hover.clear.dead] frame=%u surface=%llu reason=dead", HOVERED_FRAME_ID,
+               (unsigned long long)sid);
     if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED) {
-        sexos_line("[shell.interact.stage.dead_target_guard] kind=hover target=%llu action=clear ok=1", (unsigned long long)sid);
-        shell_input_peer_shell_interaction_contract_mark_stage(ctx, SHELL_INTERACTION_STAGE_DEAD_GUARD);
+        sexos_line(
+            "[shell.interact.stage.dead_target_guard] kind=hover target=%llu action=clear ok=1",
+            (unsigned long long)sid);
+        shell_input_peer_shell_interaction_contract_mark_stage(ctx,
+                                                               SHELL_INTERACTION_STAGE_DEAD_GUARD);
         shell_input_peer_shell_interaction_contract_try_done(ctx);
     }
-    HOVERED_FRAME_ID = 0; HOVER_KIND = HOVER_NONE; HOVERED_FRAME_LIGHT = FRAME_LIGHT_NONE;
+    HOVERED_FRAME_ID = 0;
+    HOVER_KIND = HOVER_NONE;
+    HOVERED_FRAME_LIGHT = FRAME_LIGHT_NONE;
 }
-void shell_input_clear_drag_if_wrong_scene(ShellInputContext *ctx)
-{
-    if (INTERACTION.tag != INTERACTION_DRAGGING) return;
+
+void shell_input_clear_drag_if_wrong_scene(ShellInputContext *ctx) {
+    if (INTERACTION.tag != INTERACTION_DRAGGING)
+        return;
     uint64_t sid = INTERACTION.surface_id;
-    if (shell_input_peer_surface_in_active_scene(ctx, sid)) return;
+    if (shell_input_peer_surface_in_active_scene(ctx, sid))
+        return;
     if (clear_drag_if_wrong_scene__DRAG_SCENE_BUDGET > 0) {
         --clear_drag_if_wrong_scene__DRAG_SCENE_BUDGET;
         sexos_line("[shell.scene.drag.clear.wrong-scene] id=%llu", (unsigned long long)sid);
@@ -553,15 +791,15 @@ void shell_input_clear_drag_if_wrong_scene(ShellInputContext *ctx)
     shell_input_peer_try_transition(ctx, (InteractionState){.tag = INTERACTION_IDLE});
 }
 
-void shell_input_emit_snapshot(ShellInputContext *ctx)
-{
+void shell_input_emit_snapshot(ShellInputContext *ctx) {
     size_t count = 0;
     size_t windows = WINDOWS_len < 64 ? WINDOWS_len : 64;
     uint64_t focused = FOCUS_ID;
     /* Stable partition keeps the focused window after the others. */
     for (unsigned pass = 0; pass < 2; ++pass) {
         for (size_t i = 0; i < windows && count < 16; ++i) {
-            if ((WINDOWS[i].desc.window_id == focused) != (pass == 1)) continue;
+            if ((WINDOWS[i].desc.window_id == focused) != (pass == 1))
+                continue;
             SNAPSHOT[count] = WINDOWS[i].desc;
             SNAPSHOT[count].z_index = (uint32_t)count;
             SNAPSHOT[count].focus_state = WINDOWS[i].desc.window_id == focused ? 1 : 0;
@@ -571,141 +809,177 @@ void shell_input_emit_snapshot(ShellInputContext *ctx)
     shell_input_send_snapshot(SNAPSHOT, count);
     if (windows > 1 && SURFACE_100_ALIVE)
         (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_APP,
-            (uint64_t)(int64_t)WINDOWS[1].desc.x, (uint64_t)(int64_t)WINDOWS[1].desc.y);
+                             (uint64_t)(int64_t)WINDOWS[1].desc.x,
+                             (uint64_t)(int64_t)WINDOWS[1].desc.y);
     if (SURFACE_101_ALIVE)
         (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_STATIC,
-            (uint64_t)(int64_t)SURFACE_101_X, (uint64_t)(int64_t)SURFACE_101_Y);
+                             (uint64_t)(int64_t)SURFACE_101_X, (uint64_t)(int64_t)SURFACE_101_Y);
     if (SURFACE_102_ALIVE)
         (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_TEST3,
-            (uint64_t)(int64_t)SURFACE_102_X, (uint64_t)(int64_t)SURFACE_102_Y);
+                             (uint64_t)(int64_t)SURFACE_102_X, (uint64_t)(int64_t)SURFACE_102_Y);
     if (SURFACE_103_ALIVE)
         (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_TEST4,
-            (uint64_t)(int64_t)SURFACE_103_X, (uint64_t)(int64_t)SURFACE_103_Y);
+                             (uint64_t)(int64_t)SURFACE_103_X, (uint64_t)(int64_t)SURFACE_103_Y);
     (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_LINEN,
-        (uint64_t)(int64_t)SURFACE_200_X, (uint64_t)(int64_t)SURFACE_200_Y);
+                         (uint64_t)(int64_t)SURFACE_200_X, (uint64_t)(int64_t)SURFACE_200_Y);
     (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_QUIL,
-        (uint64_t)(int64_t)SURFACE_201_X, (uint64_t)(int64_t)SURFACE_201_Y);
+                         (uint64_t)(int64_t)SURFACE_201_X, (uint64_t)(int64_t)SURFACE_201_Y);
     (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_MESH,
-        (uint64_t)(int64_t)SURFACE_202_X, (uint64_t)(int64_t)SURFACE_202_Y);
+                         (uint64_t)(int64_t)SURFACE_202_X, (uint64_t)(int64_t)SURFACE_202_Y);
     (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_COLLAR,
-        (uint64_t)(int64_t)SURFACE_203_X, (uint64_t)(int64_t)SURFACE_203_Y);
+                         (uint64_t)(int64_t)SURFACE_203_X, (uint64_t)(int64_t)SURFACE_203_Y);
     (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_UPDATE, SURFACE_ID_BELL_PLACEHOLDER,
-        (uint64_t)(int64_t)SURFACE_204_X, (uint64_t)(int64_t)SURFACE_204_Y);
+                         (uint64_t)(int64_t)SURFACE_204_X, (uint64_t)(int64_t)SURFACE_204_Y);
 }
 
-static uint32_t input_frame(ShellInputContext *ctx, uint64_t sid)
-{
+static uint32_t input_frame(ShellInputContext *ctx, uint64_t sid) {
     uint32_t frame = 0;
     (void)shell_input_peer_frame_for_surface(ctx, sid, &frame);
     return frame;
 }
-static void input_stage(ShellInputContext *ctx, uint8_t stage)
-{
+
+static void input_stage(ShellInputContext *ctx, uint8_t stage) {
     shell_input_peer_shell_interaction_contract_mark_stage(ctx, stage);
     shell_input_peer_shell_interaction_contract_try_done(ctx);
 }
-static void input_key_liveness(ShellInputContext *ctx, uint64_t sid, uint8_t routed)
-{
+
+static void input_key_liveness(ShellInputContext *ctx, uint64_t sid, uint8_t routed) {
     uint8_t live = sid == 0 ? 0 : (uint8_t)shell_input_surface_is_alive(ctx, sid);
     shell_input_peer_surface_input_lifetime_mark_key_route(ctx, sid, live, routed, live);
     shell_input_peer_surface_input_lifetime_try_done(ctx);
 }
-static bool input_extra_action(ShellInputContext *ctx, uint8_t action, uint64_t value)
-{
+
+static bool input_extra_action(ShellInputContext *ctx, uint8_t action, uint64_t value) {
     if (action == ACTION_RESTORE_MINIMIZED) {
         uint32_t frame = 0;
-        return shell_input_peer_first_minimized_frame_id(ctx, &frame) && shell_input_peer_restore_minimized_frame(ctx, frame);
+        return shell_input_peer_first_minimized_frame_id(ctx, &frame) &&
+               shell_input_peer_restore_minimized_frame(ctx, frame);
     }
-    if (action == ACTION_FOCUS_100) return value == 1 && shell_input_peer_try_set_focus(ctx, SURFACE_ID_APP);
-    if (action == ACTION_TOGGLE_LINEN) return shell_input_peer_toggle_linen(ctx);
+    if (action == ACTION_FOCUS_100)
+        return value == 1 && shell_input_peer_try_set_focus(ctx, SURFACE_ID_APP);
+    if (action == ACTION_TOGGLE_LINEN)
+        return shell_input_peer_toggle_linen(ctx);
     if (action == ACTION_SELECT_NEXT_LINEN_OBJECT || action == ACTION_SELECT_PREV_LINEN_OBJECT) {
-        if (FOCUSED_SURFACE_ID != SURFACE_ID_LINEN || value != 1) return false;
-        if (action == ACTION_SELECT_NEXT_LINEN_OBJECT) shell_input_peer_linen_select_next_object(ctx);
-        else shell_input_peer_linen_select_prev_object(ctx);
+        if (FOCUSED_SURFACE_ID != SURFACE_ID_LINEN || value != 1)
+            return false;
+        if (action == ACTION_SELECT_NEXT_LINEN_OBJECT)
+            shell_input_peer_linen_select_next_object(ctx);
+        else
+            shell_input_peer_linen_select_prev_object(ctx);
         shell_input_peer_linen_render_object_list(ctx);
-        sexos_line("[linen.nav.select.ok] object=%llu path=drain", (unsigned long long)SELECTED_LINEN_OBJECT_ID);
+        sexos_line("[linen.nav.select.ok] object=%llu path=drain",
+                   (unsigned long long)SELECTED_LINEN_OBJECT_ID);
         return true;
     }
     if (action == ACTION_OPEN_OBJECT_IN_QUIL) {
-        if (FOCUSED_SURFACE_ID != SURFACE_ID_LINEN || value != 1) return false;
+        if (FOCUSED_SURFACE_ID != SURFACE_ID_LINEN || value != 1)
+            return false;
         uint64_t object = shell_input_peer_linen_selected_object_id(ctx);
-        if (!object || !shell_input_peer_open_linen_object_in_quil(ctx, object)) return false;
+        if (!object || !shell_input_peer_open_linen_object_in_quil(ctx, object))
+            return false;
         sexos_line("[linen.quil.open.ok] object=%llu path=drain", (unsigned long long)object);
         return true;
     }
     if (action == ACTION_TOGGLE_QUIL) {
         if (F9_TOGGLE_DOWN) {
-            sexos_line("[shell.key.repeat.suppressed] scancode=0x43 action=ToggleQuil path=handle_hid_event_drain");
+            sexos_line(
+                "[shell.key.repeat.suppressed] scancode=0x43 action=ToggleQuil path=handle_hid_event_drain");
             return false;
         }
         F9_TOGGLE_DOWN = true;
-        sexos_line("[shell.key.edge.accept] scancode=0x43 action=ToggleQuil path=handle_hid_event_drain");
+        sexos_line(
+            "[shell.key.edge.accept] scancode=0x43 action=ToggleQuil path=handle_hid_event_drain");
         return shell_input_peer_toggle_quil(ctx);
     }
-    if (action == ACTION_TOGGLE_MESH) return shell_input_peer_toggle_mesh(ctx);
-    if (action == ACTION_TOGGLE_COLLAR) return shell_input_peer_toggle_collar(ctx);
-    if (action == ACTION_TOGGLE_BELL) return shell_input_peer_toggle_bell(ctx);
-    if (action == ACTION_TOGGLE_SPINDLE) return shell_input_peer_toggle_spindle(ctx);
-    if (action == ACTION_TOGGLE_ATLAS) { shell_input_peer_atlas_toggle(ctx); return true; }
-    if (action == ACTION_TOGGLE_COMMAND_PALETTE) { shell_input_peer_toggle_command_palette(ctx); return true; }
+    if (action == ACTION_TOGGLE_MESH)
+        return shell_input_peer_toggle_mesh(ctx);
+    if (action == ACTION_TOGGLE_COLLAR)
+        return shell_input_peer_toggle_collar(ctx);
+    if (action == ACTION_TOGGLE_BELL)
+        return shell_input_peer_toggle_bell(ctx);
+    if (action == ACTION_TOGGLE_SPINDLE)
+        return shell_input_peer_toggle_spindle(ctx);
+    if (action == ACTION_TOGGLE_ATLAS) {
+        shell_input_peer_atlas_toggle(ctx);
+        return true;
+    }
+    if (action == ACTION_TOGGLE_COMMAND_PALETTE) {
+        shell_input_peer_toggle_command_palette(ctx);
+        return true;
+    }
     return false;
 }
-static void input_release_drag(ShellInputContext *ctx, uint64_t sid, bool dragging)
-{
+
+static void input_release_drag(ShellInputContext *ctx, uint64_t sid, bool dragging) {
     if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED) {
         unsigned live = dragging ? (unsigned)shell_input_surface_is_alive(ctx, sid) : 1;
-        sexos_line("[shell.interact.stage.drag_capture] phase=release target=%llu live=%u capture=0 release=1 ok=1", (unsigned long long)sid, live);
+        sexos_line(
+            "[shell.interact.stage.drag_capture] phase=release target=%llu live=%u capture=0 release=1 ok=1",
+            (unsigned long long)sid, live);
         input_stage(ctx, SHELL_INTERACTION_STAGE_DRAG);
     }
     if (CLICK_DRAG_PROOF_ENABLED) {
         if (!DRAG_CAPTURE_MOVE_SEEN) {
             unsigned live = dragging ? (unsigned)shell_input_surface_is_alive(ctx, sid) : 1;
-            sexos_line("[drag.capture.move] target=%llu live=%u dx=0 dy=0 ok=1", (unsigned long long)sid, live);
+            sexos_line("[drag.capture.move] target=%llu live=%u dx=0 dy=0 ok=1",
+                       (unsigned long long)sid, live);
         }
-        sexos_line("[drag.capture.release] target=%llu released=1 capture_after=0 ok=1", (unsigned long long)sid);
+        sexos_line("[drag.capture.release] target=%llu released=1 capture_after=0 ok=1",
+                   (unsigned long long)sid);
         sexos_line("[drag.proof.done] ok=1");
         DRAG_CAPTURE_MOVE_SEEN = false;
     }
 }
-static void input_palette_key(ShellInputContext *ctx, uint8_t code)
-{
-    if (code == 0x24) shell_input_peer_palette_select_next(ctx);
-    else if (code == 0x25) shell_input_peer_palette_select_prev(ctx);
+
+static void input_palette_key(ShellInputContext *ctx, uint8_t code) {
+    if (code == 0x24)
+        shell_input_peer_palette_select_next(ctx);
+    else if (code == 0x25)
+        shell_input_peer_palette_select_prev(ctx);
     else if (code == 0x1c) {
         if (!COMMAND_PALETTE_DAILY_PROOF_ACTIVE) {
             sexos_line("[command_palette.drain.execute] scancode=0x1C");
-            if(shell_input_peer_palette_execute_selected(ctx))shell_input_peer_toggle_command_palette(ctx);
-        } else sexos_line("[command_palette.drain.execute.skip] reason=daily_proof_active");
+            if (shell_input_peer_palette_execute_selected(ctx))
+                shell_input_peer_toggle_command_palette(ctx);
+        } else
+            sexos_line("[command_palette.drain.execute.skip] reason=daily_proof_active");
     } else {
         if (!COMMAND_PALETTE_DAILY_PROOF_ACTIVE) {
             sexos_line("[command_palette.drain.close] scancode=0x%x", (unsigned)code);
             shell_input_peer_toggle_command_palette(ctx);
-        } else sexos_line("[command_palette.drain.close.skip] scancode=0x%x reason=daily_proof_active", (unsigned)code);
+        } else
+            sexos_line("[command_palette.drain.close.skip] scancode=0x%x reason=daily_proof_active",
+                       (unsigned)code);
     }
     return;
 }
 
-static bool input_keyboard_cursor(ShellInputContext *ctx, uint8_t code, uint64_t value)
-{
+static bool input_keyboard_cursor(ShellInputContext *ctx, uint8_t code, uint64_t value) {
     if (handle_hid_event__KEYTRACE_BUDGET > 0) {
         --handle_hid_event__KEYTRACE_BUDGET;
-        sexos_line("[keyboard.cursor.debug.keytrace] key=0x%02x pressed=%llu ok=1", (unsigned)code, (unsigned long long)value);
+        sexos_line("[keyboard.cursor.debug.keytrace] key=0x%02x pressed=%llu ok=1", (unsigned)code,
+                   (unsigned long long)value);
     }
-    if (code == 0x4b || code == 0x4d || code == 0x48 || code == 0x50 || code == 0x11 || code == 0x1e || code == 0x1f || code == 0x20) {
+    if (code == 0x4b || code == 0x4d || code == 0x48 || code == 0x50 || code == 0x11 ||
+        code == 0x1e || code == 0x1f || code == 0x20) {
         if (!KEYBOARD_CURSOR_DEBUG_BEGUN) {
-            sexos_line("[keyboard.cursor.debug.begin] ok=1"); KEYBOARD_CURSOR_DEBUG_BEGUN = true;
+            sexos_line("[keyboard.cursor.debug.begin] ok=1");
+            KEYBOARD_CURSOR_DEBUG_BEGUN = true;
         }
         int32_t x = POINTER_X, y = POINTER_Y;
         int32_t dx = code == 0x4b || code == 0x1e ? -32 : code == 0x4d || code == 0x20 ? 32 : 0;
         int32_t dy = code == 0x48 || code == 0x11 ? -32 : code == 0x50 || code == 0x1f ? 32 : 0;
-        shell_input_send_cursor_checked(ctx, input_wrap_add(x, dx), input_wrap_add(y, dy), "keyboard_cursor_debug");
+        shell_input_send_cursor_checked(ctx, input_wrap_add(x, dx), input_wrap_add(y, dy),
+                                        "keyboard_cursor_debug");
         if (KEYBOARD_CURSOR_MOVE_BUDGET > 0) {
             --KEYBOARD_CURSOR_MOVE_BUDGET;
-            sexos_line("[keyboard.cursor.debug.move] key=0x%02x dx=%d dy=%d old_x=%d old_y=%d new_x=%d new_y=%d ok=1",
+            sexos_line(
+                "[keyboard.cursor.debug.move] key=0x%02x dx=%d dy=%d old_x=%d old_y=%d new_x=%d new_y=%d ok=1",
                 (unsigned)code, dx, dy, x, y, POINTER_X, POINTER_Y);
         }
         if (!KEYBOARD_CURSOR_DEBUG_DONE) {
-            sexos_line("[keyboard.cursor.debug.done] ok=1"); KEYBOARD_CURSOR_DEBUG_DONE = true;
+            sexos_line("[keyboard.cursor.debug.done] ok=1");
+            KEYBOARD_CURSOR_DEBUG_DONE = true;
         }
         return true;
     }
@@ -714,168 +988,241 @@ static bool input_keyboard_cursor(ShellInputContext *ctx, uint8_t code, uint64_t
             shell_input_handle_hid_event(ctx, EV_BTN, 1, 1);
             shell_input_handle_hid_event(ctx, EV_BTN, 1, 0);
             sexos_line("[keyboard.cursor.debug.click] key=0x%02x button=1 ok=1", (unsigned)code);
-        } else sexos_line("[keyboard.cursor.debug.click] key=0x%02x button=1 ok=0 reason=pointer_not_ready", (unsigned)code);
+        } else
+            sexos_line(
+                "[keyboard.cursor.debug.click] key=0x%02x button=1 ok=0 reason=pointer_not_ready",
+                (unsigned)code);
         return true;
     }
     return false;
 }
 
-static bool input_panel_key(ShellInputContext *ctx, uint8_t code, uint64_t value)
-{
-    if (FOCUSED_SURFACE_ID == SURFACE_ID_MESH && (code == 0x24 || code == 0x25 || code == 0x1c || code == 1 || code == 0x57 || code == 0x0e)) {
+static bool input_panel_key(ShellInputContext *ctx, uint8_t code, uint64_t value) {
+    if (FOCUSED_SURFACE_ID == SURFACE_ID_MESH && (code == 0x24 || code == 0x25 || code == 0x1c ||
+                                                  code == 1 || code == 0x57 || code == 0x0e)) {
         if (handle_hid_event__MESH_DRAIN_ROUTE_BUDGET > 0) {
             --handle_hid_event__MESH_DRAIN_ROUTE_BUDGET;
-            sexos_line("[silk-shell.key.route] target=mesh sid=%llu code=%u down=%llu", (unsigned long long)SURFACE_ID_MESH, (unsigned)code, (unsigned long long)value);
+            sexos_line("[silk-shell.key.route] target=mesh sid=%llu code=%u down=%llu",
+                       (unsigned long long)SURFACE_ID_MESH, (unsigned)code,
+                       (unsigned long long)value);
         }
-        sexos_line("[mesh.key.recv] code=%u down=%llu mod=%u", (unsigned)code, (unsigned long long)value, (unsigned)SPINDLE_CTRL_DOWN);
+        sexos_line("[mesh.key.recv] code=%u down=%llu mod=%u", (unsigned)code,
+                   (unsigned long long)value, (unsigned)SPINDLE_CTRL_DOWN);
         if (code == 0x24 || code == 0x25) {
             size_t old = MESH_SELECTED_ROW;
-            if (code == 0x24) shell_input_peer_mesh_select_next_row(ctx); else shell_input_peer_mesh_select_prev_row(ctx);
-            size_t current = MESH_SELECTED_ROW, visible = shell_input_peer_mesh_visible_fact_count(ctx);
+            if (code == 0x24)
+                shell_input_peer_mesh_select_next_row(ctx);
+            else
+                shell_input_peer_mesh_select_prev_row(ctx);
+            size_t current = MESH_SELECTED_ROW,
+                   visible = shell_input_peer_mesh_visible_fact_count(ctx);
             sexos_line("[mesh.node.nav] old=%zu new=%zu count=%zu", old, current, visible);
         } else if (code == 0x1c) {
-            size_t row = MESH_SELECTED_ROW; MeshFact fact = {0};
+            size_t row = MESH_SELECTED_ROW;
+            MeshFact fact = {0};
             bool ok = shell_input_peer_mesh_selected_fact_snapshot(ctx, &fact);
             sexos_line("[mesh.node.detail] idx=%zu node_id=%llu ok=%u reason=%s", row,
-                (unsigned long long)(ok ? fact.fact_id : 0), (unsigned)ok, ok ? "selected" : "no_fact");
+                       (unsigned long long)(ok ? fact.fact_id : 0), (unsigned)ok,
+                       ok ? "selected" : "no_fact");
         } else {
             bool was_visible = shell_input_peer_mesh_is_visible_in_active_scene(ctx);
             (void)shell_input_peer_toggle_mesh(ctx);
             bool visible = shell_input_peer_mesh_is_visible_in_active_scene(ctx);
-            sexos_line("[mesh.overlay.toggle] enabled=%u ok=%u reason=close_back", (unsigned)visible, (unsigned)(was_visible && !visible));
+            sexos_line("[mesh.overlay.toggle] enabled=%u ok=%u reason=close_back",
+                       (unsigned)visible, (unsigned)(was_visible && !visible));
         }
         return true;
     }
-    if (FOCUSED_SURFACE_ID == SURFACE_ID_BELL_PLACEHOLDER && (code == 0x24 || code == 0x25 || code == 0x1c || code == 1 || code == 0x0e || code == 0x1a || code == 0x1b)) {
+    if (FOCUSED_SURFACE_ID == SURFACE_ID_BELL_PLACEHOLDER &&
+        (code == 0x24 || code == 0x25 || code == 0x1c || code == 1 || code == 0x0e ||
+         code == 0x1a || code == 0x1b)) {
         if (handle_hid_event__BELL_DRAIN_ROUTE_BUDGET > 0) {
             --handle_hid_event__BELL_DRAIN_ROUTE_BUDGET;
-            sexos_line("[silk-shell.key.route] target=bell sid=%llu code=%u down=%llu", (unsigned long long)SURFACE_ID_BELL_PLACEHOLDER, (unsigned)code, (unsigned long long)value);
+            sexos_line("[silk-shell.key.route] target=bell sid=%llu code=%u down=%llu",
+                       (unsigned long long)SURFACE_ID_BELL_PLACEHOLDER, (unsigned)code,
+                       (unsigned long long)value);
         }
-        sexos_line("[bell.key.recv] code=%u down=%llu mod=0", (unsigned)code, (unsigned long long)value);
-        if (code == 0x24) { sexos_line("[bell.keyboard.next] sid=%llu", (unsigned long long)FOCUSED_SURFACE_ID); shell_input_peer_bell_select_next_row(ctx); }
-        else if (code == 0x25) { sexos_line("[bell.keyboard.prev] sid=%llu", (unsigned long long)FOCUSED_SURFACE_ID); shell_input_peer_bell_select_prev_row(ctx); }
-        else if (code == 0x1c) { sexos_line("[bell.keyboard.enter] sid=%llu", (unsigned long long)FOCUSED_SURFACE_ID); shell_input_peer_bell_emit_selected_event_detail_proof(ctx); }
-        else if (code == 1 || code == 0x0e) shell_input_peer_bell_close_detail(ctx);
-        else (void)shell_input_peer_bell_cycle_lane(ctx);
+        sexos_line("[bell.key.recv] code=%u down=%llu mod=0", (unsigned)code,
+                   (unsigned long long)value);
+        if (code == 0x24) {
+            sexos_line("[bell.keyboard.next] sid=%llu", (unsigned long long)FOCUSED_SURFACE_ID);
+            shell_input_peer_bell_select_next_row(ctx);
+        } else if (code == 0x25) {
+            sexos_line("[bell.keyboard.prev] sid=%llu", (unsigned long long)FOCUSED_SURFACE_ID);
+            shell_input_peer_bell_select_prev_row(ctx);
+        } else if (code == 0x1c) {
+            sexos_line("[bell.keyboard.enter] sid=%llu", (unsigned long long)FOCUSED_SURFACE_ID);
+            shell_input_peer_bell_emit_selected_event_detail_proof(ctx);
+        } else if (code == 1 || code == 0x0e)
+            shell_input_peer_bell_close_detail(ctx);
+        else
+            (void)shell_input_peer_bell_cycle_lane(ctx);
         return true;
     }
-    if (FOCUSED_SURFACE_ID == SURFACE_ID_COLLAR && (code == 0x24 || code == 0x25 || code == 0x1c || code == 1 || code == 0x0e)) {
+    if (FOCUSED_SURFACE_ID == SURFACE_ID_COLLAR &&
+        (code == 0x24 || code == 0x25 || code == 0x1c || code == 1 || code == 0x0e)) {
         if (handle_hid_event__COLLAR_DRAIN_ROUTE_BUDGET > 0) {
             --handle_hid_event__COLLAR_DRAIN_ROUTE_BUDGET;
-            sexos_line("[silk-shell.key.route] target=collar sid=%llu code=%u down=%llu", (unsigned long long)SURFACE_ID_COLLAR, (unsigned)code, (unsigned long long)value);
+            sexos_line("[silk-shell.key.route] target=collar sid=%llu code=%u down=%llu",
+                       (unsigned long long)SURFACE_ID_COLLAR, (unsigned)code,
+                       (unsigned long long)value);
         }
-        sexos_line("[collar.key.recv] code=%u down=%llu mod=0", (unsigned)code, (unsigned long long)value);
-        if (code == 0x24) shell_input_peer_collar_select_next_grant(ctx);
-        else if (code == 0x25) shell_input_peer_collar_select_prev_grant(ctx);
-        else if (code == 0x1c) (void)shell_input_peer_collar_emit_selected_grant_detail(ctx);
-        else (void)shell_input_peer_toggle_collar(ctx);
+        sexos_line("[collar.key.recv] code=%u down=%llu mod=0", (unsigned)code,
+                   (unsigned long long)value);
+        if (code == 0x24)
+            shell_input_peer_collar_select_next_grant(ctx);
+        else if (code == 0x25)
+            shell_input_peer_collar_select_prev_grant(ctx);
+        else if (code == 0x1c)
+            (void)shell_input_peer_collar_emit_selected_grant_detail(ctx);
+        else
+            (void)shell_input_peer_toggle_collar(ctx);
         return true;
     }
     return false;
 }
 
-static bool input_action_key(ShellInputContext *ctx, uint8_t code, uint64_t value)
-{
+static bool input_action_key(ShellInputContext *ctx, uint8_t code, uint64_t value) {
     uint8_t action = 0;
     if (shell_input_peer_scancode_to_action(ctx, code, &action)) {
         if (handle_hid_event__KBD_UI_CONSUME_DRAIN_BUDGET > 0) {
             --handle_hid_event__KBD_UI_CONSUME_DRAIN_BUDGET;
             const char *label = shell_input_peer_action_name(ctx, action);
-            sexos_line("[shell.kbd.ui.consume] scancode=%u action=%s down=%llu consumed=1 path=handle_hid_event_drain", (unsigned)code, label, (unsigned long long)value);
+            sexos_line(
+                "[shell.kbd.ui.consume] scancode=%u action=%s down=%llu consumed=1 path=handle_hid_event_drain",
+                (unsigned)code, label, (unsigned long long)value);
         }
         const char *initial_label = shell_input_peer_action_name(ctx, action);
         uint64_t initial_focused = FOCUSED_SURFACE_ID;
         uint32_t initial_frame = input_frame(ctx, FOCUSED_SURFACE_ID);
-        sexos_line("[shell.kbd.ui.action] scancode=%u action=%s focused=%llu frame=%u sid=%llu", (unsigned)code,
-            initial_label, (unsigned long long)initial_focused,
-            initial_frame, (unsigned long long)FOCUSED_SURFACE_ID);
+        sexos_line("[shell.kbd.ui.action] scancode=%u action=%s focused=%llu frame=%u sid=%llu",
+                   (unsigned)code, initial_label, (unsigned long long)initial_focused,
+                   initial_frame, (unsigned long long)FOCUSED_SURFACE_ID);
         uint64_t old = FOCUSED_SURFACE_ID;
         bool dispatched = shell_input_peer_access_handle_keyboard_action(ctx, action);
-        if (!dispatched) dispatched = input_extra_action(ctx, action, value);
+        if (!dispatched)
+            dispatched = input_extra_action(ctx, action, value);
         uint64_t focused = FOCUSED_SURFACE_ID;
         if (focused != old) {
             uint32_t focused_frame = input_frame(ctx, focused);
             const char *focused_label = shell_input_peer_action_name(ctx, action);
-            sexos_line("[shell.kbd.ui.focus] old=%llu new=%llu frame=%u reason=%s", (unsigned long long)old,
-                (unsigned long long)focused, focused_frame, focused_label);
+            sexos_line("[shell.kbd.ui.focus] old=%llu new=%llu frame=%u reason=%s",
+                       (unsigned long long)old, (unsigned long long)focused, focused_frame,
+                       focused_label);
         }
         const char *result_label = shell_input_peer_action_name(ctx, action);
         uint32_t result_frame = input_frame(ctx, FOCUSED_SURFACE_ID);
-        sexos_line("[shell.kbd.ui.result] action=%s ok=%u reason=%s frame=%u sid=%llu", result_label, (unsigned)dispatched,
-            dispatched ? "ok" : "noop_or_reject", result_frame, (unsigned long long)FOCUSED_SURFACE_ID);
+        sexos_line("[shell.kbd.ui.result] action=%s ok=%u reason=%s frame=%u sid=%llu",
+                   result_label, (unsigned)dispatched, dispatched ? "ok" : "noop_or_reject",
+                   result_frame, (unsigned long long)FOCUSED_SURFACE_ID);
         if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED) {
-            sexos_line("[shell.interact.stage.key_route] key=%u shell_consumed=1 focused=%llu routed=0 ok=1", (unsigned)code, (unsigned long long)FOCUSED_SURFACE_ID);
+            sexos_line(
+                "[shell.interact.stage.key_route] key=%u shell_consumed=1 focused=%llu routed=0 ok=1",
+                (unsigned)code, (unsigned long long)FOCUSED_SURFACE_ID);
             input_stage(ctx, SHELL_INTERACTION_STAGE_KEY);
         }
-        input_key_liveness(ctx, FOCUSED_SURFACE_ID, 0); return true;
+        input_key_liveness(ctx, FOCUSED_SURFACE_ID, 0);
+        return true;
     }
     return false;
 }
 
-static void input_handle_key(ShellInputContext *ctx, uint8_t code, uint64_t value)
-{
+static void input_handle_key(ShellInputContext *ctx, uint8_t code, uint64_t value) {
     if (handle_hid_event__KEY_RECV_DRAIN_BUDGET > 0) {
         --handle_hid_event__KEY_RECV_DRAIN_BUDGET;
         sexos_line("[silk-shell.key.recv] code=%u down=%llu mod=%u focused=%llu", (unsigned)code,
-            (unsigned long long)value, (unsigned)SPINDLE_CTRL_DOWN, (unsigned long long)FOCUSED_SURFACE_ID);
+                   (unsigned long long)value, (unsigned)SPINDLE_CTRL_DOWN,
+                   (unsigned long long)FOCUSED_SURFACE_ID);
     }
-    if (code == 0x43 && value == 0) F9_TOGGLE_DOWN = false;
-    if (code == 0x1d) SPINDLE_CTRL_DOWN = value == 1;
-    if (value != 1) return;
-    if (COMMAND_PALETTE_OPEN && (code == 0x1c || code == 1 || code == 0x29 || code == 0x24 || code == 0x25)) {
+    if (code == 0x43 && value == 0)
+        F9_TOGGLE_DOWN = false;
+    if (code == 0x1d)
+        SPINDLE_CTRL_DOWN = value == 1;
+    if (value != 1)
+        return;
+    if (COMMAND_PALETTE_OPEN &&
+        (code == 0x1c || code == 1 || code == 0x29 || code == 0x24 || code == 0x25)) {
         input_palette_key(ctx, code);
         return;
     }
-    if (KEYBOARD_CURSOR_DEBUG_ENABLED && input_keyboard_cursor(ctx, code, value)) return;
-    if (shell_input_peer_spindle_has_focus(ctx) && shell_input_peer_is_spindle_text_key(ctx, code)) {
+    if (KEYBOARD_CURSOR_DEBUG_ENABLED && input_keyboard_cursor(ctx, code, value))
+        return;
+    if (shell_input_peer_spindle_has_focus(ctx) &&
+        shell_input_peer_is_spindle_text_key(ctx, code)) {
         if (handle_hid_event__SPINDLE_DRAIN_ROUTE_BUDGET > 0) {
             --handle_hid_event__SPINDLE_DRAIN_ROUTE_BUDGET;
-            sexos_line("[silk-shell.key.route] target=spindle sid=%llu code=%u down=%llu", (unsigned long long)SURFACE_ID_SPINDLE, (unsigned)code, (unsigned long long)value);
+            sexos_line("[silk-shell.key.route] target=spindle sid=%llu code=%u down=%llu",
+                       (unsigned long long)SURFACE_ID_SPINDLE, (unsigned)code,
+                       (unsigned long long)value);
         }
         (void)sexos_pdx_call(SLOT_SPINDLE, OP_HID_EVENT,
-            (uint64_t)code | (uint64_t)(ctx->shell.input->APP_MODIFIER_LEFT_SHIFT ||
-                ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT) << 8, value, EV_KEY); return;
+                             (uint64_t)code |
+                                 (uint64_t)(ctx->shell.input->APP_MODIFIER_LEFT_SHIFT ||
+                                            ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT)
+                                     << 8,
+                             value, EV_KEY);
+        return;
     }
     if (shell_input_peer_quil_has_focus(ctx) && shell_input_peer_is_quil_text_key(ctx, code)) {
         if (handle_hid_event__QUIL_DRAIN_ROUTE_BUDGET > 0) {
             --handle_hid_event__QUIL_DRAIN_ROUTE_BUDGET;
-            sexos_line("[silk-shell.key.route] target=quil sid=%llu code=%u down=%llu", (unsigned long long)FOCUSED_SURFACE_ID, (unsigned)code, (unsigned long long)value);
+            sexos_line("[silk-shell.key.route] target=quil sid=%llu code=%u down=%llu",
+                       (unsigned long long)FOCUSED_SURFACE_ID, (unsigned)code,
+                       (unsigned long long)value);
         }
-        (void)sexos_pdx_call(SLOT_QUIL, OP_HID_EVENT, code, value, EV_KEY); return;
+        (void)sexos_pdx_call(SLOT_QUIL, OP_HID_EVENT, code, value, EV_KEY);
+        return;
     }
-    if (input_panel_key(ctx, code, value)) return;
+    if (input_panel_key(ctx, code, value))
+        return;
     if (ATLAS_MODE_ENABLED && code != 0x44) {
         if (handle_hid_event__ATLAS_DRAIN_ROUTE_BUDGET > 0) {
             --handle_hid_event__ATLAS_DRAIN_ROUTE_BUDGET;
-            sexos_line("[silk-shell.key.route] target=atlas code=%u down=%llu", (unsigned)code, (unsigned long long)value);
+            sexos_line("[silk-shell.key.route] target=atlas code=%u down=%llu", (unsigned)code,
+                       (unsigned long long)value);
         }
-        shell_input_peer_handle_atlas_keyboard(ctx, code); return;
+        shell_input_peer_handle_atlas_keyboard(ctx, code);
+        return;
     }
-    if (shell_input_peer_silk_text_sink_key(ctx, code, value)) return;
-    if (input_action_key(ctx, code, value)) return;
-    bool quil=shell_input_peer_quil_has_focus(ctx);
-    bool linen=!quil && FOCUSED_SURFACE_ID==SURFACE_ID_LINEN;
-    bool spindle=false;if(!quil && !linen)spindle=shell_input_peer_spindle_has_focus(ctx);
-    if(quil || linen || spindle){
-        uint64_t sid=FOCUSED_SURFACE_ID,slot=quil?SLOT_QUIL:linen?SLOT_LINEN:SLOT_SPINDLE;
+    if (shell_input_peer_silk_text_sink_key(ctx, code, value))
+        return;
+    if (input_action_key(ctx, code, value))
+        return;
+    bool quil = shell_input_peer_quil_has_focus(ctx);
+    bool linen = !quil && FOCUSED_SURFACE_ID == SURFACE_ID_LINEN;
+    bool spindle = false;
+    if (!quil && !linen)
+        spindle = shell_input_peer_spindle_has_focus(ctx);
+    if (quil || linen || spindle) {
+        uint64_t sid = FOCUSED_SURFACE_ID, slot = quil    ? SLOT_QUIL
+                                                  : linen ? SLOT_LINEN
+                                                          : SLOT_SPINDLE;
         if (quil && handle_hid_event__KEY_ROUTE_DRAIN_BUDGET > 0) {
             --handle_hid_event__KEY_ROUTE_DRAIN_BUDGET;
-            sexos_line("[silk-shell.key.route] owner=quil sid=%llu scancode=0x%x", (unsigned long long)sid, (unsigned)code);
+            sexos_line("[silk-shell.key.route] owner=quil sid=%llu scancode=0x%x",
+                       (unsigned long long)sid, (unsigned)code);
         } else if (linen && handle_hid_event__KEY_ROUTE_DRAIN_BUDGET_LINEN > 0) {
             --handle_hid_event__KEY_ROUTE_DRAIN_BUDGET_LINEN;
-            sexos_line("[silk-shell.key.route] owner=linen sid=%llu scancode=0x%x", (unsigned long long)sid, (unsigned)code);
+            sexos_line("[silk-shell.key.route] owner=linen sid=%llu scancode=0x%x",
+                       (unsigned long long)sid, (unsigned)code);
         } else if (spindle && handle_hid_event__SPINDLE_ROUTE_DRAIN_BUDGET > 0) {
             --handle_hid_event__SPINDLE_ROUTE_DRAIN_BUDGET;
-            sexos_line("[silk-shell.key.route] target=spindle sid=%llu code=%u down=%llu", (unsigned long long)SURFACE_ID_SPINDLE, (unsigned)code, (unsigned long long)value);
+            sexos_line("[silk-shell.key.route] target=spindle sid=%llu code=%u down=%llu",
+                       (unsigned long long)SURFACE_ID_SPINDLE, (unsigned)code,
+                       (unsigned long long)value);
         }
         uint8_t live = (uint8_t)shell_input_surface_is_alive(ctx, sid);
         shell_input_peer_surface_input_lifetime_mark_key_route(ctx, sid, live, 1, live);
-        uint64_t key_word=spindle?((uint64_t)code |
-            (uint64_t)(ctx->shell.input->APP_MODIFIER_LEFT_SHIFT ||
-                ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT)<<8):(uint64_t)code;
+        uint64_t key_word =
+            spindle ? ((uint64_t)code | (uint64_t)(ctx->shell.input->APP_MODIFIER_LEFT_SHIFT ||
+                                                   ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT)
+                                            << 8)
+                    : (uint64_t)code;
         (void)sexos_pdx_call(slot, OP_HID_EVENT, key_word, value, EV_KEY);
         if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED) {
-            sexos_line("[shell.interact.stage.key_route] key=%u shell_consumed=0 focused=%llu routed=1 ok=1", (unsigned)code, (unsigned long long)(spindle?SURFACE_ID_SPINDLE:sid));
+            sexos_line(
+                "[shell.interact.stage.key_route] key=%u shell_consumed=0 focused=%llu routed=1 ok=1",
+                (unsigned)code, (unsigned long long)(spindle ? SURFACE_ID_SPINDLE : sid));
             input_stage(ctx, SHELL_INTERACTION_STAGE_KEY);
         }
     } else {
@@ -884,40 +1231,52 @@ static void input_handle_key(ShellInputContext *ctx, uint8_t code, uint64_t valu
             sexos_line("[silk.key.reject] reason=no_focus ok=1");
         }
         if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED) {
-            sexos_line("[shell.interact.stage.no_focus_key] key=%u focused=%llu ignored_or_consumed=1 ok=1", (unsigned)code, (unsigned long long)FOCUSED_SURFACE_ID);
+            sexos_line(
+                "[shell.interact.stage.no_focus_key] key=%u focused=%llu ignored_or_consumed=1 ok=1",
+                (unsigned)code, (unsigned long long)FOCUSED_SURFACE_ID);
             input_stage(ctx, SHELL_INTERACTION_STAGE_NO_FOCUS_KEY);
         }
     }
     return;
 }
 
-static void input_handle_motion(ShellInputContext *ctx, uint64_t event_class, uint64_t arg0, uint64_t arg1)
-{
+static void input_handle_motion(ShellInputContext *ctx, uint64_t event_class, uint64_t arg0,
+                                uint64_t arg1) {
     uint64_t focused = FOCUSED_SURFACE_ID;
-    if (event_class == EV_ABS) shell_input_process_abs_tablet(ctx, input_i32((uint32_t)arg0), input_i32((uint32_t)arg1));
+    if (event_class == EV_ABS)
+        shell_input_process_abs_tablet(ctx, input_i32((uint32_t)arg0), input_i32((uint32_t)arg1));
     else {
         if (handle_hid_event__REL_RECV_DRAIN_BUDGET > 0) {
             --handle_hid_event__REL_RECV_DRAIN_BUDGET;
-            sexos_line("[silk-shell.rel.recv] dx=%d dy=%d buttons=0x%x", input_i32((uint32_t)arg0), input_i32((uint32_t)arg1), (unsigned)POINTER_BUTTONS);
+            sexos_line("[silk-shell.rel.recv] dx=%d dy=%d buttons=0x%x", input_i32((uint32_t)arg0),
+                       input_i32((uint32_t)arg1), (unsigned)POINTER_BUTTONS);
         }
         int32_t dx = 0, dy = 0;
-        shell_input_apply_rel_pointer(ctx, input_i32((uint32_t)arg0), input_i32((uint32_t)arg1), &dx, &dy);
+        shell_input_apply_rel_pointer(ctx, input_i32((uint32_t)arg0), input_i32((uint32_t)arg1),
+                                      &dx, &dy);
         if (handle_hid_event__HID_DRAIN_USB_POINTER_SHELL_APPLY_BUDGET > 0) {
             --handle_hid_event__HID_DRAIN_USB_POINTER_SHELL_APPLY_BUDGET;
-            sexos_line("[usb.pointer.shell.apply] x=%d y=%d dx=%d dy=%d ok=1", POINTER_X, POINTER_Y, dx, dy);
+            sexos_line("[usb.pointer.shell.apply] x=%d y=%d dx=%d dy=%d ok=1", POINTER_X, POINTER_Y,
+                       dx, dy);
         }
         if ((dx != 0 || dy != 0) && handle_hid_event__HID_DRAIN_POINTER_MOVE_OK_BUDGET > 0) {
             --handle_hid_event__HID_DRAIN_POINTER_MOVE_OK_BUDGET;
-            sexos_line("[input.pointer.move.ok] x=%d y=%d dx=%d dy=%d", POINTER_X, POINTER_Y, dx, dy);
+            sexos_line("[input.pointer.move.ok] x=%d y=%d dx=%d dy=%d", POINTER_X, POINTER_Y, dx,
+                       dy);
         }
-        shell_input_clear_drag_if_dead(ctx); shell_input_peer_clear_resize_if_dead(ctx);
+        shell_input_clear_drag_if_dead(ctx);
+        shell_input_peer_clear_resize_if_dead(ctx);
         bool mutated = shell_input_peer_drag_move_focused(ctx, dx, dy);
-        if (shell_input_peer_resize_accumulate_delta(ctx, dx, dy)) mutated = true;
-        if (shell_input_peer_apply_resize_geometry(ctx, dx, dy)) mutated = true;
-        if (mutated) shell_input_emit_snapshot(ctx);
+        if (shell_input_peer_resize_accumulate_delta(ctx, dx, dy))
+            mutated = true;
+        if (shell_input_peer_apply_resize_geometry(ctx, dx, dy))
+            mutated = true;
+        if (mutated)
+            shell_input_emit_snapshot(ctx);
     }
     if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED) {
-        sexos_line("[shell.interact.stage.pointer_state] source=%s old_focus=%llu new_focus=%llu moved=1 ok=%u",
+        sexos_line(
+            "[shell.interact.stage.pointer_state] source=%s old_focus=%llu new_focus=%llu moved=1 ok=%u",
             event_class == EV_ABS ? "abs" : "rel", (unsigned long long)focused,
             (unsigned long long)FOCUSED_SURFACE_ID, (unsigned)(focused == FOCUSED_SURFACE_ID));
         input_stage(ctx, SHELL_INTERACTION_STAGE_POINTER);
@@ -925,55 +1284,68 @@ static void input_handle_motion(ShellInputContext *ctx, uint64_t event_class, ui
     return;
 }
 
-static void input_begin_pointer_click(ShellInputContext *ctx, uint8_t button)
-{
+static void input_begin_pointer_click(ShellInputContext *ctx, uint8_t button) {
     if (!(ABS_SEEN_VALID || POINTER_USB_STATE_INIT)) {
         if (handle_hid_event__CLICK_BLOCK_BUDGET > 0) {
             --handle_hid_event__CLICK_BLOCK_BUDGET;
-            sexos_line("[shell.click.block] reason=pointer_not_ready x=%d y=%d", POINTER_X, POINTER_Y);
+            sexos_line("[shell.click.block] reason=pointer_not_ready x=%d y=%d", POINTER_X,
+                       POINTER_Y);
         }
     } else {
-        sexos_line("[silk-shell.click.down] btn=%u x=%d y=%d buttons=0x%x", (unsigned)button, POINTER_X, POINTER_Y, (unsigned)POINTER_BUTTONS);
+        sexos_line("[silk-shell.click.down] btn=%u x=%d y=%d buttons=0x%x", (unsigned)button,
+                   POINTER_X, POINTER_Y, (unsigned)POINTER_BUTTONS);
         shell_input_peer_try_transition(ctx, (InteractionState){.tag = INTERACTION_CLICK_PENDING});
         bool handled = false;
-        HitTarget target = shell_input_peer_click_hit_test_and_focus(ctx, POINTER_X, POINTER_Y, POINTER_BUTTONS, &handled);
+        HitTarget target = shell_input_peer_click_hit_test_and_focus(ctx, POINTER_X, POINTER_Y,
+                                                                     POINTER_BUTTONS, &handled);
         if (handle_hid_event__INLINE_CLICK_TARGET_BUDGET > 0) {
             --handle_hid_event__INLINE_CLICK_TARGET_BUDGET;
-            uint64_t id = 0; const char *kind = shell_input_peer_hit_target_label(ctx, target, handled, &id);
-            sexos_line("[shell.click.real.target] x=%d y=%d target=%llu kind=%s", POINTER_X, POINTER_Y, (unsigned long long)id, kind);
-            sexos_line("[shell.drag.candidate] target=%llu kind=%s x=%d y=%d", (unsigned long long)id, kind, POINTER_X, POINTER_Y);
+            uint64_t id = 0;
+            const char *kind = shell_input_peer_hit_target_label(ctx, target, handled, &id);
+            sexos_line("[shell.click.real.target] x=%d y=%d target=%llu kind=%s", POINTER_X,
+                       POINTER_Y, (unsigned long long)id, kind);
+            sexos_line("[shell.drag.candidate] target=%llu kind=%s x=%d y=%d",
+                       (unsigned long long)id, kind, POINTER_X, POINTER_Y);
         }
     }
 }
 
-static void input_end_pointer_click(ShellInputContext *ctx, uint8_t button)
-{
+static void input_end_pointer_click(ShellInputContext *ctx, uint8_t button) {
     if (INTERACTION.tag == INTERACTION_CLICK_PENDING) {
-        sexos_line("[silk-shell.click.up] btn=%u x=%d y=%d", (unsigned)button, POINTER_X, POINTER_Y);
+        sexos_line("[silk-shell.click.up] btn=%u x=%d y=%d", (unsigned)button, POINTER_X,
+                   POINTER_Y);
         input_release_drag(ctx, 0, false);
         DRAG_PENDING_ACTIVE = false;
         shell_input_peer_try_transition(ctx, (InteractionState){.tag = INTERACTION_IDLE});
     } else if (INTERACTION.tag == INTERACTION_DRAGGING) {
         uint64_t sid = INTERACTION.surface_id;
-        sexos_line("[shell.interact.drag.end] sid=%llu x=%d y=%d", (unsigned long long)sid, POINTER_X, POINTER_Y);
-        sexos_line("[silk.drag.end.ok] sid=%llu x=%d y=%d", (unsigned long long)sid, POINTER_X, POINTER_Y);
-        sexos_line("[shell.drag.end] sid=%llu frame=0 x=%d y=%d", (unsigned long long)sid, POINTER_X, POINTER_Y);
+        sexos_line("[shell.interact.drag.end] sid=%llu x=%d y=%d", (unsigned long long)sid,
+                   POINTER_X, POINTER_Y);
+        sexos_line("[silk.drag.end.ok] sid=%llu x=%d y=%d", (unsigned long long)sid, POINTER_X,
+                   POINTER_Y);
+        sexos_line("[shell.drag.end] sid=%llu frame=0 x=%d y=%d", (unsigned long long)sid,
+                   POINTER_X, POINTER_Y);
         input_release_drag(ctx, sid, true);
         uint8_t live = (uint8_t)shell_input_surface_is_alive(ctx, sid);
-        const ShellDiagnosticLabel phase={{'r','e','l','e','a','s','e',0},7};
+        const ShellDiagnosticLabel phase = {{'r', 'e', 'l', 'e', 'a', 's', 'e', 0}, 7};
         shell_input_peer_surface_input_lifetime_mark_drag_target(ctx, sid, live, &phase, 1);
         shell_input_peer_surface_input_lifetime_try_done(ctx);
-        DRAG_PENDING_ACTIVE = false; shell_input_peer_silk_drag_end_mark(ctx, sid);
+        DRAG_PENDING_ACTIVE = false;
+        shell_input_peer_silk_drag_end_mark(ctx, sid);
         (void)shell_input_peer_try_snap_on_drag_release(ctx, sid, POINTER_X, POINTER_Y);
         shell_input_peer_try_transition(ctx, (InteractionState){.tag = INTERACTION_IDLE});
     } else if (INTERACTION.tag == INTERACTION_RESIZING) {
-        write_str("[silk.resize.end] sid="); write_u64_dec(INTERACTION.surface_id);
-        write_str(" edge="); write_debug_resize_edge(INTERACTION.edge);
-        sexos_line(" x=%d y=%d dx=%d dy=%d", POINTER_X, POINTER_Y, INTERACTION.pending_dx, INTERACTION.pending_dy);
+        write_str("[silk.resize.end] sid=");
+        write_u64_dec(INTERACTION.surface_id);
+        write_str(" edge=");
+        write_debug_resize_edge(INTERACTION.edge);
+        sexos_line(" x=%d y=%d dx=%d dy=%d", POINTER_X, POINTER_Y, INTERACTION.pending_dx,
+                   INTERACTION.pending_dy);
         shell_input_peer_try_transition(ctx, (InteractionState){.tag = INTERACTION_IDLE});
     } else if (INTERACTION.tag == INTERACTION_TAB_DRAGGING) {
-        sexos_line("[silk.tab.drag.end] frame=%u start_tab=%u end_tab=%u x=%d y=%d", INTERACTION.frame_id,
-            (unsigned)INTERACTION.start_tab, (unsigned)INTERACTION.current_tab, POINTER_X, POINTER_Y);
+        sexos_line("[silk.tab.drag.end] frame=%u start_tab=%u end_tab=%u x=%d y=%d",
+                   INTERACTION.frame_id, (unsigned)INTERACTION.start_tab,
+                   (unsigned)INTERACTION.current_tab, POINTER_X, POINTER_Y);
         DRAG_PENDING_ACTIVE = false;
         shell_input_peer_try_transition(ctx, (InteractionState){.tag = INTERACTION_IDLE});
     } else if (INPUT_NEGATIVE_PROOF_ENABLED && !INPUT_NEGATIVE_BUTTON_UP_NO_CAPTURE_SEEN) {
@@ -983,34 +1355,51 @@ static void input_end_pointer_click(ShellInputContext *ctx, uint8_t button)
     }
 }
 
-static void input_handle_button(ShellInputContext *ctx, uint64_t arg0, uint64_t arg1)
-{
+static void input_handle_button(ShellInputContext *ctx, uint64_t arg0, uint64_t arg1) {
     uint8_t button = (uint8_t)arg0;
     bool pressed = arg1 != 0;
     unsigned shift = button > 0 ? (unsigned)button - 1 : 0;
     uint8_t mask = shift < 8 ? (uint8_t)(1u << shift) : 0;
-    if (pressed) POINTER_BUTTONS |= mask; else POINTER_BUTTONS &= (uint8_t)~mask;
+    if (pressed)
+        POINTER_BUTTONS |= mask;
+    else
+        POINTER_BUTTONS &= (uint8_t)~mask;
     if (handle_hid_event__INLINE_BTN_BUDGET > 0) {
         --handle_hid_event__INLINE_BTN_BUDGET;
-        sexos_line("[silk-shell.linen_sync.input_btn] btn=%u pressed=%u", (unsigned)button, (unsigned)pressed);
+        sexos_line("[silk-shell.linen_sync.input_btn] btn=%u pressed=%u", (unsigned)button,
+                   (unsigned)pressed);
     }
-    sexos_line("[silk-shell.pointer.recv] class=EV_BTN btn=%u pressed=%s", (unsigned)button, pressed ? "true" : "false");
-    if (button == 1) sexos_line("[usb.hid.pointer.click.recv] left=1 value=%u ok=1", (unsigned)pressed);
-    sexos_line("[shell.pointer.button] btn=%u down=%u x=%d y=%d", (unsigned)button, (unsigned)pressed, POINTER_X, POINTER_Y);
+    sexos_line("[silk-shell.pointer.recv] class=EV_BTN btn=%u pressed=%s", (unsigned)button,
+               pressed ? "true" : "false");
+    if (button == 1)
+        sexos_line("[usb.hid.pointer.click.recv] left=1 value=%u ok=1", (unsigned)pressed);
+    sexos_line("[shell.pointer.button] btn=%u down=%u x=%d y=%d", (unsigned)button,
+               (unsigned)pressed, POINTER_X, POINTER_Y);
     if (handle_hid_event__BUTTON_EDGE_OK_BUDGET > 0) {
         --handle_hid_event__BUTTON_EDGE_OK_BUDGET;
-        if (pressed) sexos_line("[input.button.down.ok] btn=%u x=%d y=%d", (unsigned)button, POINTER_X, POINTER_Y);
-        else sexos_line("[input.button.up.ok] btn=%u x=%d y=%d", (unsigned)button, POINTER_X, POINTER_Y);
+        if (pressed)
+            sexos_line("[input.button.down.ok] btn=%u x=%d y=%d", (unsigned)button, POINTER_X,
+                       POINTER_Y);
+        else
+            sexos_line("[input.button.up.ok] btn=%u x=%d y=%d", (unsigned)button, POINTER_X,
+                       POINTER_Y);
     }
     if (CLICK_DRAG_PROOF_ENABLED && button == 1) {
         if (pressed) {
             shell_input_peer_click_drag_proof_begin_click_once(ctx);
-            sexos_line("[click.focus.button.down] button=%u x=%d y=%d old_focus=%llu ok=1", (unsigned)button, POINTER_X, POINTER_Y, (unsigned long long)FOCUSED_SURFACE_ID);
-        } else sexos_line("[click.focus.button.up] button=%u x=%d y=%d ok=1", (unsigned)button, POINTER_X, POINTER_Y);
+            sexos_line("[click.focus.button.down] button=%u x=%d y=%d old_focus=%llu ok=1",
+                       (unsigned)button, POINTER_X, POINTER_Y,
+                       (unsigned long long)FOCUSED_SURFACE_ID);
+        } else
+            sexos_line("[click.focus.button.up] button=%u x=%d y=%d ok=1", (unsigned)button,
+                       POINTER_X, POINTER_Y);
     }
-    sexos_line("[silk-shell] Pointer BTN %u %s buttons=0x%x", (unsigned)button, pressed ? "dn" : "up", (unsigned)POINTER_BUTTONS);
-    shell_input_clear_focus_if_dead(ctx); shell_input_clear_drag_if_dead(ctx);
-    shell_input_clear_hover_if_dead(ctx); shell_input_peer_clear_hover_if_wrong_scene(ctx);
+    sexos_line("[silk-shell] Pointer BTN %u %s buttons=0x%x", (unsigned)button,
+               pressed ? "dn" : "up", (unsigned)POINTER_BUTTONS);
+    shell_input_clear_focus_if_dead(ctx);
+    shell_input_clear_drag_if_dead(ctx);
+    shell_input_clear_hover_if_dead(ctx);
+    shell_input_peer_clear_hover_if_wrong_scene(ctx);
     if (button != 1) {
         if (INPUT_NEGATIVE_PROOF_ENABLED && !INPUT_NEGATIVE_BAD_BUTTON_SEEN) {
             INPUT_NEGATIVE_BAD_BUTTON_SEEN = true;
@@ -1026,18 +1415,20 @@ static void input_handle_button(ShellInputContext *ctx, uint64_t arg0, uint64_t 
         } else if (ATLAS_DRAG_INTENT.active) {
             (void)shell_input_peer_atlas_pointer_drop_at(ctx, POINTER_X, POINTER_Y);
             sexos_line("[silk.atlas.pointer.event.consume] phase=e4d kind=up ok=1");
-        } else sexos_line("[silk.atlas.pointer.event.consume] phase=e4d kind=up_no_intent ok=1");
+        } else
+            sexos_line("[silk.atlas.pointer.event.consume] phase=e4d kind=up_no_intent ok=1");
         return;
     }
-    if (pressed && (INTERACTION.tag == INTERACTION_IDLE || INTERACTION.tag == INTERACTION_PANEL_ACTIVE)) {
+    if (pressed &&
+        (INTERACTION.tag == INTERACTION_IDLE || INTERACTION.tag == INTERACTION_PANEL_ACTIVE)) {
         input_begin_pointer_click(ctx, button);
     } else if (!pressed) {
         input_end_pointer_click(ctx, button);
     }
 }
 
-void shell_input_handle_hid_event(ShellInputContext *ctx, uint64_t event_class, uint64_t arg0, uint64_t arg1)
-{
+void shell_input_handle_hid_event(ShellInputContext *ctx, uint64_t event_class, uint64_t arg0,
+                                  uint64_t arg1) {
     shell_input_peer_shell_interaction_contract_begin_once(ctx);
     shell_input_peer_input_negative_begin_once(ctx);
     uint8_t code = (uint8_t)arg0;
@@ -1045,17 +1436,23 @@ void shell_input_handle_hid_event(ShellInputContext *ctx, uint64_t event_class, 
     if (handle_hid_event__HID_RECV_DRAIN_BUDGET > 0) {
         --handle_hid_event__HID_RECV_DRAIN_BUDGET;
         sexos_line("[silk-shell.hid.recv] class=%llu code=%u value=%llu a0=%llu a1=%llu a2=%llu",
-            (unsigned long long)event_class, (unsigned)code, (unsigned long long)value,
-            (unsigned long long)arg0, (unsigned long long)arg1, (unsigned long long)event_class);
+                   (unsigned long long)event_class, (unsigned)code, (unsigned long long)value,
+                   (unsigned long long)arg0, (unsigned long long)arg1,
+                   (unsigned long long)event_class);
     }
-    if(event_class==EV_KEY && value<=1){
-        bool held=value==1;
-        if(code==0x2a)ctx->shell.input->APP_MODIFIER_LEFT_SHIFT=held;
-        else if(code==0x36)ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT=held;
-        else if(code==0x1d)ctx->shell.input->APP_MODIFIER_LEFT_CONTROL=held;
-        else if(code==0x61)ctx->shell.input->APP_MODIFIER_RIGHT_CONTROL=held;
+    if (event_class == EV_KEY && value <= 1) {
+        bool held = value == 1;
+        if (code == 0x2a)
+            ctx->shell.input->APP_MODIFIER_LEFT_SHIFT = held;
+        else if (code == 0x36)
+            ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT = held;
+        else if (code == 0x1d)
+            ctx->shell.input->APP_MODIFIER_LEFT_CONTROL = held;
+        else if (code == 0x61)
+            ctx->shell.input->APP_MODIFIER_RIGHT_CONTROL = held;
     }
-    if(event_class==EV_KEY && shell_input_peer_desktop_shortcut(ctx,code,value))return;
+    if (event_class == EV_KEY && shell_input_peer_desktop_shortcut(ctx, code, value))
+        return;
     if (event_class == EV_KEY) {
         input_handle_key(ctx, code, value);
         return;
@@ -1069,7 +1466,8 @@ void shell_input_handle_hid_event(ShellInputContext *ctx, uint64_t event_class, 
         return;
     } else if (INPUT_NEGATIVE_PROOF_ENABLED && !INPUT_NEGATIVE_UNKNOWN_CLASS_SEEN) {
         INPUT_NEGATIVE_UNKNOWN_CLASS_SEEN = true;
-        sexos_line("[input.negative.unknown_class] class=%llu ignored=1 ok=1", (unsigned long long)event_class);
+        sexos_line("[input.negative.unknown_class] class=%llu ignored=1 ok=1",
+                   (unsigned long long)event_class);
         shell_input_peer_input_negative_mark_done(ctx);
     }
 }

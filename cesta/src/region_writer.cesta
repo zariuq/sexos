@@ -3,55 +3,59 @@
     (include "sexos_region_writer.h")
     (ownership (check-all))
     (native "
-bool region_writer_valid(const RegionWriterState *state)
-{
+bool region_writer_valid(const RegionWriterState *state) {
     if (!state->present || !state->region_id || !state->home || !state->peer ||
         state->home == state->peer || !state->revision ||
-        (state->current != state->home && state->current != state->peer)) return false;
+        (state->current != state->home && state->current != state->peer))
+        return false;
     return state->current == state->home || state->job != 0;
 }
-RegionWriterResult region_writer_query(RegionWriterState state, uint32_t caller)
-{
+
+RegionWriterResult region_writer_query(RegionWriterState state, uint32_t caller) {
     if (!region_writer_valid(&state))
-        return (RegionWriterResult){.status=REGION_WRITER_INVALID};
+        return (RegionWriterResult){.status = REGION_WRITER_INVALID};
     if (caller != state.home && caller != state.peer)
-        return (RegionWriterResult){.status=REGION_WRITER_DENIED};
-    return (RegionWriterResult){.state=state};
+        return (RegionWriterResult){.status = REGION_WRITER_DENIED};
+    return (RegionWriterResult){.state = state};
 }
+
 RegionWriterResult region_writer_change(RegionWriterState state, uint32_t caller,
-    RegionWriterAction action, uint64_t expected_revision, uint64_t job)
-{
-    RegionWriterResult queried=region_writer_query(state,caller);
-    if (queried.status) return queried;
+                                        RegionWriterAction action, uint64_t expected_revision,
+                                        uint64_t job) {
+    RegionWriterResult queried = region_writer_query(state, caller);
+    if (queried.status)
+        return queried;
     if (!job || action < REGION_WRITER_OFFER || action > REGION_WRITER_RECOVER)
-        return (RegionWriterResult){.status=REGION_WRITER_INVALID,.state=state};
+        return (RegionWriterResult){.status = REGION_WRITER_INVALID, .state = state};
     if (expected_revision != state.revision)
-        return (RegionWriterResult){.status=REGION_WRITER_STALE,.state=state};
+        return (RegionWriterResult){.status = REGION_WRITER_STALE, .state = state};
     if (state.revision == UINT64_MAX)
-        return (RegionWriterResult){.status=REGION_WRITER_EXHAUSTED,.state=state};
-    RegionWriterState next=state;
+        return (RegionWriterResult){.status = REGION_WRITER_EXHAUSTED, .state = state};
+    RegionWriterState next = state;
     if (action == REGION_WRITER_OFFER) {
         if (caller != state.home || state.current != state.home || state.job)
-            return (RegionWriterResult){.status=REGION_WRITER_BUSY,.state=state};
-        next.job=job;
+            return (RegionWriterResult){.status = REGION_WRITER_BUSY, .state = state};
+        next.job = job;
     } else if (action == REGION_WRITER_CLAIM) {
         if (caller != state.peer || state.current != state.home || state.job != job)
-            return (RegionWriterResult){.status=REGION_WRITER_BUSY,.state=state};
-        next.current=state.peer;
+            return (RegionWriterResult){.status = REGION_WRITER_BUSY, .state = state};
+        next.current = state.peer;
     } else if (action == REGION_WRITER_RELEASE) {
         if (caller != state.peer || state.current != state.peer || state.job != job)
-            return (RegionWriterResult){.status=REGION_WRITER_BUSY,.state=state};
-        next.current=state.home;next.job=0;
+            return (RegionWriterResult){.status = REGION_WRITER_BUSY, .state = state};
+        next.current = state.home;
+        next.job = 0;
     } else if (action == REGION_WRITER_CANCEL) {
         if (caller != state.home || state.current != state.home || state.job != job)
-            return (RegionWriterResult){.status=REGION_WRITER_BUSY,.state=state};
-        next.job=0;
+            return (RegionWriterResult){.status = REGION_WRITER_BUSY, .state = state};
+        next.job = 0;
     } else {
         if (caller != state.home || state.current != state.peer || state.job != job)
-            return (RegionWriterResult){.status=REGION_WRITER_BUSY,.state=state};
-        next.current=state.home;next.job=0;
+            return (RegionWriterResult){.status = REGION_WRITER_BUSY, .state = state};
+        next.current = state.home;
+        next.job = 0;
     }
     ++next.revision;
-    return (RegionWriterResult){.state=next};
+    return (RegionWriterResult){.state = next};
 }
 ")))

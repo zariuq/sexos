@@ -1,13 +1,24 @@
 (cesta native-c/1 compact-c/2
- (unit (native "#ifndef SEXOS_SHELL_MODELS_WORKSPACE_H
+ (unit (native "
+#ifndef SEXOS_SHELL_MODELS_WORKSPACE_H
 #define SEXOS_SHELL_MODELS_WORKSPACE_H
 #include \"silk_shell_app_state.h\"
 #include \"shell_linen_runtime.h\"
 #include \"sexos_client.h\"
-typedef struct ShellLinenWorkspaceContext {const ShellChromeApps *apps;ShellLinenRuntime *linen;} ShellLinenWorkspaceContext;
-enum {SHELL_WORKSPACE_CHANGED=0x279,SHELL_WORKSPACE_RETRY=2,SHELL_WORKSPACE_LIVE=5};
+
+typedef struct ShellLinenWorkspaceContext {
+    const ShellChromeApps *apps;
+    ShellLinenRuntime *linen;
+} ShellLinenWorkspaceContext;
+
+enum {
+    SHELL_WORKSPACE_CHANGED = 0x279,
+    SHELL_WORKSPACE_RETRY = 2,
+    SHELL_WORKSPACE_LIVE = 5
+};
+
 uint64_t shell_models_workspace_info(uint64_t slot);
 void shell_models_workspace_poll(ShellLinenWorkspaceContext *ctx);
-bool shell_models_workspace_receive(ShellLinenWorkspaceContext *ctx,const SexosMessage *message);
+bool shell_models_workspace_receive(ShellLinenWorkspaceContext *ctx, const SexosMessage *message);
 #endif
 ")))

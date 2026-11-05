@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -1370,7 +1371,7 @@ def main():
     exported_c = HERE / "c/src/sexdrive.c"
 
     # Verify no preprocessor conditionals inside sexdrive function bodies
-    cesta_text = cesta_src.read_text()
+    cesta_text = LayoutText(cesta_src.read_text())
     fn_split = cesta_text.split("(fn ", 1)[1]
     if "cpp-if" in fn_split:
         raise AssertionError("cpp-if found inside function bodies of src/sexdrive.cesta")

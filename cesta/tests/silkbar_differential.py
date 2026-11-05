@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 import random
 import shutil
+from layout_text import LayoutText
 
 from differential_support import LISTEN, first_difference, pinned_function, run
 
@@ -277,7 +278,7 @@ def main():
                     raise SystemExit(first_difference(actual, expected, f"variant {variant} scenario {number} {compiler}"))
                 compared += len(expected.splitlines())
     # Controls: each small change to the translation must change some trace.
-    original = (HERE / "src/silkbar.cesta").read_text()
+    original = LayoutText((HERE / "src/silkbar.cesta").read_text())
     mutations = [
         ("(= (. cadence_start) 16)", "(= (. cadence_start) 15)"),
         ("(define STALE_REAL_TICK_FALLBACK_LOOPS \"((uint16_t)16)\")", "(define STALE_REAL_TICK_FALLBACK_LOOPS \"((uint16_t)15)\")"),

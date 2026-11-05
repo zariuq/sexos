@@ -1,19 +1,38 @@
+
 #ifndef KALEIDOSCOPE_ASSET_VIEW_H
 #define KALEIDOSCOPE_ASSET_VIEW_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "kaleidoscope_bitmap.h"
-enum {KALEIDOSCOPE_ASSET_LOADING=0,KALEIDOSCOPE_ASSET_DECODING=1,
- KALEIDOSCOPE_ASSET_SENDING=2,KALEIDOSCOPE_ASSET_READY=3,
- KALEIDOSCOPE_ASSET_UNAVAILABLE=4,KALEIDOSCOPE_ASSET_INVALID=5,
- KALEIDOSCOPE_ASSET_CLEARING=6,KALEIDOSCOPE_ASSET_CLEARED=7,
- KALEIDOSCOPE_ASSET_UNCERTAIN=8,KALEIDOSCOPE_ASSET_NO_FIT=9};
-enum {KALEIDOSCOPE_ASSET_FIT=0,KALEIDOSCOPE_ASSET_ACTUAL=1};
-typedef struct KaleidoscopeAssetFrame {uint8_t bytes[512];size_t len,rows,cols;} KaleidoscopeAssetFrame;
+
+enum {
+    KALEIDOSCOPE_ASSET_LOADING = 0,
+    KALEIDOSCOPE_ASSET_DECODING = 1,
+    KALEIDOSCOPE_ASSET_SENDING = 2,
+    KALEIDOSCOPE_ASSET_READY = 3,
+    KALEIDOSCOPE_ASSET_UNAVAILABLE = 4,
+    KALEIDOSCOPE_ASSET_INVALID = 5,
+    KALEIDOSCOPE_ASSET_CLEARING = 6,
+    KALEIDOSCOPE_ASSET_CLEARED = 7,
+    KALEIDOSCOPE_ASSET_UNCERTAIN = 8,
+    KALEIDOSCOPE_ASSET_NO_FIT = 9
+};
+
+enum {
+    KALEIDOSCOPE_ASSET_FIT = 0,
+    KALEIDOSCOPE_ASSET_ACTUAL = 1
+};
+
+typedef struct KaleidoscopeAssetFrame {
+    uint8_t bytes[512];
+    size_t len, rows, cols;
+} KaleidoscopeAssetFrame;
+
 size_t kaleidoscope_asset_chrome_rows(uint32_t width);
-bool kaleidoscope_asset_geometry(uint32_t surface_width,uint32_t surface_height,size_t width,size_t height,uint8_t mode,KaleidoscopeBitmapGeometry *geometry);
-void kaleidoscope_asset_render(uint32_t surface_width,uint32_t surface_height,uint8_t status,uint8_t mode,size_t width,size_t height,const uint8_t *title,size_t title_len,KaleidoscopeAssetFrame *frame);
+bool kaleidoscope_asset_geometry(uint32_t surface_width, uint32_t surface_height, size_t width,
+                                 size_t height, uint8_t mode, KaleidoscopeBitmapGeometry *geometry);
+void kaleidoscope_asset_render(uint32_t surface_width, uint32_t surface_height, uint8_t status,
+                               uint8_t mode, size_t width, size_t height, const uint8_t *title,
+                               size_t title_len, KaleidoscopeAssetFrame *frame);
 #endif
-
-

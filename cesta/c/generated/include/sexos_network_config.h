@@ -4,20 +4,49 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
-enum { NET_CONFIG_VERSION=1,NET_CONFIG_SOURCE_BASE=48000,NET_CONFIG_MAX_TICKET=17535,NET_CONFIG_TLS_PORT=46080 };
+
+enum {
+    NET_CONFIG_VERSION = 1,
+    NET_CONFIG_SOURCE_BASE = 48000,
+    NET_CONFIG_MAX_TICKET = 17535,
+    NET_CONFIG_TLS_PORT = 46080
+};
+
 #define NET_CONFIG_HOST_NAME "probe.sexos.test"
 #define NET_CONFIG_DNS_NAME "\005probe\005sexos\004test\000"
 #define NET_CONFIG_DNS_QUESTION "\005probe\005sexos\004test\000\000\001\000\001"
-enum { NET_CONFIG_HOST_LENGTH=16,NET_CONFIG_DNS_NAME_LENGTH=18,NET_CONFIG_DNS_QUESTION_LENGTH=22 };
+
+enum {
+    NET_CONFIG_HOST_LENGTH = 16,
+    NET_CONFIG_DNS_NAME_LENGTH = 18,
+    NET_CONFIG_DNS_QUESTION_LENGTH = 22
+};
+
 /* IPv4 scalars have network-order numeric significance, independently of the
  * host's memory byte order. Constructed metadata confers no device authority. */
-typedef struct {uint32_t local,gateway,dns,http;uint8_t prefix,profile;
-    uint16_t dns_port,http_port,listen_port,source_base;} NetConfig;
-typedef struct {uint64_t word0,word1,word2,word3;} NetConfigWords;
-typedef struct {bool present;NetConfig value;} NetConfigResult;
-typedef struct {bool present;uint32_t address;uint16_t port;} NetConfigEndpoint;
+typedef struct {
+    uint32_t local, gateway, dns, http;
+    uint8_t prefix, profile;
+    uint16_t dns_port, http_port, listen_port, source_base;
+} NetConfig;
+
+typedef struct {
+    uint64_t word0, word1, word2, word3;
+} NetConfigWords;
+
+typedef struct {
+    bool present;
+    NetConfig value;
+} NetConfigResult;
+
+typedef struct {
+    bool present;
+    uint32_t address;
+    uint16_t port;
+} NetConfigEndpoint;
+
 NetConfig net_config_controlled(void);
-bool net_config_contains(NetConfig config,uint32_t address);
+bool net_config_contains(NetConfig config, uint32_t address);
 bool net_config_valid(NetConfig config);
 const char *net_config_hostname(NetConfig config);
 NetConfigEndpoint net_config_tls_endpoint(NetConfig config);

@@ -1,117 +1,590 @@
 (cesta native-c/1 compact-c/2
  (unit
   (include "kaleidoscope_regex.h")
+  (ownership (check-all)
+    (record ReParser (field source (borrow read)) (field regex (borrow write)))
+    (function re_emit (nullable 5)))
   (native "
 #define RE_AST_MAX 1024u
 #define RE_NONE UINT16_MAX
 #define RE_MAX_REPEAT UINT32_C(100)
 #define RE_LOOPS 32u
-enum {AST_EMPTY=0,AST_BYTE=1,AST_ANY=2,AST_CLASS=3,AST_START=4,AST_END=5,
- AST_BOUNDARY=6,AST_GROUP=7,AST_CONCAT=8,AST_ALT=9,AST_REPEAT=10};
+
+enum {
+    AST_EMPTY = 0,
+    AST_BYTE = 1,
+    AST_ANY = 2,
+    AST_CLASS = 3,
+    AST_START = 4,
+    AST_END = 5,
+    AST_BOUNDARY = 6,
+    AST_GROUP = 7,
+    AST_CONCAT = 8,
+    AST_ALT = 9,
+    AST_REPEAT = 10
+};
+
 typedef struct ReAst {
- uint8_t kind,byte,group;bool capture,lazy,unbounded;
- uint16_t inner,first,last,next,class_id;
- uint32_t min,max;
+    uint8_t kind, byte, group;
+    bool capture, lazy, unbounded;
+    uint16_t inner, first, last, next, class_id;
+    uint32_t min, max;
 } ReAst;
+
 typedef struct ReParser {
- const KaleidoscopeRegexSource *source;KaleidoscopeRegex *regex;
- ReAst nodes[RE_AST_MAX];size_t node_count,at,compile_loops;uint8_t groups,depth,error,compile_error;bool icase;
+    const KaleidoscopeRegexSource *source;
+    KaleidoscopeRegex *regex;
+    ReAst nodes[RE_AST_MAX];
+    size_t node_count, at, compile_loops;
+    uint8_t groups, depth, error, compile_error;
+    bool icase;
 } ReParser;
-typedef struct ReSet {bool bits[256];} ReSet;
-static bool re_word(uint8_t b){return(b>='A'&&b<='Z')||(b>='a'&&b<='z')||(b>='0'&&b<='9')||b=='_';}
-static uint8_t re_lower(uint8_t b){return b>='A'&&b<='Z'?(uint8_t)(b+('a'-'A')):b;}
-static bool re_node(ReParser *p,uint8_t kind,uint16_t *out)
-{if(p->node_count>=RE_AST_MAX){p->error=KALEIDOSCOPE_REGEX_LIMIT;return false;}size_t n=p->node_count++;p->nodes[n]=(ReAst){.kind=kind,.inner=RE_NONE,.first=RE_NONE,.last=RE_NONE,.next=RE_NONE,.class_id=RE_NONE};*out=(uint16_t)n;return true;}
-static bool re_child(ReParser *p,uint16_t parent,uint16_t child)
-{if(parent>=p->node_count||child>=p->node_count)return false;if(p->nodes[parent].first==RE_NONE)p->nodes[parent].first=child;else p->nodes[p->nodes[parent].last].next=child;p->nodes[parent].last=child;return true;}
-static bool re_peek(const ReParser *p,uint8_t *out)
-{if(p->at>=p->source->pattern_len)return false;*out=p->source->pattern[p->at];return true;}
-static bool re_parse_alt(ReParser *p,uint16_t *out);
-static bool re_parse_seq(ReParser *p,uint16_t *out);
-static bool re_parse_atom(ReParser *p,uint16_t *out);
-static bool re_number(ReParser *p,uint32_t *out)
-{size_t start=p->at;uint64_t value=0;uint8_t c=0;while(re_peek(p,&c)&&c>='0'&&c<='9'){value=value*10+(uint64_t)(c-'0');if(value>UINT32_MAX)return false;p->at++;}if(p->at==start)return false;*out=(uint32_t)value;return true;}
-static bool re_escape_class(uint8_t c,ReSet *set)
-{
- uint8_t lower=re_lower(c);if(lower!='d'&&lower!='w'&&lower!='s')return false;bool invert=c>='A'&&c<='Z';
- for(size_t i=0;i<256;i++){uint8_t b=(uint8_t)i;bool yes=lower=='d'?(b>='0'&&b<='9'):lower=='w'?re_word(b):(b==' '||b=='\\t'||b=='\\n'||b=='\\r'||b==0x0b||b==0x0c);set->bits[i]=yes!=invert;}return true;
+
+typedef struct ReSet {
+    bool bits[256];
+} ReSet;
+
+static bool re_word(uint8_t b) {
+    return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '_';
 }
-static uint8_t re_escaped_byte(uint8_t c)
-{return c=='n'?'\\n':c=='t'?'\\t':c=='r'?'\\r':c=='0'?0:c=='f'?0x0c:c=='v'?0x0b:c;}
-static bool re_class_store(ReParser *p,const ReSet *set,uint16_t *id)
-{
- if(p->regex->class_count>=KALEIDOSCOPE_REGEX_MAX_CLASSES){p->error=KALEIDOSCOPE_REGEX_LIMIT;return false;}
- size_t n=p->regex->class_count++;for(size_t w=0;w<4;w++)p->regex->classes[n][w]=0;
- for(size_t i=0;i<256;i++){if(set->bits[i])p->regex->classes[n][i/64]|=UINT64_C(1)<<(i%64);}*id=(uint16_t)n;return true;
+
+static uint8_t re_lower(uint8_t b) {
+    return b >= 'A' && b <= 'Z' ? (uint8_t)(b + ('a' - 'A')) : b;
 }
-static bool re_parse_class(ReParser *p,uint16_t *out)
-{
- ReSet set={0};uint8_t c=0;bool negated=re_peek(p,&c)&&c=='^';if(negated)p->at++;bool first=true;
- for(;;){if(!re_peek(p,&c)){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}if(c==']'&&!first){p->at++;break;}first=false;p->at++;uint8_t lo=0;
-  if(c=='\\\\'){uint8_t e=0;if(!re_peek(p,&e)){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}p->at++;ReSet escaped={0};if(re_escape_class(e,&escaped)){for(size_t i=0;i<256;i++)set.bits[i]|=escaped.bits[i];continue;}lo=re_escaped_byte(e);}else lo=c;
-  uint8_t dash=0,next=0;if(re_peek(p,&dash)&&dash=='-'&&p->at+1<p->source->pattern_len&&(next=p->source->pattern[p->at+1])!=']'){
-   p->at++;uint8_t hi=0;if(!re_peek(p,&hi)){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}p->at++;if(hi=='\\\\'){if(!re_peek(p,&hi)){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}p->at++;hi=re_escaped_byte(hi);}if(hi<lo){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}for(size_t i=lo;i<=hi;i++)set.bits[i]=true;
-  }else set.bits[lo]=true;
- }
- if(p->icase)for(size_t b='a';b<='z';b++){size_t u=b-('a'-'A');bool any=set.bits[b]||set.bits[u];set.bits[b]=any;set.bits[u]=any;}
- if(negated){for(size_t i=0;i<256;i++)set.bits[i]=!set.bits[i];}uint16_t class_id=0;if(!re_class_store(p,&set,&class_id)||!re_node(p,AST_CLASS,out)){return false;}p->nodes[*out].class_id=class_id;return true;
+
+static bool re_node(ReParser *p, uint8_t kind, uint16_t *out) {
+    if (p->node_count >= RE_AST_MAX) {
+        p->error = KALEIDOSCOPE_REGEX_LIMIT;
+        return false;
+    }
+    size_t n = p->node_count++;
+    p->nodes[n] = (ReAst){.kind = kind,
+                          .inner = RE_NONE,
+                          .first = RE_NONE,
+                          .last = RE_NONE,
+                          .next = RE_NONE,
+                          .class_id = RE_NONE};
+    *out = (uint16_t)n;
+    return true;
 }
-static bool re_parse_atom(ReParser *p,uint16_t *out)
-{
- uint8_t c=0;if(!re_peek(p,&c)){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}p->at++;
- if(c=='.'){return re_node(p,AST_ANY,out);}if(c=='^'){return re_node(p,AST_START,out);}if(c=='$'){return re_node(p,AST_END,out);}
- if(c=='('){bool capture=true;if(p->at+1<p->source->pattern_len&&p->source->pattern[p->at]=='?'&&p->source->pattern[p->at+1]==':'){capture=false;p->at+=2;}uint8_t group=0;if(capture){if((size_t)p->groups+1>=KALEIDOSCOPE_REGEX_CAPTURES){p->error=KALEIDOSCOPE_REGEX_LIMIT;return false;}group=++p->groups;}uint16_t inner=0;if(!re_parse_alt(p,&inner)){return false;}if(!re_peek(p,&c)||c!=')'){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}p->at++;if(!re_node(p,AST_GROUP,out))return false;p->nodes[*out].capture=capture;p->nodes[*out].group=group;p->nodes[*out].inner=inner;return true;}
- if(c=='[')return re_parse_class(p,out);
- if(c=='\\\\'){uint8_t e=0;if(!re_peek(p,&e)){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}p->at++;ReSet set={0};if(re_escape_class(e,&set)){uint16_t id=0;if(!re_class_store(p,&set,&id)||!re_node(p,AST_CLASS,out))return false;p->nodes[*out].class_id=id;return true;}if(e=='b'||e=='B'){if(!re_node(p,AST_BOUNDARY,out))return false;p->nodes[*out].byte=(uint8_t)(e=='b');return true;}c=re_escaped_byte(e);}
- else if(c=='*'||c=='+'||c=='?'||c==')'){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}
- else if(c=='{'&&p->at<p->source->pattern_len&&p->source->pattern[p->at]>='0'&&p->source->pattern[p->at]<='9'){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}
- if(!re_node(p,AST_BYTE,out)){return false;}p->nodes[*out].byte=c;return true;
+
+static bool re_child(ReParser *p, uint16_t parent, uint16_t child) {
+    if (parent >= p->node_count || child >= p->node_count)
+        return false;
+    if (p->nodes[parent].first == RE_NONE)
+        p->nodes[parent].first = child;
+    else
+        p->nodes[p->nodes[parent].last].next = child;
+    p->nodes[parent].last = child;
+    return true;
 }
-static bool re_quantified(ReParser *p,uint16_t atom,uint16_t *out)
-{
- uint8_t c=0;if(!re_peek(p,&c)){*out=atom;return true;}uint32_t min=0,max=0;bool unbounded=false,quantified=true;
- if(c=='*'){unbounded=true;p->at++;}else if(c=='+'){min=1;unbounded=true;p->at++;}else if(c=='?'){max=1;p->at++;}
- else if(c=='{'&&p->at+1<p->source->pattern_len&&p->source->pattern[p->at+1]>='0'&&p->source->pattern[p->at+1]<='9'){
-  p->at++;if(!re_number(p,&min)){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}if(re_peek(p,&c)&&c==','){p->at++;if(re_peek(p,&c)&&c=='}')unbounded=true;else if(!re_number(p,&max)){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}}else max=min;if(!re_peek(p,&c)||c!='}'){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}p->at++;if(min>RE_MAX_REPEAT||(!unbounded&&(max>RE_MAX_REPEAT||max<min))){p->error=KALEIDOSCOPE_REGEX_LIMIT;return false;}
- }else quantified=false;
- if(!quantified){*out=atom;return true;}uint8_t kind=p->nodes[atom].kind;if(kind==AST_START||kind==AST_END||kind==AST_BOUNDARY){p->error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}bool lazy=re_peek(p,&c)&&c=='?';if(lazy)p->at++;if(!re_node(p,AST_REPEAT,out))return false;p->nodes[*out].inner=atom;p->nodes[*out].min=min;p->nodes[*out].max=max;p->nodes[*out].unbounded=unbounded;p->nodes[*out].lazy=lazy;return true;
+
+static bool re_peek(const ReParser *p, uint8_t *out) {
+    if (p->at >= p->source->pattern_len)
+        return false;
+    *out = p->source->pattern[p->at];
+    return true;
 }
-static bool re_parse_seq(ReParser *p,uint16_t *out)
-{
- uint16_t parent=0;if(!re_node(p,AST_CONCAT,&parent))return false;size_t count=0;uint8_t c=0;
- while(re_peek(p,&c)&&c!='|'&&c!=')'){uint16_t atom=0,item=0;if(!re_parse_atom(p,&atom)||!re_quantified(p,atom,&item)||!re_child(p,parent,item))return false;count++;}
- if(!count){return re_node(p,AST_EMPTY,out);}if(count==1){*out=p->nodes[parent].first;return true;}*out=parent;return true;
+
+static bool re_parse_alt(ReParser *p, uint16_t *out);
+static bool re_parse_seq(ReParser *p, uint16_t *out);
+static bool re_parse_atom(ReParser *p, uint16_t *out);
+
+static bool re_number(ReParser *p, uint32_t *out) {
+    size_t start = p->at;
+    uint64_t value = 0;
+    uint8_t c = 0;
+    while (re_peek(p, &c) && c >= '0' && c <= '9') {
+        value = value * 10 + (uint64_t)(c - '0');
+        if (value > UINT32_MAX)
+            return false;
+        p->at++;
+    }
+    if (p->at == start)
+        return false;
+    *out = (uint32_t)value;
+    return true;
 }
-static bool re_parse_alt(ReParser *p,uint16_t *out)
-{
- p->depth++;if(p->depth>32){p->error=KALEIDOSCOPE_REGEX_LIMIT;return false;}uint16_t parent=0;if(!re_node(p,AST_ALT,&parent))return false;size_t count=0;uint8_t c=0;
- while(true){uint16_t arm=0;if(!re_parse_seq(p,&arm)||!re_child(p,parent,arm))return false;count++;if(!re_peek(p,&c)||c!='|')break;p->at++;}
- p->depth--;if(count==1){*out=p->nodes[parent].first;return true;}*out=parent;return true;
+
+static bool re_escape_class(uint8_t c, ReSet *set) {
+    uint8_t lower = re_lower(c);
+    if (lower != 'd' && lower != 'w' && lower != 's')
+        return false;
+    bool invert = c >= 'A' && c <= 'Z';
+    for (size_t i = 0; i < 256; i++) {
+        uint8_t b = (uint8_t)i;
+        bool yes = lower == 'd'   ? (b >= '0' && b <= '9')
+                   : lower == 'w' ? re_word(b)
+                                  : (b == ' ' || b == '\\t' || b == '\\n' || b == '\\r' || b == 0x0b ||
+                                     b == 0x0c);
+        set->bits[i] = yes != invert;
+    }
+    return true;
 }
-static bool re_emit(ReParser *p,uint8_t kind,uint8_t byte,uint16_t a,uint16_t b,uint16_t *out)
-{KaleidoscopeRegex *r=&*p->regex;if(r->program_len>=KALEIDOSCOPE_REGEX_MAX_INSTS){p->compile_error=KALEIDOSCOPE_REGEX_LIMIT;return false;}size_t n=r->program_len++;r->program[n]=(KaleidoscopeRegexInst){kind,byte,a,b};if(out)*out=(uint16_t)n;return true;}
-static bool re_compile_node(ReParser *p,uint16_t id)
-{
- if(id>=p->node_count){p->compile_error=KALEIDOSCOPE_REGEX_SYNTAX;return false;}ReAst n=p->nodes[id];uint16_t ignored=0;
- switch(n.kind){
-  case AST_EMPTY:return true;case AST_BYTE:return re_emit(p,KALEIDOSCOPE_RE_BYTE,n.byte,0,0,0);case AST_ANY:return re_emit(p,KALEIDOSCOPE_RE_ANY,0,0,0,0);
-  case AST_CLASS:return re_emit(p,KALEIDOSCOPE_RE_CLASS,0,n.class_id,0,0);case AST_START:return re_emit(p,KALEIDOSCOPE_RE_START,0,0,0,0);case AST_END:return re_emit(p,KALEIDOSCOPE_RE_END,0,0,0,0);
-  case AST_BOUNDARY:return re_emit(p,KALEIDOSCOPE_RE_BOUNDARY,n.byte,0,0,0);
-  case AST_GROUP:if(n.capture&&!re_emit(p,KALEIDOSCOPE_RE_SAVE,0,(uint16_t)(n.group*2),0,0))return false;if(!re_compile_node(p,n.inner))return false;return !n.capture||re_emit(p,KALEIDOSCOPE_RE_SAVE,0,(uint16_t)(n.group*2+1),0,0);
-  case AST_CONCAT:{uint16_t child=n.first;while(child!=RE_NONE){uint16_t next=p->nodes[child].next;if(!re_compile_node(p,child))return false;child=next;}return true;}
-  case AST_ALT:{uint16_t jumps[256]={0};size_t nj=0;for(uint16_t child=n.first;child!=RE_NONE;child=p->nodes[child].next){uint16_t next=p->nodes[child].next;if(next!=RE_NONE){uint16_t split=0;if(!re_emit(p,KALEIDOSCOPE_RE_SPLIT,0,0,0,&split)||!re_compile_node(p,child)||!re_emit(p,KALEIDOSCOPE_RE_JMP,0,0,0,&jumps[nj++]))return false;size_t at=p->regex->program_len;p->regex->program[split].a=(uint16_t)(split+1);p->regex->program[split].b=(uint16_t)at;}else if(!re_compile_node(p,child))return false;}uint16_t end=(uint16_t)p->regex->program_len;for(size_t i=0;i<nj;i++)p->regex->program[jumps[i]].a=end;return true;}
-  case AST_REPEAT:{for(uint32_t i=0;i<n.min;i++)if(!re_compile_node(p,n.inner))return false;if(n.unbounded){if(p->compile_loops==RE_LOOPS){p->compile_error=KALEIDOSCOPE_REGEX_LIMIT;return false;}uint16_t reg=(uint16_t)p->compile_loops++,split=0;if(!re_emit(p,KALEIDOSCOPE_RE_SPLIT,0,0,0,&split)||!re_emit(p,KALEIDOSCOPE_RE_MARK,0,reg,0,&ignored)||!re_compile_node(p,n.inner)||!re_emit(p,KALEIDOSCOPE_RE_PROGRESS,0,reg,0,&ignored)||!re_emit(p,KALEIDOSCOPE_RE_JMP,0,split,0,&ignored))return false;uint16_t out=(uint16_t)p->regex->program_len;p->regex->program[split].a=n.lazy?out:(uint16_t)(split+1);p->regex->program[split].b=n.lazy?(uint16_t)(split+1):out;return true;}uint16_t splits[RE_MAX_REPEAT]={0};size_t ns=0;for(uint32_t i=n.min;i<n.max;i++){if(!re_emit(p,KALEIDOSCOPE_RE_SPLIT,0,0,0,&splits[ns++])||!re_compile_node(p,n.inner))return false;}uint16_t out=(uint16_t)p->regex->program_len;for(size_t i=0;i<ns;i++){uint16_t s=splits[i];p->regex->program[s].a=n.lazy?out:(uint16_t)(s+1);p->regex->program[s].b=n.lazy?(uint16_t)(s+1):out;}return true;}
-  default:p->compile_error=KALEIDOSCOPE_REGEX_SYNTAX;return false;
- }
+
+static uint8_t re_escaped_byte(uint8_t c) {
+    return c == 'n'   ? '\\n'
+           : c == 't' ? '\\t'
+           : c == 'r' ? '\\r'
+           : c == '0' ? 0
+           : c == 'f' ? 0x0c
+           : c == 'v' ? 0x0b
+                      : c;
 }
-uint8_t kaleidoscope_regex_compile(const KaleidoscopeRegexSource *source,KaleidoscopeRegex *regex)
-{
- if(!source||!regex||source->pattern_len>KALEIDOSCOPE_REGEX_MAX_PATTERN||source->flags_len>8){return KALEIDOSCOPE_REGEX_LIMIT;}*regex=(KaleidoscopeRegex){0};bool icase=false;
- for(size_t i=0;i<source->flags_len;i++){uint8_t f=source->flags[i];if(f!='i'&&f!='g')return KALEIDOSCOPE_REGEX_SYNTAX;if(f=='i')icase=true;}
- uint8_t groups=0;
- {ReParser p={.source=source,.regex=regex,.icase=icase};uint16_t root=0;if(!re_parse_alt(&p,&root))return p.error?p.error:KALEIDOSCOPE_REGEX_SYNTAX;if(p.at!=source->pattern_len)return KALEIDOSCOPE_REGEX_SYNTAX;
-  uint16_t ignored=0;if(!re_emit(&p,KALEIDOSCOPE_RE_SAVE,0,0,0,&ignored)||!re_compile_node(&p,root)||!re_emit(&p,KALEIDOSCOPE_RE_SAVE,0,1,0,&ignored)||!re_emit(&p,KALEIDOSCOPE_RE_MATCH,0,0,0,&ignored))return p.compile_error?p.compile_error:KALEIDOSCOPE_REGEX_LIMIT;
-  groups=p.groups;}
- regex->groups=groups;regex->icase=icase;regex->valid=true;return KALEIDOSCOPE_REGEX_OK;
+
+static bool re_class_store(ReParser *p, const ReSet *set, uint16_t *id) {
+    if (p->regex->class_count >= KALEIDOSCOPE_REGEX_MAX_CLASSES) {
+        p->error = KALEIDOSCOPE_REGEX_LIMIT;
+        return false;
+    }
+    size_t n = p->regex->class_count++;
+    for (size_t w = 0; w < 4; w++)
+        p->regex->classes[n][w] = 0;
+    for (size_t i = 0; i < 256; i++) {
+        if (set->bits[i])
+            p->regex->classes[n][i / 64] |= UINT64_C(1) << (i % 64);
+    }
+    *id = (uint16_t)n;
+    return true;
+}
+
+static bool re_parse_class(ReParser *p, uint16_t *out) {
+    ReSet set = {0};
+    uint8_t c = 0;
+    bool negated = re_peek(p, &c) && c == '^';
+    if (negated)
+        p->at++;
+    bool first = true;
+    for (;;) {
+        if (!re_peek(p, &c)) {
+            p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+            return false;
+        }
+        if (c == ']' && !first) {
+            p->at++;
+            break;
+        }
+        first = false;
+        p->at++;
+        uint8_t lo = 0;
+        if (c == '\\\\') {
+            uint8_t e = 0;
+            if (!re_peek(p, &e)) {
+                p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+                return false;
+            }
+            p->at++;
+            ReSet escaped = {0};
+            if (re_escape_class(e, &escaped)) {
+                for (size_t i = 0; i < 256; i++)
+                    set.bits[i] |= escaped.bits[i];
+                continue;
+            }
+            lo = re_escaped_byte(e);
+        } else
+            lo = c;
+        uint8_t dash = 0, next = 0;
+        if (re_peek(p, &dash) && dash == '-' && p->at + 1 < p->source->pattern_len &&
+            (next = p->source->pattern[p->at + 1]) != ']') {
+            p->at++;
+            uint8_t hi = 0;
+            if (!re_peek(p, &hi)) {
+                p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+                return false;
+            }
+            p->at++;
+            if (hi == '\\\\') {
+                if (!re_peek(p, &hi)) {
+                    p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+                    return false;
+                }
+                p->at++;
+                hi = re_escaped_byte(hi);
+            }
+            if (hi < lo) {
+                p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+                return false;
+            }
+            for (size_t i = lo; i <= hi; i++)
+                set.bits[i] = true;
+        } else
+            set.bits[lo] = true;
+    }
+    if (p->icase)
+        for (size_t b = 'a'; b <= 'z'; b++) {
+            size_t u = b - ('a' - 'A');
+            bool any = set.bits[b] || set.bits[u];
+            set.bits[b] = any;
+            set.bits[u] = any;
+        }
+    if (negated) {
+        for (size_t i = 0; i < 256; i++)
+            set.bits[i] = !set.bits[i];
+    }
+    uint16_t class_id = 0;
+    if (!re_class_store(p, &set, &class_id) || !re_node(p, AST_CLASS, out)) {
+        return false;
+    }
+    p->nodes[*out].class_id = class_id;
+    return true;
+}
+
+static bool re_parse_atom(ReParser *p, uint16_t *out) {
+    uint8_t c = 0;
+    if (!re_peek(p, &c)) {
+        p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+        return false;
+    }
+    p->at++;
+    if (c == '.') {
+        return re_node(p, AST_ANY, out);
+    }
+    if (c == '^') {
+        return re_node(p, AST_START, out);
+    }
+    if (c == '$') {
+        return re_node(p, AST_END, out);
+    }
+    if (c == '(') {
+        bool capture = true;
+        if (p->at + 1 < p->source->pattern_len && p->source->pattern[p->at] == '?' &&
+            p->source->pattern[p->at + 1] == ':') {
+            capture = false;
+            p->at += 2;
+        }
+        uint8_t group = 0;
+        if (capture) {
+            if ((size_t)p->groups + 1 >= KALEIDOSCOPE_REGEX_CAPTURES) {
+                p->error = KALEIDOSCOPE_REGEX_LIMIT;
+                return false;
+            }
+            group = ++p->groups;
+        }
+        uint16_t inner = 0;
+        if (!re_parse_alt(p, &inner)) {
+            return false;
+        }
+        if (!re_peek(p, &c) || c != ')') {
+            p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+            return false;
+        }
+        p->at++;
+        if (!re_node(p, AST_GROUP, out))
+            return false;
+        p->nodes[*out].capture = capture;
+        p->nodes[*out].group = group;
+        p->nodes[*out].inner = inner;
+        return true;
+    }
+    if (c == '[')
+        return re_parse_class(p, out);
+    if (c == '\\\\') {
+        uint8_t e = 0;
+        if (!re_peek(p, &e)) {
+            p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+            return false;
+        }
+        p->at++;
+        ReSet set = {0};
+        if (re_escape_class(e, &set)) {
+            uint16_t id = 0;
+            if (!re_class_store(p, &set, &id) || !re_node(p, AST_CLASS, out))
+                return false;
+            p->nodes[*out].class_id = id;
+            return true;
+        }
+        if (e == 'b' || e == 'B') {
+            if (!re_node(p, AST_BOUNDARY, out))
+                return false;
+            p->nodes[*out].byte = (uint8_t)(e == 'b');
+            return true;
+        }
+        c = re_escaped_byte(e);
+    } else if (c == '*' || c == '+' || c == '?' || c == ')') {
+        p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+        return false;
+    } else if (c == '{' && p->at < p->source->pattern_len && p->source->pattern[p->at] >= '0' &&
+               p->source->pattern[p->at] <= '9') {
+        p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+        return false;
+    }
+    if (!re_node(p, AST_BYTE, out)) {
+        return false;
+    }
+    p->nodes[*out].byte = c;
+    return true;
+}
+
+static bool re_quantified(ReParser *p, uint16_t atom, uint16_t *out) {
+    uint8_t c = 0;
+    if (!re_peek(p, &c)) {
+        *out = atom;
+        return true;
+    }
+    uint32_t min = 0, max = 0;
+    bool unbounded = false, quantified = true;
+    if (c == '*') {
+        unbounded = true;
+        p->at++;
+    } else if (c == '+') {
+        min = 1;
+        unbounded = true;
+        p->at++;
+    } else if (c == '?') {
+        max = 1;
+        p->at++;
+    } else if (c == '{' && p->at + 1 < p->source->pattern_len &&
+               p->source->pattern[p->at + 1] >= '0' && p->source->pattern[p->at + 1] <= '9') {
+        p->at++;
+        if (!re_number(p, &min)) {
+            p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+            return false;
+        }
+        if (re_peek(p, &c) && c == ',') {
+            p->at++;
+            if (re_peek(p, &c) && c == '}')
+                unbounded = true;
+            else if (!re_number(p, &max)) {
+                p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+                return false;
+            }
+        } else
+            max = min;
+        if (!re_peek(p, &c) || c != '}') {
+            p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+            return false;
+        }
+        p->at++;
+        if (min > RE_MAX_REPEAT || (!unbounded && (max > RE_MAX_REPEAT || max < min))) {
+            p->error = KALEIDOSCOPE_REGEX_LIMIT;
+            return false;
+        }
+    } else
+        quantified = false;
+    if (!quantified) {
+        *out = atom;
+        return true;
+    }
+    uint8_t kind = p->nodes[atom].kind;
+    if (kind == AST_START || kind == AST_END || kind == AST_BOUNDARY) {
+        p->error = KALEIDOSCOPE_REGEX_SYNTAX;
+        return false;
+    }
+    bool lazy = re_peek(p, &c) && c == '?';
+    if (lazy)
+        p->at++;
+    if (!re_node(p, AST_REPEAT, out))
+        return false;
+    p->nodes[*out].inner = atom;
+    p->nodes[*out].min = min;
+    p->nodes[*out].max = max;
+    p->nodes[*out].unbounded = unbounded;
+    p->nodes[*out].lazy = lazy;
+    return true;
+}
+
+static bool re_parse_seq(ReParser *p, uint16_t *out) {
+    uint16_t parent = 0;
+    if (!re_node(p, AST_CONCAT, &parent))
+        return false;
+    size_t count = 0;
+    uint8_t c = 0;
+    while (re_peek(p, &c) && c != '|' && c != ')') {
+        uint16_t atom = 0, item = 0;
+        if (!re_parse_atom(p, &atom) || !re_quantified(p, atom, &item) ||
+            !re_child(p, parent, item))
+            return false;
+        count++;
+    }
+    if (!count) {
+        return re_node(p, AST_EMPTY, out);
+    }
+    if (count == 1) {
+        *out = p->nodes[parent].first;
+        return true;
+    }
+    *out = parent;
+    return true;
+}
+
+static bool re_parse_alt(ReParser *p, uint16_t *out) {
+    p->depth++;
+    if (p->depth > 32) {
+        p->error = KALEIDOSCOPE_REGEX_LIMIT;
+        return false;
+    }
+    uint16_t parent = 0;
+    if (!re_node(p, AST_ALT, &parent))
+        return false;
+    size_t count = 0;
+    uint8_t c = 0;
+    while (true) {
+        uint16_t arm = 0;
+        if (!re_parse_seq(p, &arm) || !re_child(p, parent, arm))
+            return false;
+        count++;
+        if (!re_peek(p, &c) || c != '|')
+            break;
+        p->at++;
+    }
+    p->depth--;
+    if (count == 1) {
+        *out = p->nodes[parent].first;
+        return true;
+    }
+    *out = parent;
+    return true;
+}
+
+static bool re_emit(ReParser *p, uint8_t kind, uint8_t byte, uint16_t a, uint16_t b,
+                    uint16_t *out) {
+    KaleidoscopeRegex *r = &*p->regex;
+    if (r->program_len >= KALEIDOSCOPE_REGEX_MAX_INSTS) {
+        p->compile_error = KALEIDOSCOPE_REGEX_LIMIT;
+        return false;
+    }
+    size_t n = r->program_len++;
+    r->program[n] = (KaleidoscopeRegexInst){kind, byte, a, b};
+    if (out)
+        *out = (uint16_t)n;
+    return true;
+}
+
+static bool re_compile_node(ReParser *p, uint16_t id) {
+    if (id >= p->node_count) {
+        p->compile_error = KALEIDOSCOPE_REGEX_SYNTAX;
+        return false;
+    }
+    ReAst n = p->nodes[id];
+    uint16_t ignored = 0;
+    switch (n.kind) {
+    case AST_EMPTY:
+        return true;
+    case AST_BYTE:
+        return re_emit(p, KALEIDOSCOPE_RE_BYTE, n.byte, 0, 0, 0);
+    case AST_ANY:
+        return re_emit(p, KALEIDOSCOPE_RE_ANY, 0, 0, 0, 0);
+    case AST_CLASS:
+        return re_emit(p, KALEIDOSCOPE_RE_CLASS, 0, n.class_id, 0, 0);
+    case AST_START:
+        return re_emit(p, KALEIDOSCOPE_RE_START, 0, 0, 0, 0);
+    case AST_END:
+        return re_emit(p, KALEIDOSCOPE_RE_END, 0, 0, 0, 0);
+    case AST_BOUNDARY:
+        return re_emit(p, KALEIDOSCOPE_RE_BOUNDARY, n.byte, 0, 0, 0);
+    case AST_GROUP:
+        if (n.capture && !re_emit(p, KALEIDOSCOPE_RE_SAVE, 0, (uint16_t)(n.group * 2), 0, 0))
+            return false;
+        if (!re_compile_node(p, n.inner))
+            return false;
+        return !n.capture || re_emit(p, KALEIDOSCOPE_RE_SAVE, 0, (uint16_t)(n.group * 2 + 1), 0, 0);
+    case AST_CONCAT: {
+        uint16_t child = n.first;
+        while (child != RE_NONE) {
+            uint16_t next = p->nodes[child].next;
+            if (!re_compile_node(p, child))
+                return false;
+            child = next;
+        }
+        return true;
+    }
+    case AST_ALT: {
+        uint16_t jumps[256] = {0};
+        size_t nj = 0;
+        for (uint16_t child = n.first; child != RE_NONE; child = p->nodes[child].next) {
+            uint16_t next = p->nodes[child].next;
+            if (next != RE_NONE) {
+                uint16_t split = 0;
+                if (!re_emit(p, KALEIDOSCOPE_RE_SPLIT, 0, 0, 0, &split) ||
+                    !re_compile_node(p, child) ||
+                    !re_emit(p, KALEIDOSCOPE_RE_JMP, 0, 0, 0, &jumps[nj++]))
+                    return false;
+                size_t at = p->regex->program_len;
+                p->regex->program[split].a = (uint16_t)(split + 1);
+                p->regex->program[split].b = (uint16_t)at;
+            } else if (!re_compile_node(p, child))
+                return false;
+        }
+        uint16_t end = (uint16_t)p->regex->program_len;
+        for (size_t i = 0; i < nj; i++)
+            p->regex->program[jumps[i]].a = end;
+        return true;
+    }
+    case AST_REPEAT: {
+        for (uint32_t i = 0; i < n.min; i++)
+            if (!re_compile_node(p, n.inner))
+                return false;
+        if (n.unbounded) {
+            if (p->compile_loops == RE_LOOPS) {
+                p->compile_error = KALEIDOSCOPE_REGEX_LIMIT;
+                return false;
+            }
+            uint16_t reg = (uint16_t)p->compile_loops++, split = 0;
+            if (!re_emit(p, KALEIDOSCOPE_RE_SPLIT, 0, 0, 0, &split) ||
+                !re_emit(p, KALEIDOSCOPE_RE_MARK, 0, reg, 0, &ignored) ||
+                !re_compile_node(p, n.inner) ||
+                !re_emit(p, KALEIDOSCOPE_RE_PROGRESS, 0, reg, 0, &ignored) ||
+                !re_emit(p, KALEIDOSCOPE_RE_JMP, 0, split, 0, &ignored))
+                return false;
+            uint16_t out = (uint16_t)p->regex->program_len;
+            p->regex->program[split].a = n.lazy ? out : (uint16_t)(split + 1);
+            p->regex->program[split].b = n.lazy ? (uint16_t)(split + 1) : out;
+            return true;
+        }
+        uint16_t splits[RE_MAX_REPEAT] = {0};
+        size_t ns = 0;
+        for (uint32_t i = n.min; i < n.max; i++) {
+            if (!re_emit(p, KALEIDOSCOPE_RE_SPLIT, 0, 0, 0, &splits[ns++]) ||
+                !re_compile_node(p, n.inner))
+                return false;
+        }
+        uint16_t out = (uint16_t)p->regex->program_len;
+        for (size_t i = 0; i < ns; i++) {
+            uint16_t s = splits[i];
+            p->regex->program[s].a = n.lazy ? out : (uint16_t)(s + 1);
+            p->regex->program[s].b = n.lazy ? (uint16_t)(s + 1) : out;
+        }
+        return true;
+    }
+    default:
+        p->compile_error = KALEIDOSCOPE_REGEX_SYNTAX;
+        return false;
+    }
+}
+
+uint8_t kaleidoscope_regex_compile(const KaleidoscopeRegexSource *source,
+                                   KaleidoscopeRegex *regex) {
+    if (!source || !regex || source->pattern_len > KALEIDOSCOPE_REGEX_MAX_PATTERN ||
+        source->flags_len > 8) {
+        return KALEIDOSCOPE_REGEX_LIMIT;
+    }
+    *regex = (KaleidoscopeRegex){0};
+    bool icase = false;
+    for (size_t i = 0; i < source->flags_len; i++) {
+        uint8_t f = source->flags[i];
+        if (f != 'i' && f != 'g')
+            return KALEIDOSCOPE_REGEX_SYNTAX;
+        if (f == 'i')
+            icase = true;
+    }
+    uint8_t groups = 0;
+    {
+        ReParser p = {.source = source, .regex = regex, .icase = icase};
+        uint16_t root = 0;
+        if (!re_parse_alt(&p, &root))
+            return p.error ? p.error : KALEIDOSCOPE_REGEX_SYNTAX;
+        if (p.at != source->pattern_len)
+            return KALEIDOSCOPE_REGEX_SYNTAX;
+        uint16_t ignored = 0;
+        if (!re_emit(&p, KALEIDOSCOPE_RE_SAVE, 0, 0, 0, &ignored) || !re_compile_node(&p, root) ||
+            !re_emit(&p, KALEIDOSCOPE_RE_SAVE, 0, 1, 0, &ignored) ||
+            !re_emit(&p, KALEIDOSCOPE_RE_MATCH, 0, 0, 0, &ignored))
+            return p.compile_error ? p.compile_error : KALEIDOSCOPE_REGEX_LIMIT;
+        groups = p.groups;
+    }
+    regex->groups = groups;
+    regex->icase = icase;
+    regex->valid = true;
+    return KALEIDOSCOPE_REGEX_OK;
 }
 ")))

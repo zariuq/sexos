@@ -989,7 +989,7 @@ static bool dispatch(Spindle *sp, ByteSlice line) {
     SpindleCalcInput input = {
       0
     };
-    if (args.len > SPINDLE_CALC_INPUT_MAX) input.too_long = true;
+    if (args.len > SPINDLE_CALC_COMMAND_MAX) input.too_long = true;
     else {
       input.len = args.len;
       for (size_t i = 0; i < args.len; ++i) input.bytes[i] = args.ptr[i];

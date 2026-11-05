@@ -1,6 +1,16 @@
 (cesta native-c/1 compact-c/2
   (unit
-    (include "sexos_kernel.h")
+    (ownership (check-all)
+    (unchecked (alloc_shared_buffer allocate_memory cpu_clac cpu_cli cpu_cpuid cpu_fpu_state_init
+                cpu_fxrstor cpu_fxsave cpu_hlt cpu_inb cpu_inl cpu_invlpg cpu_irq_restore
+                cpu_irq_save cpu_lidt cpu_ltr cpu_outb cpu_outl cpu_outw cpu_pause cpu_rdmsr
+                cpu_rdseed cpu_read_cr0 cpu_read_cr2 cpu_read_cr3 cpu_read_cr4 cpu_read_rsp cpu_stac
+                cpu_sti cpu_sti_hlt cpu_write_cr0 cpu_write_cr4 cpu_wrmsr cpu_wrpkru cpu_xgetbv
+                current_bar_view grant_mem_lend kernel_listen_message kernel_operation
+                kernel_region_query kernel_syscall line_write map_for map_mem_lend map_memory
+                map_pci_bar net_diag owns pdx_call pdx_listen pdx_reply record_block take_message kernel_region_reply)
+      (obligation "Kernel code on the serialized BSP lane with interrupts masked and application processors parked. It reaches physical frames, page tables and device registers through integer-derived pointers, volatile accesses and the kernel runtime's inline assembly and do-while helpers, which the native ownership profile does not admit. It relies on the kernel owning each frame and device exclusively from BOOT; here the register-interface dispatch.")))
+  (include "sexos_kernel.h")
     (comment "System calls, translated from kernel/src/syscalls/mod.rs, ipc.rs and ipc/router.rs. The register interface is the reference's: the number in rax; arguments in rdi, rsi, rdx, r10 and r8; the result in rax; call and listen return their extra words in rsi, rdx, r10 and r8. Three requests are checked where the reference accepts anything: a reply needs a call the replier heard and has not answered; a mapping needs frames the caller owns; and every page the kernel maps for a domain carries that domain's key and is not executable.")
 
     (define RAW_PRINT_MAX "4096u")
@@ -13,7 +23,9 @@
 
     (comment "PDX_GET_DISPLAY_INFO's record (repr(C) DisplayInfo of syscalls/mod.rs).")
     (typedef (struct DisplayInfo (uint64_t virt_addr) (uint32_t width) (uint32_t height) (uint32_t pitch)) DisplayInfo)
-    (native "_Static_assert(sizeof(DisplayInfo) == 24, \"DisplayInfo layout\");\n")
+    (native "
+_Static_assert(sizeof(DisplayInfo) == 24, \"DisplayInfo layout\");
+")
 
     (fn (static uint32_t) size_to_order ((uint64_t size))
       (var uint64_t pages (/ (+ size 4095) 4096))
@@ -357,7 +369,37 @@
         (block (call klog "[net.diag.body.chunk.reply] idx=%llu ok=1\n" (cast (unsigned long long) (- index 2))) (return NO_ADDRESS)))
       (return NO_ADDRESS))
 
-    (native "static void kernel_region_query(Domain *d, TrapFrame *f, uint64_t number)\n{\n    MemoryRegionCapability absent={0};\n    const Cap *held=cap_get(d,f->rdi);\n    const MemoryRegionCapability *region=&absent;\n    if (held && (held->kind == CAP_REGION || held->kind == CAP_PCI)) region=&held->region;\n    MemoryRegionReply r=sexos_region_query(region,number,f->rsi,f->rdx,f->r10);\n    f->rax=r.status; f->rsi=r.value0; f->rdx=r.value1; f->r10=r.value2; f->r8=r.value3;\n}\nstatic uint64_t current_bar_view(Domain *d, uint64_t slot, uint64_t bar, uint64_t length)\n{\n    const Cap *held=cap_get(d,slot);\n    if (!held || held->kind != CAP_PCI || bar) return NO_ADDRESS;\n    MemoryRegionViewResult result=sexos_region_register_view(&held->region,0,length ? length : 4096,\n        REGION_QUERY|REGION_READ|REGION_WRITE);\n    return result.error ? NO_ADDRESS : result.value.virtual_address;\n}\n")
+    (native "
+/* The Region INFO/VIEW dispatch of one held slot; BOOT reads its own grants
+ * through the same path. */
+MemoryRegionReply kernel_region_reply(Domain *d, uint64_t number, uint64_t slot, uint64_t a,
+                                      uint64_t b, uint64_t c) {
+    MemoryRegionCapability absent = {0};
+    const Cap *held = cap_get(d, slot);
+    const MemoryRegionCapability *region = &absent;
+    if (held && (held->kind == CAP_REGION || held->kind == CAP_PCI))
+        region = &held->region;
+    return sexos_region_query(region, number, a, b, c);
+}
+
+static void kernel_region_query(Domain *d, TrapFrame *f, uint64_t number) {
+    MemoryRegionReply r = kernel_region_reply(d, number, f->rdi, f->rsi, f->rdx, f->r10);
+    f->rax = r.status;
+    f->rsi = r.value0;
+    f->rdx = r.value1;
+    f->r10 = r.value2;
+    f->r8 = r.value3;
+}
+
+static uint64_t current_bar_view(Domain *d, uint64_t slot, uint64_t bar, uint64_t length) {
+    const Cap *held = cap_get(d, slot);
+    if (!held || held->kind != CAP_PCI || bar)
+        return NO_ADDRESS;
+    MemoryRegionViewResult result = sexos_region_register_view(
+        &held->region, 0, length ? length : 4096, REGION_QUERY | REGION_READ | REGION_WRITE);
+    return result.error ? NO_ADDRESS : result.value.virtual_address;
+}
+")
 
     (fn TrapFrame * kernel_syscall ((TrapFrame (* f)))
       (if (. kernel pku) (call cpu_wrpkru 0))

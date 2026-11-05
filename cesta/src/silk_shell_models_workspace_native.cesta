@@ -1,10 +1,15 @@
 (cesta native-c/1 compact-c/2
- (unit (native "#include \"silk_shell_models_workspace.h\"
-uint64_t shell_models_workspace_info(uint64_t slot)
-{
- uint64_t status=63,kind=0;
- __asm__ volatile(\"syscall\" : \"+a\"(status),\"+S\"(kind) : \"D\"(slot)
-  : \"rdx\",\"r10\",\"r8\",\"rcx\",\"r11\",\"memory\",\"cc\");
- return status;
+ (unit (ownership (check-all)
+    (unchecked shell_models_workspace_info (obligation "Native binding between the single shell state and the checked component contexts: records carrying references without field contracts, nested LinenObject labels and the legacy address-word ABI. It relies on the single-threaded shell loop lending each context for one call and retaining no loan; it also writes serial evidence through the syscall assembly.")))
+  (native "
+#include \"silk_shell_models_workspace.h\"
+
+uint64_t shell_models_workspace_info(uint64_t slot) {
+    uint64_t status = 63, kind = 0;
+    __asm__ volatile(\"syscall\"
+                     : \"+a\"(status), \"+S\"(kind)
+                     : \"D\"(slot)
+                     : \"rdx\", \"r10\", \"r8\", \"rcx\", \"r11\", \"memory\", \"cc\");
+    return status;
 }
 ")))

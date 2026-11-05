@@ -1,5 +1,5 @@
 {
-  "pin": "44053ea9b017fe89008413f7cc8a6b1a4d28d015",
+  "pin": "ebf51ff9748ee31d0f051f269fc8f183fb8a7d5f",
   "path": "apps/spindle/src/calc_command.rs",
-  "sha256": "0e3bc9fac5dbb482b388b77968ad9959980615fb06bbc59a1bf1e06248a8344e"
+  "sha256": "8c66637dd64b80c666ab5d82cf0af9bec08cc3010636aaf86bb2852cfd2f2cdb"
 }

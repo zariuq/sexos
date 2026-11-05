@@ -1,3 +1,15 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 #include "sexos_server.h"
 #include "sexos_document_client_transport.h"
 #include "quil_autosave.h"
@@ -458,6 +470,7 @@ q->delete_armed = false;
   q->dirty = true;
 }
 #if SEXOS_QUIL_CURRENT_DOCUMENT
+
 static void quil_current_delete(Quil *q);
 static bool quil_current_step(Quil *q);
 
@@ -1835,45 +1848,199 @@ static void pack_bytes(const uint8_t *bytes, size_t len, uint64_t *lo, uint64_t 
 }
 #if SEXOS_QUIL_CURRENT_DOCUMENT
 
-static bool quil_current_utf8(const uint8_t *bytes,size_t length)
-{
- size_t i=0;while(i<length){uint8_t c=bytes[i++];if(c<0x80)continue;size_t need=0;uint32_t value=0,minimum=0;if((c&0xe0)==0xc0){need=1;value=c&0x1f;minimum=0x80;}else if((c&0xf0)==0xe0){need=2;value=c&15;minimum=0x800;}else if((c&0xf8)==0xf0){need=3;value=c&7;minimum=0x10000;}else return false;if(need>length-i)return false;for(size_t k=0;k<need;k++){uint8_t d=bytes[i++];if((d&0xc0)!=0x80)return false;value=(value<<6)|(d&0x3f);}if(value<minimum||value>0x10ffff||(value>=0xd800&&value<=0xdfff))return false;}return true;
+static bool quil_current_utf8(const uint8_t *bytes, size_t length) {
+    size_t i = 0;
+    while (i < length) {
+        uint8_t c = bytes[i++];
+        if (c < 0x80)
+            continue;
+        size_t need = 0;
+        uint32_t value = 0, minimum = 0;
+        if ((c & 0xe0) == 0xc0) {
+            need = 1;
+            value = c & 0x1f;
+            minimum = 0x80;
+        } else if ((c & 0xf0) == 0xe0) {
+            need = 2;
+            value = c & 15;
+            minimum = 0x800;
+        } else if ((c & 0xf8) == 0xf0) {
+            need = 3;
+            value = c & 7;
+            minimum = 0x10000;
+        } else
+            return false;
+        if (need > length - i)
+            return false;
+        for (size_t k = 0; k < need; k++) {
+            uint8_t d = bytes[i++];
+            if ((d & 0xc0) != 0x80)
+                return false;
+            value = (value << 6) | (d & 0x3f);
+        }
+        if (value < minimum || value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff))
+            return false;
+    }
+    return true;
 }
-static bool quil_current_save(Quil *q,bool create)
-{
- if(document_client_busy(&q->document)){if(quil_autosave_pending(&q->autosave))q->autosave.queued_save=create?1:0;return false;}
- uint8_t name[16]={0};if(create){if(!q->name_len)return false;for(size_t i=0;i<q->name_len&&i<16;i++)name[i]=q->name_buf[i];}else for(size_t i=0;i<16;i++)name[i]=q->doc_title[i];
- bool has_object=!create&&q->doc_id>=2&&q->doc_id<15;if(!document_client_save(&q->document,has_object,(uint8_t)(has_object?q->doc_id:0),name,q->buffer,q->buffer_len,q->revision))return false;
- q->name_mode=false;sexos_line("[quil.document.begin] kind=save object=%llu revision=%llu bytes=%zu",(unsigned long long)(has_object?q->doc_id:0),(unsigned long long)q->revision,q->buffer_len);return true;
+
+static bool quil_current_save(Quil *q, bool create) {
+    if (document_client_busy(&q->document)) {
+        if (quil_autosave_pending(&q->autosave))
+            q->autosave.queued_save = create ? 1 : 0;
+        return false;
+    }
+    uint8_t name[16] = {0};
+    if (create) {
+        if (!q->name_len)
+            return false;
+        for (size_t i = 0; i < q->name_len && i < 16; i++)
+            name[i] = q->name_buf[i];
+    } else
+        for (size_t i = 0; i < 16; i++)
+            name[i] = q->doc_title[i];
+    bool has_object = !create && q->doc_id >= 2 && q->doc_id < 15;
+    if (!document_client_save(&q->document, has_object, (uint8_t)(has_object ? q->doc_id : 0), name,
+                              q->buffer, q->buffer_len, q->revision))
+        return false;
+    q->name_mode = false;
+    sexos_line("[quil.document.begin] kind=save object=%llu revision=%llu bytes=%zu",
+               (unsigned long long)(has_object ? q->doc_id : 0), (unsigned long long)q->revision,
+               q->buffer_len);
+    return true;
 }
-static bool quil_current_load(Quil *q)
-{
- uint64_t target=q->doc_id!=UINT64_MAX?q->doc_id:q->last_doc_id;if(target<2||target>=15||document_client_busy(&q->document)||q->revision==UINT64_MAX)return false;q->revision++;q->delete_armed=false;
- if(!document_client_load(&q->document,(uint8_t)target,q->revision))return false;
- sexos_line("[quil.document.begin] kind=load object=%llu revision=%llu",(unsigned long long)target,(unsigned long long)q->revision);return true;
+
+static bool quil_current_load(Quil *q) {
+    uint64_t target = q->doc_id != UINT64_MAX ? q->doc_id : q->last_doc_id;
+    if (target < 2 || target >= 15 || document_client_busy(&q->document) ||
+        q->revision == UINT64_MAX)
+        return false;
+    q->revision++;
+    q->delete_armed = false;
+    if (!document_client_load(&q->document, (uint8_t)target, q->revision))
+        return false;
+    sexos_line("[quil.document.begin] kind=load object=%llu revision=%llu",
+               (unsigned long long)target, (unsigned long long)q->revision);
+    return true;
 }
-static void quil_current_autosave_start(Quil *q)
-{
- QuilAutosaveTitle title={0};for(size_t i=0;i<16;i++)title.bytes[i]=q->doc_title[i];QuilAutosaveName name=quil_autosave_name(&q->autosave,&title);uint8_t draft=0;bool has=quil_autosave_target(&q->autosave,&draft);
- if(document_client_save(&q->document,has,draft,name.bytes,q->buffer,q->buffer_len,q->revision)){sexos_line("[quil.autosave.begin] draft=%u revision=%llu bytes=%zu document=%llu document_unchanged=1",(unsigned)(has?draft:0),(unsigned long long)q->revision,q->buffer_len,(unsigned long long)q->doc_id);}
- else (void)quil_autosave_finish(&q->autosave,false,0,q->revision,SEXOS_DOCUMENT_BUSY);
+
+static void quil_current_autosave_start(Quil *q) {
+    QuilAutosaveTitle title = {0};
+    for (size_t i = 0; i < 16; i++)
+        title.bytes[i] = q->doc_title[i];
+    QuilAutosaveName name = quil_autosave_name(&q->autosave, &title);
+    uint8_t draft = 0;
+    bool has = quil_autosave_target(&q->autosave, &draft);
+    if (document_client_save(&q->document, has, draft, name.bytes, q->buffer, q->buffer_len,
+                             q->revision)) {
+        sexos_line(
+            "[quil.autosave.begin] draft=%u revision=%llu bytes=%zu document=%llu document_unchanged=1",
+            (unsigned)(has ? draft : 0), (unsigned long long)q->revision, q->buffer_len,
+            (unsigned long long)q->doc_id);
+    } else
+        (void)quil_autosave_finish(&q->autosave, false, 0, q->revision, SEXOS_DOCUMENT_BUSY);
 }
-static void quil_current_event(Quil *q,DocumentClientEvent event)
-{
- if(quil_autosave_pending(&q->autosave)){bool saved=event.outcome==DOCUMENT_OUTCOME_SAVED;QuilAutosaveDone done=quil_autosave_finish(&q->autosave,saved,event.object,event.revision,event.error);sexos_line("[quil.autosave.result] outcome=%u result=%u revision=%llu dirty=%u document=%llu",(unsigned)event.outcome,(unsigned)done.kind,(unsigned long long)q->revision,(unsigned)q->dirty,(unsigned long long)q->doc_id);int8_t queued=q->autosave.queued_save;if(queued>=0){q->autosave.queued_save=-1;(void)quil_current_save(q,queued!=0);}redraw(q);return;}
- if(event.outcome==DOCUMENT_OUTCOME_SAVED){q->doc_id=event.object;q->last_doc_id=event.object;for(size_t i=0;i<16;i++)q->doc_title[i]=q->document.name.bytes[i];q->dirty=event.revision!=q->revision;sexos_line("[quil.document.saved] object=%u saved_revision=%llu revision=%llu dirty=%u",(unsigned)event.object,(unsigned long long)event.revision,(unsigned long long)q->revision,(unsigned)q->dirty);}
- else if(event.outcome==DOCUMENT_OUTCOME_LOADED&&event.revision==q->revision){if(!quil_current_utf8(q->document.payload.bytes,q->document.payload.len)){sexos_line("[quil.document.unsupported] object=%u bytes=%zu buffer_retained=1",(unsigned)event.object,q->document.payload.len);}else{for(size_t i=0;i<q->document.payload.len;i++)q->buffer[i]=q->document.payload.bytes[i];for(size_t i=q->document.payload.len;i<QUIL_BUFFER_MAX_LEN;i++)q->buffer[i]=0;q->buffer_len=q->document.payload.len;q->cursor_pos=q->buffer_len;q->doc_id=event.object;q->last_doc_id=event.object;for(size_t i=0;i<16;i++)q->doc_title[i]=q->document.name.bytes[i];q->dirty=false;q->view_top=0;q->revision=0;quil_autosave_reset(&q->autosave);sexos_line("[quil.document.loaded] object=%u bytes=%zu",(unsigned)event.object,q->buffer_len);}}
- else if(event.outcome==DOCUMENT_OUTCOME_DELETED){sexos_line("[quil.document.deleted] object=%u current=%u text_kept=%zu",(unsigned)event.object,(unsigned)(q->doc_id==event.object),q->buffer_len);if(q->doc_id==event.object){q->doc_id=UINT64_MAX;static const uint8_t untitled[8]={'U','N','T','I','T','L','E','D'};for(size_t i=0;i<16;i++)q->doc_title[i]=i<8?untitled[i]:0;q->revision=0;quil_autosave_reset(&q->autosave);q->dirty=q->buffer_len>0;}}
- else sexos_line("[quil.document.result] outcome=%u error=%u requested_revision=%llu revision=%llu buffer_retained=1",(unsigned)event.outcome,(unsigned)event.error,(unsigned long long)event.revision,(unsigned long long)q->revision);
- redraw(q);
+
+static void quil_current_event(Quil *q, DocumentClientEvent event) {
+    if (quil_autosave_pending(&q->autosave)) {
+        bool saved = event.outcome == DOCUMENT_OUTCOME_SAVED;
+        QuilAutosaveDone done =
+            quil_autosave_finish(&q->autosave, saved, event.object, event.revision, event.error);
+        sexos_line(
+            "[quil.autosave.result] outcome=%u result=%u revision=%llu dirty=%u document=%llu",
+            (unsigned)event.outcome, (unsigned)done.kind, (unsigned long long)q->revision,
+            (unsigned)q->dirty, (unsigned long long)q->doc_id);
+        int8_t queued = q->autosave.queued_save;
+        if (queued >= 0) {
+            q->autosave.queued_save = -1;
+            (void)quil_current_save(q, queued != 0);
+        }
+        redraw(q);
+        return;
+    }
+    if (event.outcome == DOCUMENT_OUTCOME_SAVED) {
+        q->doc_id = event.object;
+        q->last_doc_id = event.object;
+        for (size_t i = 0; i < 16; i++)
+            q->doc_title[i] = q->document.name.bytes[i];
+        q->dirty = event.revision != q->revision;
+        sexos_line("[quil.document.saved] object=%u saved_revision=%llu revision=%llu dirty=%u",
+                   (unsigned)event.object, (unsigned long long)event.revision,
+                   (unsigned long long)q->revision, (unsigned)q->dirty);
+    } else if (event.outcome == DOCUMENT_OUTCOME_LOADED && event.revision == q->revision) {
+        if (!quil_current_utf8(q->document.payload.bytes, q->document.payload.len)) {
+            sexos_line("[quil.document.unsupported] object=%u bytes=%zu buffer_retained=1",
+                       (unsigned)event.object, q->document.payload.len);
+        } else {
+            for (size_t i = 0; i < q->document.payload.len; i++)
+                q->buffer[i] = q->document.payload.bytes[i];
+            for (size_t i = q->document.payload.len; i < QUIL_BUFFER_MAX_LEN; i++)
+                q->buffer[i] = 0;
+            q->buffer_len = q->document.payload.len;
+            q->cursor_pos = q->buffer_len;
+            q->doc_id = event.object;
+            q->last_doc_id = event.object;
+            for (size_t i = 0; i < 16; i++)
+                q->doc_title[i] = q->document.name.bytes[i];
+            q->dirty = false;
+            q->view_top = 0;
+            q->revision = 0;
+            quil_autosave_reset(&q->autosave);
+            sexos_line("[quil.document.loaded] object=%u bytes=%zu", (unsigned)event.object,
+                       q->buffer_len);
+        }
+    } else if (event.outcome == DOCUMENT_OUTCOME_DELETED) {
+        sexos_line("[quil.document.deleted] object=%u current=%u text_kept=%zu",
+                   (unsigned)event.object, (unsigned)(q->doc_id == event.object), q->buffer_len);
+        if (q->doc_id == event.object) {
+            q->doc_id = UINT64_MAX;
+            static const uint8_t untitled[8] = {'U', 'N', 'T', 'I', 'T', 'L', 'E', 'D'};
+            for (size_t i = 0; i < 16; i++)
+                q->doc_title[i] = i < 8 ? untitled[i] : 0;
+            q->revision = 0;
+            quil_autosave_reset(&q->autosave);
+            q->dirty = q->buffer_len > 0;
+        }
+    } else
+        sexos_line(
+            "[quil.document.result] outcome=%u error=%u requested_revision=%llu revision=%llu buffer_retained=1",
+            (unsigned)event.outcome, (unsigned)event.error, (unsigned long long)event.revision,
+            (unsigned long long)q->revision);
+    redraw(q);
 }
-static void quil_current_delete(Quil *q)
-{
- if(q->doc_id<3||q->doc_id>=15){sexos_line("[quil.document.delete.refused] reason=no_saved_document");return;}if(q->delete_armed&&q->delete_object==q->doc_id&&q->delete_revision==q->revision){q->delete_armed=false;if(document_client_delete(&q->document,(uint8_t)q->doc_id,q->revision))sexos_line("[quil.document.begin] kind=delete object=%llu",(unsigned long long)q->doc_id);else sexos_line("[quil.document.busy] kind=delete object=%llu",(unsigned long long)q->doc_id);}else{q->delete_armed=true;q->delete_object=(uint8_t)q->doc_id;q->delete_revision=q->revision;sexos_line("[quil.document.delete.ask] object=%llu revision=%llu",(unsigned long long)q->doc_id,(unsigned long long)q->revision);}
+
+static void quil_current_delete(Quil *q) {
+    if (q->doc_id < 3 || q->doc_id >= 15) {
+        sexos_line("[quil.document.delete.refused] reason=no_saved_document");
+        return;
+    }
+    if (q->delete_armed && q->delete_object == q->doc_id && q->delete_revision == q->revision) {
+        q->delete_armed = false;
+        if (document_client_delete(&q->document, (uint8_t)q->doc_id, q->revision))
+            sexos_line("[quil.document.begin] kind=delete object=%llu",
+                       (unsigned long long)q->doc_id);
+        else
+            sexos_line("[quil.document.busy] kind=delete object=%llu",
+                       (unsigned long long)q->doc_id);
+    } else {
+        q->delete_armed = true;
+        q->delete_object = (uint8_t)q->doc_id;
+        q->delete_revision = q->revision;
+        sexos_line("[quil.document.delete.ask] object=%llu revision=%llu",
+                   (unsigned long long)q->doc_id, (unsigned long long)q->revision);
+    }
 }
-static bool quil_current_step(Quil *q)
-{
- bool ready=!document_client_busy(&q->document)&&!q->name_mode&&!q->palette_active&&q->buffer_len>0;if(quil_autosave_due(&q->autosave,sexos_get_ticks(),q->dirty,q->revision,ready))quil_current_autosave_start(q);DocumentClientEvent event={0};(void)document_client_transport_step(&q->document,&q->document_transport,&event);if(event.present)quil_current_event(q,event);return document_client_busy(&q->document)||quil_autosave_armed(&q->autosave);
+
+static bool quil_current_step(Quil *q) {
+    bool ready = !document_client_busy(&q->document) && !q->name_mode && !q->palette_active &&
+                 q->buffer_len > 0;
+    if (quil_autosave_due(&q->autosave, sexos_get_ticks(), q->dirty, q->revision, ready))
+        quil_current_autosave_start(q);
+    DocumentClientEvent event = {0};
+    (void)document_client_transport_step(&q->document, &q->document_transport, &event);
+    if (event.present)
+        quil_current_event(q, event);
+    return document_client_busy(&q->document) || quil_autosave_armed(&q->autosave);
 }
 
 

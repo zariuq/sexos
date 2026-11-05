@@ -1,116 +1,410 @@
 (cesta native-c/1 compact-c/2
  (unit
+  (ownership (check-all)
+    (unchecked (envelope_find envelope_retire lifecycle_query network_service_clock
+                network_service_current_main network_service_owner_state network_service_wait
+                service_dispatch service_dispatch_client service_dispatch_dns
+                service_poll_client_reply service_poll_dns_reply service_receive_device
+                service_reply_error service_retire service_send_device sexos_compiler_fence_seq_cst
+                sexos_sfence sexos_volatile_read16 sexos_volatile_read32 sexos_volatile_read64
+                sexos_volatile_read8 sexos_volatile_write16 sexos_volatile_write32
+                sexos_volatile_write64 sexos_volatile_write8)
+      (obligation "e1000 transport service: volatile descriptor rings and DMA buffers reached through the MMIO syscall interface, and syscalls without contracts. It relies on the device lease granting exclusive ring access.")))
   (include "network_service.h")
   (include "network_service_core.h")
   (include "sexos_server.h")
   (include "sexos_app_catalog.h")
   (native "
-enum {NETWORK_SERVICE_ENVELOPES=12};
-typedef struct NetworkServiceEnvelope {bool present,dns;NetworkJobIdentity owner;uint32_t seq;SexosRequest request;} NetworkServiceEnvelope;
+enum {
+    NETWORK_SERVICE_ENVELOPES = 12
+};
+
+typedef struct NetworkServiceEnvelope {
+    bool present, dns;
+    NetworkJobIdentity owner;
+    uint32_t seq;
+    SexosRequest request;
+} NetworkServiceEnvelope;
+
 typedef struct NetworkServiceCurrent {
- NetworkDevice device;NetworkServiceCore core;NetworkServiceEnvelope envelopes[NETWORK_SERVICE_ENVELOPES];
- NetConfig config;uint64_t now,tx_count,rx_count,tx_done,request_count;unsigned last_job_state,last_client_state;bool device_ready,state_seen;
+    NetworkDevice device;
+    NetworkServiceCore core;
+    NetworkServiceEnvelope envelopes[NETWORK_SERVICE_ENVELOPES];
+    NetConfig config;
+    uint64_t now, tx_count, rx_count, tx_done, request_count;
+    unsigned last_job_state, last_client_state;
+    bool device_ready, state_seen;
 } NetworkServiceCurrent;
+
 static NetworkServiceCurrent current_service;
 
-static uint64_t lifecycle_query(uint64_t slot,uint64_t kind,uint64_t *a,uint64_t *b,uint64_t *c,uint64_t *d)
-{
+static uint64_t lifecycle_query(uint64_t slot, uint64_t kind, uint64_t *a, uint64_t *b, uint64_t *c,
+                                uint64_t *d) {
 #if defined(__x86_64__)
- uint64_t status=63,x=kind,y=0;register uint64_t r10 __asm__(\"r10\")=0;register uint64_t r8 __asm__(\"r8\")=0;
- __asm__ volatile(\"syscall\" : \"+a\"(status),\"+S\"(x),\"=d\"(y),\"+r\"(r10),\"+r\"(r8) : \"D\"(slot) : \"rcx\",\"r11\",\"memory\");
- *a=x;*b=y;*c=r10;*d=r8;return status;
+    uint64_t status = 63, x = kind, y = 0;
+    register uint64_t r10 __asm__(\"r10\") = 0;
+    register uint64_t r8 __asm__(\"r8\") = 0;
+    __asm__ volatile(\"syscall\"
+                     : \"+a\"(status), \"+S\"(x), \"=d\"(y), \"+r\"(r10), \"+r\"(r8)
+                     : \"D\"(slot)
+                     : \"rcx\", \"r11\", \"memory\");
+    *a = x;
+    *b = y;
+    *c = r10;
+    *d = r8;
+    return status;
 #else
- (void)slot;(void)kind;*a=*b=*c=*d=0;return UINT64_MAX;
+    (void)slot;
+    (void)kind;
+    *a = *b = *c = *d = 0;
+    return UINT64_MAX;
 #endif
 }
-static unsigned network_service_owner_state(NetworkJobIdentity owner)
-{
- if(!owner.pd||!owner.task)return 0;
-#define NETWORK_SERVICE_CHECK_SLOT(slot) do {uint64_t a=0,b=0,c=0,d=0;uint64_t status=lifecycle_query((slot),1,&a,&b,&c,&d);if(!status&&a==owner.pd&&b==owner.task){status=lifecycle_query((slot),0,&a,&b,&c,&d);if(status==5)return 1;if(!status&&a==owner.pd&&b==owner.task&&c==31)return 2;return 0;}} while(0);
- SEXOS_APP_LIFECYCLE_ROWS(NETWORK_SERVICE_CHECK_SLOT)
+
+static unsigned network_service_owner_state(NetworkJobIdentity owner) {
+    if (!owner.pd || !owner.task)
+        return 0;
+#define NETWORK_SERVICE_CHECK_SLOT(slot)                                                           \\
+    do {                                                                                           \\
+        uint64_t a = 0, b = 0, c = 0, d = 0;                                                       \\
+        uint64_t status = lifecycle_query((slot), 1, &a, &b, &c, &d);                              \\
+        if (!status && a == owner.pd && b == owner.task) {                                         \\
+            status = lifecycle_query((slot), 0, &a, &b, &c, &d);                                   \\
+            if (status == 5)                                                                       \\
+                return 1;                                                                          \\
+            if (!status && a == owner.pd && b == owner.task && c == 31)                            \\
+                return 2;                                                                          \\
+            return 0;                                                                              \\
+        }                                                                                          \\
+    } while (0);
+    SEXOS_APP_LIFECYCLE_ROWS(NETWORK_SERVICE_CHECK_SLOT)
 #undef NETWORK_SERVICE_CHECK_SLOT
- return 0;
+    return 0;
 }
-static bool network_service_owner_live(void *context,NetworkJobIdentity owner)
-{(void)context;return network_service_owner_state(owner)==1;}
-static uint64_t network_service_clock(uint64_t prior)
-{uint64_t raw=sexos_get_ticks();if(raw>prior)return raw;if(prior==UINT64_MAX)sexos_fail();return prior+1;}
-static void network_service_wait(void)
-{
+
+static bool network_service_owner_live(void *context, NetworkJobIdentity owner) {
+    (void)context;
+    return network_service_owner_state(owner) == 1;
+}
+
+static uint64_t network_service_clock(uint64_t prior) {
+    uint64_t raw = sexos_get_ticks();
+    if (raw > prior)
+        return raw;
+    if (prior == UINT64_MAX)
+        sexos_fail();
+    return prior + 1;
+}
+
+static void network_service_wait(void) {
 #if defined(__x86_64__)
- uint64_t result=70,rdi=2,rsi=0,rdx=0;register uint64_t r10 __asm__(\"r10\")=0;register uint64_t r8 __asm__(\"r8\")=0;
- __asm__ volatile(\"syscall\" : \"+a\"(result),\"+D\"(rdi),\"+S\"(rsi),\"+d\"(rdx),\"+r\"(r10),\"+r\"(r8) : : \"rcx\",\"r11\",\"memory\");
- if(result)sexos_yield();
+    uint64_t result = 70, rdi = 2, rsi = 0, rdx = 0;
+    register uint64_t r10 __asm__(\"r10\") = 0;
+    register uint64_t r8 __asm__(\"r8\") = 0;
+    __asm__ volatile(\"syscall\"
+                     : \"+a\"(result), \"+D\"(rdi), \"+S\"(rsi), \"+d\"(rdx), \"+r\"(r10), \"+r\"(r8)
+                     :
+                     : \"rcx\", \"r11\", \"memory\");
+    if (result)
+        sexos_yield();
 #else
- sexos_yield();
+    sexos_yield();
 #endif
 }
-static size_t envelope_find(const NetworkServiceCurrent *service,bool dns,NetworkJobIdentity owner,uint32_t seq)
-{for(size_t i=0;i<NETWORK_SERVICE_ENVELOPES;i++)if(service->envelopes[i].present&&service->envelopes[i].dns==dns&&service->envelopes[i].seq==seq&&network_job_identity_equal(service->envelopes[i].owner,owner))return i;return NETWORK_SERVICE_ENVELOPES;}
-static bool envelope_store(NetworkServiceCurrent *service,bool dns,NetworkJobIdentity owner,uint32_t seq,SexosRequest request)
-{size_t existing=envelope_find(service,dns,owner,seq);if(existing<NETWORK_SERVICE_ENVELOPES)return service->envelopes[existing].request.id==request.id;for(size_t i=0;i<NETWORK_SERVICE_ENVELOPES;i++)if(!service->envelopes[i].present){service->envelopes[i]=(NetworkServiceEnvelope){true,dns,owner,seq,request};return true;}return false;}
-static void envelope_retire(NetworkServiceCurrent *service,NetworkJobIdentity owner)
-{for(size_t i=0;i<NETWORK_SERVICE_ENVELOPES;i++)if(service->envelopes[i].present&&network_job_identity_equal(service->envelopes[i].owner,owner))service->envelopes[i].present=false;}
-static void service_retire(NetworkServiceCurrent *service,NetworkJobIdentity owner)
-{(void)network_service_core_retire(&service->core,owner);envelope_retire(service,owner);}
-static uint32_t reply_seq(uint64_t word){return(uint32_t)((word>>32)&NETWORK_JOB_MAX_SEQ);}
-static void service_poll_client_reply(NetworkServiceCurrent *service)
-{
- NetworkJobPendingReply pending=network_service_core_pending_reply(&service->core);if(!pending.present)return;
- if(network_service_owner_state(pending.owner)!=1){service_retire(service,pending.owner);return;}
- size_t slot=envelope_find(service,false,pending.owner,reply_seq(pending.word));if(slot==NETWORK_SERVICE_ENVELOPES)sexos_fail();
- uint64_t status=sexos_answer_request(&service->envelopes[slot].request,pending.word);if(!status){service->envelopes[slot].present=false;network_service_core_reply_accepted(&service->core);}else network_service_core_reply_deferred(&service->core);
+
+static size_t envelope_find(const NetworkServiceCurrent *service, bool dns,
+                            NetworkJobIdentity owner, uint32_t seq) {
+    for (size_t i = 0; i < NETWORK_SERVICE_ENVELOPES; i++)
+        if (service->envelopes[i].present && service->envelopes[i].dns == dns &&
+            service->envelopes[i].seq == seq &&
+            network_job_identity_equal(service->envelopes[i].owner, owner))
+            return i;
+    return NETWORK_SERVICE_ENVELOPES;
 }
-static void service_poll_dns_reply(NetworkServiceCurrent *service)
-{
- NetworkDnsJobPendingReply pending=network_service_core_dns_pending_reply(&service->core);if(!pending.present)return;
- if(network_service_owner_state(pending.owner)!=1){service_retire(service,pending.owner);return;}
- size_t slot=envelope_find(service,true,pending.owner,reply_seq(pending.word));if(slot==NETWORK_SERVICE_ENVELOPES)sexos_fail();
- uint64_t status=sexos_answer_request(&service->envelopes[slot].request,pending.word);if(!status){service->envelopes[slot].present=false;network_service_core_dns_reply_accepted(&service->core);}else network_service_core_dns_reply_deferred(&service->core);
+
+static bool envelope_store(NetworkServiceCurrent *service, bool dns, NetworkJobIdentity owner,
+                           uint32_t seq, SexosRequest request) {
+    size_t existing = envelope_find(service, dns, owner, seq);
+    if (existing < NETWORK_SERVICE_ENVELOPES)
+        return service->envelopes[existing].request.id == request.id;
+    for (size_t i = 0; i < NETWORK_SERVICE_ENVELOPES; i++)
+        if (!service->envelopes[i].present) {
+            service->envelopes[i] = (NetworkServiceEnvelope){true, dns, owner, seq, request};
+            return true;
+        }
+    return false;
 }
-static void service_reply_error(const SexosRequest *request,bool dns,uint32_t code)
-{uint32_t seq=(uint32_t)(request->message.arg0&NETWORK_JOB_MAX_SEQ);uint64_t word=dns?network_dns_job_error(seq,code):network_job_error(seq,code);(void)sexos_answer_request(request,word);}
-static void service_dispatch_client(NetworkServiceCurrent *service,SexosRequest request)
-{
- NetworkJobWords words={{request.message.arg0,request.message.arg1,request.message.arg2}};NetworkJobRequestDecode decoded=network_job_decode(words);NetworkJobIdentity owner={request.message.caller_pd,request.message.caller_task};
- unsigned owner_state=network_service_owner_state(owner);service->request_count++;if(service->request_count<=8||(service->request_count&(service->request_count-1))==0||(decoded.ok&&(decoded.request.kind==NETWORK_JOB_BEGIN||decoded.request.kind==NETWORK_JOB_START||decoded.request.kind==NETWORK_JOB_RELEASE)))sexos_line(\"[network.current.client.request] count=%llu owner=%u task=%u id=%llu decoded=%u live=%u kind=%u\",(unsigned long long)service->request_count,owner.pd,owner.task,(unsigned long long)request.id,(unsigned)decoded.ok,owner_state,decoded.ok?(unsigned)decoded.request.kind:0);
- if(!request.id||!decoded.ok||owner_state!=1){service_reply_error(&request,false,NETWORK_JOB_DENIED);return;}
- NetworkJobResolution resolution={0};uint32_t admission=NETWORK_JOB_DENIED;
- if(decoded.request.kind==NETWORK_JOB_BEGIN){admission=0;}
- else if(decoded.request.kind==NETWORK_JOB_BEGIN_RESOLVED||decoded.request.kind==NETWORK_JOB_BEGIN_STREAM_RESOLVED){
-  NetworkDnsJobResolvedResult found=network_dns_job_machine_resolved(&service->core.dns_jobs,owner,(uint32_t)decoded.request.a,service->now);
-  if(found.present){bool endpoint=true;for(size_t i=0;i<4;i++)if(found.value.address[i]!=(uint8_t)(service->config.http>>(24-8*i)))endpoint=false;if(endpoint){resolution.owner=found.value.owner;resolution.generation=found.value.generation;for(size_t i=0;i<4;i++)resolution.address[i]=found.value.address[i];resolution.observed_tick=found.value.observed_tick;resolution.expires_tick=found.value.expires_tick;admission=0;}}
- }
- if(network_service_core_job(&service->core,owner,decoded.request,service->now,false,&resolution,admission)&&!envelope_store(service,false,owner,decoded.request.seq,request))sexos_fail();
+
+static void envelope_retire(NetworkServiceCurrent *service, NetworkJobIdentity owner) {
+    for (size_t i = 0; i < NETWORK_SERVICE_ENVELOPES; i++)
+        if (service->envelopes[i].present &&
+            network_job_identity_equal(service->envelopes[i].owner, owner))
+            service->envelopes[i].present = false;
 }
-static void service_dispatch_dns(NetworkServiceCurrent *service,SexosRequest request)
-{
- NetworkDnsJobWords words={{request.message.arg0,request.message.arg1,request.message.arg2}};NetworkDnsJobRequestDecode decoded=network_dns_job_decode(words);NetworkJobIdentity owner={request.message.caller_pd,request.message.caller_task};
- if(!request.id||!decoded.ok||network_service_owner_state(owner)!=1){service_reply_error(&request,true,NETWORK_JOB_DENIED);return;}
- if(network_service_core_dns_job(&service->core,owner,decoded.request,service->now,false)&&!envelope_store(service,true,owner,decoded.request.seq,request))sexos_fail();
+
+static void service_retire(NetworkServiceCurrent *service, NetworkJobIdentity owner) {
+    (void)network_service_core_retire(&service->core, owner);
+    envelope_retire(service, owner);
 }
-static void service_dispatch(NetworkServiceCurrent *service,SexosRequest request)
-{
- if(request.message.type_id==NETWORK_JOB_OP){service_dispatch_client(service,request);return;}
- if(request.message.type_id==NETWORK_DNS_JOB_OP){service_dispatch_dns(service,request);return;}
- if(request.message.type_id==UINT64_C(0x107)&&request.message.caller_pd==0&&request.message.arg0&&request.message.arg0<=UINT32_MAX&&request.message.arg1&&request.message.arg1<=UINT32_MAX&&request.message.arg2==0){NetworkJobIdentity owner={(uint32_t)request.message.arg0,(uint32_t)request.message.arg1};if(network_service_owner_state(owner)==2)service_retire(service,owner);return;}
- (void)sexos_answer_request(&request,UINT64_MAX);
+
+static uint32_t reply_seq(uint64_t word) {
+    return (uint32_t)((word >> 32) & NETWORK_JOB_MAX_SEQ);
 }
-static void service_receive_device(NetworkServiceCurrent *service)
-{
- if(!network_engine_transport_can_receive(&service->core.transport))return;
- NetworkFrame input={0};NetworkStep step=network_device_receive(&service->device,&input);if(step==NET_FAILED){service->device_ready=false;network_engine_transport_stop(&service->core.transport,NETWORK_ENGINE_STOPPED);return;}if(step!=NET_READY)return;if(input.length>NETWORK_ENGINE_MAX_FRAME)return;
- NetworkEngineFrame frame={0};frame.length=input.length;for(size_t i=0;i<input.length;i++)frame.bytes[i]=input.data[i];NetworkTcpPacket tcp=network_engine_tcp_decode(&frame);if(tcp.valid)sexos_line(\"[network.current.device.rx.tcp] source=%u destination=%u flags=%u sequence=%u acknowledgment=%u expected=%u\",(unsigned)tcp.source_port,(unsigned)tcp.destination_port,(unsigned)tcp.flags,tcp.sequence,tcp.acknowledgment,service->core.transport.client.snd_nxt);if(network_service_core_submit(&service->core,&frame)!=NETWORK_ENGINE_OK)sexos_fail();service->rx_count++;if(service->rx_count<=8||(service->rx_count&(service->rx_count-1))==0)sexos_line(\"[network.current.device.rx] count=%llu length=%zu\",(unsigned long long)service->rx_count,input.length);
+
+static void service_poll_client_reply(NetworkServiceCurrent *service) {
+    NetworkJobPendingReply pending = network_service_core_pending_reply(&service->core);
+    if (!pending.present)
+        return;
+    if (network_service_owner_state(pending.owner) != 1) {
+        service_retire(service, pending.owner);
+        return;
+    }
+    size_t slot = envelope_find(service, false, pending.owner, reply_seq(pending.word));
+    if (slot == NETWORK_SERVICE_ENVELOPES)
+        sexos_fail();
+    uint64_t status = sexos_answer_request(&service->envelopes[slot].request, pending.word);
+    if (!status) {
+        service->envelopes[slot].present = false;
+        network_service_core_reply_accepted(&service->core);
+    } else
+        network_service_core_reply_deferred(&service->core);
 }
-static void service_send_device(NetworkServiceCurrent *service)
-{
- if(service->device.tx_busy){NetworkStep step=network_device_poll_tx(&service->device);if(step==NET_FAILED){service->device_ready=false;network_engine_transport_stop(&service->core.transport,NETWORK_ENGINE_STOPPED);}else if(step==NET_READY){service->tx_done++;if(service->tx_done<=8||(service->tx_done&(service->tx_done-1))==0)sexos_line(\"[network.current.device.tx.done] count=%llu\",(unsigned long long)service->tx_done);}return;}NetworkServiceSnapshot snapshot=network_service_core_snapshot(&service->core);bool live=snapshot.owner_present&&network_service_owner_live(NULL,snapshot.owner);if(snapshot.owner_present&&!live){service_retire(service,snapshot.owner);snapshot=network_service_core_snapshot(&service->core);}
- NetworkServiceFrameResult frame=network_service_core_take_frame(&service->core,live,snapshot.owner);if(frame.kind==NETWORK_SERVICE_STALE_FRAME)sexos_line(\"[network.current.device.tx.stale] ticket=%u owner=%u task=%u live=%u\",frame.ticket,snapshot.owner.pd,snapshot.owner.task,(unsigned)live);if(frame.present){if(!network_device_submit(&service->device,(cesta_read_bytes){frame.frame.bytes,frame.frame.length})){service->device_ready=false;network_engine_transport_stop(&service->core.transport,NETWORK_ENGINE_STOPPED);return;}service->tx_count++;if(service->tx_count<=8||(service->tx_count&(service->tx_count-1))==0)sexos_line(\"[network.current.device.tx.submit] count=%llu kind=%u ticket=%u length=%zu\",(unsigned long long)service->tx_count,(unsigned)frame.kind,frame.ticket,frame.frame.length);}
+
+static void service_poll_dns_reply(NetworkServiceCurrent *service) {
+    NetworkDnsJobPendingReply pending = network_service_core_dns_pending_reply(&service->core);
+    if (!pending.present)
+        return;
+    if (network_service_owner_state(pending.owner) != 1) {
+        service_retire(service, pending.owner);
+        return;
+    }
+    size_t slot = envelope_find(service, true, pending.owner, reply_seq(pending.word));
+    if (slot == NETWORK_SERVICE_ENVELOPES)
+        sexos_fail();
+    uint64_t status = sexos_answer_request(&service->envelopes[slot].request, pending.word);
+    if (!status) {
+        service->envelopes[slot].present = false;
+        network_service_core_dns_reply_accepted(&service->core);
+    } else
+        network_service_core_dns_reply_deferred(&service->core);
 }
-void network_service_current_main(void)
-{
- NetworkServiceCurrent *service=&current_service;memset(service,0,sizeof(*service));if(sexos_rpc_register()!=1){sexos_line(\"[network.current.unavailable] reason=correlated_kernel_required\");for(;;)network_service_wait();}
- if(!network_device_open_current(&service->device,&service->config)){sexos_line(\"[network.current.unavailable] reason=device_open\");for(;;)network_service_wait();}service->device_ready=true;NetworkEngineMac mac={{0}};for(size_t i=0;i<6;i++)mac.bytes[i]=service->device.mac[i];if(network_service_core_init(&service->core,service->config,mac,0)!=NETWORK_ENGINE_OK)sexos_fail();sexos_line(\"[network.current.ready] correlated=1 client_jobs=1 dns_jobs=1 listener=1 authority=pre_dma\");
- for(;;){service->now=network_service_clock(service->now);NetworkServiceSnapshot snapshot=network_service_core_snapshot(&service->core);if(snapshot.owner_present&&network_service_owner_state(snapshot.owner)!=1)service_retire(service,snapshot.owner);network_dns_job_machine_maintain_records(&service->core.dns_jobs,service->now,NULL,network_service_owner_live);if(service->device_ready)service_receive_device(service);network_service_core_advance(&service->core,service->now);snapshot=network_service_core_snapshot(&service->core);if(!service->state_seen||service->last_job_state!=(unsigned)snapshot.jobs.state||service->last_client_state!=(unsigned)snapshot.transport.client.state){service->state_seen=true;service->last_job_state=(unsigned)snapshot.jobs.state;service->last_client_state=(unsigned)snapshot.transport.client.state;sexos_line(\"[network.current.state] job=%u client=%u ticket=%u sent=%zu received=%zu failure=%u now=%llu deadline=%llu last=%llu client_error=%u\",service->last_job_state,service->last_client_state,snapshot.jobs.ticket,snapshot.jobs.sent,snapshot.jobs.received,(unsigned)snapshot.transport.base.failure,(unsigned long long)service->now,(unsigned long long)service->core.jobs.deadline,(unsigned long long)service->core.jobs.last_now,(unsigned)service->core.transport.client.error);}if(service->device_ready)service_send_device(service);service_poll_client_reply(service);service_poll_dns_reply(service);SexosRequest request=sexos_rpc_listen_once(0);if(request.message.type_id)service_dispatch(service,request);else network_service_wait();}
+
+static void service_reply_error(const SexosRequest *request, bool dns, uint32_t code) {
+    uint32_t seq = (uint32_t)(request->message.arg0 & NETWORK_JOB_MAX_SEQ);
+    uint64_t word = dns ? network_dns_job_error(seq, code) : network_job_error(seq, code);
+    (void)sexos_answer_request(request, word);
+}
+
+static void service_dispatch_client(NetworkServiceCurrent *service, SexosRequest request) {
+    NetworkJobWords words = {{request.message.arg0, request.message.arg1, request.message.arg2}};
+    NetworkJobRequestDecode decoded = network_job_decode(words);
+    NetworkJobIdentity owner = {request.message.caller_pd, request.message.caller_task};
+    unsigned owner_state = network_service_owner_state(owner);
+    service->request_count++;
+    if (service->request_count <= 8 ||
+        (service->request_count & (service->request_count - 1)) == 0 ||
+        (decoded.ok &&
+         (decoded.request.kind == NETWORK_JOB_BEGIN || decoded.request.kind == NETWORK_JOB_START ||
+          decoded.request.kind == NETWORK_JOB_RELEASE)))
+        sexos_line(
+            \"[network.current.client.request] count=%llu owner=%u task=%u id=%llu decoded=%u live=%u kind=%u\",
+            (unsigned long long)service->request_count, owner.pd, owner.task,
+            (unsigned long long)request.id, (unsigned)decoded.ok, owner_state,
+            decoded.ok ? (unsigned)decoded.request.kind : 0);
+    if (!request.id || !decoded.ok || owner_state != 1) {
+        service_reply_error(&request, false, NETWORK_JOB_DENIED);
+        return;
+    }
+    NetworkJobResolution resolution = {0};
+    uint32_t admission = NETWORK_JOB_DENIED;
+    if (decoded.request.kind == NETWORK_JOB_BEGIN) {
+        admission = 0;
+    } else if (decoded.request.kind == NETWORK_JOB_BEGIN_RESOLVED ||
+               decoded.request.kind == NETWORK_JOB_BEGIN_STREAM_RESOLVED) {
+        NetworkDnsJobResolvedResult found = network_dns_job_machine_resolved(
+            &service->core.dns_jobs, owner, (uint32_t)decoded.request.a, service->now);
+        if (found.present) {
+            bool endpoint = true;
+            for (size_t i = 0; i < 4; i++)
+                if (found.value.address[i] != (uint8_t)(service->config.http >> (24 - 8 * i)))
+                    endpoint = false;
+            if (endpoint) {
+                resolution.owner = found.value.owner;
+                resolution.generation = found.value.generation;
+                for (size_t i = 0; i < 4; i++)
+                    resolution.address[i] = found.value.address[i];
+                resolution.observed_tick = found.value.observed_tick;
+                resolution.expires_tick = found.value.expires_tick;
+                admission = 0;
+            }
+        }
+    }
+    if (network_service_core_job(&service->core, owner, decoded.request, service->now, false,
+                                 &resolution, admission) &&
+        !envelope_store(service, false, owner, decoded.request.seq, request))
+        sexos_fail();
+}
+
+static void service_dispatch_dns(NetworkServiceCurrent *service, SexosRequest request) {
+    NetworkDnsJobWords words = {{request.message.arg0, request.message.arg1, request.message.arg2}};
+    NetworkDnsJobRequestDecode decoded = network_dns_job_decode(words);
+    NetworkJobIdentity owner = {request.message.caller_pd, request.message.caller_task};
+    if (!request.id || !decoded.ok || network_service_owner_state(owner) != 1) {
+        service_reply_error(&request, true, NETWORK_JOB_DENIED);
+        return;
+    }
+    if (network_service_core_dns_job(&service->core, owner, decoded.request, service->now, false) &&
+        !envelope_store(service, true, owner, decoded.request.seq, request))
+        sexos_fail();
+}
+
+static void service_dispatch(NetworkServiceCurrent *service, SexosRequest request) {
+    if (request.message.type_id == NETWORK_JOB_OP) {
+        service_dispatch_client(service, request);
+        return;
+    }
+    if (request.message.type_id == NETWORK_DNS_JOB_OP) {
+        service_dispatch_dns(service, request);
+        return;
+    }
+    if (request.message.type_id == UINT64_C(0x107) && request.message.caller_pd == 0 &&
+        request.message.arg0 && request.message.arg0 <= UINT32_MAX && request.message.arg1 &&
+        request.message.arg1 <= UINT32_MAX && request.message.arg2 == 0) {
+        NetworkJobIdentity owner = {(uint32_t)request.message.arg0, (uint32_t)request.message.arg1};
+        if (network_service_owner_state(owner) == 2)
+            service_retire(service, owner);
+        return;
+    }
+    (void)sexos_answer_request(&request, UINT64_MAX);
+}
+
+static void service_receive_device(NetworkServiceCurrent *service) {
+    if (!network_engine_transport_can_receive(&service->core.transport))
+        return;
+    NetworkFrame input = {0};
+    NetworkStep step = network_device_receive(&service->device, &input);
+    if (step == NET_FAILED) {
+        service->device_ready = false;
+        network_engine_transport_stop(&service->core.transport, NETWORK_ENGINE_STOPPED);
+        return;
+    }
+    if (step != NET_READY)
+        return;
+    if (input.length > NETWORK_ENGINE_MAX_FRAME)
+        return;
+    NetworkEngineFrame frame = {0};
+    frame.length = input.length;
+    for (size_t i = 0; i < input.length; i++)
+        frame.bytes[i] = input.data[i];
+    NetworkTcpPacket tcp = network_engine_tcp_decode(&frame);
+    if (tcp.valid)
+        sexos_line(
+            \"[network.current.device.rx.tcp] source=%u destination=%u flags=%u sequence=%u acknowledgment=%u expected=%u\",
+            (unsigned)tcp.source_port, (unsigned)tcp.destination_port, (unsigned)tcp.flags,
+            tcp.sequence, tcp.acknowledgment, service->core.transport.client.snd_nxt);
+    if (network_service_core_submit(&service->core, &frame) != NETWORK_ENGINE_OK)
+        sexos_fail();
+    service->rx_count++;
+    if (service->rx_count <= 8 || (service->rx_count & (service->rx_count - 1)) == 0)
+        sexos_line(\"[network.current.device.rx] count=%llu length=%zu\",
+                   (unsigned long long)service->rx_count, input.length);
+}
+
+static void service_send_device(NetworkServiceCurrent *service) {
+    if (service->device.tx_busy) {
+        NetworkStep step = network_device_poll_tx(&service->device);
+        if (step == NET_FAILED) {
+            service->device_ready = false;
+            network_engine_transport_stop(&service->core.transport, NETWORK_ENGINE_STOPPED);
+        } else if (step == NET_READY) {
+            service->tx_done++;
+            if (service->tx_done <= 8 || (service->tx_done & (service->tx_done - 1)) == 0)
+                sexos_line(\"[network.current.device.tx.done] count=%llu\",
+                           (unsigned long long)service->tx_done);
+        }
+        return;
+    }
+    NetworkServiceSnapshot snapshot = network_service_core_snapshot(&service->core);
+    bool live = snapshot.owner_present && network_service_owner_live(NULL, snapshot.owner);
+    if (snapshot.owner_present && !live) {
+        service_retire(service, snapshot.owner);
+        snapshot = network_service_core_snapshot(&service->core);
+    }
+    NetworkServiceFrameResult frame =
+        network_service_core_take_frame(&service->core, live, snapshot.owner);
+    if (frame.kind == NETWORK_SERVICE_STALE_FRAME)
+        sexos_line(\"[network.current.device.tx.stale] ticket=%u owner=%u task=%u live=%u\",
+                   frame.ticket, snapshot.owner.pd, snapshot.owner.task, (unsigned)live);
+    if (frame.present) {
+        if (!network_device_submit(&service->device,
+                                   (cesta_read_bytes){frame.frame.bytes, frame.frame.length})) {
+            service->device_ready = false;
+            network_engine_transport_stop(&service->core.transport, NETWORK_ENGINE_STOPPED);
+            return;
+        }
+        service->tx_count++;
+        if (service->tx_count <= 8 || (service->tx_count & (service->tx_count - 1)) == 0)
+            sexos_line(\"[network.current.device.tx.submit] count=%llu kind=%u ticket=%u length=%zu\",
+                       (unsigned long long)service->tx_count, (unsigned)frame.kind, frame.ticket,
+                       frame.frame.length);
+    }
+}
+
+void network_service_current_main(void) {
+    NetworkServiceCurrent *service = &current_service;
+    memset(service, 0, sizeof(*service));
+    if (sexos_rpc_register() != 1) {
+        sexos_line(\"[network.current.unavailable] reason=correlated_kernel_required\");
+        for (;;)
+            network_service_wait();
+    }
+    if (!network_device_open_current(&service->device, &service->config)) {
+        sexos_line(\"[network.current.unavailable] reason=device_open\");
+        for (;;)
+            network_service_wait();
+    }
+    service->device_ready = true;
+    NetworkEngineMac mac = {{0}};
+    for (size_t i = 0; i < 6; i++)
+        mac.bytes[i] = service->device.mac[i];
+    if (network_service_core_init(&service->core, service->config, mac, 0) != NETWORK_ENGINE_OK)
+        sexos_fail();
+    sexos_line(
+        \"[network.current.ready] correlated=1 client_jobs=1 dns_jobs=1 listener=1 authority=pre_dma\");
+    for (;;) {
+        service->now = network_service_clock(service->now);
+        NetworkServiceSnapshot snapshot = network_service_core_snapshot(&service->core);
+        if (snapshot.owner_present && network_service_owner_state(snapshot.owner) != 1)
+            service_retire(service, snapshot.owner);
+        network_dns_job_machine_maintain_records(&service->core.dns_jobs, service->now, NULL,
+                                                 network_service_owner_live);
+        if (service->device_ready)
+            service_receive_device(service);
+        network_service_core_advance(&service->core, service->now);
+        snapshot = network_service_core_snapshot(&service->core);
+        if (!service->state_seen || service->last_job_state != (unsigned)snapshot.jobs.state ||
+            service->last_client_state != (unsigned)snapshot.transport.client.state) {
+            service->state_seen = true;
+            service->last_job_state = (unsigned)snapshot.jobs.state;
+            service->last_client_state = (unsigned)snapshot.transport.client.state;
+            sexos_line(
+                \"[network.current.state] job=%u client=%u ticket=%u sent=%zu received=%zu failure=%u now=%llu deadline=%llu last=%llu client_error=%u\",
+                service->last_job_state, service->last_client_state, snapshot.jobs.ticket,
+                snapshot.jobs.sent, snapshot.jobs.received,
+                (unsigned)snapshot.transport.base.failure, (unsigned long long)service->now,
+                (unsigned long long)service->core.jobs.deadline,
+                (unsigned long long)service->core.jobs.last_now,
+                (unsigned)service->core.transport.client.error);
+        }
+        if (service->device_ready)
+            service_send_device(service);
+        service_poll_client_reply(service);
+        service_poll_dns_reply(service);
+        SexosRequest request = sexos_rpc_listen_once(0);
+        if (request.message.type_id)
+            service_dispatch(service, request);
+        else
+            network_service_wait();
+    }
 }
 ")))

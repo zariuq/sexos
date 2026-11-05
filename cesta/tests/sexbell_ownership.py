@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 FLAGS = ["SEXOS_BELL_DELIVERY_PROOF","SEXOS_BELL_BRIDGE_STUB_PROOF","SEXOS_BELL_LANE_RENAME_PROOF"]
@@ -42,7 +43,7 @@ def main():
             run([compiler,"-std=c11","-Wall","-Wextra","-Wpedantic","-Werror","-fsyntax-only",*flags,exported])
             records.append({"compiler":compiler,"flags":list(variant),"plan":str(plan.relative_to(args.output)),
                 "sha256":hashlib.sha256(plan.read_bytes()).hexdigest()})
-    original = source.read_text()
+    original = LayoutText(source.read_text())
     mutations = [
         ("(call bell_queue_find_lowest_priority_index q (& drop_idx))",
          "(call bell_queue_find_lowest_priority_index q (& (-> q tail)))", "overlapping loan"),

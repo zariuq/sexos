@@ -6,17 +6,20 @@
 #include <stddef.h>
 #include <stdbool.h>
 #define ARM64_DTB_MAGIC UINT32_C(0xD00DFEED)
+
 typedef enum {
     ARM64_BOOT_OK,
     ARM64_BOOT_BAD_ENTERED_EL,
     ARM64_BOOT_BAD_CURRENT_EL,
     ARM64_BOOT_BAD_DTB
 } Arm64BootStatus;
+
 typedef struct {
     uint64_t dtb;
-    uint8_t entered_el,current_el;
+    uint8_t entered_el, current_el;
     bool dtb_magic_ok;
 } Arm64BootObservation;
+
 typedef enum {
     ARM64_MAP_KERNEL_TEXT,
     ARM64_MAP_KERNEL_DATA,
@@ -28,11 +31,13 @@ typedef enum {
     ARM64_MAP_HHDM_DEVICE,
     ARM64_MAP_HHDM_DRAM
 } Arm64MapRole;
+
 typedef struct {
     Arm64MapRole role;
-    uint64_t va,pa,bytes;
-    bool el0,write,execute,device;
+    uint64_t va, pa, bytes;
+    bool el0, write, execute, device;
 } Arm64MapContract;
+
 typedef enum {
     ARM64_FAULT_SKIP,
     ARM64_FAULT_HALT,
@@ -40,20 +45,24 @@ typedef enum {
     ARM64_FAULT_REDIRECT,
     ARM64_FAULT_PHASE6
 } Arm64FaultAction;
+
 typedef struct {
     uint32_t tag;
     uint8_t ec;
     uint64_t far;
 } Arm64FaultObservation;
+
 typedef enum {
     ARM64_TASK_A,
     ARM64_TASK_B
 } Arm64Task;
+
 typedef struct {
-    uint64_t frame_a,frame_b;
+    uint64_t frame_a, frame_b;
     Arm64Task current;
-    bool started,b_dead;
+    bool started, b_dead;
 } Arm64Phase4State;
+
 typedef enum {
     ARM64_PHASE4_OK,
     ARM64_PHASE4_BAD_STATE,
@@ -61,49 +70,55 @@ typedef enum {
     ARM64_PHASE4_BOOT_FAULT,
     ARM64_PHASE4_SURVIVOR_FAULT
 } Arm64Phase4Status;
+
 typedef struct {
-    uint32_t distributor_control,redistributor_waker;
-    uint64_t sre,pmr,group_enable;
-    uint32_t timer_group,timer_enable;
+    uint32_t distributor_control, redistributor_waker;
+    uint64_t sre, pmr, group_enable;
+    uint32_t timer_group, timer_enable;
 } Arm64GicObservation;
+
 typedef struct {
     int64_t psci_result;
-    uint64_t ttbr0,ttbr1;
+    uint64_t ttbr0, ttbr1;
     bool acknowledged;
 } Arm64ApObservation;
+
 typedef struct {
     uint32_t tag;
     uint8_t ec;
-    uint64_t far,echo,cap_bad,cap_good;
+    uint64_t far, echo, cap_bad, cap_good;
 } Arm64Phase5Completion;
+
 Arm64BootStatus arm64_boot_validate(Arm64BootObservation observation);
 bool arm64_phase3_map_valid(Arm64MapContract contract);
 Arm64FaultAction arm64_phase3_fault_decide(Arm64FaultObservation observation);
-uint32_t arm64_phase3_warden_live(uint64_t esr,uint64_t far,uint64_t elr);
-uint32_t arm64_phase5_warden_live(uint64_t esr,uint64_t far,uint64_t elr);
+uint32_t arm64_phase3_warden_live(uint64_t esr, uint64_t far, uint64_t elr);
+uint32_t arm64_phase5_warden_live(uint64_t esr, uint64_t far, uint64_t elr);
 uint64_t arm64_phase3_ttbr0(void);
 uint64_t arm64_phase3_ttbr1(void);
 void arm64_phase3_install_vectors(void);
 uint64_t arm64_phase3_mailbox(size_t index);
-Arm64Phase4Status arm64_phase4_state_init(Arm64Phase4State *state,uint64_t frame_a,uint64_t frame_b);
-Arm64Phase4Status arm64_phase4_tick(Arm64Phase4State *state,uint64_t frame,uint32_t intid,uint64_t *next);
-Arm64Phase4Status arm64_phase4_kill(Arm64Phase4State *state,uint64_t frame,uint64_t *next);
+Arm64Phase4Status arm64_phase4_state_init(Arm64Phase4State *state, uint64_t frame_a,
+                                          uint64_t frame_b);
+Arm64Phase4Status arm64_phase4_tick(Arm64Phase4State *state, uint64_t frame, uint32_t intid,
+                                    uint64_t *next);
+Arm64Phase4Status arm64_phase4_kill(Arm64Phase4State *state, uint64_t frame, uint64_t *next);
 bool arm64_phase4_gic_valid(Arm64GicObservation observation);
 bool arm64_phase4_ap_valid(Arm64ApObservation observation);
-bool arm64_phase4_timer_interval(uint64_t frequency,uint64_t *interval);
-uint64_t arm64_phase5_svc_result(uint64_t selector,uint64_t argument);
+bool arm64_phase4_timer_interval(uint64_t frequency, uint64_t *interval);
+uint64_t arm64_phase5_svc_result(uint64_t selector, uint64_t argument);
 bool arm64_phase5_completion_valid(Arm64Phase5Completion completion);
 uint64_t sex_arm_svc(uint64_t frame);
 uint32_t arm64_mmio_read32(uint64_t address);
-void arm64_mmio_write32(uint64_t address,uint32_t value);
+void arm64_mmio_write32(uint64_t address, uint32_t value);
 void arm64_write_byte(uint8_t byte);
 void arm64_write_str(const char *text);
 void arm64_write_hex(uint64_t value);
 void arm64_write_dec(uint64_t value);
 uint8_t arm64_current_el(void);
 _Noreturn void arm64_stop(void);
-_Noreturn void arm64_phase2_main(uint64_t dtb,uint64_t entered_el);
-_Noreturn void arm64_phase3_main(uint64_t dtb,uint64_t entered_el);
+_Noreturn void arm64_phase2_main(uint64_t dtb, uint64_t entered_el);
+_Noreturn void arm64_phase3_main(uint64_t dtb, uint64_t entered_el);
 _Noreturn void arm64_phase4_entry(void);
 _Noreturn void arm64_phase5_entry(void);
 _Noreturn void arm64_phase6_entry(void);

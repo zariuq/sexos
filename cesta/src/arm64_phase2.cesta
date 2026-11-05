@@ -1,21 +1,38 @@
 (cesta native-c/1 compact-c/2
   (unit
-    (include "sexos_arm64_boot.h")
+    (ownership (check-all)
+    (unchecked arm64_phase2_main (obligation "AArch64 bring-up on one core during boot: system registers, translation tables, GIC, timer and PL011 MMIO through inline assembly, volatile access and integer-derived pointers. It relies on exclusive boot-time ownership of the device map; here entry and serial.")))
+  (include "sexos_arm64_boot.h")
     (native "
-_Noreturn void arm64_phase2_main(uint64_t dtb,uint64_t entered_el)
-{
-    uint8_t current=arm64_current_el();bool magic_ok=false;
-    arm64_write_str(\"[sex.arm.entry] current_el=\");arm64_write_dec(entered_el);arm64_write_byte('\\n');
-    arm64_write_str(\"[sex.arm.el1] ok=\");arm64_write_dec(current==1u);arm64_write_byte('\\n');
-    if(!dtb)arm64_write_str(\"[sex.arm.dtb] x0=0 present=0 note=elf_boot_no_fdt\\n\");
-    else{
-        arm64_write_str(\"[sex.arm.dtb] ptr=0x\");arm64_write_hex(dtb);arm64_write_byte('\\n');
-        if((dtb&7u)==0){uint32_t raw=*(volatile const uint32_t *)(uintptr_t)dtb;
-            magic_ok=__builtin_bswap32(raw)==ARM64_DTB_MAGIC;}
-        arm64_write_str(magic_ok?\"[sex.arm.dtb] magic=ok\\n\":\"[sex.arm.dtb] magic=bad\\n\");
+_Noreturn void arm64_phase2_main(uint64_t dtb, uint64_t entered_el) {
+    uint8_t current = arm64_current_el();
+    bool magic_ok = false;
+    arm64_write_str(\"[sex.arm.entry] current_el=\");
+    arm64_write_dec(entered_el);
+    arm64_write_byte('\\n');
+    arm64_write_str(\"[sex.arm.el1] ok=\");
+    arm64_write_dec(current == 1u);
+    arm64_write_byte('\\n');
+    if (!dtb)
+        arm64_write_str(\"[sex.arm.dtb] x0=0 present=0 note=elf_boot_no_fdt\\n\");
+    else {
+        arm64_write_str(\"[sex.arm.dtb] ptr=0x\");
+        arm64_write_hex(dtb);
+        arm64_write_byte('\\n');
+        if ((dtb & 7u) == 0) {
+            uint32_t raw = *(volatile const uint32_t *)(uintptr_t)dtb;
+            magic_ok = __builtin_bswap32(raw) == ARM64_DTB_MAGIC;
+        }
+        arm64_write_str(magic_ok ? \"[sex.arm.dtb] magic=ok\\n\" : \"[sex.arm.dtb] magic=bad\\n\");
     }
-    Arm64BootStatus status=arm64_boot_validate((Arm64BootObservation){dtb,(uint8_t)entered_el,current,magic_ok});
-    if(status!=ARM64_BOOT_OK){arm64_write_str(\"[sex.arm.phase2.fail] code=\");arm64_write_dec(status);arm64_write_byte('\\n');arm64_stop();}
+    Arm64BootStatus status =
+        arm64_boot_validate((Arm64BootObservation){dtb, (uint8_t)entered_el, current, magic_ok});
+    if (status != ARM64_BOOT_OK) {
+        arm64_write_str(\"[sex.arm.phase2.fail] code=\");
+        arm64_write_dec(status);
+        arm64_write_byte('\\n');
+        arm64_stop();
+    }
     arm64_write_str(\"[sex.arm.uart] pl011=ok\\nSEX_ARM_ALIVE\\nSEX_ARM_PHASE2_OK\\n\");
     arm64_stop();
 }

@@ -2,6 +2,7 @@
 """Compare the actual immutable network-config crate with checked Cesta."""
 import argparse,hashlib,ipaddress,json,random,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 MASK=(1<<64)-1
 
@@ -77,7 +78,7 @@ def main():
         print(cc,len(rows),'network config observations match actual Rust',flush=True)
     changes=[('reject_valid_prefix','prefix>30','prefix>24'),('allow_network_address','host && host!=~mask','host!=~mask'),('allow_loopback','first!=127','first!=126'),('fixed_prefix','32-prefix','32-24'),('require_onlink_endpoint','(address&mask)!=(c.local&mask)','false'),('allow_local_gateway','c.gateway!=c.local','true'),('unknown_profile','c.profile==1 &&','c.profile!=0 &&'),('source_port_wrap','c.source_base==NET_CONFIG_SOURCE_BASE && (uint32_t)c.source_base+NET_CONFIG_MAX_TICKET==UINT16_MAX','c.source_base!=0'),('reserved_bits','((w.word0>>48)&255)','false'),('unknown_version','w.word0>>56!=NET_CONFIG_VERSION','false'),('http_high_alias','w.word3>>32','false')];caught=[]
     if args.mutations:
-        original=source.read_text()
+        original=LayoutText(source.read_text())
         for name,before,after in changes:
             assert before in original,(name,'anchor')
             try:

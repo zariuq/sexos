@@ -8,4 +8,8 @@ uint32_t cpu_inl(uint16_t port);
 void cpu_outw(uint16_t port,uint16_t value);
 static inline void cpu_wrpkru(uint32_t value){(void)value;abort();}
 static inline void cpu_sti_hlt(void){abort();}
+/* FPU context switch: the host keeps no FPU state per task. */
+static inline void cpu_fxsave(void *area){(void)area;}
+static inline void cpu_fxrstor(const void *area){(void)area;}
+static inline void cpu_fpu_state_init(void *area){(void)area;}
 #endif

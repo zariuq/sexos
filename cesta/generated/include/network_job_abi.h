@@ -1,3 +1,4 @@
+
 #ifndef SEXOS_NETWORK_JOB_ABI_H
 #define SEXOS_NETWORK_JOB_ABI_H
 #include "sexos_client.h"
@@ -30,20 +31,59 @@
 #define NETWORK_JOB_TIMEOUT UINT32_C(6)
 #define NETWORK_JOB_IO UINT32_C(7)
 #define NETWORK_JOB_EXHAUSTED UINT32_C(8)
-typedef enum NetworkJobState {NETWORK_JOB_IDLE=0,NETWORK_JOB_STAGING=1,NETWORK_JOB_CONNECTING=2,NETWORK_JOB_SENDING=3,NETWORK_JOB_RECEIVING=4,NETWORK_JOB_COMPLETE=5,NETWORK_JOB_FAILED=6,NETWORK_JOB_CANCELLED=7} NetworkJobState;
-typedef struct NetworkJobRequest {uint32_t seq;uint8_t kind;uint16_t offset,length;uint32_t ticket;uint64_t a;} NetworkJobRequest;
-typedef struct NetworkJobWords {uint64_t words[3];} NetworkJobWords;
-typedef struct NetworkJobRequestDecode {bool ok;NetworkJobRequest request;uint32_t error;} NetworkJobRequestDecode;
-typedef struct NetworkJobStateDecode {bool ok;NetworkJobState state;} NetworkJobStateDecode;
-typedef struct NetworkJobStatusDecode {bool ok;NetworkJobState state;size_t response_length;} NetworkJobStatusDecode;
-typedef struct NetworkJobReplyDecode {bool valid,success;uint32_t value;} NetworkJobReplyDecode;
+
+typedef enum NetworkJobState {
+    NETWORK_JOB_IDLE = 0,
+    NETWORK_JOB_STAGING = 1,
+    NETWORK_JOB_CONNECTING = 2,
+    NETWORK_JOB_SENDING = 3,
+    NETWORK_JOB_RECEIVING = 4,
+    NETWORK_JOB_COMPLETE = 5,
+    NETWORK_JOB_FAILED = 6,
+    NETWORK_JOB_CANCELLED = 7
+} NetworkJobState;
+
+typedef struct NetworkJobRequest {
+    uint32_t seq;
+    uint8_t kind;
+    uint16_t offset, length;
+    uint32_t ticket;
+    uint64_t a;
+} NetworkJobRequest;
+
+typedef struct NetworkJobWords {
+    uint64_t words[3];
+} NetworkJobWords;
+
+typedef struct NetworkJobRequestDecode {
+    bool ok;
+    NetworkJobRequest request;
+    uint32_t error;
+} NetworkJobRequestDecode;
+
+typedef struct NetworkJobStateDecode {
+    bool ok;
+    NetworkJobState state;
+} NetworkJobStateDecode;
+
+typedef struct NetworkJobStatusDecode {
+    bool ok;
+    NetworkJobState state;
+    size_t response_length;
+} NetworkJobStatusDecode;
+
+typedef struct NetworkJobReplyDecode {
+    bool valid, success;
+    uint32_t value;
+} NetworkJobReplyDecode;
+
 NetworkJobWords network_job_encode(NetworkJobRequest request);
 NetworkJobRequestDecode network_job_decode(NetworkJobWords words);
 bool network_job_request_valid(NetworkJobRequest request);
 NetworkJobStateDecode network_job_state_decode(uint8_t value);
-uint32_t network_job_status(NetworkJobState state,size_t response_length);
+uint32_t network_job_status(NetworkJobState state, size_t response_length);
 NetworkJobStatusDecode network_job_decode_status(uint32_t value);
-uint64_t network_job_reply(uint32_t seq,uint32_t value);
-uint64_t network_job_error(uint32_t seq,uint32_t code);
-NetworkJobReplyDecode network_job_decode_reply(uint64_t word,uint32_t seq);
+uint64_t network_job_reply(uint32_t seq, uint32_t value);
+uint64_t network_job_error(uint32_t seq, uint32_t code);
+NetworkJobReplyDecode network_job_decode_reply(uint64_t word, uint32_t seq);
 #endif

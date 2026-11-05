@@ -1,19 +1,24 @@
 (cesta native-c/1 compact-c/2
-  (unit (native "#include \"silk_shell_chrome.h\"
-uint32_t shell_chrome_peer_load_dimension(const atomic_uint_least32_t *dimension)
-{
-    return atomic_load_explicit(dimension,memory_order_acquire);
+  (unit (ownership (check-all)
+    (unchecked (shell_chrome_peer_exchange_bool shell_chrome_peer_load_dimension
+                shell_chrome_peer_load_relaxed shell_chrome_peer_store_relaxed)
+      (obligation "Atomic display-dimension words shared between the shell loop and the display path; no other memory.")))
+  (native "
+#include \"silk_shell_chrome.h\"
+
+uint32_t shell_chrome_peer_load_dimension(const atomic_uint_least32_t *dimension) {
+    return atomic_load_explicit(dimension, memory_order_acquire);
 }
-bool shell_chrome_peer_exchange_bool(atomic_bool *value,bool next)
-{
-    return atomic_exchange_explicit(value,next,memory_order_relaxed);
+
+bool shell_chrome_peer_exchange_bool(atomic_bool *value, bool next) {
+    return atomic_exchange_explicit(value, next, memory_order_relaxed);
 }
-uint32_t shell_chrome_peer_load_relaxed(const atomic_uint_least32_t *value)
-{
-    return atomic_load_explicit(value,memory_order_relaxed);
+
+uint32_t shell_chrome_peer_load_relaxed(const atomic_uint_least32_t *value) {
+    return atomic_load_explicit(value, memory_order_relaxed);
 }
-void shell_chrome_peer_store_relaxed(atomic_uint_least32_t *value,uint32_t next)
-{
-    atomic_store_explicit(value,next,memory_order_relaxed);
+
+void shell_chrome_peer_store_relaxed(atomic_uint_least32_t *value, uint32_t next) {
+    atomic_store_explicit(value, next, memory_order_relaxed);
 }
 ")))

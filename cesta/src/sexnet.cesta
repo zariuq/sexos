@@ -60,7 +60,7 @@
       (uint8_t channel)
       (uint8_t flags)
       (uint8_t _pad)) SexnetApEntry)
-    (native "_Static_assert(sizeof(SexnetApEntry) == 36, \"repr(C) SexnetApEntry\");\n")
+    (_Static_assert (== (sizeof type SexnetApEntry) 36) "\"repr(C) SexnetApEntry\"")
 
     (typedef (struct NetState
       (WifiState wifi)

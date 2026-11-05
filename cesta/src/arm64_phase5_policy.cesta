@@ -4,15 +4,17 @@
     (ownership (check-all))
     (native "
 #define ARM64_ERR_CAP_INVALID UINT64_C(0xfffffffffffffffc)
-uint64_t arm64_phase5_svc_result(uint64_t selector,uint64_t argument)
-{
-    if(selector==1u)return argument+1u;
-    if(selector==2u&&argument==42u)return 0;
+
+uint64_t arm64_phase5_svc_result(uint64_t selector, uint64_t argument) {
+    if (selector == 1u)
+        return argument + 1u;
+    if (selector == 2u && argument == 42u)
+        return 0;
     return ARM64_ERR_CAP_INVALID;
 }
-bool arm64_phase5_completion_valid(Arm64Phase5Completion c)
-{
-    return c.tag==5u&&c.ec==UINT8_C(0x24)&&c.far==UINT64_C(0x60000000)&&
-        c.echo==42u&&c.cap_bad==ARM64_ERR_CAP_INVALID&&c.cap_good==0;
+
+bool arm64_phase5_completion_valid(Arm64Phase5Completion c) {
+    return c.tag == 5u && c.ec == UINT8_C(0x24) && c.far == UINT64_C(0x60000000) && c.echo == 42u &&
+           c.cap_bad == ARM64_ERR_CAP_INVALID && c.cap_good == 0;
 }
 ")))

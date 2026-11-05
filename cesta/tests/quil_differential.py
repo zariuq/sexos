@@ -33,6 +33,7 @@ from pathlib import Path
 import random
 import re
 import shutil
+from layout_text import LayoutText
 
 from differential_support import (C_MAIN, LISTEN, PROVIDER_PRELUDE, RUST_FFI, RUST_MAIN, first_difference,
                                   pinned_function, run)
@@ -322,7 +323,7 @@ def main():
     work.mkdir(parents=True)
     show = lambda path: run(["git", "-C", REPO, "show", f"{REVISION}:{path}"]).stdout.decode()
     main_rs = show("servers/quil/src/main.rs")
-    translation = (HERE / "src/quil.cesta").read_text()
+    translation = LayoutText((HERE / "src/quil.cesta").read_text())
     # Every build gate of the Rust is a flag of the translation, and no other.
     rust_gates = set(re.findall(r'option_env!\("(\w+)"\)', main_rs)) | set(re.findall(r"cfg!\((\w+)\)", main_rs))
     c_gates = set(re.findall(r'cpp-if "defined\((\w+)\)"', translation))

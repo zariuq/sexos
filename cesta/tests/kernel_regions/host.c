@@ -6,6 +6,11 @@
 
 _Static_assert(SEXOS_KERNEL_CURRENT_PDX == 1, "current memory-authority profile");
 
+/* The region writer and device reset units are linked for the current
+ * dispatch; their page-table reads are not executed by these region queries. */
+bool read_pte(uint64_t va, uint64_t *pte){(void)va;(void)pte;abort();}
+uint64_t page_leaf_address(uint64_t address){(void)address;abort();}
+
 static Domain *make_domain(uint32_t id, uint8_t key)
 {
     Domain *d=domain_boot_record(id);

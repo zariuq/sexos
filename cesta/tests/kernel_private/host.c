@@ -179,7 +179,7 @@ int main(void)
     route->target=18;assert(!kernel_current_catalog_valid());*route=saved_cap;
     assert(kernel_current_catalog_valid());
     current_regions();
-    assert(kernel.boot_backing_count==KERNEL_CURRENT_BACKINGS-1 && kernel.cap_storage.count==KERNEL_CURRENT_ROUTES+1+7*KERNEL_CURRENT_APPS+KERNEL_CURRENT_DORMANT+HISTORY_ROSTER_COUNT+1+11+2*KERNEL_CURRENT_QUILS);
+    assert(kernel.boot_backing_count==KERNEL_CURRENT_BACKINGS-2 && kernel.cap_storage.count==KERNEL_CURRENT_ROUTES+1+7*KERNEL_CURRENT_APPS+KERNEL_CURRENT_DORMANT+HISTORY_ROSTER_COUNT+1+11+2*KERNEL_CURRENT_QUILS);
     PciFunction nic={.bus=0,.dev=3,.func=0,.vendor_id=0x8086,.device_id=0x100e};
     PciFunction gpu=nic;gpu.class_id=3;
     Cap gpu_lease=pci_cap(domain_get(1),4,&gpu);
@@ -193,7 +193,15 @@ int main(void)
     unsigned writes=pci_writes;
     assert(!kernel_boot_pci_region(domain_get(13),(UINT64_C(1)<<32)|19,&nic,&view) && pci_writes==writes);
     kernel_paging_boot();kernel_sources_boot();
-    assert(kernel.boot_backing_count==KERNEL_CURRENT_BACKINGS && kernel.cap_storage.count==KERNEL_CURRENT_ROUTES+1+7*KERNEL_CURRENT_APPS+KERNEL_CURRENT_DORMANT+HISTORY_ROSTER_COUNT+1+11+2*KERNEL_CURRENT_QUILS+5+KERNEL_CURRENT_SOURCE_CAPS);
+    /* Display's frames through the production reservation, at a small geometry
+     * this RAM model holds; malformed geometry is refused before any backing. */
+    DisplayFrameLayout frames_layout={0};
+    assert(!display_frame_layout(64,32,255,&frames_layout) && !display_frame_layout(0,32,0,&frames_layout));
+    assert(display_frame_layout(64,32,256,&frames_layout) && frames_layout.frame_bytes==8192 && frames_layout.span_bytes==8192 && frames_layout.total_bytes==16384 && frames_layout.buddy_bytes==16384);
+    kernel_boot_display_frames(1,&frames_layout);
+    const Cap *frames_cap=cap_get(domain_get(1),DISPLAY_FRAME_SLOT);
+    assert(frames_cap && frames_cap->kind==CAP_REGION && frames_cap->region.grant.region_id==DISPLAY_FRAME_REGION_ID && frames_cap->region.grant.length==16384 && !frames_cap->region.grant.has_dma);
+    assert(kernel.boot_backing_count==KERNEL_CURRENT_BACKINGS && kernel.cap_storage.count==KERNEL_CURRENT_ROUTES+1+7*KERNEL_CURRENT_APPS+KERNEL_CURRENT_DORMANT+HISTORY_ROSTER_COUNT+1+11+2*KERNEL_CURRENT_QUILS+5+KERNEL_CURRENT_SOURCE_CAPS+1);
     kernel_seal_genesis();
     for (size_t i=0;i<sizeof descriptors/sizeof *descriptors;++i)run_push(descriptors[i].id);
     assert(kernel.run_count==15);
@@ -330,8 +338,11 @@ int main(void)
         assert(!activate.rax && activate.rsi==row.target && activate.r8==2 && domain_get(row.target)->queued);
         assert(!user_range_ok(pd->entry,1,false,domain_get(row.target)->mask));
     }
-    assert(kernel_app_get(23)->identity.number==8 && domain_get(23)->task_state==TASK_READY);
+    CurrentAppRow last_quil={0};
+    for(size_t i=0;i<KERNEL_CURRENT_APPS;++i)if(current_apps[i].logical==CURRENT_PD_quil)last_quil=current_apps[i];
+    assert(last_quil.ordinal==KERNEL_CURRENT_QUILS-1);
+    assert(kernel_app_get(last_quil.target)->identity.number==last_quil.ordinal+1 && domain_get(last_quil.target)->task_state==TASK_READY);
     free(ram);
-    puts("private BOOT controls passed:catalog layouts/identities,disjoint manifests,detached successors,initial admissions,eight-incarnation chain");
+    printf("private BOOT controls passed:catalog layouts/identities,disjoint manifests,detached successors,initial admissions,%u-incarnation Quil chain\n",(unsigned)KERNEL_CURRENT_QUILS);
     return 0;
 }

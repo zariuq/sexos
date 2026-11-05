@@ -67,7 +67,8 @@
     (fn (static void) tx_transfer
       ((TxContext (* c)))
       (= (-> c held) false))
-    (native "#define network_tx_run_CHECKED 1\n#define network_tx_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()\n")
+    (define network_tx_run_CHECKED "1")
+  (define (network_tx_run_CHECK_FAILURE ctx kind id expected) "sexos_fail()")
     (use-protocols "../interfaces/network_tx_protocol.module" Protocols)
     (fn bool network_device_send
       ((NetworkDevice (* device)) (cesta_read_bytes frame))

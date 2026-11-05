@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -294,7 +295,7 @@ def main():
             actual = run([binary], env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=1"})
             configurations.append({"compiler": compiler, "mode": mode, "sha256": hashlib.sha256(actual).hexdigest()})
 
-    base = machine_exports["gcc"].read_text()
+    base = LayoutText(machine_exports["gcc"].read_text())
     mutations = [
         ("opening-does-no-io", "if(initial_link==NETWORK_JOB_LINK_OPENING){m->state=NETWORK_JOB_CONNECTING;return;}", "if(initial_link==NETWORK_JOB_LINK_OPENING){m->state=NETWORK_JOB_CONNECTING;}"),
         ("duplex-needs-peer-fin", "m->finished_send&&link==NETWORK_JOB_LINK_PEER_FIN&&drained", "m->finished_send&&link!=NETWORK_JOB_LINK_CLOSED&&drained"),

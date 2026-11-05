@@ -1,6 +1,7 @@
 """Qualify the bounded passive TCP listener and echo state."""
 import argparse,hashlib,importlib,json,os,subprocess,sys
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(cmd,*,cwd=HERE,env=None):
  r=subprocess.run(list(map(str,cmd)),cwd=cwd,capture_output=True,env=env);assert r.returncode==0,(cmd,r.returncode,r.stdout[-2000:],r.stderr[-8000:]);return r.stdout
@@ -38,7 +39,7 @@ def main():
    run(cmd+['--','-Igenerated/include']);sources.append(out)
   for mode,flags in (('O0',['-O0']),('O2',['-O2']),('SAN',['-O1','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie'])):
    b=w/f'{cc}-{mode}';run([cc,'-std=c11','-Wall','-Wextra','-Wpedantic','-Werror',*flags,'-Igenerated/include',*sources,host,'-o',b]);actual=run([b],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=1:abort_on_error=1'});configs.append({'compiler':cc,'mode':mode,'sha256':hashlib.sha256(actual).hexdigest()})
- base=exports['gcc'].read_text();mutations=[('syn-required','(tcp.flags&NETWORK_TCP_SYN)==0','false'),('listen-port','tcp.destination_port!=l->config.listen_port','false'),('tuple-source','ip.source==l->peer_ip','true'),('pending-ack','tcp.acknowledgment==l->pending_end','true'),('duplicate-suppression','tcp.sequence==l->rcv_nxt','true'),('retry-limit','l->retries>=NETWORK_TCP_LISTENER_RETRY_LIMIT','false'),('rst-rearm','tcp.flags&NETWORK_TCP_RST','false'),('fin-close','tcp.flags&NETWORK_TCP_FIN','false'),('shift-buffer','listener_shift(l,count)','(void)count'),('receive-capacity','tcp.payload_length>NETWORK_TCP_LISTENER_BUFFER-l->receive_len','false')];caught=[];prefix=[w/f'{n}-gcc.c' for n in names[:-1]]
+ base=LayoutText(exports['gcc'].read_text());mutations=[('syn-required','(tcp.flags&NETWORK_TCP_SYN)==0','false'),('listen-port','tcp.destination_port!=l->config.listen_port','false'),('tuple-source','ip.source==l->peer_ip','true'),('pending-ack','tcp.acknowledgment==l->pending_end','true'),('duplicate-suppression','tcp.sequence==l->rcv_nxt','true'),('retry-limit','l->retries>=NETWORK_TCP_LISTENER_RETRY_LIMIT','false'),('rst-rearm','tcp.flags&NETWORK_TCP_RST','false'),('fin-close','tcp.flags&NETWORK_TCP_FIN','false'),('shift-buffer','listener_shift(l,count)','(void)count'),('receive-capacity','tcp.payload_length>NETWORK_TCP_LISTENER_BUFFER-l->receive_len','false')];caught=[];prefix=[w/f'{n}-gcc.c' for n in names[:-1]]
  for name,old,new in mutations:
   assert base.count(old)>=1,(name,base.count(old));m=w/f'mutant-{name}.c';m.write_text(base.replace(old,new));b=w/f'mutant-{name}';run(['gcc','-std=c11','-O2','-Igenerated/include',*prefix,m,host,'-o',b]);r=subprocess.run([b],cwd=HERE,capture_output=True);assert r.returncode!=0,('survived',name,r.stdout,r.stderr);caught.append(name)
  admission=[]

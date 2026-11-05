@@ -12,6 +12,7 @@ from pathlib import Path
 import random
 import shutil
 import subprocess
+from layout_text import LayoutText
 
 import sexstore_differential as differential
 
@@ -146,7 +147,7 @@ def main():
     include = ["-I", HERE / "generated/include"]
     flags = ["-std=c11", "-O2", "-Wall", "-Wextra", "-Wpedantic", "-Werror"]
     sanitize = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
-    source = (HERE / "src/sexstore_durable.cesta").read_text()
+    source = LayoutText((HERE / "src/sexstore_durable.cesta").read_text())
 
     # Run the actual pinned Rust durable functions; only process scaffolding
     # and unused imports are replaced by the existing host provider.

@@ -1,3 +1,4 @@
+
 #ifndef SEXOS_NETWORK_DNS_JOB_ABI_H
 #define SEXOS_NETWORK_DNS_JOB_ABI_H
 #include "network_job_abi.h"
@@ -7,17 +8,46 @@
 #define NETWORK_DNS_JOB_RESULT ((uint8_t)3)
 #define NETWORK_DNS_JOB_CANCEL ((uint8_t)4)
 #define NETWORK_DNS_JOB_RELEASE ((uint8_t)5)
-typedef enum NetworkDnsJobState {NETWORK_DNS_JOB_IDLE=0,NETWORK_DNS_JOB_WAITING=1,NETWORK_DNS_JOB_COMPLETE=2,NETWORK_DNS_JOB_FAILED=3,NETWORK_DNS_JOB_CANCELLED=4} NetworkDnsJobState;
-typedef struct NetworkDnsJobRequest {uint32_t seq;uint8_t kind;uint32_t ticket;} NetworkDnsJobRequest;
-typedef struct NetworkDnsJobWords {uint64_t words[3];} NetworkDnsJobWords;
-typedef struct NetworkDnsJobRequestDecode {bool ok;NetworkDnsJobRequest request;uint32_t error;} NetworkDnsJobRequestDecode;
-typedef struct NetworkDnsJobStateDecode {bool ok;NetworkDnsJobState state;} NetworkDnsJobStateDecode;
-typedef struct NetworkDnsJobReplyDecode {bool valid,success;uint32_t value;} NetworkDnsJobReplyDecode;
+
+typedef enum NetworkDnsJobState {
+    NETWORK_DNS_JOB_IDLE = 0,
+    NETWORK_DNS_JOB_WAITING = 1,
+    NETWORK_DNS_JOB_COMPLETE = 2,
+    NETWORK_DNS_JOB_FAILED = 3,
+    NETWORK_DNS_JOB_CANCELLED = 4
+} NetworkDnsJobState;
+
+typedef struct NetworkDnsJobRequest {
+    uint32_t seq;
+    uint8_t kind;
+    uint32_t ticket;
+} NetworkDnsJobRequest;
+
+typedef struct NetworkDnsJobWords {
+    uint64_t words[3];
+} NetworkDnsJobWords;
+
+typedef struct NetworkDnsJobRequestDecode {
+    bool ok;
+    NetworkDnsJobRequest request;
+    uint32_t error;
+} NetworkDnsJobRequestDecode;
+
+typedef struct NetworkDnsJobStateDecode {
+    bool ok;
+    NetworkDnsJobState state;
+} NetworkDnsJobStateDecode;
+
+typedef struct NetworkDnsJobReplyDecode {
+    bool valid, success;
+    uint32_t value;
+} NetworkDnsJobReplyDecode;
+
 NetworkDnsJobWords network_dns_job_encode(NetworkDnsJobRequest request);
 NetworkDnsJobRequestDecode network_dns_job_decode(NetworkDnsJobWords words);
 bool network_dns_job_request_valid(NetworkDnsJobRequest request);
 NetworkDnsJobStateDecode network_dns_job_state_decode(uint32_t value);
-uint64_t network_dns_job_reply(uint32_t seq,uint32_t value);
-uint64_t network_dns_job_error(uint32_t seq,uint32_t code);
-NetworkDnsJobReplyDecode network_dns_job_decode_reply(uint64_t word,uint32_t seq);
+uint64_t network_dns_job_reply(uint32_t seq, uint32_t value);
+uint64_t network_dns_job_error(uint32_t seq, uint32_t code);
+NetworkDnsJobReplyDecode network_dns_job_decode_reply(uint64_t word, uint32_t seq);
 #endif

@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -127,7 +128,7 @@ fn main(){let n:usize=std::env::args().nth(1).unwrap().parse().unwrap();let(s,c)
             builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = exports["gcc"].read_text()
+        base = LayoutText(exports["gcc"].read_text())
         changes = [
             ("generation", "presentation->generation++", "presentation->generation+=2"),
             ("text-viewport", "viewport!=current_viewport", "false"),

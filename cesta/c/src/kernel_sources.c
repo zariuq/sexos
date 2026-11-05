@@ -1,83 +1,202 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 #include "sexos_kernel.h"
 
 /* These providers run only on the serialized BSP syscall lane, with IF
  * masked and APs parked. The CMOS index writes select the named q35 UTC
  * profile with NMI enabled. Register C is never read; RTC data/control
  * registers are never written. Hardware integrity is a separate assumption. */
-bool source_entropy_available(void)
-{
-    uint32_t r[4];cpu_cpuid(0,0,r);if(r[0]<7)return false;
-    cpu_cpuid(7,0,r);return (r[1]&(1u<<18))!=0;
+bool source_entropy_available(void) {
+    uint32_t r[4];
+    cpu_cpuid(0, 0, r);
+    if (r[0] < 7)
+        return false;
+    cpu_cpuid(7, 0, r);
+    return (r[1] & (1u << 18)) != 0;
 }
-SourceWord source_entropy_sample(void)
-{
-    uint64_t word=0;bool present=cpu_rdseed(&word);return (SourceWord){present,word};
+
+SourceWord source_entropy_sample(void) {
+    uint64_t word = 0;
+    bool present = cpu_rdseed(&word);
+    return (SourceWord){present, word};
 }
-static uint8_t source_cmos_register(uint8_t index)
-{
-    cpu_outb(0x70,index);return cpu_inb(0x71);
+
+static uint8_t source_cmos_register(uint8_t index) {
+    cpu_outb(0x70, index);
+    return cpu_inb(0x71);
 }
-static SourceClockRaw source_cmos_snapshot(void)
-{
-    uint8_t a=source_cmos_register(0x0a);
-    uint8_t b=source_cmos_register(0x0b);
-    uint8_t d=source_cmos_register(0x0d);
-    uint8_t sec=source_cmos_register(0);
+
+static SourceClockRaw source_cmos_snapshot(void) {
+    uint8_t a = source_cmos_register(0x0a);
+    uint8_t b = source_cmos_register(0x0b);
+    uint8_t d = source_cmos_register(0x0d);
+    uint8_t sec = source_cmos_register(0);
     /* Separate full expressions preserve the device-access order in C. */
-    SourceClockRaw raw={.sec=sec,.status_a=a,.status_b=b,.status_d=d};
-    raw.min=source_cmos_register(2);
-    raw.hour=source_cmos_register(4);
-    raw.day=source_cmos_register(7);
-    raw.month=source_cmos_register(8);
-    raw.year=source_cmos_register(9);
-    raw.century=source_cmos_register(0x32);
-    if(source_cmos_register(0)!=sec || source_cmos_register(0x0a)!=a)raw.status_a=0x80;
-    if(source_cmos_register(0x0b)!=b)raw.status_b=0x80;
+    SourceClockRaw raw = {.sec = sec, .status_a = a, .status_b = b, .status_d = d};
+    raw.min = source_cmos_register(2);
+    raw.hour = source_cmos_register(4);
+    raw.day = source_cmos_register(7);
+    raw.month = source_cmos_register(8);
+    raw.year = source_cmos_register(9);
+    raw.century = source_cmos_register(0x32);
+    if (source_cmos_register(0) != sec || source_cmos_register(0x0a) != a)
+        raw.status_a = 0x80;
+    if (source_cmos_register(0x0b) != b)
+        raw.status_b = 0x80;
     return raw;
 }
-SourceClockPair source_clock_pair(void)
-{
-    SourceClockRaw first=source_cmos_snapshot(),second=source_cmos_snapshot();
-    return (SourceClockPair){true,first,second};
+
+SourceClockPair source_clock_pair(void) {
+    SourceClockRaw first = source_cmos_snapshot(), second = source_cmos_snapshot();
+    return (SourceClockPair){true, first, second};
 }
-static SourceGrant boot_source_grant(Domain *holder,Domain *consumer)
-{
-    return (SourceGrant){true,{holder->id,holder->task_id},{consumer->id,consumer->task_id},1};
+
+#define KERNEL_BROWSER_SOURCE_PLANS 8u
+
+typedef struct BrowserSourcePlan {
+    uint32_t consumer;
+    uint64_t entropy, clock, trust;
+} BrowserSourcePlan;
+
+typedef struct BrowserSourcePlans {
+    BrowserSourcePlan items[KERNEL_BROWSER_SOURCE_PLANS];
+    size_t count;
+} BrowserSourcePlans;
+
+/* Adds one Sources row to the plan of its consumer. */
+static void browser_source_plan_add(BrowserSourcePlans *plans, uint32_t consumer, uint8_t kind,
+                                    uint64_t slot) {
+    size_t at = 0;
+    while (at < plans->count && plans->items[at].consumer != consumer)
+        ++at;
+    if (at == plans->count) {
+        if (plans->count == KERNEL_BROWSER_SOURCE_PLANS)
+            kernel_halt("source BOOT plan capacity");
+        plans->items[plans->count++] = (BrowserSourcePlan){.consumer = consumer};
+    }
+    if (kind == CAP_ENTROPY_SOURCE)
+        plans->items[at].entropy = slot;
+    else if (kind == CAP_CLOCK_SOURCE)
+        plans->items[at].clock = slot;
+    else if (kind == CAP_TRUST_POLICY)
+        plans->items[at].trust = slot;
 }
-void kernel_sources_boot(void)
-{
-    Domain *net=domain_get(CURRENT_PD_sexnet),*browser=domain_get(CURRENT_PD_kaleidoscope),*bar=domain_get(CURRENT_PD_silkbar);
-    if(kernel.genesis_sealed || kernel.scheduler_running || !net || !browser || !bar || !net->task_id || !browser->task_id ||
-        bar->id!=6 || bar->task_id!=6)kernel_halt("source BOOT identities");
-#define SOURCE_BOOT_GRANT(p_holder,p_slot,p_kind,p_consumer) do { Domain *h=domain_get(CURRENT_PD_##p_holder),*c=domain_get(CURRENT_PD_##p_consumer); if(!h || !c || !h->task_id || !c->task_id || !cap_set(h,p_slot,(Cap){.kind=CAP_##p_kind,.source_grant=boot_source_grant(h,c)}))kernel_halt("source BOOT grants"); } while(0);
+
+static SourceGrant boot_source_grant(Domain *holder, Domain *consumer) {
+    return (SourceGrant){true, {holder->id, holder->task_id}, {consumer->id, consumer->task_id}, 1};
+}
+
+void kernel_sources_boot(void) {
+    Domain *net = domain_get(CURRENT_PD_sexnet), *browser = domain_get(CURRENT_PD_kaleidoscope),
+           *bar = domain_get(CURRENT_PD_silkbar);
+    if (kernel.genesis_sealed || kernel.scheduler_running || !net || !browser || !bar ||
+        !net->task_id || !browser->task_id || bar->id != 6 || bar->task_id != 6)
+        kernel_halt("source BOOT identities");
+#define SOURCE_BOOT_GRANT(p_holder, p_slot, p_kind, p_consumer)                                    \
+    do {                                                                                           \
+        Domain *h = domain_get(CURRENT_PD_##p_holder), *c = domain_get(CURRENT_PD_##p_consumer);   \
+        if (!h || !c || !h->task_id || !c->task_id ||                                              \
+            !cap_set(h, p_slot,                                                                    \
+                     (Cap){.kind = CAP_##p_kind, .source_grant = boot_source_grant(h, c)}))        \
+            kernel_halt("source BOOT grants");                                                     \
+    } while (0);
     SEXOS_CURRENT_SOURCE_ROWS(SOURCE_BOOT_GRANT)
 #undef SOURCE_BOOT_GRANT
-    klog("[boot.entropy.source] holder=%u task=%u slot=60 consumer=%u consumer_task=%u source=rdseed attempts=8 runtime_mint=0\n",net->id,net->task_id,browser->id,browser->task_id);
-    klog("[boot.clock.source] holder=%u task=%u slot=61 consumer=%u consumer_task=%u source=q35_cmos_utc attempts=4 precision=1 runtime_mint=0\n",net->id,net->task_id,browser->id,browser->task_id);
-    klog("[boot.silkbar.clock.source] holder=%u task=%u slot=61 consumer=%u consumer_task=%u source=q35_cmos_utc attempts=4 precision=1 runtime_mint=0\n",bar->id,bar->task_id,bar->id,bar->task_id);
-    klog("[boot.trust.policy] holder=%u task=%u slot=62 consumer=%u consumer_task=%u profile=%u root_bytes=%u runtime_mint=0\n",net->id,net->task_id,browser->id,browser->task_id,SOURCE_TRUST_PROFILE,SOURCE_TRUST_ROOT_BYTES);
-}
-void kernel_source_syscall(Domain *d,TrapFrame *f,uint64_t number)
-{
-    uint64_t slot=f->rdi,kind=f->rsi,a=f->rdx,b=f->r10,c=f->r8;
-    f->rax=SOURCE_DENIED;f->rsi=f->rdx=f->r10=f->r8=0;
-    uint32_t task=kernel_current_task(d);if(!task)return;
-    uint8_t expected=number==72?CAP_ENTROPY_SOURCE:number==73?CAP_CLOCK_SOURCE:number==74?CAP_TRUST_POLICY:CAP_NONE;
-    if(expected==CAP_NONE)return;
-    const Cap *held=cap_get(d,slot);if(!held || held->kind!=expected)return;
-    SourceGrant grant=held->source_grant;SourceIdentity caller={d->id,task};SourceReply r={0};
-    if(number==72)r=source_entropy_invoke(grant,caller,kind,a,b,c);
-    else if(number==73)r=source_clock_invoke(grant,caller,kind,a,b,c);
-    else r=source_trust_invoke(grant,caller,kind,a,b,c,(SourceTrustPolicy){SOURCE_TRUST_PROFILE,SOURCE_TRUST_VERSION,SOURCE_TRUST_ROOT_BYTES});
-    f->rax=r.status;f->rsi=r.value0;f->rdx=r.value1;f->r10=r.value2;f->r8=r.value3;
-    if(!r.status && kind==SOURCE_READ && number==72) {
-        if(kernel.entropy_samples!=UINT64_MAX)++kernel.entropy_samples;
-        uint64_t n=kernel.entropy_samples;
-        if(n<=4 || !(n&(n-1)))klog("[entropy.source.sample] pd=%u task=%u slot=%llu source=rdseed attempts=%llu count=%llu private=1\n",d->id,task,(unsigned long long)slot,(unsigned long long)r.value1,(unsigned long long)n);
+    /* One plan per catalogued Browser: the holder-local entropy, clock and trust
+     * slots of its consumer, in catalog order. */
+    BrowserSourcePlans plans = {0};
+#define SOURCE_PLAN_ROW(p_holder, p_slot, p_kind, p_consumer)                                      \
+    if (CURRENT_PD_##p_holder == CURRENT_PD_sexnet)                                                \
+        browser_source_plan_add(&plans, CURRENT_PD_##p_consumer, CAP_##p_kind, p_slot);
+    SEXOS_CURRENT_SOURCE_ROWS(SOURCE_PLAN_ROW)
+#undef SOURCE_PLAN_ROW
+    if (!plans.count || plans.items[0].consumer != browser->id)
+        kernel_halt("source BOOT plans");
+    for (size_t i = 0; i < plans.count; ++i) {
+        Domain *c = domain_get(plans.items[i].consumer);
+        if (!c || !plans.items[i].entropy || !plans.items[i].clock || !plans.items[i].trust)
+            kernel_halt("source BOOT plan coverage");
+        klog(
+            "[boot.entropy.source] holder=%u task=%u slot=%llu consumer=%u consumer_task=%u source=rdseed attempts=8 runtime_mint=0\n",
+            net->id, net->task_id, (unsigned long long)plans.items[i].entropy, c->id, c->task_id);
+        klog(
+            "[boot.clock.source] holder=%u task=%u slot=%llu consumer=%u consumer_task=%u source=q35_cmos_utc attempts=4 precision=1 runtime_mint=0\n",
+            net->id, net->task_id, (unsigned long long)plans.items[i].clock, c->id, c->task_id);
     }
-    if(!r.status && kind==SOURCE_READ && number==73) {
-        if(kernel.clock_samples!=UINT64_MAX)++kernel.clock_samples;
-        klog("[clock.source.snapshot] pd=%u task=%u slot=%llu seconds=%llu attempts=%llu precision=1 profile=q35_cmos_utc ordinal=%llu\n",d->id,task,(unsigned long long)slot,(unsigned long long)r.value0,(unsigned long long)r.value1,(unsigned long long)kernel.clock_samples);
+    klog(
+        "[boot.silkbar.clock.source] holder=%u task=%u slot=61 consumer=%u consumer_task=%u source=q35_cmos_utc attempts=4 precision=1 runtime_mint=0\n",
+        bar->id, bar->task_id, bar->id, bar->task_id);
+    for (size_t i = 0; i < plans.count; ++i) {
+        Domain *c = domain_get(plans.items[i].consumer);
+        klog(
+            "[boot.trust.policy] holder=%u task=%u slot=%llu consumer=%u consumer_task=%u profile=%u root_bytes=%u runtime_mint=0\n",
+            net->id, net->task_id, (unsigned long long)plans.items[i].trust, c->id, c->task_id,
+            SOURCE_TRUST_PROFILE, SOURCE_TRUST_ROOT_BYTES);
+        klog(
+            "[boot.network.tls] holder=%u task=%u consumer=%u consumer_task=%u profile=1 peer_port=46080 origin=immutable_boot_profile runtime_mint=0\n",
+            net->id, net->task_id, c->id, c->task_id);
+    }
+}
+
+void kernel_source_syscall(Domain *d, TrapFrame *f, uint64_t number) {
+    uint64_t slot = f->rdi, kind = f->rsi, a = f->rdx, b = f->r10, c = f->r8;
+    f->rax = SOURCE_DENIED;
+    f->rsi = f->rdx = f->r10 = f->r8 = 0;
+    uint32_t task = kernel_current_task(d);
+    if (!task)
+        return;
+    uint8_t expected = number == 72   ? CAP_ENTROPY_SOURCE
+                       : number == 73 ? CAP_CLOCK_SOURCE
+                       : number == 74 ? CAP_TRUST_POLICY
+                                      : CAP_NONE;
+    if (expected == CAP_NONE)
+        return;
+    const Cap *held = cap_get(d, slot);
+    if (!held || held->kind != expected)
+        return;
+    SourceGrant grant = held->source_grant;
+    SourceIdentity caller = {d->id, task};
+    SourceReply r = {0};
+    if (number == 72)
+        r = source_entropy_invoke(grant, caller, kind, a, b, c);
+    else if (number == 73)
+        r = source_clock_invoke(grant, caller, kind, a, b, c);
+    else
+        r = source_trust_invoke(grant, caller, kind, a, b, c,
+                                (SourceTrustPolicy){SOURCE_TRUST_PROFILE, SOURCE_TRUST_VERSION,
+                                                    SOURCE_TRUST_ROOT_BYTES});
+    f->rax = r.status;
+    f->rsi = r.value0;
+    f->rdx = r.value1;
+    f->r10 = r.value2;
+    f->r8 = r.value3;
+    if (!r.status && kind == SOURCE_READ && number == 72) {
+        if (kernel.entropy_samples != UINT64_MAX)
+            ++kernel.entropy_samples;
+        uint64_t n = kernel.entropy_samples;
+        if (n <= 4 || !(n & (n - 1)))
+            klog(
+                "[entropy.source.sample] pd=%u task=%u slot=%llu source=rdseed attempts=%llu count=%llu private=1\n",
+                d->id, task, (unsigned long long)slot, (unsigned long long)r.value1,
+                (unsigned long long)n);
+    }
+    if (!r.status && kind == SOURCE_READ && number == 73) {
+        if (kernel.clock_samples != UINT64_MAX)
+            ++kernel.clock_samples;
+        klog(
+            "[clock.source.snapshot] pd=%u task=%u slot=%llu seconds=%llu attempts=%llu precision=1 profile=q35_cmos_utc ordinal=%llu\n",
+            d->id, task, (unsigned long long)slot, (unsigned long long)r.value0,
+            (unsigned long long)r.value1, (unsigned long long)kernel.clock_samples);
     }
 }
 

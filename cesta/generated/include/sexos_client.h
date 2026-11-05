@@ -48,6 +48,7 @@ void sexos_raw_print(const char *text, size_t length);
 
 void sexos_line(const char *format, ...);
 
+
 void sexos_line(const char *format, ...) __attribute__((format(printf, 1, 2)));
 
 
@@ -57,7 +58,11 @@ void kaleidoscope_main(void);
 
 size_t sexos_strlen(const char *text);
 
-_Static_assert(sizeof(SexosMessage) == 40 && offsetof(SexosMessage, caller_pd) == 32 && offsetof(SexosMessage, caller_task) == 36, "PDX message ABI");
+
+_Static_assert(sizeof(SexosMessage) == 40 && offsetof(SexosMessage, caller_pd) == 32 &&
+                   offsetof(SexosMessage, caller_task) == 36,
+               "PDX message ABI");
+
 
 
 _Static_assert(sizeof(SexosReply) == 16 && offsetof(SexosReply, value) == 8, "PDX call ABI");

@@ -1,84 +1,244 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 #include "network_service.h"
 
-enum {CURRENT_REGION_QUERY=1,CURRENT_REGION_READ=2,CURRENT_REGION_WRITE=4,CURRENT_REGION_DMA=8};
-typedef struct CurrentRegionInfo {uint64_t length,rights,peer,region;} CurrentRegionInfo;
-typedef struct CurrentRegionView {uint64_t address,length,physical,region;} CurrentRegionView;
-static bool current_region_info(uint64_t slot,CurrentRegionInfo *out)
-{
+enum {
+    CURRENT_REGION_QUERY = 1,
+    CURRENT_REGION_READ = 2,
+    CURRENT_REGION_WRITE = 4,
+    CURRENT_REGION_DMA = 8
+};
+
+typedef struct CurrentRegionInfo {
+    uint64_t length, rights, peer, region;
+} CurrentRegionInfo;
+
+typedef struct CurrentRegionView {
+    uint64_t address, length, physical, region;
+} CurrentRegionView;
+
+static bool current_region_info(uint64_t slot, CurrentRegionInfo *out) {
 #if defined(__x86_64__)
- uint64_t status=55,a=0,b=0;register uint64_t r10 __asm__("r10")=0;register uint64_t r8 __asm__("r8")=0;
- __asm__ volatile("syscall" : "+a"(status),"=S"(a),"=d"(b),"+r"(r10),"+r"(r8) : "D"(slot) : "rcx","r11","memory");
- if(status)return false;
- *out=(CurrentRegionInfo){a,b,r10,r8};return true;
+    uint64_t status = 55, a = 0, b = 0;
+    register uint64_t r10 __asm__("r10") = 0;
+    register uint64_t r8 __asm__("r8") = 0;
+    __asm__ volatile("syscall"
+                     : "+a"(status), "=S"(a), "=d"(b), "+r"(r10), "+r"(r8)
+                     : "D"(slot)
+                     : "rcx", "r11", "memory");
+    if (status)
+        return false;
+    *out = (CurrentRegionInfo){a, b, r10, r8};
+    return true;
 #else
- (void)slot;(void)out;return false;
+    (void)slot;
+    (void)out;
+    return false;
 #endif
 }
-static bool current_region_view(uint64_t slot,uint64_t length,uint64_t rights,CurrentRegionView *out)
-{
+
+static bool current_region_view(uint64_t slot, uint64_t length, uint64_t rights,
+                                CurrentRegionView *out) {
 #if defined(__x86_64__)
- uint64_t status=54,offset=0,bytes=length;register uint64_t r10 __asm__("r10")=rights;register uint64_t r8 __asm__("r8")=0;
- __asm__ volatile("syscall" : "+a"(status),"+S"(offset),"+d"(bytes),"+r"(r10),"+r"(r8) : "D"(slot) : "rcx","r11","memory");
- if(status)return false;
- *out=(CurrentRegionView){offset,bytes,r10,r8};return true;
+    uint64_t status = 54, offset = 0, bytes = length;
+    register uint64_t r10 __asm__("r10") = rights;
+    register uint64_t r8 __asm__("r8") = 0;
+    __asm__ volatile("syscall"
+                     : "+a"(status), "+S"(offset), "+d"(bytes), "+r"(r10), "+r"(r8)
+                     : "D"(slot)
+                     : "rcx", "r11", "memory");
+    if (status)
+        return false;
+    *out = (CurrentRegionView){offset, bytes, r10, r8};
+    return true;
 #else
- (void)slot;(void)length;(void)rights;(void)out;return false;
+    (void)slot;
+    (void)length;
+    (void)rights;
+    (void)out;
+    return false;
 #endif
 }
-static bool current_command(uint64_t set,uint64_t clear,uint16_t *before,uint16_t *after,bool *changed)
-{
+
+static bool current_command(uint64_t set, uint64_t clear, uint16_t *before, uint16_t *after,
+                            bool *changed) {
 #if defined(__x86_64__)
- uint64_t status=68,a=set,b=clear;register uint64_t r10 __asm__("r10")=0;register uint64_t r8 __asm__("r8")=0;
- __asm__ volatile("syscall" : "+a"(status),"+S"(a),"+d"(b),"+r"(r10),"+r"(r8) : "D"(SEXOS_SLOT_nic) : "rcx","r11","memory");
- if(status||a>UINT16_MAX||b>UINT16_MAX||r10>1||r8)return false;
- *before=(uint16_t)a;*after=(uint16_t)b;*changed=r10!=0;return true;
+    uint64_t status = 68, a = set, b = clear;
+    register uint64_t r10 __asm__("r10") = 0;
+    register uint64_t r8 __asm__("r8") = 0;
+    __asm__ volatile("syscall"
+                     : "+a"(status), "+S"(a), "+d"(b), "+r"(r10), "+r"(r8)
+                     : "D"(SEXOS_SLOT_nic)
+                     : "rcx", "r11", "memory");
+    if (status || a > UINT16_MAX || b > UINT16_MAX || r10 > 1 || r8)
+        return false;
+    *before = (uint16_t)a;
+    *after = (uint16_t)b;
+    *changed = r10 != 0;
+    return true;
 #else
- (void)set;(void)clear;(void)before;(void)after;(void)changed;return false;
+    (void)set;
+    (void)clear;
+    (void)before;
+    (void)after;
+    (void)changed;
+    return false;
 #endif
 }
-static bool current_identity(void)
-{
+
+static bool current_identity(void) {
 #if defined(__x86_64__)
- uint64_t status=69,a=0,b=0;register uint64_t r10 __asm__("r10")=0;register uint64_t r8 __asm__("r8")=0;
- __asm__ volatile("syscall" : "+a"(status),"+S"(a),"+d"(b),"+r"(r10),"+r"(r8) : "D"(SEXOS_SLOT_nic) : "rcx","r11","memory");
- return !status&&a==0x8086&&(b==0x100e||b==0x10d3)&&!r10&&!r8;
+    uint64_t status = 69, a = 0, b = 0;
+    register uint64_t r10 __asm__("r10") = 0;
+    register uint64_t r8 __asm__("r8") = 0;
+    __asm__ volatile("syscall"
+                     : "+a"(status), "+S"(a), "+d"(b), "+r"(r10), "+r"(r8)
+                     : "D"(SEXOS_SLOT_nic)
+                     : "rcx", "r11", "memory");
+    return !status && a == 0x8086 && (b == 0x100e || b == 0x10d3) && !r10 && !r8;
 #else
- return false;
+    return false;
 #endif
 }
-static bool current_config(NetConfig *config)
-{
+
+static bool current_config(NetConfig *config) {
 #if defined(__x86_64__)
- uint64_t status=71,a=0,b=0;register uint64_t r10 __asm__("r10")=0;register uint64_t r8 __asm__("r8")=0;
- __asm__ volatile("syscall" : "+a"(status),"+S"(a),"+d"(b),"+r"(r10),"+r"(r8) : "D"(SEXOS_SLOT_nic) : "rcx","r11","memory");
- if(status)return false;
- NetConfigResult decoded=net_config_from_words((NetConfigWords){a,b,r10,r8});if(!decoded.present)return false;*config=decoded.value;return true;
+    uint64_t status = 71, a = 0, b = 0;
+    register uint64_t r10 __asm__("r10") = 0;
+    register uint64_t r8 __asm__("r8") = 0;
+    __asm__ volatile("syscall"
+                     : "+a"(status), "+S"(a), "+d"(b), "+r"(r10), "+r"(r8)
+                     : "D"(SEXOS_SLOT_nic)
+                     : "rcx", "r11", "memory");
+    if (status)
+        return false;
+    NetConfigResult decoded = net_config_from_words((NetConfigWords){a, b, r10, r8});
+    if (!decoded.present)
+        return false;
+    *config = decoded.value;
+    return true;
 #else
- (void)config;return false;
+    (void)config;
+    return false;
 #endif
 }
-static uint32_t current_read32(uint64_t bar,unsigned offset){return sexos_volatile_read32((const uint32_t *)(uintptr_t)(bar+offset));}
-static void current_write32(uint64_t bar,unsigned offset,uint32_t value){sexos_volatile_write32((uint32_t *)(uintptr_t)(bar+offset),value);}
-bool network_device_open_current(NetworkDevice *d,NetConfig *config)
-{
- memset(d,0,sizeof(*d));d->failure=NET_DEVICE_ERROR;CurrentRegionInfo mmio={0};CurrentRegionView bar={0};
- uint64_t mmio_region=UINT64_C(0x10000)+UINT64_C(13)*1024+SEXOS_SLOT_nic;
- if(!current_region_info(SEXOS_SLOT_nic,&mmio)||mmio.region!=mmio_region||mmio.rights!=(CURRENT_REGION_QUERY|CURRENT_REGION_READ|CURRENT_REGION_WRITE)||mmio.peer||mmio.length<0x5408||mmio.length>65536)return false;
- if(!current_region_view(SEXOS_SLOT_nic,mmio.length,mmio.rights,&bar)||bar.region!=mmio.region||bar.length!=mmio.length||!bar.address||bar.physical||bar.address%4096)return false;
- if(!current_identity()||!current_config(config))return false;
- d->bar=bar.address;
- uint16_t before=0,after=0;bool changed=false;if(!current_command(0,0,&before,&after,&changed)||before!=after||changed||(after&4))return false;
- if(!current_command(2,4,&before,&after,&changed)||after!=(uint16_t)((before|2)&~4u))return false;
- current_write32(d->bar,0x00d8,UINT32_MAX);current_write32(d->bar,0x0100,0);current_write32(d->bar,0x0400,0);uint32_t ctrl=current_read32(d->bar,0);if(ctrl==UINT32_MAX||(ctrl&(1u<<26)))return false;current_write32(d->bar,0,ctrl|(1u<<26));
- for(unsigned turn=0;turn<65536;turn++){if(!(current_read32(d->bar,0)&(1u<<26)))break;if(turn==65535)return false;sexos_yield();}
- current_write32(d->bar,0x00d8,UINT32_MAX);current_write32(d->bar,0x0100,0);current_write32(d->bar,0x0400,0);
- uint32_t low=current_read32(d->bar,0x5400),high=current_read32(d->bar,0x5404);for(size_t i=0;i<4;i++)d->mac[i]=(uint8_t)(low>>(8*i));d->mac[4]=(uint8_t)high;d->mac[5]=(uint8_t)(high>>8);if(!(high&(1u<<31))||(!d->mac[0]&&!d->mac[1]&&!d->mac[2]&&!d->mac[3]&&!d->mac[4]&&!d->mac[5])||(d->mac[0]&1))return false;
- CurrentRegionInfo dma={0};CurrentRegionView pool={0};uint64_t rights=CURRENT_REGION_QUERY|CURRENT_REGION_READ|CURRENT_REGION_WRITE|CURRENT_REGION_DMA;if(!current_region_info(32,&dma)||dma.region!=2||dma.length!=UINT64_C(262144)||dma.rights!=rights||dma.peer)return false;if(!current_region_view(32,dma.length,rights,&pool)||pool.region!=2||pool.length!=dma.length||!pool.address||!pool.physical||pool.address%4096||pool.physical%4096)return false;
- for(uint64_t offset=0;offset<40960;offset+=8)sexos_volatile_write64((uint64_t *)(uintptr_t)(pool.address+offset),0);
- d->rx_desc=pool.address;d->tx_desc=pool.address+4096;d->tx_page=pool.address+24576;d->tx_phys=pool.physical+24576;for(size_t i=0;i<8;i++){d->rx_page[i]=pool.address+8192+i*2048;sexos_volatile_write64((uint64_t *)(uintptr_t)(d->rx_desc+i*16),pool.physical+8192+i*2048);sexos_volatile_write64((uint64_t *)(uintptr_t)(d->tx_desc+i*16),pool.physical+24576);sexos_volatile_write64((uint64_t *)(uintptr_t)(d->tx_desc+i*16+8),UINT64_C(1)<<32);}
- sexos_sfence();current_write32(d->bar,0x2800,(uint32_t)pool.physical);current_write32(d->bar,0x2804,(uint32_t)(pool.physical>>32));current_write32(d->bar,0x2808,128);current_write32(d->bar,0x2810,0);current_write32(d->bar,0x2818,7);current_write32(d->bar,0x2828,0);current_write32(d->bar,0x3800,(uint32_t)(pool.physical+4096));current_write32(d->bar,0x3804,(uint32_t)((pool.physical+4096)>>32));current_write32(d->bar,0x3808,128);current_write32(d->bar,0x3810,0);current_write32(d->bar,0x3818,0);current_write32(d->bar,0x3828,0);current_write32(d->bar,0x0410,0x0060200a);current_write32(d->bar,0,current_read32(d->bar,0)|(1u<<6));
- if(!current_command(4,0,&before,&after,&changed)||after!=(uint16_t)(before|4))return false;
- current_write32(d->bar,0x0400,2|8|(15u<<4)|(64u<<12));current_write32(d->bar,0x0100,2|(1u<<3)|(1u<<4)|(1u<<15)|(1u<<26));d->failure=NET_OK;sexos_line("[network.device.current.ready] rx=8 tx=8 dma_region=2 used=40960 authority=boot_regions");return true;
+
+static uint32_t current_read32(uint64_t bar, unsigned offset) {
+    return sexos_volatile_read32((const uint32_t *)(uintptr_t)(bar + offset));
+}
+
+static void current_write32(uint64_t bar, unsigned offset, uint32_t value) {
+    sexos_volatile_write32((uint32_t *)(uintptr_t)(bar + offset), value);
+}
+
+bool network_device_open_current(NetworkDevice *d, NetConfig *config) {
+    memset(d, 0, sizeof(*d));
+    d->failure = NET_DEVICE_ERROR;
+    CurrentRegionInfo mmio = {0};
+    CurrentRegionView bar = {0};
+    uint64_t mmio_region = UINT64_C(0x10000) + UINT64_C(13) * 1024 + SEXOS_SLOT_nic;
+    if (!current_region_info(SEXOS_SLOT_nic, &mmio) || mmio.region != mmio_region ||
+        mmio.rights != (CURRENT_REGION_QUERY | CURRENT_REGION_READ | CURRENT_REGION_WRITE) ||
+        mmio.peer || mmio.length < 0x5408 || mmio.length > 65536)
+        return false;
+    if (!current_region_view(SEXOS_SLOT_nic, mmio.length, mmio.rights, &bar) ||
+        bar.region != mmio.region || bar.length != mmio.length || !bar.address || bar.physical ||
+        bar.address % 4096)
+        return false;
+    if (!current_identity() || !current_config(config))
+        return false;
+    d->bar = bar.address;
+    uint16_t before = 0, after = 0;
+    bool changed = false;
+    if (!current_command(0, 0, &before, &after, &changed) || before != after || changed ||
+        (after & 4))
+        return false;
+    if (!current_command(2, 4, &before, &after, &changed) ||
+        after != (uint16_t)((before | 2) & ~4u))
+        return false;
+    current_write32(d->bar, 0x00d8, UINT32_MAX);
+    current_write32(d->bar, 0x0100, 0);
+    current_write32(d->bar, 0x0400, 0);
+    uint32_t ctrl = current_read32(d->bar, 0);
+    if (ctrl == UINT32_MAX || (ctrl & (1u << 26)))
+        return false;
+    current_write32(d->bar, 0, ctrl | (1u << 26));
+    for (unsigned turn = 0; turn < 65536; turn++) {
+        if (!(current_read32(d->bar, 0) & (1u << 26)))
+            break;
+        if (turn == 65535)
+            return false;
+        sexos_yield();
+    }
+    current_write32(d->bar, 0x00d8, UINT32_MAX);
+    current_write32(d->bar, 0x0100, 0);
+    current_write32(d->bar, 0x0400, 0);
+    uint32_t low = current_read32(d->bar, 0x5400), high = current_read32(d->bar, 0x5404);
+    for (size_t i = 0; i < 4; i++)
+        d->mac[i] = (uint8_t)(low >> (8 * i));
+    d->mac[4] = (uint8_t)high;
+    d->mac[5] = (uint8_t)(high >> 8);
+    if (!(high & (1u << 31)) ||
+        (!d->mac[0] && !d->mac[1] && !d->mac[2] && !d->mac[3] && !d->mac[4] && !d->mac[5]) ||
+        (d->mac[0] & 1))
+        return false;
+    CurrentRegionInfo dma = {0};
+    CurrentRegionView pool = {0};
+    uint64_t rights =
+        CURRENT_REGION_QUERY | CURRENT_REGION_READ | CURRENT_REGION_WRITE | CURRENT_REGION_DMA;
+    if (!current_region_info(32, &dma) || dma.region != 2 || dma.length != UINT64_C(262144) ||
+        dma.rights != rights || dma.peer)
+        return false;
+    if (!current_region_view(32, dma.length, rights, &pool) || pool.region != 2 ||
+        pool.length != dma.length || !pool.address || !pool.physical || pool.address % 4096 ||
+        pool.physical % 4096)
+        return false;
+    for (uint64_t offset = 0; offset < 40960; offset += 8)
+        sexos_volatile_write64((uint64_t *)(uintptr_t)(pool.address + offset), 0);
+    d->rx_desc = pool.address;
+    d->tx_desc = pool.address + 4096;
+    d->tx_page = pool.address + 24576;
+    d->tx_phys = pool.physical + 24576;
+    for (size_t i = 0; i < 8; i++) {
+        d->rx_page[i] = pool.address + 8192 + i * 2048;
+        sexos_volatile_write64((uint64_t *)(uintptr_t)(d->rx_desc + i * 16),
+                               pool.physical + 8192 + i * 2048);
+        sexos_volatile_write64((uint64_t *)(uintptr_t)(d->tx_desc + i * 16), pool.physical + 24576);
+        sexos_volatile_write64((uint64_t *)(uintptr_t)(d->tx_desc + i * 16 + 8), UINT64_C(1) << 32);
+    }
+    sexos_sfence();
+    current_write32(d->bar, 0x2800, (uint32_t)pool.physical);
+    current_write32(d->bar, 0x2804, (uint32_t)(pool.physical >> 32));
+    current_write32(d->bar, 0x2808, 128);
+    current_write32(d->bar, 0x2810, 0);
+    current_write32(d->bar, 0x2818, 7);
+    current_write32(d->bar, 0x2828, 0);
+    current_write32(d->bar, 0x3800, (uint32_t)(pool.physical + 4096));
+    current_write32(d->bar, 0x3804, (uint32_t)((pool.physical + 4096) >> 32));
+    current_write32(d->bar, 0x3808, 128);
+    current_write32(d->bar, 0x3810, 0);
+    current_write32(d->bar, 0x3818, 0);
+    current_write32(d->bar, 0x3828, 0);
+    current_write32(d->bar, 0x0410, 0x0060200a);
+    current_write32(d->bar, 0, current_read32(d->bar, 0) | (1u << 6));
+    if (!current_command(4, 0, &before, &after, &changed) || after != (uint16_t)(before | 4))
+        return false;
+    current_write32(d->bar, 0x0400, 2 | 8 | (15u << 4) | (64u << 12));
+    current_write32(d->bar, 0x0100, 2 | (1u << 3) | (1u << 4) | (1u << 15) | (1u << 26));
+    d->failure = NET_OK;
+    sexos_line(
+        "[network.device.current.ready] rx=8 tx=8 dma_region=2 used=40960 authority=boot_regions");
+    return true;
 }
 
 

@@ -45,8 +45,14 @@
           (uint64_t object_size_bytes) (uint64_t first_block)
           (uint32_t owner_pd) (uint32_t kind) (uint32_t checksum) (uint32_t flags)
           (uint64_t reserved0) (uint64_t reserved1)) SexObjectHeader)
-        (native "_Static_assert(sizeof(SexObjectHeader) == 80 && offsetof(SexObjectHeader, owner_pd) == 48 && offsetof(SexObjectHeader, reserved0) == 64, \"SexObjectHeader must be exactly 80 bytes\");\n")
-        (native "_Static_assert(sizeof(SexObjectRef) == 16, \"SexObjectRef must be exactly 16 bytes\");\n")
+        (native "
+_Static_assert(sizeof(SexObjectHeader) == 80 && offsetof(SexObjectHeader, owner_pd) == 48 &&
+                   offsetof(SexObjectHeader, reserved0) == 64,
+               \"SexObjectHeader must be exactly 80 bytes\");
+")
+        (native "
+_Static_assert(sizeof(SexObjectRef) == 16, \"SexObjectRef must be exactly 16 bytes\");
+")
 
         (comment "The reference for Collar-checked access carries the rights generation; the content reference, the content generation.")
         (fn (static inline SexObjectRef) sex_object_header_cap_ref (((const SexObjectHeader) (* h)))

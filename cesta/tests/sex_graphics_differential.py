@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 SEXOS = HERE.parent
@@ -495,7 +496,11 @@ def build_and_run_c(cesta_bin, work, compiler, source_cesta, exported=False, qui
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cesta", type=Path, default=Path("cesta"))
+    parser.add_argument("--seeds", type=int, default=len(SEEDS),
+                        help="run seeds 1..N in both the Rust reference and the Cesta harness")
     args = parser.parse_args()
+    assert args.seeds >= 1
+    seeds = tuple(range(1, args.seeds + 1))
     cesta_bin = Path(shutil.which(str(args.cesta)) or args.cesta).resolve()
 
     work = HERE / "build/sex-graphics-differential"
@@ -518,7 +523,8 @@ def main():
 
         rust_src = work / "rust_main.rs"
         rust_exe = work / "rust_main"
-        rust_src.write_text(RUST_MAIN)
+        rust_src.write_text(RUST_MAIN.replace("for seed in [1u64, 2, 3] {",
+                                              "for seed in [" + ", ".join(f"{n}u64" for n in seeds) + "] {"))
         run([
             "rustc", "--edition=2021", "-O", str(rust_src),
             "-L", f"dependency={work}",
@@ -528,7 +534,9 @@ def main():
         ])
         rust_out = run([str(rust_exe)]).stdout
 
-        (work / "main.c").write_text(C_MAIN)
+        (work / "main.c").write_text(C_MAIN.replace(
+            "uint64_t seeds[3] = { 1, 2, 3 };\n    for (size_t i = 0; i < 3; ++i) {",
+            f"uint64_t seeds[{len(seeds)}] = {{ {', '.join(map(str, seeds))} }};\n    for (size_t i = 0; i < {len(seeds)}; ++i) {{"))
         source_cesta = HERE / "src/sex_graphics.cesta"
         for compiler in ("gcc", "clang"):
             for exported in (False, True):
@@ -543,7 +551,7 @@ def main():
                     )
                     return 1
 
-        original = source_cesta.read_text()
+        original = LayoutText(source_cesta.read_text())
         for name, target, replacement in MUTATIONS:
             if target not in original:
                 sys.stderr.write(f"mutation target missing: {name}\n")
@@ -560,7 +568,7 @@ def main():
 
     lines = len(rust_out.splitlines())
     print(
-        f"sex_graphics differential passed ({lines} lines across {len(SEEDS)} seeds, "
+        f"sex_graphics differential passed ({lines} lines across {len(seeds)} seeds, "
         f"gcc/clang authored/exported, {len(MUTATIONS)} mutations killed)"
     )
     return 0

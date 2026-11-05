@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -72,7 +73,7 @@ def main():
         run([compiler, "-std=c11", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-fsyntax-only", include, exported])
         plans.append({"compiler": compiler, "sha256": hashlib.sha256(plan.read_bytes()).hexdigest(), "plan": plan.name})
         check_bounds(probe(compiler, exported, "bounds-"+compiler))
-    original = source.read_text()
+    original = LayoutText(source.read_text())
     before = "(return (compound cesta_read_bytes (= (. data) (-> page bytes)) (= (. len) DURABLE_PAGE_SIZE)))"
     mutations = [
         (before, before.replace("DURABLE_PAGE_SIZE", "(+ DURABLE_PAGE_SIZE 1)"), "exceeds"),

@@ -2,6 +2,7 @@
 """Independent whole-manifest handover model and bounded notification controls."""
 import argparse,hashlib,json,random,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 U64=(1<<64)-1;PHYS=0x000ffffffffff000
 def run(argv,data=None):
@@ -78,7 +79,7 @@ def main():
   print(cc,'complete handover effects and hint controls match independent model',flush=True)
  caught=[]
  if args.mutations:
-  original=source.read_text();changes=[('early_publish','for(size_t i=0;i<p->count;++i){\n        app_private_leaf_write(p->pages[i].leaf,0);','for(size_t i=0;i<p->count;++i){\n        app_private_leaf_write(workspace->pages[i].leaf,workspace->pages[i].expected);\n        app_private_leaf_write(p->pages[i].leaf,0);'),('ignore_alias_present','app_private_leaf_read(next.leaf)','false'),('wrong_physical','(old.expected&APP_PRIVATE_PHYSICAL)!=(next.expected&APP_PRIVATE_PHYSICAL)','false'),('ignore_last_old_leaf','(app_private_leaf_read(old.leaf)&~UINT64_C(0x60))!=(old.expected&~UINT64_C(0x60))','false'),('bad_backoff','now-last>=16','now-last>16'),('lost_ack','recipient<5 && (acked&(1u<<recipient))','recipient<5 && (acked&0)')]
+  original=LayoutText(source.read_text());changes=[('early_publish','return checked;\n    for(size_t i=0;i<p->count;++i){\n        app_private_leaf_write(p->pages[i].leaf,0);','return checked;\n    for(size_t i=0;i<p->count;++i){\n        app_private_leaf_write(workspace->pages[i].leaf,workspace->pages[i].expected);\n        app_private_leaf_write(p->pages[i].leaf,0);'),('ignore_alias_present','app_private_leaf_read(next.leaf)','false'),('wrong_physical','(old.expected&APP_PRIVATE_PHYSICAL)!=(next.expected&APP_PRIVATE_PHYSICAL)','false'),('ignore_last_old_leaf','(app_private_leaf_read(old.leaf)&~UINT64_C(0x60))!=(old.expected&~UINT64_C(0x60))','false'),('bad_backoff','now-last>=16','now-last>16'),('lost_ack','recipient<5 && (acked&(1u<<recipient))','recipient<5 && (acked&0)')]
   for name,before,after in changes:
    assert before in original,(name,'anchor')
    try:

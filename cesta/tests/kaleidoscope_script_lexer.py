@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -131,7 +132,7 @@ def main():
             builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = sources["gcc"].read_text()
+        base = LayoutText(sources["gcc"].read_text())
         changes = [
             ("regex-context", "UINT64_C(0x6e7275746572)", "UINT64_C(0)"),
             ("regex-class", "else if(source->bytes[i]=='[')in_class=true", "else if(false)in_class=true"),

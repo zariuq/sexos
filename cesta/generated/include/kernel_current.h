@@ -37,6 +37,17 @@ typedef enum {
     CURRENT_PD_spindle_reserve_6 = 27,
     CURRENT_PD_spindle_reserve_7 = 28,
     CURRENT_PD_spindle_reserve_8 = 29,
+    CURRENT_PD_kaleidoscope_second = 30,
+    CURRENT_PD_kaleidoscope_third = 31,
+    CURRENT_PD_quil_reserve_9 = 32,
+    CURRENT_PD_quil_reserve_10 = 33,
+    CURRENT_PD_quil_reserve_11 = 34,
+    CURRENT_PD_quil_reserve_12 = 35,
+    CURRENT_PD_quil_reserve_13 = 36,
+    CURRENT_PD_quil_reserve_14 = 37,
+    CURRENT_PD_quil_reserve_15 = 38,
+    CURRENT_PD_quil_reserve_16 = 39,
+    CURRENT_PD_spindle_reserve_9 = 40,
 } CurrentDomainId;
 
 #define SEXOS_CURRENT_DOMAIN_ROWS(cesta_table_apply_0) \
@@ -68,7 +79,18 @@ typedef enum {
     cesta_table_apply_0(UINT64_C(26), spindle_reserve_5, "spindle", "spindle-reserve-5", UINT64_C(12), UINT64_C(26), 0) \
     cesta_table_apply_0(UINT64_C(27), spindle_reserve_6, "spindle", "spindle-reserve-6", UINT64_C(12), UINT64_C(27), 0) \
     cesta_table_apply_0(UINT64_C(28), spindle_reserve_7, "spindle", "spindle-reserve-7", UINT64_C(12), UINT64_C(28), 0) \
-    cesta_table_apply_0(UINT64_C(29), spindle_reserve_8, "spindle", "spindle-reserve-8", UINT64_C(12), UINT64_C(29), 0)
+    cesta_table_apply_0(UINT64_C(29), spindle_reserve_8, "spindle", "spindle-reserve-8", UINT64_C(12), UINT64_C(29), 0) \
+    cesta_table_apply_0(UINT64_C(30), kaleidoscope_second, "kaleidoscope", "kaleidoscope-second", UINT64_C(15), UINT64_C(30), 0) \
+    cesta_table_apply_0(UINT64_C(31), kaleidoscope_third, "kaleidoscope", "kaleidoscope-third", UINT64_C(15), UINT64_C(31), 0) \
+    cesta_table_apply_0(UINT64_C(32), quil_reserve_9, "quil", "quil-reserve-9", UINT64_C(9), UINT64_C(32), 0) \
+    cesta_table_apply_0(UINT64_C(33), quil_reserve_10, "quil", "quil-reserve-10", UINT64_C(9), UINT64_C(33), 0) \
+    cesta_table_apply_0(UINT64_C(34), quil_reserve_11, "quil", "quil-reserve-11", UINT64_C(9), UINT64_C(34), 0) \
+    cesta_table_apply_0(UINT64_C(35), quil_reserve_12, "quil", "quil-reserve-12", UINT64_C(9), UINT64_C(35), 0) \
+    cesta_table_apply_0(UINT64_C(36), quil_reserve_13, "quil", "quil-reserve-13", UINT64_C(9), UINT64_C(36), 0) \
+    cesta_table_apply_0(UINT64_C(37), quil_reserve_14, "quil", "quil-reserve-14", UINT64_C(9), UINT64_C(37), 0) \
+    cesta_table_apply_0(UINT64_C(38), quil_reserve_15, "quil", "quil-reserve-15", UINT64_C(9), UINT64_C(38), 0) \
+    cesta_table_apply_0(UINT64_C(39), quil_reserve_16, "quil", "quil-reserve-16", UINT64_C(9), UINT64_C(39), 0) \
+    cesta_table_apply_0(UINT64_C(40), spindle_reserve_9, "spindle", "spindle-reserve-9", UINT64_C(12), UINT64_C(40), 0)
 
 #define SEXOS_CURRENT_ROUTE_ROWS(cesta_table_apply_0) \
     cesta_table_apply_0(silk_shell, UINT64_C(5), sexdisplay, "SLOT_DISPLAY") \
@@ -226,7 +248,80 @@ typedef enum {
     cesta_table_apply_0(spindle_reserve_8, UINT64_C(12), sexbell, "BOOT_ROUTE") \
     cesta_table_apply_0(spindle_reserve_8, UINT64_C(18), sexnet, "BOOT_ROUTE") \
     cesta_table_apply_0(silk_shell, UINT64_C(151), spindle_reserve_8, "BOOT_ROUTE") \
-    cesta_table_apply_0(silk_shell, UINT64_C(153), spindle_reserve_8, "BOOT_ROUTE")
+    cesta_table_apply_0(silk_shell, UINT64_C(153), spindle_reserve_8, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_second, UINT64_C(2), kaleidoscope_second, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_second, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_second, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_second, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_second, UINT64_C(18), sexnet, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_second, UINT64_C(12), sexbell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(155), kaleidoscope_second, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(157), kaleidoscope_second, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_third, UINT64_C(2), kaleidoscope_third, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_third, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_third, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_third, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_third, UINT64_C(18), sexnet, "BOOT_ROUTE") \
+    cesta_table_apply_0(kaleidoscope_third, UINT64_C(12), sexbell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(159), kaleidoscope_third, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(161), kaleidoscope_third, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_9, UINT64_C(2), quil_reserve_9, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_9, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_9, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_9, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(163), quil_reserve_9, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(165), quil_reserve_9, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_10, UINT64_C(2), quil_reserve_10, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_10, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_10, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_10, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(167), quil_reserve_10, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(169), quil_reserve_10, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_11, UINT64_C(2), quil_reserve_11, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_11, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_11, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_11, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(171), quil_reserve_11, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(173), quil_reserve_11, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_12, UINT64_C(2), quil_reserve_12, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_12, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_12, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_12, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(175), quil_reserve_12, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(177), quil_reserve_12, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_13, UINT64_C(2), quil_reserve_13, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_13, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_13, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_13, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(179), quil_reserve_13, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(181), quil_reserve_13, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_14, UINT64_C(2), quil_reserve_14, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_14, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_14, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_14, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(183), quil_reserve_14, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(185), quil_reserve_14, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_15, UINT64_C(2), quil_reserve_15, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_15, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_15, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_15, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(187), quil_reserve_15, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(189), quil_reserve_15, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_16, UINT64_C(2), quil_reserve_16, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_16, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_16, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(quil_reserve_16, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(191), quil_reserve_16, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(193), quil_reserve_16, "BOOT_ROUTE") \
+    cesta_table_apply_0(spindle_reserve_9, UINT64_C(2), spindle_reserve_9, "BOOT_ROUTE") \
+    cesta_table_apply_0(spindle_reserve_9, UINT64_C(5), sexdisplay, "BOOT_ROUTE") \
+    cesta_table_apply_0(spindle_reserve_9, UINT64_C(1), sexfiles, "BOOT_ROUTE") \
+    cesta_table_apply_0(spindle_reserve_9, UINT64_C(6), silk_shell, "BOOT_ROUTE") \
+    cesta_table_apply_0(spindle_reserve_9, UINT64_C(13), linen, "BOOT_ROUTE") \
+    cesta_table_apply_0(spindle_reserve_9, UINT64_C(12), sexbell, "BOOT_ROUTE") \
+    cesta_table_apply_0(spindle_reserve_9, UINT64_C(18), sexnet, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(195), spindle_reserve_9, "BOOT_ROUTE") \
+    cesta_table_apply_0(silk_shell, UINT64_C(197), spindle_reserve_9, "BOOT_ROUTE")
 
 #define SEXOS_CURRENT_APP_ROWS(cesta_table_apply_0) \
     cesta_table_apply_0(quil, UINT64_C(0), UINT64_C(156), UINT64_C(201), UINT64_C(38), UINT64_C(41), UINT64_C(0), UINT64_C(0), UINT64_C(9), UINT64_C(11)) \
@@ -245,13 +340,30 @@ typedef enum {
     cesta_table_apply_0(spindle_reserve_5, UINT64_C(4), UINT64_C(323), UINT64_C(324), UINT64_C(138), UINT64_C(139), UINT64_C(140), UINT64_C(25), UINT64_C(12), UINT64_C(141)) \
     cesta_table_apply_0(spindle_reserve_6, UINT64_C(5), UINT64_C(328), UINT64_C(329), UINT64_C(142), UINT64_C(143), UINT64_C(144), UINT64_C(26), UINT64_C(12), UINT64_C(145)) \
     cesta_table_apply_0(spindle_reserve_7, UINT64_C(6), UINT64_C(333), UINT64_C(334), UINT64_C(146), UINT64_C(147), UINT64_C(148), UINT64_C(27), UINT64_C(12), UINT64_C(149)) \
-    cesta_table_apply_0(spindle_reserve_8, UINT64_C(7), UINT64_C(338), UINT64_C(339), UINT64_C(150), UINT64_C(151), UINT64_C(152), UINT64_C(28), UINT64_C(12), UINT64_C(153))
+    cesta_table_apply_0(spindle_reserve_8, UINT64_C(7), UINT64_C(338), UINT64_C(339), UINT64_C(150), UINT64_C(151), UINT64_C(152), UINT64_C(28), UINT64_C(12), UINT64_C(153)) \
+    cesta_table_apply_0(kaleidoscope_second, UINT64_C(1), UINT64_C(343), UINT64_C(0), UINT64_C(154), UINT64_C(155), UINT64_C(156), UINT64_C(15), UINT64_C(15), UINT64_C(157)) \
+    cesta_table_apply_0(kaleidoscope_third, UINT64_C(2), UINT64_C(344), UINT64_C(0), UINT64_C(158), UINT64_C(159), UINT64_C(160), UINT64_C(30), UINT64_C(15), UINT64_C(161)) \
+    cesta_table_apply_0(quil_reserve_9, UINT64_C(8), UINT64_C(345), UINT64_C(0), UINT64_C(162), UINT64_C(163), UINT64_C(164), UINT64_C(23), UINT64_C(9), UINT64_C(165)) \
+    cesta_table_apply_0(quil_reserve_10, UINT64_C(9), UINT64_C(346), UINT64_C(0), UINT64_C(166), UINT64_C(167), UINT64_C(168), UINT64_C(32), UINT64_C(9), UINT64_C(169)) \
+    cesta_table_apply_0(quil_reserve_11, UINT64_C(10), UINT64_C(347), UINT64_C(0), UINT64_C(170), UINT64_C(171), UINT64_C(172), UINT64_C(33), UINT64_C(9), UINT64_C(173)) \
+    cesta_table_apply_0(quil_reserve_12, UINT64_C(11), UINT64_C(348), UINT64_C(0), UINT64_C(174), UINT64_C(175), UINT64_C(176), UINT64_C(34), UINT64_C(9), UINT64_C(177)) \
+    cesta_table_apply_0(quil_reserve_13, UINT64_C(12), UINT64_C(349), UINT64_C(0), UINT64_C(178), UINT64_C(179), UINT64_C(180), UINT64_C(35), UINT64_C(9), UINT64_C(181)) \
+    cesta_table_apply_0(quil_reserve_14, UINT64_C(13), UINT64_C(350), UINT64_C(0), UINT64_C(182), UINT64_C(183), UINT64_C(184), UINT64_C(36), UINT64_C(9), UINT64_C(185)) \
+    cesta_table_apply_0(quil_reserve_15, UINT64_C(14), UINT64_C(351), UINT64_C(0), UINT64_C(186), UINT64_C(187), UINT64_C(188), UINT64_C(37), UINT64_C(9), UINT64_C(189)) \
+    cesta_table_apply_0(quil_reserve_16, UINT64_C(15), UINT64_C(352), UINT64_C(0), UINT64_C(190), UINT64_C(191), UINT64_C(192), UINT64_C(38), UINT64_C(9), UINT64_C(193)) \
+    cesta_table_apply_0(spindle_reserve_9, UINT64_C(8), UINT64_C(353), UINT64_C(354), UINT64_C(194), UINT64_C(195), UINT64_C(196), UINT64_C(29), UINT64_C(12), UINT64_C(197))
 
 #define SEXOS_CURRENT_SOURCE_ROWS(cesta_table_apply_0) \
     cesta_table_apply_0(sexnet, UINT64_C(60), ENTROPY_SOURCE, kaleidoscope) \
     cesta_table_apply_0(sexnet, UINT64_C(61), CLOCK_SOURCE, kaleidoscope) \
     cesta_table_apply_0(sexnet, UINT64_C(62), TRUST_POLICY, kaleidoscope) \
-    cesta_table_apply_0(silkbar, UINT64_C(61), CLOCK_SOURCE, silkbar)
+    cesta_table_apply_0(silkbar, UINT64_C(61), CLOCK_SOURCE, silkbar) \
+    cesta_table_apply_0(sexnet, UINT64_C(70), ENTROPY_SOURCE, kaleidoscope_second) \
+    cesta_table_apply_0(sexnet, UINT64_C(71), CLOCK_SOURCE, kaleidoscope_second) \
+    cesta_table_apply_0(sexnet, UINT64_C(72), TRUST_POLICY, kaleidoscope_second) \
+    cesta_table_apply_0(sexnet, UINT64_C(73), ENTROPY_SOURCE, kaleidoscope_third) \
+    cesta_table_apply_0(sexnet, UINT64_C(74), CLOCK_SOURCE, kaleidoscope_third) \
+    cesta_table_apply_0(sexnet, UINT64_C(75), TRUST_POLICY, kaleidoscope_third)
 
 
 #endif

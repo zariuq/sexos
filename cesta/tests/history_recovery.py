@@ -2,6 +2,7 @@
 """Actual generic Rust roster/decoder versus Cesta,including all query effects."""
 import argparse,hashlib,json,random,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 U64=(1<<64)-1
 
@@ -63,7 +64,7 @@ def main():
   if args.mutations and n==8:
    changes=[('duplicate_task','history_recovery','g.participants[j].task==p.task','false'),('wrong_holder','history_recovery','g.holder!=holder','((void)holder,false)'),('extent_wrap','history_recovery','g.base>UINT64_MAX-g.sectors','false'),('wrong_participant_task','history_recovery','found.value.task==task','((void)task,true)'),('narrow_kind','history_recovery','if(!kind)return','kind=(uint32_t)kind;\n    if(!kind)return'),('header_version','history_decode','header.value3!=HISTORY_VERSION','false'),('partial_extent','history_decode','extent.value2 || extent.value3','false'),('roster_order','history_decode','raw.value0!=targets.values[i]','((void)targets.values[i],false)'),('task_narrow','history_decode','raw.value1>UINT32_MAX','false'),('wrong_index','history_decode','raw.value2!=i','false'),('dirty_reply','history_decode','r.status && (r.value0|r.value1|r.value2|r.value3)?1:r.status','r.status'),('skip_final_validation','history_decode','if(!history_valid(g))','if(false)')]
    for name,unit,before,after in changes:
-    path=d/(unit+'.c');original=path.read_text();assert before in original,(name,'anchor')
+    path=d/(unit+'.c');original=LayoutText(path.read_text());assert before in original,(name,'anchor')
     try:
      path.write_text(original.replace(before,after));binary=build('gcc',['-O2'],name);assert run([binary],data)!=expected,('survived',name);caught.append(name)
     finally:path.write_text(original)

@@ -1,3 +1,15 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 #include "sexos_kernel.h"
 /*System calls, translated from kernel/src/syscalls/mod.rs, ipc.rs and ipc/router.rs. The register interface is the reference's: the number in rax; arguments in rdi, rsi, rdx, r10 and r8; the result in rax; call and listen return their extra words in rsi, rdx, r10 and r8. Three requests are checked where the reference accepts anything: a reply needs a call the replier heard and has not answered; a mapping needs frames the caller owns; and every page the kernel maps for a domain carries that domain's key and is not executable.*/
 #define RAW_PRINT_MAX 4096u
@@ -15,6 +27,7 @@ typedef struct DisplayInfo {
   uint32_t pitch;
 }
 DisplayInfo;
+
 _Static_assert(sizeof(DisplayInfo) == 24, "DisplayInfo layout");
 
 static uint32_t size_to_order(uint64_t size) {
@@ -404,21 +417,34 @@ static uint64_t net_diag(uint64_t index) {
   }
   return NO_ADDRESS;
 }
-static void kernel_region_query(Domain *d, TrapFrame *f, uint64_t number)
-{
-    MemoryRegionCapability absent={0};
-    const Cap *held=cap_get(d,f->rdi);
-    const MemoryRegionCapability *region=&absent;
-    if (held && (held->kind == CAP_REGION || held->kind == CAP_PCI)) region=&held->region;
-    MemoryRegionReply r=sexos_region_query(region,number,f->rsi,f->rdx,f->r10);
-    f->rax=r.status; f->rsi=r.value0; f->rdx=r.value1; f->r10=r.value2; f->r8=r.value3;
+
+/* The Region INFO/VIEW dispatch of one held slot; BOOT reads its own grants
+ * through the same path. */
+MemoryRegionReply kernel_region_reply(Domain *d, uint64_t number, uint64_t slot, uint64_t a,
+                                      uint64_t b, uint64_t c) {
+    MemoryRegionCapability absent = {0};
+    const Cap *held = cap_get(d, slot);
+    const MemoryRegionCapability *region = &absent;
+    if (held && (held->kind == CAP_REGION || held->kind == CAP_PCI))
+        region = &held->region;
+    return sexos_region_query(region, number, a, b, c);
 }
-static uint64_t current_bar_view(Domain *d, uint64_t slot, uint64_t bar, uint64_t length)
-{
-    const Cap *held=cap_get(d,slot);
-    if (!held || held->kind != CAP_PCI || bar) return NO_ADDRESS;
-    MemoryRegionViewResult result=sexos_region_register_view(&held->region,0,length ? length : 4096,
-        REGION_QUERY|REGION_READ|REGION_WRITE);
+
+static void kernel_region_query(Domain *d, TrapFrame *f, uint64_t number) {
+    MemoryRegionReply r = kernel_region_reply(d, number, f->rdi, f->rsi, f->rdx, f->r10);
+    f->rax = r.status;
+    f->rsi = r.value0;
+    f->rdx = r.value1;
+    f->r10 = r.value2;
+    f->r8 = r.value3;
+}
+
+static uint64_t current_bar_view(Domain *d, uint64_t slot, uint64_t bar, uint64_t length) {
+    const Cap *held = cap_get(d, slot);
+    if (!held || held->kind != CAP_PCI || bar)
+        return NO_ADDRESS;
+    MemoryRegionViewResult result = sexos_region_register_view(
+        &held->region, 0, length ? length : 4096, REGION_QUERY | REGION_READ | REGION_WRITE);
     return result.error ? NO_ADDRESS : result.value.virtual_address;
 }
 

@@ -1,8 +1,9 @@
 (cesta native-c/1 compact-c/2
- (unit
-  (native "#include \"silk_shell_surfaces.h\"
-size_t shell_surfaces_command_count(void)
-{
- return sizeof(COMMAND_LIST)/sizeof(COMMAND_LIST[0]);
+ (unit (ownership (check-all))
+  (native "
+#include \"silk_shell_surfaces.h\"
+
+size_t shell_surfaces_command_count(void) {
+    return sizeof(COMMAND_LIST) / sizeof(COMMAND_LIST[0]);
 }
 ")))

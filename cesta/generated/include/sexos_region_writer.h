@@ -3,6 +3,7 @@
 #define SEXOS_REGION_WRITER_H
 #include <stdint.h>
 #include <stdbool.h>
+
 typedef enum {
     REGION_WRITER_OK,
     REGION_WRITER_INVALID,
@@ -11,6 +12,7 @@ typedef enum {
     REGION_WRITER_EXHAUSTED,
     REGION_WRITER_BUSY
 } RegionWriterStatus;
+
 typedef enum {
     REGION_WRITER_QUERY,
     REGION_WRITER_OFFER,
@@ -19,12 +21,18 @@ typedef enum {
     REGION_WRITER_CANCEL,
     REGION_WRITER_RECOVER
 } RegionWriterAction;
+
 typedef struct {
     bool present;
     uint32_t region_id, home, peer, current;
     uint64_t revision, job;
 } RegionWriterState;
-typedef struct { RegionWriterStatus status; RegionWriterState state; } RegionWriterResult;
+
+typedef struct {
+    RegionWriterStatus status;
+    RegionWriterState state;
+} RegionWriterResult;
+
 typedef struct {
     RegionWriterStatus status;
     uint64_t revision;
@@ -32,11 +40,13 @@ typedef struct {
     uint64_t job;
     uint32_t peer;
 } RegionWriterReceipt;
+
 bool region_writer_valid(const RegionWriterState *state);
 RegionWriterResult region_writer_query(RegionWriterState state, uint32_t caller);
 RegionWriterResult region_writer_change(RegionWriterState state, uint32_t caller,
-    RegionWriterAction action, uint64_t expected_revision, uint64_t job);
+                                        RegionWriterAction action, uint64_t expected_revision,
+                                        uint64_t job);
 RegionWriterReceipt sexos_region_writer_query(uint64_t slot);
 RegionWriterReceipt sexos_region_writer_change(uint64_t slot, RegionWriterAction action,
-    uint64_t expected_revision, uint64_t job);
+                                               uint64_t expected_revision, uint64_t job);
 #endif

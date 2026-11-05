@@ -8,6 +8,7 @@ import random
 import subprocess
 import sys
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 INVENTORY = HERE/'interfaces/memory_regions.source.json'
@@ -138,7 +139,7 @@ def main():
     ]
     rejected = []
     if args.mutations:
-        original = source.read_text()
+        original = LayoutText(source.read_text())
         for name, before, after in mutations:
             assert original.count(before) == 1, (name, 'mutation anchor')
             try:

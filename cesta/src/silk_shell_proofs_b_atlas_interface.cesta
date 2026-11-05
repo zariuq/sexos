@@ -1,21 +1,34 @@
 (cesta native-c/1 compact-c/2
  (unit
-  (native "#ifndef SEXOS_SHELL_PROOFS_B_ATLAS_H
+  (native "
+#ifndef SEXOS_SHELL_PROOFS_B_ATLAS_H
 #define SEXOS_SHELL_PROOFS_B_ATLAS_H
 #include \"silk_shell_proofs_b_palette.h\"
-typedef struct ShellProofsBCard {int32_t x,y;uint32_t w,h;} ShellProofsBCard;
-typedef struct ShellProofsBScene {bool present;uint8_t scene;} ShellProofsBScene;
+
+typedef struct ShellProofsBCard {
+    int32_t x, y;
+    uint32_t w, h;
+} ShellProofsBCard;
+
+typedef struct ShellProofsBScene {
+    bool present;
+    uint8_t scene;
+} ShellProofsBScene;
+
 int32_t shell_proofs_b_atlas_desktop_width(ShellInputContext *ctx);
 int32_t shell_proofs_b_atlas_bar_height(ShellInputContext *ctx);
-ShellProofsBCard shell_proofs_b_atlas_card(ShellInputContext *ctx,size_t scene,uint32_t width);
-ShellProofsBScene shell_proofs_b_atlas_scene_at(ShellInputContext *ctx,int32_t x,int32_t y);
+ShellProofsBCard shell_proofs_b_atlas_card(ShellInputContext *ctx, size_t scene, uint32_t width);
+ShellProofsBScene shell_proofs_b_atlas_scene_at(ShellInputContext *ctx, int32_t x, int32_t y);
 void shell_proofs_b_atlas_exit(ShellInputContext *ctx);
-bool shell_proofs_b_atlas_cycle(ShellInputContext *ctx,int32_t delta,const char *reason);
-bool shell_proofs_b_atlas_same_scene_noop(ShellInputContext *ctx,uint32_t frame,uint8_t source,uint8_t target);
-bool shell_proofs_b_atlas_reparent(ShellInputContext *ctx,uint32_t frame,uint8_t target,const char *reason);
-bool shell_proofs_b_atlas_surface_in_active_scene(ShellInputContext *ctx,uint64_t surface);
-void shell_proofs_b_atlas_input_hid(ShellInputContext *ctx,uint64_t event_class,uint64_t arg0,uint64_t arg1);
-bool shell_proofs_b_atlas_cancel_drag(ShellInputContext *ctx,const char *reason);
+bool shell_proofs_b_atlas_cycle(ShellInputContext *ctx, int32_t delta, const char *reason);
+bool shell_proofs_b_atlas_same_scene_noop(ShellInputContext *ctx, uint32_t frame, uint8_t source,
+                                          uint8_t target);
+bool shell_proofs_b_atlas_reparent(ShellInputContext *ctx, uint32_t frame, uint8_t target,
+                                   const char *reason);
+bool shell_proofs_b_atlas_surface_in_active_scene(ShellInputContext *ctx, uint64_t surface);
+void shell_proofs_b_atlas_input_hid(ShellInputContext *ctx, uint64_t event_class, uint64_t arg0,
+                                    uint64_t arg1);
+bool shell_proofs_b_atlas_cancel_drag(ShellInputContext *ctx, const char *reason);
 void shell_proofs_b_maybe_run_atlas_phase_e1_click_scene_switch_proof(ShellInputContext *ctx);
 void shell_proofs_b_maybe_run_atlas_phase_e2_keyboard_scene_cycle_proof(ShellInputContext *ctx);
 void shell_proofs_b_maybe_run_atlas_phase_e3_drag_begin_marker_proof(ShellInputContext *ctx);
@@ -23,6 +36,7 @@ void shell_proofs_b_maybe_run_atlas_phase_e4b_same_scene_noop_proof(ShellInputCo
 void shell_proofs_b_maybe_run_atlas_phase_e4c_cross_scene_reparent_proof(ShellInputContext *ctx);
 void shell_proofs_b_maybe_run_atlas_phase_e4c2_true_reparent_proof(ShellInputContext *ctx);
 void shell_proofs_b_maybe_run_atlas_phase_e4d_real_pointer_drop_proof(ShellInputContext *ctx);
-void shell_proofs_b_maybe_run_atlas_overview_final_closeout_proof(ShellInputContext *ctx,SilkShellProofsBState *proofs_b);
+void shell_proofs_b_maybe_run_atlas_overview_final_closeout_proof(ShellInputContext *ctx,
+                                                                  SilkShellProofsBState *proofs_b);
 #endif
 ")))

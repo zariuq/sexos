@@ -36,6 +36,7 @@ import shutil
 
 from differential_support import (C_MAIN, LISTEN, PROVIDER_PRELUDE, RUST_FFI, RUST_MAIN, first_difference,
                                   pinned_function, run)
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -424,7 +425,7 @@ def main():
     work.mkdir(parents=True)
     show = lambda path: run(["git", "-C", REPO, "show", f"{REVISION}:{path}"]).stdout.decode()
     main_rs = show("servers/linen/src/main.rs")
-    translation = (HERE / "src/linen.cesta").read_text()
+    translation = LayoutText((HERE / "src/linen.cesta").read_text())
     # Every build gate of the Rust is a flag of the translation, and no other.
     rust_gates = set(re.findall(r'option_env!\("(\w+)"\)', main_rs)) | set(re.findall(r"cfg!\((\w+)\)", main_rs))
     c_gates = set(re.findall(r'cpp-if "defined\((\w+)\)"', translation))
@@ -473,7 +474,7 @@ def main():
     (work / "model.rs").write_text(MODEL_RUST)
     run(["rustc", "--edition", "2021", "-O", "-A", "warnings", *extern, work / "model.rs", "-o", work / "model-reference"])
     model_expected = run([work / "model-reference"]).stdout
-    model_source = (HERE / "src/sex_object_model_interface.cesta").read_text()
+    model_source = LayoutText((HERE / "src/sex_object_model_interface.cesta").read_text())
     for compiler in ("gcc", "clang"):
         actual = model_trace(model_source, translation, compiler, [*warnings, "-Wno-unused-function", *sanitizers])
         if actual != model_expected:

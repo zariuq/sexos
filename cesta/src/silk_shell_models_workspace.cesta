@@ -7,32 +7,43 @@
   (foreign shell_linen_snapshot_refresh (obligation "Calls the checked bounded refresh transition; no pointer escapes."))
   (foreign sexos_line (variadic-read) (obligation "Prints bounded scalar arguments synchronously, retaining no reference.")))
  (native "
-void shell_models_workspace_poll(ShellLinenWorkspaceContext *ctx)
-{
- for(size_t i=0;i<SHELL_APP_COUNT;++i){
-  if(!ctx->linen->workspace_refresh_pending[i])continue;
-  const ShellAppCustody *entry=&ctx->apps->entries[i];
-  if(!ctx->apps->present[i] || entry->dead || entry->close_pending){ctx->linen->workspace_refresh_pending[i]=false;continue;}
-  uint64_t status=shell_models_workspace_info(entry->slot);
-  if(status==SHELL_WORKSPACE_LIVE){
-   ctx->linen->workspace_refresh_pending[i]=false;
-   shell_linen_snapshot_refresh(&ctx->linen->snapshot,true);
-   sexos_line(\"[linen.workspace.changed] target=%u task=%u refresh=queued read_only=1\",entry->target,entry->task);
-  }else if(status!=SHELL_WORKSPACE_RETRY)ctx->linen->workspace_refresh_pending[i]=false;
- }
+void shell_models_workspace_poll(ShellLinenWorkspaceContext *ctx) {
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        if (!ctx->linen->workspace_refresh_pending[i])
+            continue;
+        const ShellAppCustody *entry = &ctx->apps->entries[i];
+        if (!ctx->apps->present[i] || entry->dead || entry->close_pending) {
+            ctx->linen->workspace_refresh_pending[i] = false;
+            continue;
+        }
+        uint64_t status = shell_models_workspace_info(entry->slot);
+        if (status == SHELL_WORKSPACE_LIVE) {
+            ctx->linen->workspace_refresh_pending[i] = false;
+            shell_linen_snapshot_refresh(&ctx->linen->snapshot, true);
+            sexos_line(\"[linen.workspace.changed] target=%u task=%u refresh=queued read_only=1\",
+                       entry->target, entry->task);
+        } else if (status != SHELL_WORKSPACE_RETRY)
+            ctx->linen->workspace_refresh_pending[i] = false;
+    }
 }
-bool shell_models_workspace_receive(ShellLinenWorkspaceContext *ctx,const SexosMessage *message)
-{
- if(message->type_id!=SHELL_WORKSPACE_CHANGED)return false;
- bool found=false;
- for(size_t i=0;i<SHELL_APP_COUNT;++i){
-  const ShellAppCustody *entry=&ctx->apps->entries[i];
-  if(!ctx->apps->present[i] || entry->target!=message->caller_pd)continue;
-  if(!shell_custody_allows_operation(entry,message->caller_task,message->type_id,message->arg0,message->arg1,message->arg2))continue;
-  ctx->linen->workspace_refresh_pending[i]=true;
-  found=true;break;
- }
- if(found)shell_models_workspace_poll(ctx);
- return true;
+
+bool shell_models_workspace_receive(ShellLinenWorkspaceContext *ctx, const SexosMessage *message) {
+    if (message->type_id != SHELL_WORKSPACE_CHANGED)
+        return false;
+    bool found = false;
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        const ShellAppCustody *entry = &ctx->apps->entries[i];
+        if (!ctx->apps->present[i] || entry->target != message->caller_pd)
+            continue;
+        if (!shell_custody_allows_operation(entry, message->caller_task, message->type_id,
+                                            message->arg0, message->arg1, message->arg2))
+            continue;
+        ctx->linen->workspace_refresh_pending[i] = true;
+        found = true;
+        break;
+    }
+    if (found)
+        shell_models_workspace_poll(ctx);
+    return true;
 }
 ")))

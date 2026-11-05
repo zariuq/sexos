@@ -8,6 +8,7 @@ from pathlib import Path
 import random
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 BASIS = 0xCBF29CE484222325
@@ -144,7 +145,7 @@ def main():
             run(command+["--","-Igenerated/include"]);sources.append(target)
         for mode,flags in (("O0",["-O0"]),("O2",["-O2"]),("SAN",["-O1","-fsanitize=address,undefined","-fno-sanitize-recover=all","-fno-pie","-no-pie"])):
             binary=output/f"{compiler}-{mode}";run([compiler,"-std=c11","-Wall","-Wextra","-Wpedantic","-Werror",*flags,"-Igenerated/include",*sources,host,"-o",binary]);actual=run([binary],commands,env={**os.environ,"ASAN_OPTIONS":"detect_leaks=1:abort_on_error=1"});assert actual==expected,(compiler,mode);configurations.append({"compiler":compiler,"mode":mode,"sha256":hashlib.sha256(actual).hexdigest()})
-    base=exports["gcc"].read_text();mutations=[("arp-min","frame->length<42","frame->length<41"),("arp-ether","packet_be16(frame,12)!=0x0806","false"),("arp-shape","frame->bytes[18]!=6","false"),("arp-op","operation!=1&&operation!=2","false"),("ipv4-version","frame->bytes[14]>>4!=4","false"),("ipv4-header","header<20","header<16"),("ipv4-total","total>frame->length-14","false"),("ipv4-fragment","packet_be16(frame,20)&0x3fff","false"),("ipv4-checksum","packet_checksum(frame,14,header,0)!=0","false"),("udp-length","length!=ip.transport_length","false"),("udp-checksum","checksum&&packet_checksum", "false&&packet_checksum"),("payload-cap","payload->len>NETWORK_ENGINE_MAX_PAYLOAD","payload->len>NETWORK_ENGINE_MAX_PAYLOAD-1")];caught=[];prefix=[output/"network_config-gcc.c",output/"network_engine_frame-gcc.c"]
+    base=LayoutText(exports["gcc"].read_text());mutations=[("arp-min","frame->length<42","frame->length<41"),("arp-ether","packet_be16(frame,12)!=0x0806","false"),("arp-shape","frame->bytes[18]!=6","false"),("arp-op","operation!=1&&operation!=2","false"),("ipv4-version","frame->bytes[14]>>4!=4","false"),("ipv4-header","header<20","header<16"),("ipv4-total","total>frame->length-14","false"),("ipv4-fragment","packet_be16(frame,20)&0x3fff","false"),("ipv4-checksum","packet_checksum(frame,14,header,0)!=0","false"),("udp-length","length!=ip.transport_length","false"),("udp-checksum","checksum&&packet_checksum", "false&&packet_checksum"),("payload-cap","payload->len>NETWORK_ENGINE_MAX_PAYLOAD","payload->len>NETWORK_ENGINE_MAX_PAYLOAD-1")];caught=[];prefix=[output/"network_config-gcc.c",output/"network_engine_frame-gcc.c"]
     for name,old,new in mutations:
         assert base.count(old)>=1,(name,base.count(old));mutant=output/f"mutant-{name}.c";mutant.write_text(base.replace(old,new));binary=output/f"mutant-{name}";run(["gcc","-std=c11","-O2","-Igenerated/include",*prefix,mutant,host,"-o",binary]);assert run([binary],commands)!=expected,("survived",name);caught.append(name)
     admission=[]

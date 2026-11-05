@@ -7,6 +7,7 @@ from pathlib import Path
 import random
 import re
 import shutil
+from layout_text import LayoutText
 
 from differential_support import (
     C_MAIN,
@@ -635,7 +636,7 @@ def main():
 
     show = lambda path: run(["git", "-C", REPO, "show", f"{REVISION}:{path}"]).stdout.decode()
     main_rs = show("apps/spindle/src/main.rs")
-    translation = (HERE / "src/spindle.cesta").read_text()
+    translation = LayoutText((HERE / "src/spindle.cesta").read_text())
 
     rust_gates = set(re.findall(r'option_env!\("(\w+)"\)', main_rs)) | set(
         re.findall(r"cfg!\((\w+)\)", main_rs)

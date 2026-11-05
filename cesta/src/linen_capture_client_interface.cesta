@@ -1,21 +1,43 @@
 (cesta native-c/1 compact-c/2
- (unit (native "#ifndef SEXOS_LINEN_CAPTURE_CLIENT_H
+ (unit (native "
+#ifndef SEXOS_LINEN_CAPTURE_CLIENT_H
 #define SEXOS_LINEN_CAPTURE_CLIENT_H
 #include \"linen_capture.h\"
-enum {LINEN_CLIENT_IDLE=0,LINEN_CLIENT_BEGIN=1,LINEN_CLIENT_READ=2,LINEN_CLIENT_END=3};
-enum {LINEN_CLIENT_IGNORED=0,LINEN_CLIENT_PROGRESS=1,LINEN_CLIENT_PUBLISHED=2,LINEN_CLIENT_FAILED=3,LINEN_CLIENT_CANCELLED=4};
-typedef struct LinenCaptureAction {bool present;uint64_t opcode,job,arg1,arg2;} LinenCaptureAction;
+
+enum {
+    LINEN_CLIENT_IDLE = 0,
+    LINEN_CLIENT_BEGIN = 1,
+    LINEN_CLIENT_READ = 2,
+    LINEN_CLIENT_END = 3
+};
+
+enum {
+    LINEN_CLIENT_IGNORED = 0,
+    LINEN_CLIENT_PROGRESS = 1,
+    LINEN_CLIENT_PUBLISHED = 2,
+    LINEN_CLIENT_FAILED = 3,
+    LINEN_CLIENT_CANCELLED = 4
+};
+
+typedef struct LinenCaptureAction {
+    bool present;
+    uint64_t opcode, job, arg1, arg2;
+} LinenCaptureAction;
+
 typedef struct LinenCaptureClient {
- LinenCaptureFrame frame;LinenCaptureTable table;
- uint64_t job,next_job,request,last_request;uint8_t phase;
- bool dirty,cancelled,failed,may_capture,complete,exhausted;
+    LinenCaptureFrame frame;
+    LinenCaptureTable table;
+    uint64_t job, next_job, request, last_request;
+    uint8_t phase;
+    bool dirty, cancelled, failed, may_capture, complete, exhausted;
 } LinenCaptureClient;
+
 LinenCaptureClient linen_capture_client_new(void);
 bool linen_capture_client_refresh(LinenCaptureClient *state);
 LinenCaptureAction linen_capture_client_action(const LinenCaptureClient *state);
-bool linen_capture_client_sent(LinenCaptureClient *state,uint64_t request);
-uint8_t linen_capture_client_reply(LinenCaptureClient *state,uint64_t request,uint64_t value);
-bool linen_capture_client_retry(LinenCaptureClient *state,uint64_t request);
+bool linen_capture_client_sent(LinenCaptureClient *state, uint64_t request);
+uint8_t linen_capture_client_reply(LinenCaptureClient *state, uint64_t request, uint64_t value);
+bool linen_capture_client_retry(LinenCaptureClient *state, uint64_t request);
 bool linen_capture_client_cancel(LinenCaptureClient *state);
 bool linen_capture_client_busy(const LinenCaptureClient *state);
 #endif

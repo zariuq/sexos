@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -45,7 +46,7 @@ def main():
             names=set(re.findall(r'\(function ([^\s()]+) ',plan.read_text()))
             assert required <= names,('input functions missing from ownership plan',sorted(required-names))
             plans.append(dict(unit=unit.stem,compiler=compiler,sha256=hashlib.sha256(plan.read_bytes()).hexdigest(),plan=plan.name,functions=len(names)))
-    original=frozen[source].decode()
+    original=LayoutText(frozen[source].decode())
     opening='void shell_input_input_trace_shell_summary(ShellInputContext *ctx)\n{'
     assert original.count(opening)==1
     changes=[
@@ -59,7 +60,7 @@ def main():
         mutant=work/(name+'.cesta');mutant.write_text(original.replace(old,new))
         for compiler in ('gcc','clang'):
             run([args.cesta,'cc','--cc',compiler,'-std=c11','-fsyntax-only',include,mutant],False)
-    original_apps=frozen[app_source].decode()
+    original_apps=LayoutText(frozen[app_source].decode())
     view='ShellSurfacesContext view={.shell=ctx->shell,.surfaces=ctx->surfaces};'
     app_changes=[
         ('uninitialized_subview',view,'ShellSurfacesContext view;'),

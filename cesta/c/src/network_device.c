@@ -184,8 +184,7 @@ static void rx_bytes_transfer(RxContext *c) {
   c->bytes_owned = false;
 }
 #define network_rx_run_CHECKED 1
-#define network_rx_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()
-
+#define network_rx_run_CHECK_FAILURE(ctx,kind,id,expected) sexos_fail()
 /* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
 
 #ifdef CESTA_PROTOCOL_network_rx_run_DEFINED

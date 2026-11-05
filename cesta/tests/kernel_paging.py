@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -68,7 +69,7 @@ def main():
     ];caught=[]
     if args.mutations:
         for name,unit,before,after in mutations:
-            p=work/(unit+'.c');original=p.read_text();assert before in original,(name,'anchor')
+            p=work/(unit+'.c');original=LayoutText(p.read_text());assert before in original,(name,'anchor')
             try:
                 p.write_text(original.replace(before,after));binary=compile('gcc',['-O2'],name)
                 result=subprocess.run([binary],cwd=HERE,capture_output=True);assert result.returncode!=0,('mutation survived',name);caught.append(name)

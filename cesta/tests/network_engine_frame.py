@@ -9,6 +9,7 @@ from pathlib import Path
 import random
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -117,7 +118,7 @@ def main():
             assert actual == oracle, (compiler, mode)
             configurations.append({"compiler": compiler, "mode": mode, "sha256": hashlib.sha256(actual).hexdigest()})
 
-    base = exports["gcc"].read_text()
+    base = LayoutText(exports["gcc"].read_text())
     mutations = [
         ("validate-config", "!net_config_valid(config)", "false"),
         ("maximum-frame", "frame->length>NETWORK_ENGINE_MAX_FRAME", "frame->length>=NETWORK_ENGINE_MAX_FRAME"),

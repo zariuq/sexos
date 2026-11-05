@@ -11,22 +11,27 @@
   (foreign shell_models_render_static_ui (obligation "Calls the checked static renderer and shared atomic outbox using the scoped state."))
   (foreign sexos_line (variadic-read) (obligation "Prints bounded arguments synchronously, retaining no reference.")))
  (native "
-void shell_models_paint_surface(ShellLinenRenderContext *ctx,bool startup_pending)
-{
- if(!startup_pending && (!ctx->shell.models->LINEN_REMOTE_FETCHED || !ctx->shell.models->LINEN_REMOTE_REAL)){
-  ctx->shell.models->LINEN_REMOTE_FETCHED=true;
-  ShellLinenModelsContext remote={ctx->shell.models,ctx->linen};
-  shell_models_fetch_remote_snapshot(&remote);
- }
- if(shell_models_peer_object_count(ctx)==0)shell_models_render_static_ui(ctx);
- else shell_models_render_object_list(ctx);
+void shell_models_paint_surface(ShellLinenRenderContext *ctx, bool startup_pending) {
+    if (!startup_pending &&
+        (!ctx->shell.models->LINEN_REMOTE_FETCHED || !ctx->shell.models->LINEN_REMOTE_REAL)) {
+        ctx->shell.models->LINEN_REMOTE_FETCHED = true;
+        ShellLinenModelsContext remote = {ctx->shell.models, ctx->linen};
+        shell_models_fetch_remote_snapshot(&remote);
+    }
+    if (shell_models_peer_object_count(ctx) == 0)
+        shell_models_render_static_ui(ctx);
+    else
+        shell_models_render_object_list(ctx);
 }
-void shell_models_paint_surface_fast(ShellLinenRenderContext *ctx)
-{
- bool remote=ctx->shell.models->LINEN_REMOTE_FETCHED;
- size_t count=shell_models_peer_object_count(ctx);
- sexos_line(\"[linen.fast_paint] sid=200 objects=%zu ok=1 reason=%s\",count,remote?\"remote_ready\":\"seeds_only\");
- if(count==0)shell_models_render_static_ui(ctx);
- else shell_models_render_object_list(ctx);
+
+void shell_models_paint_surface_fast(ShellLinenRenderContext *ctx) {
+    bool remote = ctx->shell.models->LINEN_REMOTE_FETCHED;
+    size_t count = shell_models_peer_object_count(ctx);
+    sexos_line(\"[linen.fast_paint] sid=200 objects=%zu ok=1 reason=%s\", count,
+               remote ? \"remote_ready\" : \"seeds_only\");
+    if (count == 0)
+        shell_models_render_static_ui(ctx);
+    else
+        shell_models_render_object_list(ctx);
 }
 ")))

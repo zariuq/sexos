@@ -4,42 +4,134 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-enum { PG_OK=0, PG_INVALID=1, PG_RETRY=2, PG_DENIED=3, PG_EXHAUSTED=4, PG_LIVE=5 };
-enum { PG_READ=2, PG_WRITE=4, PG_PAGES=8, PG_CLIENTS=2 };
-enum { PG_IDLE, PG_PREPARED, PG_PENDING, PG_CLAIMED };
-typedef struct { uint64_t token; uint32_t target_pd,pager_pd,task_id; uint64_t fault_addr,page_addr,error_code,saved_rip,saved_frame; } PgFaultRecord;
-typedef struct { uint8_t phase; bool has_completed,retired; uint64_t last_token; PgFaultRecord active,completed; } PgFaultState;
-typedef struct { uint64_t status; bool present; PgFaultRecord record; } PgFaultResult;
-typedef struct { uint32_t pool_id; uint64_t base_va,length; } PgFramePool;
-typedef struct { uint32_t range_id,pool_id,target_pd; uint64_t base_va,length; uint8_t rights,quota; } PgMapping;
-typedef struct { uint32_t range_id; uint64_t base_va,length; uint8_t rights; } PgDemand;
-typedef struct { uint32_t task_id; uint64_t token; uint32_t target_pd,pager_pd; uint64_t page,error; } PgFaultView;
-typedef struct { uint64_t token; uint32_t task_id,target_pd,pager_pd,range_id; size_t page_index,frame_index; uint8_t rights; } PgBinding;
-typedef struct { uint64_t status; PgBinding value; } PgBindingResult;
-typedef struct { bool present,finalized; PgBinding binding; } PgCommit;
-typedef struct { bool present; PgBinding value; } PgMaybeBinding;
-typedef struct { bool present; uint32_t target_pd,task_id; uint8_t frames; } PgCleanup;
-typedef struct { PgCommit entries[PG_PAGES]; PgMaybeBinding retired[PG_PAGES]; uint64_t retired_highwater[PG_CLIENTS]; PgCleanup closed[PG_CLIENTS]; } PgLedger;
-typedef struct { PgMaybeBinding entries[PG_PAGES]; } PgCleanupPlan;
-bool pager_fault_eligible(uint64_t address,uint64_t error,uint64_t cs);
-uint64_t pager_token_issue(uint64_t *last,uint64_t *out);
-uint64_t pager_fault_prepare(PgFaultState *state,PgFaultRecord record);
-uint64_t pager_fault_publish(PgFaultState *state,uint64_t token);
-uint64_t pager_fault_cancel(PgFaultState *state,uint64_t token);
-PgFaultResult pager_fault_query(const PgFaultState *state,uint32_t pager,uint64_t token);
-PgFaultResult pager_fault_claim(PgFaultState *state,uint32_t pager,uint64_t token);
-uint64_t pager_fault_rollback(PgFaultState *state,uint32_t pager,uint64_t token);
-PgFaultResult pager_fault_complete(PgFaultState *state,uint32_t pager,uint64_t token);
-uint64_t pager_fault_retire(PgFaultState *state,uint32_t target,uint32_t pager,uint32_t task);
-PgFaultResult pager_fault_reject(PgFaultState *state,uint32_t pager,uint64_t token);
-PgBindingResult pager_mapping_validate(PgMapping map,PgFramePool pool,uint32_t pager,PgFaultView fault,uint64_t frame,uint64_t rights);
-bool pager_binding_equal(PgBinding a,PgBinding b);
-PgCommit pager_ledger_token(const PgLedger *ledger,uint64_t token);
-bool pager_ledger_is_retired(const PgLedger *ledger,uint32_t range,uint64_t token);
-uint64_t pager_ledger_check(const PgLedger *ledger,PgBinding binding,uint8_t quota);
-uint64_t pager_ledger_install(PgLedger *ledger,PgBinding binding,uint8_t quota);
-uint64_t pager_ledger_finalize(PgLedger *ledger,PgBinding binding);
-uint64_t pager_ledger_retire(PgLedger *ledger,PgBinding binding);
-uint64_t pager_ledger_cleanup_plan(const PgLedger *ledger,uint32_t range,uint32_t target,uint32_t pager,uint32_t task,PgCleanupPlan *out);
-uint64_t pager_ledger_close(PgLedger *ledger,uint32_t range,uint32_t target,uint32_t pager,uint32_t task);
+
+enum {
+    PG_OK = 0,
+    PG_INVALID = 1,
+    PG_RETRY = 2,
+    PG_DENIED = 3,
+    PG_EXHAUSTED = 4,
+    PG_LIVE = 5
+};
+
+enum {
+    PG_READ = 2,
+    PG_WRITE = 4,
+    PG_PAGES = 8,
+    PG_CLIENTS = 2
+};
+
+enum {
+    PG_IDLE,
+    PG_PREPARED,
+    PG_PENDING,
+    PG_CLAIMED
+};
+
+typedef struct {
+    uint64_t token;
+    uint32_t target_pd, pager_pd, task_id;
+    uint64_t fault_addr, page_addr, error_code, saved_rip, saved_frame;
+} PgFaultRecord;
+
+typedef struct {
+    uint8_t phase;
+    bool has_completed, retired;
+    uint64_t last_token;
+    PgFaultRecord active, completed;
+} PgFaultState;
+
+typedef struct {
+    uint64_t status;
+    bool present;
+    PgFaultRecord record;
+} PgFaultResult;
+
+typedef struct {
+    uint32_t pool_id;
+    uint64_t base_va, length;
+} PgFramePool;
+
+typedef struct {
+    uint32_t range_id, pool_id, target_pd;
+    uint64_t base_va, length;
+    uint8_t rights, quota;
+} PgMapping;
+
+typedef struct {
+    uint32_t range_id;
+    uint64_t base_va, length;
+    uint8_t rights;
+} PgDemand;
+
+typedef struct {
+    uint32_t task_id;
+    uint64_t token;
+    uint32_t target_pd, pager_pd;
+    uint64_t page, error;
+} PgFaultView;
+
+typedef struct {
+    uint64_t token;
+    uint32_t task_id, target_pd, pager_pd, range_id;
+    size_t page_index, frame_index;
+    uint8_t rights;
+} PgBinding;
+
+typedef struct {
+    uint64_t status;
+    PgBinding value;
+} PgBindingResult;
+
+typedef struct {
+    bool present, finalized;
+    PgBinding binding;
+} PgCommit;
+
+typedef struct {
+    bool present;
+    PgBinding value;
+} PgMaybeBinding;
+
+typedef struct {
+    bool present;
+    uint32_t target_pd, task_id;
+    uint8_t frames;
+} PgCleanup;
+
+typedef struct {
+    PgCommit entries[PG_PAGES];
+    PgMaybeBinding retired[PG_PAGES];
+    uint64_t retired_highwater[PG_CLIENTS];
+    PgCleanup closed[PG_CLIENTS];
+} PgLedger;
+
+typedef struct {
+    PgMaybeBinding entries[PG_PAGES];
+} PgCleanupPlan;
+
+bool pager_fault_eligible(uint64_t address, uint64_t error, uint64_t cs);
+uint64_t pager_token_issue(uint64_t *last, uint64_t *out);
+uint64_t pager_fault_prepare(PgFaultState *state, PgFaultRecord record);
+uint64_t pager_fault_publish(PgFaultState *state, uint64_t token);
+uint64_t pager_fault_cancel(PgFaultState *state, uint64_t token);
+PgFaultResult pager_fault_query(const PgFaultState *state, uint32_t pager, uint64_t token);
+PgFaultResult pager_fault_claim(PgFaultState *state, uint32_t pager, uint64_t token);
+uint64_t pager_fault_rollback(PgFaultState *state, uint32_t pager, uint64_t token);
+PgFaultResult pager_fault_complete(PgFaultState *state, uint32_t pager, uint64_t token);
+uint64_t pager_fault_retire(PgFaultState *state, uint32_t target, uint32_t pager, uint32_t task);
+PgFaultResult pager_fault_reject(PgFaultState *state, uint32_t pager, uint64_t token);
+PgBindingResult pager_mapping_validate(PgMapping map, PgFramePool pool, uint32_t pager,
+                                       PgFaultView fault, uint64_t frame, uint64_t rights);
+bool pager_binding_equal(PgBinding a, PgBinding b);
+PgCommit pager_ledger_token(const PgLedger *ledger, uint64_t token);
+bool pager_ledger_is_retired(const PgLedger *ledger, uint32_t range, uint64_t token);
+uint64_t pager_ledger_check(const PgLedger *ledger, PgBinding binding, uint8_t quota);
+uint64_t pager_ledger_install(PgLedger *ledger, PgBinding binding, uint8_t quota);
+uint64_t pager_ledger_finalize(PgLedger *ledger, PgBinding binding);
+uint64_t pager_ledger_retire(PgLedger *ledger, PgBinding binding);
+uint64_t pager_ledger_cleanup_plan(const PgLedger *ledger, uint32_t range, uint32_t target,
+                                   uint32_t pager, uint32_t task, PgCleanupPlan *out);
+uint64_t pager_ledger_close(PgLedger *ledger, uint32_t range, uint32_t target, uint32_t pager,
+                            uint32_t task);
 #endif

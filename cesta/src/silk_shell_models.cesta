@@ -1,6 +1,34 @@
 (cesta native-c/1 compact-c/2
   (unit
-    (include "silk_shell.h")
+    (ownership (check-all)
+    (unchecked (app_capability_bits_describe app_manifest_unpack app_surface_registry_validate
+                app_surface_spec app_surface_spec_by_frame apply_custom_tint_bundle
+                bell_emit_object_link_event bell_for_each_event bell_record_event bell_ring_count
+                boot_load_scene_settings canvas_draw_panel canvas_fill_rect canvas_new
+                collar_auto_grant_from_manifest collar_check_operation
+                collar_emit_selected_grant_detail collar_grant_at_visible_index collar_grant_count
+                collar_init_grants collar_render_grants_text collar_review_manifest
+                collar_select_next_grant collar_select_prev_grant cycle_custom_tint
+                cycle_prev_scene_render_token_preset cycle_scene_render_token_preset get_preset_name
+                handle_scene_settings_cmd handle_sexstore_get_reply linen_object_by_id
+                linen_object_count linen_object_detail_close linen_object_detail_open
+                linen_object_kind_name linen_object_state_name linen_object_table_init
+                linen_quil_seed_coherence_init linen_select_first_valid_object
+                linen_select_next_object linen_select_prev_object linen_selected_index
+                linen_selected_object_accent linen_selected_object_id mesh_emit_linen_quil_links
+                mesh_emit_selected_fact_detail_proof mesh_fact_count mesh_fact_row_color
+                mesh_focus_linen_at_selected_fact mesh_for_each_fact mesh_is_visible_in_active_scene
+                mesh_record_fact mesh_render_fact_list mesh_render_pd_graph mesh_select_next_row
+                mesh_select_prev_row mesh_selected_fact_snapshot model_mesh_render_row
+                model_send_current_tokens model_store_current_settings open_linen_object_in_quil
+                pdx_compositor_client_create_window pdx_compositor_client_render_bar
+                pdx_compositor_client_set_bg push_token_preset quil_buffer_by_id quil_buffer_count
+                quil_buffer_kind_name quil_buffer_state_name quil_buffer_table_init
+                quil_render_buffer_list record_collar_audit resolve_scene_render_tokens
+                send_scene_render_tokens shell_view_mode)
+      (obligation "Native binding between the single shell state and the checked component contexts: records carrying references without field contracts, nested LinenObject labels and the legacy address-word ABI. It relies on the single-threaded shell loop lending each context for one call and retaining no loan."))
+    (record LinenObject (field display_name (static nullable))))
+  (include "silk_shell.h")
     (include "silk_shell_models_root.h")
     (comment "Application manifests, canvas operations and shell object models.")
     (var (const uint8_t) ([] SPINDLE_SYNTH_SEQ 6) (init 0x1E 0x30 0x2E 0x0E 0x20 0x1C))
@@ -1895,228 +1923,356 @@
 
 
 
-    (native "uint8_t collar_check_operation(uint8_t operation, uint64_t object_id, uint64_t buffer_id) {
-  uint64_t caller = SILK_SHELL_STATE.chrome.FOCUSED_SURFACE_ID;
-  sexos_line(\"[collar.policy.check] op=%u object_id=%llu buffer_id=%llu caller_sid=%llu\", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) buffer_id, (unsigned long long) caller);
-  bool object_required = operation == COLLAR_OP_OPEN_OBJECT || operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER || operation == COLLAR_OP_RENAME_OBJECT || operation == COLLAR_OP_ARCHIVE_OBJECT;
-  if (object_required && object_id != 0 && !linen_object_by_id(object_id, NULL)) {
-    sexos_line(\"[collar.gate.reject] reason=missing_object op=%u object_id=%llu\", (unsigned) operation, (unsigned long long) object_id);
-    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY_MISSING_OBJECT, 0, 1);
-    return COLLAR_DECISION_DENY_MISSING_OBJECT;
-  }
-  if (operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER && buffer_id != 0 && !quil_buffer_by_id(buffer_id, NULL)) {
-    sexos_line(\"[collar.gate.reject] reason=missing_buffer op=%u buffer_id=%llu\", (unsigned) operation, (unsigned long long) buffer_id);
-    record_collar_audit(operation, buffer_id, caller, COLLAR_DECISION_DENY_MISSING_BUFFER, 0, 2);
-    return COLLAR_DECISION_DENY_MISSING_BUFFER;
-  }
-  bool system_capability = operation == COLLAR_OP_ACCESS_BELL || operation == COLLAR_OP_ACCESS_SEXFILES;
-  if (operation == COLLAR_OP_OPEN_OBJECT || operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER || system_capability) {
-    if (system_capability) {
-      if (caller == SURFACE_ID_SPINDLE || caller == SURFACE_ID_LINEN || caller == SURFACE_ID_QUIL || caller == SURFACE_ID_MESH || caller == SURFACE_ID_COLLAR || caller == SURFACE_ID_BELL_PLACEHOLDER) {
-        sexos_line(\"[collar.policy.allow] op=%u object=%llu caller=%llu grant=0 reason=core_app\", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller);
-        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_ALLOW, 0, 8);
-        return COLLAR_DECISION_ALLOW;
-      }
-      if (caller < 300) {
-        sexos_line(\"[collar.gate.reject] reason=unknown_app op=%u caller=%llu\", (unsigned) operation, (unsigned long long) caller);
-        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 7);
-        if (COLLAR_ENFORCE_PROOF_ENABLED) sexos_line(\"[collar.enforce.deny] op=%u caller=%llu target=%llu reason=unknown_app\", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id);
-        return COLLAR_DECISION_DENY;
-      }
+    (native "
+uint8_t collar_check_operation(uint8_t operation, uint64_t object_id, uint64_t buffer_id) {
+    uint64_t caller = SILK_SHELL_STATE.chrome.FOCUSED_SURFACE_ID;
+    sexos_line(\"[collar.policy.check] op=%u object_id=%llu buffer_id=%llu caller_sid=%llu\",
+               (unsigned)operation, (unsigned long long)object_id, (unsigned long long)buffer_id,
+               (unsigned long long)caller);
+    bool object_required =
+        operation == COLLAR_OP_OPEN_OBJECT || operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER ||
+        operation == COLLAR_OP_RENAME_OBJECT || operation == COLLAR_OP_ARCHIVE_OBJECT;
+    if (object_required && object_id != 0 && !linen_object_by_id(object_id, NULL)) {
+        sexos_line(\"[collar.gate.reject] reason=missing_object op=%u object_id=%llu\",
+                   (unsigned)operation, (unsigned long long)object_id);
+        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY_MISSING_OBJECT, 0,
+                            1);
+        return COLLAR_DECISION_DENY_MISSING_OBJECT;
     }
-    bool explicit_denial=false;
-    if(!system_capability){
-      for(size_t i=0;i<COLLAR_GRANT_CAP;++i){const CollarGrant *g=&SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
-        if(g->present && g->subject_id==caller && g->object_id==object_id && (g->operation_mask&(UINT64_C(1)<<operation)) && g->state!=COLLAR_GRANT_ACTIVE){explicit_denial=true;break;}}
-      if(explicit_denial){record_collar_audit(operation,object_id,caller,COLLAR_DECISION_DENY,0,9);return COLLAR_DECISION_DENY;}
+    if (operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER && buffer_id != 0 &&
+        !quil_buffer_by_id(buffer_id, NULL)) {
+        sexos_line(\"[collar.gate.reject] reason=missing_buffer op=%u buffer_id=%llu\",
+                   (unsigned)operation, (unsigned long long)buffer_id);
+        record_collar_audit(operation, buffer_id, caller, COLLAR_DECISION_DENY_MISSING_BUFFER, 0,
+                            2);
+        return COLLAR_DECISION_DENY_MISSING_BUFFER;
     }
-    for (size_t i = 0; i < COLLAR_GRANT_CAP; ++i) {
-      const CollarGrant *grant = &SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
-      if(!grant->present || grant->state!=COLLAR_GRANT_ACTIVE || grant->subject_id!=caller)continue;
-      if(grant->object_id!=object_id){
-        bool workspace=false;
-        if(!system_capability && grant->object_id==UINT64_MAX){
-          for(size_t j=0;j<LINEN_MAX_OBJECTS;++j){const LinenObject *o=&SILK_SHELL_STATE.models.LINEN_OBJECTS[j];
-            if(o->present && shell_workspace_allows(caller,operation,object_id,o->object_id,o->disk_path,SILK_SHELL_STATE.models.LINEN_REMOTE_REAL,true,explicit_denial)){workspace=true;break;}}
+    bool system_capability =
+        operation == COLLAR_OP_ACCESS_BELL || operation == COLLAR_OP_ACCESS_SEXFILES;
+    if (operation == COLLAR_OP_OPEN_OBJECT || operation == COLLAR_OP_LINK_OBJECT_TO_BUFFER ||
+        system_capability) {
+        if (system_capability) {
+            if (caller == SURFACE_ID_SPINDLE || caller == SURFACE_ID_LINEN ||
+                caller == SURFACE_ID_QUIL || caller == SURFACE_ID_MESH ||
+                caller == SURFACE_ID_COLLAR || caller == SURFACE_ID_BELL_PLACEHOLDER) {
+                sexos_line(
+                    \"[collar.policy.allow] op=%u object=%llu caller=%llu grant=0 reason=core_app\",
+                    (unsigned)operation, (unsigned long long)object_id, (unsigned long long)caller);
+                record_collar_audit(operation, object_id, caller, COLLAR_DECISION_ALLOW, 0, 8);
+                return COLLAR_DECISION_ALLOW;
+            }
+            if (caller < 300) {
+                sexos_line(\"[collar.gate.reject] reason=unknown_app op=%u caller=%llu\",
+                           (unsigned)operation, (unsigned long long)caller);
+                record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 7);
+                if (COLLAR_ENFORCE_PROOF_ENABLED)
+                    sexos_line(
+                        \"[collar.enforce.deny] op=%u caller=%llu target=%llu reason=unknown_app\",
+                        (unsigned)operation, (unsigned long long)caller,
+                        (unsigned long long)object_id);
+                return COLLAR_DECISION_DENY;
+            }
         }
-        if(!workspace)continue;
-        sexos_line(\"[collar.workspace.allow] subject=%llu object=%llu grant=%llu published=1 kernel_caps_minted=0\",(unsigned long long)caller,(unsigned long long)object_id,(unsigned long long)grant->grant_id);
-      }
-      if((grant->operation_mask&(UINT64_C(1)<<operation))==0)continue;
-      sexos_line(\"[collar.grant.match] grant_id=%llu subject=%llu object=%llu op=%u\", (unsigned long long) grant->grant_id, (unsigned long long) grant->subject_id, (unsigned long long) grant->object_id, (unsigned) operation);
-      sexos_line(\"[collar.policy.allow] op=%u object=%llu caller=%llu grant=%llu\", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller, (unsigned long long) grant->grant_id);
-      record_collar_audit(operation, object_id, caller, COLLAR_DECISION_ALLOW, grant->grant_id, 0);
-      if (system_capability && COLLAR_ENFORCE_PROOF_ENABLED) sexos_line(\"[collar.enforce.allow] op=%u caller=%llu target=%llu grant=%llu\", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id, (unsigned long long) grant->grant_id);
-      return COLLAR_DECISION_ALLOW;
+        bool explicit_denial = false;
+        if (!system_capability) {
+            for (size_t i = 0; i < COLLAR_GRANT_CAP; ++i) {
+                const CollarGrant *g = &SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
+                if (g->present && g->subject_id == caller && g->object_id == object_id &&
+                    (g->operation_mask & (UINT64_C(1) << operation)) &&
+                    g->state != COLLAR_GRANT_ACTIVE) {
+                    explicit_denial = true;
+                    break;
+                }
+            }
+            if (explicit_denial) {
+                record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 9);
+                return COLLAR_DECISION_DENY;
+            }
+        }
+        for (size_t i = 0; i < COLLAR_GRANT_CAP; ++i) {
+            const CollarGrant *grant = &SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
+            if (!grant->present || grant->state != COLLAR_GRANT_ACTIVE ||
+                grant->subject_id != caller)
+                continue;
+            if (grant->object_id != object_id) {
+                bool workspace = false;
+                if (!system_capability && grant->object_id == UINT64_MAX) {
+                    for (size_t j = 0; j < LINEN_MAX_OBJECTS; ++j) {
+                        const LinenObject *o = &SILK_SHELL_STATE.models.LINEN_OBJECTS[j];
+                        if (o->present &&
+                            shell_workspace_allows(
+                                caller, operation, object_id, o->object_id, o->disk_path,
+                                SILK_SHELL_STATE.models.LINEN_REMOTE_REAL, true, explicit_denial)) {
+                            workspace = true;
+                            break;
+                        }
+                    }
+                }
+                if (!workspace)
+                    continue;
+                sexos_line(
+                    \"[collar.workspace.allow] subject=%llu object=%llu grant=%llu published=1 kernel_caps_minted=0\",
+                    (unsigned long long)caller, (unsigned long long)object_id,
+                    (unsigned long long)grant->grant_id);
+            }
+            if ((grant->operation_mask & (UINT64_C(1) << operation)) == 0)
+                continue;
+            sexos_line(\"[collar.grant.match] grant_id=%llu subject=%llu object=%llu op=%u\",
+                       (unsigned long long)grant->grant_id, (unsigned long long)grant->subject_id,
+                       (unsigned long long)grant->object_id, (unsigned)operation);
+            sexos_line(\"[collar.policy.allow] op=%u object=%llu caller=%llu grant=%llu\",
+                       (unsigned)operation, (unsigned long long)object_id,
+                       (unsigned long long)caller, (unsigned long long)grant->grant_id);
+            record_collar_audit(operation, object_id, caller, COLLAR_DECISION_ALLOW,
+                                grant->grant_id, 0);
+            if (system_capability && COLLAR_ENFORCE_PROOF_ENABLED)
+                sexos_line(\"[collar.enforce.allow] op=%u caller=%llu target=%llu grant=%llu\",
+                           (unsigned)operation, (unsigned long long)caller,
+                           (unsigned long long)object_id, (unsigned long long)grant->grant_id);
+            return COLLAR_DECISION_ALLOW;
+        }
+        sexos_line(\"[collar.grant.reject] reason=no_grant op=%u object=%llu caller=%llu\",
+                   (unsigned)operation, (unsigned long long)object_id, (unsigned long long)caller);
+        sexos_line(\"[collar.policy.deny] op=%u object=%llu caller=%llu reason=no_grant\",
+                   (unsigned)operation, (unsigned long long)object_id, (unsigned long long)caller);
+        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 3);
+        if (system_capability && COLLAR_ENFORCE_PROOF_ENABLED)
+            sexos_line(\"[collar.enforce.deny] op=%u caller=%llu target=%llu reason=missing_cap\",
+                       (unsigned)operation, (unsigned long long)caller,
+                       (unsigned long long)object_id);
+        return COLLAR_DECISION_DENY;
     }
-    sexos_line(\"[collar.grant.reject] reason=no_grant op=%u object=%llu caller=%llu\", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller);
-    sexos_line(\"[collar.policy.deny] op=%u object=%llu caller=%llu reason=no_grant\", (unsigned) operation, (unsigned long long) object_id, (unsigned long long) caller);
-    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 3);
-    if (system_capability && COLLAR_ENFORCE_PROOF_ENABLED) sexos_line(\"[collar.enforce.deny] op=%u caller=%llu target=%llu reason=missing_cap\", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id);
+    if (operation == COLLAR_OP_SAVE_BUFFER || operation == COLLAR_OP_BUILD_TARGET ||
+        operation == COLLAR_OP_RUN_TARGET) {
+        sexos_line(\"[collar.gate.reject] reason=stop_first op=%u\", (unsigned)operation);
+        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_BLOCKED_STOP_FIRST, 0, 4);
+        return COLLAR_DECISION_BLOCKED_STOP_FIRST;
+    }
+    if (operation == COLLAR_OP_RENAME_OBJECT || operation == COLLAR_OP_ARCHIVE_OBJECT) {
+        sexos_line(\"[collar.gate.needs_grant] op=%u\", (unsigned)operation);
+        record_collar_audit(operation, object_id, caller, COLLAR_DECISION_NEEDS_GRANT_LATER, 0, 5);
+        return COLLAR_DECISION_NEEDS_GRANT_LATER;
+    }
+    sexos_line(\"[collar.gate.reject] reason=always_deny op=%u\", (unsigned)operation);
+    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 6);
+    if (COLLAR_ENFORCE_PROOF_ENABLED)
+        sexos_line(\"[collar.enforce.deny] op=%u caller=%llu target=%llu reason=dangerous_cap\",
+                   (unsigned)operation, (unsigned long long)caller, (unsigned long long)object_id);
     return COLLAR_DECISION_DENY;
-  }
-  if (operation == COLLAR_OP_SAVE_BUFFER || operation == COLLAR_OP_BUILD_TARGET || operation == COLLAR_OP_RUN_TARGET) {
-    sexos_line(\"[collar.gate.reject] reason=stop_first op=%u\", (unsigned) operation);
-    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_BLOCKED_STOP_FIRST, 0, 4);
-    return COLLAR_DECISION_BLOCKED_STOP_FIRST;
-  }
-  if (operation == COLLAR_OP_RENAME_OBJECT || operation == COLLAR_OP_ARCHIVE_OBJECT) {
-    sexos_line(\"[collar.gate.needs_grant] op=%u\", (unsigned) operation);
-    record_collar_audit(operation, object_id, caller, COLLAR_DECISION_NEEDS_GRANT_LATER, 0, 5);
-    return COLLAR_DECISION_NEEDS_GRANT_LATER;
-  }
-  sexos_line(\"[collar.gate.reject] reason=always_deny op=%u\", (unsigned) operation);
-  record_collar_audit(operation, object_id, caller, COLLAR_DECISION_DENY, 0, 6);
-  if (COLLAR_ENFORCE_PROOF_ENABLED) sexos_line(\"[collar.enforce.deny] op=%u caller=%llu target=%llu reason=dangerous_cap\", (unsigned) operation, (unsigned long long) caller, (unsigned long long) object_id);
-  return COLLAR_DECISION_DENY;
 }
+
 void collar_init_grants(void) {
-  SilkShellModelsState *state = &SILK_SHELL_STATE.models;
-  uint64_t count = 0;
-  for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) {
-    const LinenObject *object = &state->LINEN_OBJECTS[i];
-    if (!object->present) continue;
-    uint64_t subjects[2] = {
-      SURFACE_ID_LINEN, SURFACE_ID_MESH
-    };
-    for (size_t j = 0; j < 2; ++j) {
-      uint64_t generation = state->COLLAR_GRANT_GENERATION ++;
-      size_t index = ((size_t) generation - 1) % COLLAR_GRANT_CAP;
-      state->COLLAR_GRANTS[index] = (CollarGrant) {
-        .present = true,.grant_id = generation,.subject_id = subjects[j],.object_id = object->object_id,.operation_mask = UINT64_C(1) << COLLAR_OP_LINK_OBJECT_TO_BUFFER,.generation = generation,.state = COLLAR_GRANT_ACTIVE,
-      };
-      sexos_line(\"[collar.grant.auto] grant_id=%llu subject=%llu object=%llu op=LinkObjectToBuffer\", (unsigned long long) generation, (unsigned long long) subjects[j], (unsigned long long) object->object_id);
-      ++count;
+    SilkShellModelsState *state = &SILK_SHELL_STATE.models;
+    uint64_t count = 0;
+    for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) {
+        const LinenObject *object = &state->LINEN_OBJECTS[i];
+        if (!object->present)
+            continue;
+        uint64_t subjects[2] = {SURFACE_ID_LINEN, SURFACE_ID_MESH};
+        for (size_t j = 0; j < 2; ++j) {
+            uint64_t generation = state->COLLAR_GRANT_GENERATION++;
+            size_t index = ((size_t)generation - 1) % COLLAR_GRANT_CAP;
+            state->COLLAR_GRANTS[index] = (CollarGrant){
+                .present = true,
+                .grant_id = generation,
+                .subject_id = subjects[j],
+                .object_id = object->object_id,
+                .operation_mask = UINT64_C(1) << COLLAR_OP_LINK_OBJECT_TO_BUFFER,
+                .generation = generation,
+                .state = COLLAR_GRANT_ACTIVE,
+            };
+            sexos_line(
+                \"[collar.grant.auto] grant_id=%llu subject=%llu object=%llu op=LinkObjectToBuffer\",
+                (unsigned long long)generation, (unsigned long long)subjects[j],
+                (unsigned long long)object->object_id);
+            ++count;
+        }
     }
-  }
-  if(state->COLLAR_GRANT_GENERATION!=UINT64_MAX){
-    uint64_t generation=state->COLLAR_GRANT_GENERATION;size_t index=((size_t)generation-1)%COLLAR_GRANT_CAP;
-    if(state->COLLAR_GRANTS[index].present){sexos_fail();for(;;){}}
-    state->COLLAR_GRANT_GENERATION=generation+1;
-    state->COLLAR_GRANTS[index]=(CollarGrant){.present=true,.grant_id=generation,.subject_id=SURFACE_ID_LINEN,.object_id=UINT64_MAX,.operation_mask=(UINT64_C(1)<<COLLAR_OP_OPEN_OBJECT)|(UINT64_C(1)<<COLLAR_OP_LINK_OBJECT_TO_BUFFER),.generation=generation,.state=COLLAR_GRANT_ACTIVE};
-    ++count;sexos_line(\"[collar.workspace.seed] subject=200 grant=%llu storage_boot_edge=1 kernel_caps_minted=0 revocable=1\",(unsigned long long)generation);
-  }
-  sexos_line(\"[collar.grant.init] count=%llu generation=%llu\", (unsigned long long) count, (unsigned long long) state->COLLAR_GRANT_GENERATION);
+    if (state->COLLAR_GRANT_GENERATION != UINT64_MAX) {
+        uint64_t generation = state->COLLAR_GRANT_GENERATION;
+        size_t index = ((size_t)generation - 1) % COLLAR_GRANT_CAP;
+        if (state->COLLAR_GRANTS[index].present) {
+            sexos_fail();
+            for (;;) {
+            }
+        }
+        state->COLLAR_GRANT_GENERATION = generation + 1;
+        state->COLLAR_GRANTS[index] =
+            (CollarGrant){.present = true,
+                          .grant_id = generation,
+                          .subject_id = SURFACE_ID_LINEN,
+                          .object_id = UINT64_MAX,
+                          .operation_mask = (UINT64_C(1) << COLLAR_OP_OPEN_OBJECT) |
+                                            (UINT64_C(1) << COLLAR_OP_LINK_OBJECT_TO_BUFFER),
+                          .generation = generation,
+                          .state = COLLAR_GRANT_ACTIVE};
+        ++count;
+        sexos_line(
+            \"[collar.workspace.seed] subject=200 grant=%llu storage_boot_edge=1 kernel_caps_minted=0 revocable=1\",
+            (unsigned long long)generation);
+    }
+    sexos_line(\"[collar.grant.init] count=%llu generation=%llu\", (unsigned long long)count,
+               (unsigned long long)state->COLLAR_GRANT_GENERATION);
 }
+
 void collar_render_grants_text(void) {
-  uint8_t buffer[120];
-  memset(buffer, ' ', sizeof buffer);
-  uint8_t total = collar_grant_count();
-  memcpy(buffer, \"COLLAR GRANTS\", 13);
-  buffer[14] = (uint8_t)('0' + total / 10 % 10);
-  buffer[15] = (uint8_t)('0' + total % 10);
-  size_t row = 0;
-  uint8_t visible = 0;
-  for (size_t i = 0; i < COLLAR_GRANT_CAP && row < 5; ++i) {
-    const CollarGrant *grant = &SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
-    if (!grant->present || grant->state != COLLAR_GRANT_ACTIVE) continue;
-    size_t base = (row + 1) * 20;
-    buffer[base] = visible == SILK_SHELL_STATE.models.COLLAR_SELECTED_GRANT_IDX ? '>' : ' ';
-    buffer[base + 1] = 'G';
-    buffer[base + 2] = (uint8_t)('0' + grant->grant_id / 10 % 10);
-    buffer[base + 3] = (uint8_t)('0' + grant->grant_id % 10);
-    buffer[base + 5] = 'S';
-    buffer[base + 6] = (uint8_t)('0' + grant->subject_id / 100 % 10);
-    buffer[base + 7] = (uint8_t)('0' + grant->subject_id / 10 % 10);
-    buffer[base + 8] = (uint8_t)('0' + grant->subject_id % 10);
-    buffer[base + 10] = 'O';
-    buffer[base + 11] = (uint8_t)('0' + grant->object_id / 10 % 10);
-    buffer[base + 12] = (uint8_t)('0' + grant->object_id % 10);
-    if(grant->object_id==UINT64_MAX){buffer[base+10]='W';buffer[base+11]='S';buffer[base+12]=' ';}
-    buffer[base + 14] = 'A';
-    ++row;
-    ++visible;
-  }(void) sexos_pdx_call(SLOT_DISPLAY, OP_TEXT_CLEAR, SURFACE_ID_COLLAR, 0, 0);
-  bool accepted = shell_draw_text(SURFACE_ID_COLLAR, buffer, sizeof buffer, UINT64_C(0x00E8FFFF), NULL);
-  uint32_t *budget = &SILK_SHELL_STATE.models.collar_render_grants_text__COLLAR_GRANTS_TEXT_BUDGET;
-  if (*budget != 0) {
-    --*budget;
-    sexos_line(\"[collar.grants.render.ok] grants=%u ok=%u\", (unsigned) total, (unsigned) accepted);
-  }
+    uint8_t buffer[120];
+    memset(buffer, ' ', sizeof buffer);
+    uint8_t total = collar_grant_count();
+    memcpy(buffer, \"COLLAR GRANTS\", 13);
+    buffer[14] = (uint8_t)('0' + total / 10 % 10);
+    buffer[15] = (uint8_t)('0' + total % 10);
+    size_t row = 0;
+    uint8_t visible = 0;
+    for (size_t i = 0; i < COLLAR_GRANT_CAP && row < 5; ++i) {
+        const CollarGrant *grant = &SILK_SHELL_STATE.models.COLLAR_GRANTS[i];
+        if (!grant->present || grant->state != COLLAR_GRANT_ACTIVE)
+            continue;
+        size_t base = (row + 1) * 20;
+        buffer[base] = visible == SILK_SHELL_STATE.models.COLLAR_SELECTED_GRANT_IDX ? '>' : ' ';
+        buffer[base + 1] = 'G';
+        buffer[base + 2] = (uint8_t)('0' + grant->grant_id / 10 % 10);
+        buffer[base + 3] = (uint8_t)('0' + grant->grant_id % 10);
+        buffer[base + 5] = 'S';
+        buffer[base + 6] = (uint8_t)('0' + grant->subject_id / 100 % 10);
+        buffer[base + 7] = (uint8_t)('0' + grant->subject_id / 10 % 10);
+        buffer[base + 8] = (uint8_t)('0' + grant->subject_id % 10);
+        buffer[base + 10] = 'O';
+        buffer[base + 11] = (uint8_t)('0' + grant->object_id / 10 % 10);
+        buffer[base + 12] = (uint8_t)('0' + grant->object_id % 10);
+        if (grant->object_id == UINT64_MAX) {
+            buffer[base + 10] = 'W';
+            buffer[base + 11] = 'S';
+            buffer[base + 12] = ' ';
+        }
+        buffer[base + 14] = 'A';
+        ++row;
+        ++visible;
+    }
+    (void)sexos_pdx_call(SLOT_DISPLAY, OP_TEXT_CLEAR, SURFACE_ID_COLLAR, 0, 0);
+    bool accepted =
+        shell_draw_text(SURFACE_ID_COLLAR, buffer, sizeof buffer, UINT64_C(0x00E8FFFF), NULL);
+    uint32_t *budget =
+        &SILK_SHELL_STATE.models.collar_render_grants_text__COLLAR_GRANTS_TEXT_BUDGET;
+    if (*budget != 0) {
+        --*budget;
+        sexos_line(\"[collar.grants.render.ok] grants=%u ok=%u\", (unsigned)total,
+                   (unsigned)accepted);
+    }
 }
+
 bool open_linen_object_in_quil(uint64_t object_id) {
-  sexos_line(\"[linen.quil.open.request] id=%llu\", (unsigned long long) object_id);
-  LinenObject object;
-  if (!linen_object_by_id(object_id, &object)) {
-    sexos_line(\"[linen.quil.open.reject.missing] id=%llu\", (unsigned long long) object_id);
-    return false;
-  }
-  if(object.disk_path!=0 && object.disk_path<3){sexos_line(\"[linen.quil.open.reject.workspace] object=%llu disk_path=%u protected=1\",(unsigned long long)object_id,(unsigned)object.disk_path);return false;}
-  if (object.grant_ref == 0) sexos_line(\"[linen.quil.open.no_grant] id=%llu kind=%u\", (unsigned long long) object_id, (unsigned) object.kind);
-  uint8_t capability = collar_check_operation(COLLAR_OP_ACCESS_SEXFILES, SILK_SHELL_STATE.chrome.FOCUSED_SURFACE_ID, 0);
-  if (capability != COLLAR_DECISION_ALLOW) {
-    sexos_line(\"[linen.quil.open.reject.cap] op=AccessSexFiles decision=%u\", (unsigned) capability);
-    return false;
-  }
-  uint8_t decision = collar_check_operation(COLLAR_OP_LINK_OBJECT_TO_BUFFER, object_id, 0);
-  if (decision != COLLAR_DECISION_ALLOW) {
-    sexos_line(\"[linen.quil.open.reject.collar] decision=%u\", (unsigned) decision);
-    return false;
-  }
-  uint8_t kind = QUIL_BUF_KIND_TEXT;
-  if (object.kind == LINEN_OBJ_KIND_CODE_FILE) kind = QUIL_BUF_KIND_CODE;
-  else if (object.kind == LINEN_OBJ_KIND_MEDIA_ASSET) kind = QUIL_BUF_KIND_LINEN_OBJECT_VIEW;
-  else if (object.kind == LINEN_OBJ_KIND_BUILD_ARTIFACT) kind = QUIL_BUF_KIND_BUILD_OUTPUT;
-  uint64_t dynamic_id = QUIL_DYNAMIC_BUFFER_ID_BASE + object_id;
-  uint64_t linked_id = dynamic_id;
-  bool created = false;
-  bool found = false;
-  for (size_t i = 0; i < QUIL_MAX_BUFFERS; ++i) {
-    QuilBuffer *buffer = &SILK_SHELL_STATE.models.QUIL_BUFFERS[i];
-    if (buffer->present && buffer->linen_object_ref == object_id) {
-      buffer->state = QUIL_BUF_STATE_OPEN;
-      buffer->linked_surface_id = SURFACE_ID_QUIL;
-      found = true;
-      linked_id = buffer->buffer_id;
-      sexos_line(\"[linen.quil.open.reuse_existing] object_id=%llu buffer_id=%llu\", (unsigned long long) object_id, (unsigned long long) buffer->buffer_id);
-      break;
-    }
-  }
-  if (!found) {
-    for (size_t i = 0; i < QUIL_MAX_BUFFERS; ++i) {
-      const QuilBuffer *buffer = &SILK_SHELL_STATE.models.QUIL_BUFFERS[i];
-      if (buffer->present && buffer->buffer_id == dynamic_id && buffer->linen_object_ref != object_id) {
-        sexos_line(\"[linen.quil.open.reject.buffer_id_collision] dynamic_id=%llu existing_ref=%llu\", (unsigned long long) dynamic_id, (unsigned long long) buffer->linen_object_ref);
+    sexos_line(\"[linen.quil.open.request] id=%llu\", (unsigned long long)object_id);
+    LinenObject object;
+    if (!linen_object_by_id(object_id, &object)) {
+        sexos_line(\"[linen.quil.open.reject.missing] id=%llu\", (unsigned long long)object_id);
         return false;
-      }
     }
+    if (object.disk_path != 0 && object.disk_path < 3) {
+        sexos_line(\"[linen.quil.open.reject.workspace] object=%llu disk_path=%u protected=1\",
+                   (unsigned long long)object_id, (unsigned)object.disk_path);
+        return false;
+    }
+    if (object.grant_ref == 0)
+        sexos_line(\"[linen.quil.open.no_grant] id=%llu kind=%u\", (unsigned long long)object_id,
+                   (unsigned)object.kind);
+    uint8_t capability = collar_check_operation(COLLAR_OP_ACCESS_SEXFILES,
+                                                SILK_SHELL_STATE.chrome.FOCUSED_SURFACE_ID, 0);
+    if (capability != COLLAR_DECISION_ALLOW) {
+        sexos_line(\"[linen.quil.open.reject.cap] op=AccessSexFiles decision=%u\",
+                   (unsigned)capability);
+        return false;
+    }
+    uint8_t decision = collar_check_operation(COLLAR_OP_LINK_OBJECT_TO_BUFFER, object_id, 0);
+    if (decision != COLLAR_DECISION_ALLOW) {
+        sexos_line(\"[linen.quil.open.reject.collar] decision=%u\", (unsigned)decision);
+        return false;
+    }
+    uint8_t kind = QUIL_BUF_KIND_TEXT;
+    if (object.kind == LINEN_OBJ_KIND_CODE_FILE)
+        kind = QUIL_BUF_KIND_CODE;
+    else if (object.kind == LINEN_OBJ_KIND_MEDIA_ASSET)
+        kind = QUIL_BUF_KIND_LINEN_OBJECT_VIEW;
+    else if (object.kind == LINEN_OBJ_KIND_BUILD_ARTIFACT)
+        kind = QUIL_BUF_KIND_BUILD_OUTPUT;
+    uint64_t dynamic_id = QUIL_DYNAMIC_BUFFER_ID_BASE + object_id;
+    uint64_t linked_id = dynamic_id;
+    bool created = false;
+    bool found = false;
     for (size_t i = 0; i < QUIL_MAX_BUFFERS; ++i) {
-      QuilBuffer *buffer = &SILK_SHELL_STATE.models.QUIL_BUFFERS[i];
-      if (!buffer->present) {
-        sexos_line(\"[linen.quil.open.dynamic_id] object_id=%llu dynamic_buffer_id=%llu\", (unsigned long long) object_id, (unsigned long long) dynamic_id);
-        *buffer = (QuilBuffer) {
-          .present = true,.buffer_id = dynamic_id,.kind = kind,.state = QUIL_BUF_STATE_OPEN,.linen_object_ref = object_id,.project_id = object.project_id,.grant_ref = object.grant_ref,.linked_surface_id = SURFACE_ID_QUIL,.display_name = object.display_name,
-        };
-        created = true;
-        found = true;
-        break;
-      }
+        QuilBuffer *buffer = &SILK_SHELL_STATE.models.QUIL_BUFFERS[i];
+        if (buffer->present && buffer->linen_object_ref == object_id) {
+            buffer->state = QUIL_BUF_STATE_OPEN;
+            buffer->linked_surface_id = SURFACE_ID_QUIL;
+            found = true;
+            linked_id = buffer->buffer_id;
+            sexos_line(\"[linen.quil.open.reuse_existing] object_id=%llu buffer_id=%llu\",
+                       (unsigned long long)object_id, (unsigned long long)buffer->buffer_id);
+            break;
+        }
     }
-  }
-  if (!found) {
-    sexos_line(\"[linen.quil.open.reject.full] object_id=%llu\", (unsigned long long) object_id);
-    return false;
-  }
-  for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) {
-    LinenObject *entry = &SILK_SHELL_STATE.models.LINEN_OBJECTS[i];
-    if (entry->present && entry->object_id == object_id) {
-      entry->linked_surface_id = SURFACE_ID_QUIL;
-      break;
+    if (!found) {
+        for (size_t i = 0; i < QUIL_MAX_BUFFERS; ++i) {
+            const QuilBuffer *buffer = &SILK_SHELL_STATE.models.QUIL_BUFFERS[i];
+            if (buffer->present && buffer->buffer_id == dynamic_id &&
+                buffer->linen_object_ref != object_id) {
+                sexos_line(
+                    \"[linen.quil.open.reject.buffer_id_collision] dynamic_id=%llu existing_ref=%llu\",
+                    (unsigned long long)dynamic_id, (unsigned long long)buffer->linen_object_ref);
+                return false;
+            }
+        }
+        for (size_t i = 0; i < QUIL_MAX_BUFFERS; ++i) {
+            QuilBuffer *buffer = &SILK_SHELL_STATE.models.QUIL_BUFFERS[i];
+            if (!buffer->present) {
+                sexos_line(\"[linen.quil.open.dynamic_id] object_id=%llu dynamic_buffer_id=%llu\",
+                           (unsigned long long)object_id, (unsigned long long)dynamic_id);
+                *buffer = (QuilBuffer){
+                    .present = true,
+                    .buffer_id = dynamic_id,
+                    .kind = kind,
+                    .state = QUIL_BUF_STATE_OPEN,
+                    .linen_object_ref = object_id,
+                    .project_id = object.project_id,
+                    .grant_ref = object.grant_ref,
+                    .linked_surface_id = SURFACE_ID_QUIL,
+                    .display_name = object.display_name,
+                };
+                created = true;
+                found = true;
+                break;
+            }
+        }
     }
-  }
-  sexos_line(\"[linen.quil.buffer.linked] object_id=%llu buffer_id=%llu kind=%u\", (unsigned long long) object_id, (unsigned long long) linked_id, (unsigned) kind);
-  if (object.disk_path > 0) {
-    uint64_t path = (uint64_t) object.disk_path - 1;
-    (void) sexos_pdx_call(SLOT_QUIL, OP_QUIL_OPEN_DISK_DOC, object_id, path == 2 ? 0 : path, 0);
-    sexos_line(\"[linen.quil.disk_doc.intent] object_id=%llu path_id=%llu ok=1\", (unsigned long long) object_id, (unsigned long long) path);
-  }
-  if (open_quil_in_active_scene()) sexos_line(\"[linen.quil.quil_opened] object_id=%llu\", (unsigned long long) object_id);
-  sexos_line(\"[linen.quil.done] object_id=%llu buffer_created=%s\", (unsigned long long) object_id, created ? \"true\" : \"false\");
-  mesh_emit_linen_quil_links();
-  bell_emit_object_link_event(object_id, linked_id);
-  quil_render_buffer_list();
-  return true;
-}")
+    if (!found) {
+        sexos_line(\"[linen.quil.open.reject.full] object_id=%llu\", (unsigned long long)object_id);
+        return false;
+    }
+    for (size_t i = 0; i < LINEN_MAX_OBJECTS; ++i) {
+        LinenObject *entry = &SILK_SHELL_STATE.models.LINEN_OBJECTS[i];
+        if (entry->present && entry->object_id == object_id) {
+            entry->linked_surface_id = SURFACE_ID_QUIL;
+            break;
+        }
+    }
+    sexos_line(\"[linen.quil.buffer.linked] object_id=%llu buffer_id=%llu kind=%u\",
+               (unsigned long long)object_id, (unsigned long long)linked_id, (unsigned)kind);
+    if (object.disk_path > 0) {
+        uint64_t path = (uint64_t)object.disk_path - 1;
+        (void)sexos_pdx_call(SLOT_QUIL, OP_QUIL_OPEN_DISK_DOC, object_id, path == 2 ? 0 : path, 0);
+        sexos_line(\"[linen.quil.disk_doc.intent] object_id=%llu path_id=%llu ok=1\",
+                   (unsigned long long)object_id, (unsigned long long)path);
+    }
+    if (open_quil_in_active_scene())
+        sexos_line(\"[linen.quil.quil_opened] object_id=%llu\", (unsigned long long)object_id);
+    sexos_line(\"[linen.quil.done] object_id=%llu buffer_created=%s\", (unsigned long long)object_id,
+               created ? \"true\" : \"false\");
+    mesh_emit_linen_quil_links();
+    bell_emit_object_link_event(object_id, linked_id);
+    quil_render_buffer_list();
+    return true;
+}
+")
     (fn void quil_render_buffer_list
       (void)
       (var uint32_t width (. (. SILK_SHELL_STATE input) SURFACE_201_W))

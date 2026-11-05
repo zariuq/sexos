@@ -8,6 +8,7 @@ import random
 import subprocess
 import sys
 import tempfile
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 MASK=(1<<64)-1
@@ -121,7 +122,7 @@ def main():
         ('lose_cleanup_frames','frames|=(uint8_t)(1u<<b.frame_index)','frames=0'),
     ];caught=[]
     if args.mutations:
-        original=source.read_text()
+        original=LayoutText(source.read_text())
         for name,before,after in mutations:
             assert before in original,(name,'anchor')
             try:

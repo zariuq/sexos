@@ -2,6 +2,7 @@
 """Compare checked asset geometry and bounded rendering with pinned Rust."""
 import argparse,hashlib,json,os,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent;REPO=HERE.parent;PIN="44053ea9b017fe89008413f7cc8a6b1a4d28d015"
 def run(a,env=None):
  r=subprocess.run(list(map(str,a)),cwd=HERE,capture_output=True,env=env)
@@ -39,7 +40,7 @@ mod view{\n'''+src.replace("//!","//")+'''\n}
    builds.append((cc,mode))
  mutations=[]
  if a.mutations:
-  base=exports["gcc"].read_text();changes=(("dimension","width>48","width>49"),("columns","columns--","columns=0"),("chrome","asset_columns(width)>=30","asset_columns(width)>=80"),("scale","if(factor>4)factor=4","if(factor>3)factor=3"),("actual-factor","factor=1;if(mode","factor=0;if(mode"))
+  base=LayoutText(exports["gcc"].read_text());changes=(("dimension","width>48","width>49"),("columns","columns--","columns=0"),("chrome","asset_columns(width)>=30","asset_columns(width)>=80"),("scale","if(factor>4)factor=4","if(factor>3)factor=3"),("actual-factor","factor=1;if(mode","factor=0;if(mode"))
   render=w/"render-gcc.c";common=["gcc","-std=c11","-O2","-Wall","-Wextra","-Wpedantic","-Werror","-Igenerated/include","-I",w]
   for name,old,new in changes:
    assert base.count(old)>=1,(name,base.count(old));m=w/f"mutant-{name}.c";m.write_text(base.replace(old,new,1));b=w/f"mutant-{name}";built=subprocess.run([*common,host,m,render,"-o",b],cwd=HERE,capture_output=True)

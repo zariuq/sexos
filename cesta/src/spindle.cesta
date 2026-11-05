@@ -788,7 +788,7 @@
       (if (call slice_eq cmd "calc")
         (block
           (var SpindleCalcInput input (init 0))
-          (if (> (. args len) SPINDLE_CALC_INPUT_MAX)
+          (if (> (. args len) SPINDLE_CALC_COMMAND_MAX)
             (= (. input too_long) true)
             (block
               (= (. input len) (. args len))

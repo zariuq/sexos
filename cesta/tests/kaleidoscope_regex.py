@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -115,7 +116,7 @@ def main():
             builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = exported["gcc"].read_text()
+        base = LayoutText(exported["gcc"].read_text())
         changes = [
             ("step-budget", "RE_STEPS UINT32_C(200000)", "RE_STEPS UINT32_C(20)"),
             ("any-newline", "text->bytes[pos]!='\\n'", "true"),

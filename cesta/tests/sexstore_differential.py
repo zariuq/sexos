@@ -39,6 +39,7 @@ import random
 import shutil
 
 from differential_support import LISTEN, first_difference, pinned_function, run
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -452,7 +453,7 @@ def main():
                                "(= (-> slot state) SLOT_TOMBSTONED)"),
     ]
     for number, (part, unit, old_text, new_text) in enumerate(mutations):
-        original = (HERE / "src" / f"{unit}.cesta").read_text()
+        original = LayoutText((HERE / "src" / f"{unit}.cesta").read_text())
         assert original.count(old_text) == 1, old_text
         mutant = work / f"{unit}-mutant-{number}.cesta"
         mutant.write_text(original.replace(old_text, new_text))

@@ -1,35 +1,87 @@
-(cesta native-c/1 compact-c/2 (unit  (native "#ifndef SEXOS_SHELL_TEXT_DELIVERY_H
+(cesta native-c/1 compact-c/2 (unit  (native "
+#ifndef SEXOS_SHELL_TEXT_DELIVERY_H
 #define SEXOS_SHELL_TEXT_DELIVERY_H
 #include \"sexos_client.h\"
 #define SHELL_TEXT_CAPACITY ((size_t)512)
-typedef struct ShellTextBytes {uint8_t bytes[512];size_t len;} ShellTextBytes;
-typedef struct ShellTextMetadata {size_t count,first,rows;uint64_t selected;} ShellTextMetadata;
-typedef struct ShellTextReceipt {ShellTextMetadata metadata;size_t bytes;} ShellTextReceipt;
-typedef struct ShellTextOperation {uint64_t opcode,surface,packed,control;} ShellTextOperation;
-typedef struct ShellTextAdmission {uint8_t kind;uint64_t status;} ShellTextAdmission;
-enum {SHELL_TEXT_ACCEPTED=0,SHELL_TEXT_FULL=1,SHELL_TEXT_REJECTED=2};
-typedef struct ShellTextPoll {uint8_t kind;ShellTextReceipt receipt;uint64_t status;} ShellTextPoll;
-enum {SHELL_TEXT_IDLE=0,SHELL_TEXT_PENDING=1,SHELL_TEXT_DEFERRED=2,SHELL_TEXT_COMPLETE=3,SHELL_TEXT_FAILED=4};
+
+typedef struct ShellTextBytes {
+    uint8_t bytes[512];
+    size_t len;
+} ShellTextBytes;
+
+typedef struct ShellTextMetadata {
+    size_t count, first, rows;
+    uint64_t selected;
+} ShellTextMetadata;
+
+typedef struct ShellTextReceipt {
+    ShellTextMetadata metadata;
+    size_t bytes;
+} ShellTextReceipt;
+
+typedef struct ShellTextOperation {
+    uint64_t opcode, surface, packed, control;
+} ShellTextOperation;
+
+typedef struct ShellTextAdmission {
+    uint8_t kind;
+    uint64_t status;
+} ShellTextAdmission;
+
+enum {
+    SHELL_TEXT_ACCEPTED = 0,
+    SHELL_TEXT_FULL = 1,
+    SHELL_TEXT_REJECTED = 2
+};
+
+typedef struct ShellTextPoll {
+    uint8_t kind;
+    ShellTextReceipt receipt;
+    uint64_t status;
+} ShellTextPoll;
+
+enum {
+    SHELL_TEXT_IDLE = 0,
+    SHELL_TEXT_PENDING = 1,
+    SHELL_TEXT_DEFERRED = 2,
+    SHELL_TEXT_COMPLETE = 3,
+    SHELL_TEXT_FAILED = 4
+};
+
 typedef struct ShellTextBatch {
-    ShellTextBytes text;uint32_t color;ShellTextMetadata metadata;
-    bool cleared;size_t offset;uint32_t sequence;bool awaiting;
-    uint16_t selection_start,selection_end;bool selection_sent;
+    ShellTextBytes text;
+    uint32_t color;
+    ShellTextMetadata metadata;
+    bool cleared;
+    size_t offset;
+    uint32_t sequence;
+    bool awaiting;
+    uint16_t selection_start, selection_end;
+    bool selection_sent;
 } ShellTextBatch;
+
 typedef struct ShellTextOutbox {
-    uint64_t surface;bool active,latest;ShellTextBatch current,desired;
-    bool atomic;uint32_t sequence;
+    uint64_t surface;
+    bool active, latest;
+    ShellTextBatch current, desired;
+    bool atomic;
+    uint32_t sequence;
 } ShellTextOutbox;
+
 bool shell_text_valid(const ShellTextBytes *text);
-bool shell_text_boundary(const ShellTextBytes *text,size_t at);
+bool shell_text_boundary(const ShellTextBytes *text, size_t at);
 uint64_t shell_text_hash(const ShellTextBytes *text);
-uint64_t shell_text_selected_hash(const ShellTextBytes *text,uint16_t start,uint16_t end);
-ShellTextOutbox shell_text_new(uint64_t surface,bool atomic);
-bool shell_text_queue_selected(ShellTextOutbox *out,const ShellTextBytes *text,uint32_t color,ShellTextMetadata metadata,uint16_t start,uint16_t end);
-bool shell_text_queue(ShellTextOutbox *out,const ShellTextBytes *text,uint32_t color,ShellTextMetadata metadata);
+uint64_t shell_text_selected_hash(const ShellTextBytes *text, uint16_t start, uint16_t end);
+ShellTextOutbox shell_text_new(uint64_t surface, bool atomic);
+bool shell_text_queue_selected(ShellTextOutbox *out, const ShellTextBytes *text, uint32_t color,
+                               ShellTextMetadata metadata, uint16_t start, uint16_t end);
+bool shell_text_queue(ShellTextOutbox *out, const ShellTextBytes *text, uint32_t color,
+                      ShellTextMetadata metadata);
 bool shell_text_pending(const ShellTextOutbox *out);
 void shell_text_cancel(ShellTextOutbox *out);
-bool shell_text_receive(ShellTextOutbox *out,uint32_t caller,uint64_t value,ShellTextReceipt *receipt);
-ShellTextPoll shell_text_poll(ShellTextOutbox *out,size_t budget);
+bool shell_text_receive(ShellTextOutbox *out, uint32_t caller, uint64_t value,
+                        ShellTextReceipt *receipt);
+ShellTextPoll shell_text_poll(ShellTextOutbox *out, size_t budget);
 ShellTextAdmission shell_text_display_admit(ShellTextOperation operation);
 void shell_text_native_erase(ShellTextBatch *batch);
 #endif

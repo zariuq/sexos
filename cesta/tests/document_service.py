@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 PIN = "44053ea9b017fe89008413f7cc8a6b1a4d28d015"
@@ -63,7 +64,7 @@ def main():
 
     mutations = []
     if args.mutations:
-        base = sources["gcc"].read_text()
+        base = LayoutText(sources["gcc"].read_text())
         changes = [
             ("caller-authority", "size_t index=document_target_index(caller);if(index==SIZE_MAX)return(DocumentServiceResult)", "size_t index=document_target_index(caller);if(false)return(DocumentServiceResult)"),
             ("live-authority", "session->dead||!live", "session->dead&&live"),

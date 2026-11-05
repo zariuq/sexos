@@ -31,6 +31,7 @@ from pathlib import Path
 import random
 import re
 import shutil
+from layout_text import LayoutText
 
 from differential_support import (
     C_MAIN,
@@ -939,7 +940,7 @@ def main():
         )
 
     for number, (unit, v_idx, old_text, new_text) in enumerate(mutations):
-        original = (HERE / "src" / f"{unit}.cesta").read_text()
+        original = LayoutText((HERE / "src" / f"{unit}.cesta").read_text())
         assert original.count(old_text) == 1, (unit, old_text)
         mutant = work / f"mutant-{number}.cesta"
         mutant.write_text(original.replace(old_text, new_text))

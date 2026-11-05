@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -55,7 +56,7 @@ def main():
             builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = sources["gcc"].read_text(); dependencies = [work / "document_protocol-gcc.c", work / "document_service-gcc.c"]
+        base = LayoutText(sources["gcc"].read_text()); dependencies = [work / "document_protocol-gcc.c", work / "document_service-gcc.c"]
         changes = [
             ("opcode", "request->message.type_id!=SEXOS_DOCUMENT_OP", "false"),
             ("strong-mode", "state->correlated_required&&!request->id", "false"),

@@ -2,6 +2,7 @@
 """Qualify the held-capability/MMIO adapter for kernel device reset epochs."""
 import argparse,hashlib,json,subprocess,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(argv):
     result=subprocess.run(list(map(str,argv)),cwd=HERE,capture_output=True)
@@ -41,7 +42,7 @@ def main():
       ('epoch_record','receipt.status==DEVICE_RESET_OK && action!=DEVICE_RESET_QUERY','receipt.status==DEVICE_RESET_OK && false'),
     ];caught=[]
     if a.mutations:
-        original=adapter.read_text()
+        original=LayoutText(adapter.read_text())
         for name,before,after in changes:
             assert original.count(before)>=1,(name,'anchor')
             try:

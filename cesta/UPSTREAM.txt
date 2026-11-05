@@ -143,8 +143,8 @@ the same admission rule and cancels prepared metadata on refusal. Repeated
 completion and frame reuse keep their separate exact transaction identities.
 The current BOOT also checks actual captured tasks and held lifecycle, close,
 route, self and activation grants against the catalog before any user entry.
-The expanded catalog now includes eight finite Quil and eight finite Spindle incarnations, seventeen app
-entries and twenty-nine domain records. Sext's lifecycle lookup and pending
+The expanded catalog now includes sixteen finite Quil, nine finite Spindle and
+three Browser incarnations, twenty-eight app entries and forty domain records. Sext's lifecycle lookup and pending
 arrays share the catalog-derived bound; the tail must not retain a literal
 six-entry limit. Typed entropy, clock and trust source grants are described in
 SOURCES.txt. PCI command/configuration is implemented with separate component/CPU gates
@@ -156,3 +156,16 @@ The subsequent Display source delta retains typed completion custody, canonical
 text commit publication and covered-damage settlement. It is incorporated in
 source. Older Cesta Display/Browser behavior and image evidence are not silently
 relabeled as implementing that delta.
+
+Proposed upstream change
+------------------------
+
+The sexcos branch adds exact complex values to Spindle's calc on top of the
+pinned source: a number with an i suffix is imaginary, re, im and conj take a
+value apart, norm and abs measure it, interfere(a, b) is
+|a+b|^2 - |a|^2 - |b|^2, and whole complex results show in hex, bin and oct.
+The Cesta calculator follows that branch. tests/spindle_calc_current.py reads
+the branch's calc_command.rs by the blob and SHA-256 recorded in
+interfaces/spindle_calc_current.source.json, checks that it gives the pinned
+answer on generated inputs without the new syntax, and compares the checked
+Cesta unit with it. A pin that includes the change replaces the branch.

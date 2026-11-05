@@ -2,6 +2,7 @@
 """Actual workspace memory, rotation, guards and overflow against upstream Rust."""
 import argparse,hashlib,json,re,subprocess,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(command,**kw):
     p=subprocess.run(list(map(str,command)),cwd=HERE,capture_output=True,**kw)
@@ -37,7 +38,7 @@ def main():
     mutations=[('skip_zero','for(uint64_t i=0;i<bytes;++i)p[i]=0;','for(uint64_t i=0;i<bytes;++i)p[i]=0xa5;'),
                ('rewind_count','void sext_workspace_rewind(SextWorkspace *w){w->next=0;}','void sext_workspace_rewind(SextWorkspace *w){w->next=0;w->records=0;}'),
                ('record_wrap','if(w->records==UINT64_MAX)','if(false)')]
-    original=exported.read_text();killed=[]
+    original=LayoutText(exported.read_text());killed=[]
     for name,before,after in mutations:
         assert original.count(before)==1,(name,'anchor')
         mutant=work/(name+'.c');mutant.write_text(original.replace(before,after));binary=work/name

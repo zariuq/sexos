@@ -13,6 +13,7 @@ import argparse
 from pathlib import Path
 import shutil
 import subprocess
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -320,7 +321,7 @@ def main():
                                  f"  c:    {a[first] if first < len(a) else '<end>'}")
         lines += len(expected.splitlines())
     # Controls: each small change to the translation must change some result.
-    model = (HERE / "src/silkbar_model.cesta").read_text()
+    model = LayoutText((HERE / "src/silkbar_model.cesta").read_text())
     mutations = [
         ("(+ (& c 0xFFu) 0x22u)", "(+ (& c 0xFFu) 0x21u)"),
         ("(call min_u32 (. update a) 23)", "(call min_u32 (. update a) 22)"),

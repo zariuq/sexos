@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Qualify the bounded native PNG boundary against pinned Rust fixtures."""
 import argparse,hashlib,json,os,subprocess,tempfile
+from layout_text import LayoutText
 from pathlib import Path
 HERE=Path(__file__).resolve().parent.parent;REPO=HERE.parent;PIN="44053ea9b017fe89008413f7cc8a6b1a4d28d015"
 def run(a,input=None,env=None):
@@ -37,7 +38,7 @@ use std::io::Read;fn code(e:png::Error)->u8{match e{png::Error::Signature=>1,png
    builds.append((cc,mode))
  mutations=[]
  if a.mutations:
-  basec=exports["gcc"].read_text();changes=(("crc","png_crc(kind,data,length)!=png_be32","false&&png_crc(kind,data,length)!=png_be32"),("adler","adler!=png_adler","adler==png_adler"),("filter","add=pa<=pb&&pa<=pc?a:pb<=pc?b:c","add=0"),("split-idat","idat.started&&!previous_idat","idat.started"),("palette","pixel=palette[s0]","pixel=palette[0]"),("row-order","pixels->values[y*w+x]=pixel","pixels->values[x*h+y]=pixel"))
+  basec=LayoutText(exports["gcc"].read_text());changes=(("crc","png_crc(source,kind,length)!=png_be32","false&&png_crc(source,kind,length)!=png_be32"),("adler","adler!=png_adler","adler==png_adler"),("filter","add=pa<=pb&&pa<=pc?a:pb<=pc?b:c","add=0"),("split-idat","idat.started&&!previous_idat","idat.started"),("palette","pixel=palette[s0]","pixel=palette[0]"),("row-order","pixels->values[y*w+x]=pixel","pixels->values[x*h+y]=pixel"))
   common=["gcc","-std=c11","-O2","-Wall","-Wextra","-Wpedantic","-Werror","-Igenerated/include","-I",w]
   for name,old,new in changes:
    assert basec.count(old)>=1,(name,basec.count(old));m=w/f"mutant-{name}.c";m.write_text(basec.replace(old,new,1));b=w/f"mutant-{name}";built=subprocess.run([*common,host,m,"-o",b],cwd=HERE,capture_output=True)

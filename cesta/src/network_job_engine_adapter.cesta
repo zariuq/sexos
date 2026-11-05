@@ -1,28 +1,94 @@
 (cesta native-c/1 compact-c/2
  (unit
+  (ownership (check-all)
+    (unchecked (job_engine_abort job_engine_begin job_engine_finish job_engine_link
+                job_engine_queued job_engine_receive job_engine_send network_job_engine_wire)
+      (obligation "Adapter between a checked job machine and its wire records, whose reference-bearing aggregates have no field contracts yet. It relies on the checked machine owning the job state for the duration of each call.")))
   (include "network_job_engine.h")
   (native "
-static bool job_engine_begin(void *opaque,uint32_t ticket,uint32_t *error)
-{
- NetworkJobEngineContext *context=opaque;if(!context||!context->engine){*error=NETWORK_JOB_OFFLINE;return false;}
- NetworkEngineError result=network_engine_transport_begin_client(context->engine,ticket,context->tls);*error=network_job_engine_error_policy(result);return result==NETWORK_ENGINE_OK;
+static bool job_engine_begin(void *opaque, uint32_t ticket, uint32_t *error) {
+    NetworkJobEngineContext *context = opaque;
+    if (!context || !context->engine) {
+        *error = NETWORK_JOB_OFFLINE;
+        return false;
+    }
+    NetworkEngineError result =
+        network_engine_transport_begin_client(context->engine, ticket, context->tls);
+    *error = network_job_engine_error_policy(result);
+    return result == NETWORK_ENGINE_OK;
 }
-static bool job_engine_receive(void *opaque,uint8_t *out,size_t capacity,size_t *count,uint32_t *error)
-{
- NetworkJobEngineContext *context=opaque;if(!context||!context->engine||!out||capacity>NETWORK_TCP_TURN_BYTES){*error=NETWORK_JOB_IO;return false;}
- NetworkTcpClientReceive result=network_engine_transport_client_receive(context->engine,capacity);if(!result.ok){*error=NETWORK_JOB_IO;return false;}
- for(size_t i=0;i<result.count;i++){out[i]=result.bytes[i];}
- *count=result.count;*error=0;return true;
+
+static bool job_engine_receive(void *opaque, uint8_t *out, size_t capacity, size_t *count,
+                               uint32_t *error) {
+    NetworkJobEngineContext *context = opaque;
+    if (!context || !context->engine || !out || capacity > NETWORK_TCP_TURN_BYTES) {
+        *error = NETWORK_JOB_IO;
+        return false;
+    }
+    NetworkTcpClientReceive result =
+        network_engine_transport_client_receive(context->engine, capacity);
+    if (!result.ok) {
+        *error = NETWORK_JOB_IO;
+        return false;
+    }
+    for (size_t i = 0; i < result.count; i++) {
+        out[i] = result.bytes[i];
+    }
+    *count = result.count;
+    *error = 0;
+    return true;
 }
-static bool job_engine_send(void *opaque,const uint8_t *data,size_t length,size_t *count,uint32_t *error)
-{
- NetworkJobEngineContext *context=opaque;if(!context||!context->engine||(!data&&length)||length>NETWORK_TCP_TURN_BYTES){*error=NETWORK_JOB_IO;return false;}
- NetworkEnginePayload payload={0};payload.len=length;for(size_t i=0;i<length;i++)payload.bytes[i]=data[i];NetworkTcpClientCount result=network_engine_transport_client_send(context->engine,&payload);if(!result.ok){*error=NETWORK_JOB_IO;return false;}*count=result.count;*error=0;return true;
+
+static bool job_engine_send(void *opaque, const uint8_t *data, size_t length, size_t *count,
+                            uint32_t *error) {
+    NetworkJobEngineContext *context = opaque;
+    if (!context || !context->engine || (!data && length) || length > NETWORK_TCP_TURN_BYTES) {
+        *error = NETWORK_JOB_IO;
+        return false;
+    }
+    NetworkEnginePayload payload = {0};
+    payload.len = length;
+    for (size_t i = 0; i < length; i++)
+        payload.bytes[i] = data[i];
+    NetworkTcpClientCount result = network_engine_transport_client_send(context->engine, &payload);
+    if (!result.ok) {
+        *error = NETWORK_JOB_IO;
+        return false;
+    }
+    *count = result.count;
+    *error = 0;
+    return true;
 }
-static size_t job_engine_queued(void *opaque){NetworkJobEngineContext *context=opaque;return context&&context->engine?network_engine_transport_client_queued(context->engine):0;}
-static NetworkJobLink job_engine_link(void *opaque){NetworkJobEngineContext *context=opaque;if(!context||!context->engine)return NETWORK_JOB_LINK_CLOSED;NetworkEngineTransportSnapshot s=network_engine_transport_snapshot(context->engine);return network_job_engine_link_policy(s.client_pending,s.base.stopped,s.client.state,s.client.peer_fin);}
-static void job_engine_finish(void *opaque){NetworkJobEngineContext *context=opaque;if(context&&context->engine)network_engine_transport_client_finish(context->engine);}
-static void job_engine_abort(void *opaque){NetworkJobEngineContext *context=opaque;if(context&&context->engine)network_engine_transport_client_abort(context->engine);}
-NetworkJobWire network_job_engine_wire(NetworkJobEngineContext *context)
-{return(NetworkJobWire){context,job_engine_begin,job_engine_receive,job_engine_send,job_engine_queued,job_engine_link,job_engine_finish,job_engine_abort};}
+
+static size_t job_engine_queued(void *opaque) {
+    NetworkJobEngineContext *context = opaque;
+    return context && context->engine ? network_engine_transport_client_queued(context->engine) : 0;
+}
+
+static NetworkJobLink job_engine_link(void *opaque) {
+    NetworkJobEngineContext *context = opaque;
+    if (!context || !context->engine)
+        return NETWORK_JOB_LINK_CLOSED;
+    NetworkEngineTransportSnapshot s = network_engine_transport_snapshot(context->engine);
+    return network_job_engine_link_policy(s.client_pending, s.base.stopped, s.client.state,
+                                          s.client.peer_fin);
+}
+
+static void job_engine_finish(void *opaque) {
+    NetworkJobEngineContext *context = opaque;
+    if (context && context->engine)
+        network_engine_transport_client_finish(context->engine);
+}
+
+static void job_engine_abort(void *opaque) {
+    NetworkJobEngineContext *context = opaque;
+    if (context && context->engine)
+        network_engine_transport_client_abort(context->engine);
+}
+
+NetworkJobWire network_job_engine_wire(NetworkJobEngineContext *context) {
+    return (NetworkJobWire){context,           job_engine_begin,  job_engine_receive,
+                            job_engine_send,   job_engine_queued, job_engine_link,
+                            job_engine_finish, job_engine_abort};
+}
 ")))

@@ -1,8 +1,18 @@
+
 #ifndef SEXOS_SHELL_ATLAS_H
 #define SEXOS_SHELL_ATLAS_H
 #include "silk_shell.h"
-typedef struct { uint8_t bytes[ATLAS_LABEL_LEN]; } ShellAtlasLabel;
-typedef struct ShellAtlasContext { SilkShellAtlasState *atlas; SilkShellChromeState *chrome; SilkShellModelsState *models; } ShellAtlasContext;
+
+typedef struct {
+    uint8_t bytes[ATLAS_LABEL_LEN];
+} ShellAtlasLabel;
+
+typedef struct ShellAtlasContext {
+    SilkShellAtlasState *atlas;
+    SilkShellChromeState *chrome;
+    SilkShellModelsState *models;
+} ShellAtlasContext;
+
 void shell_atlas_collect_atlas_snapshot(ShellAtlasContext *ctx);
 bool shell_atlas_surface_in_active_scene(ShellAtlasContext *ctx, uint64_t sid);
 bool shell_atlas_surface_scene_id(ShellAtlasContext *ctx, uint64_t sid, uint8_t *out_scene_id);
@@ -20,8 +30,10 @@ void shell_atlas_atlas_capture_snapshot(ShellAtlasContext *ctx);
 bool shell_atlas_atlas_is_enabled(ShellAtlasContext *ctx);
 void shell_atlas_atlas_toggle(ShellAtlasContext *ctx);
 void shell_atlas_atlas_exit(ShellAtlasContext *ctx);
-void shell_atlas_atlas_card_pos(ShellAtlasContext *ctx, size_t scene_idx, uint32_t cw, int32_t *out_x, int32_t *out_y, uint32_t *out_w, uint32_t *out_h);
-bool shell_atlas_atlas_scene_at_point(ShellAtlasContext *ctx, int32_t px, int32_t py, uint8_t *out_scene_id);
+void shell_atlas_atlas_card_pos(ShellAtlasContext *ctx, size_t scene_idx, uint32_t cw,
+                                int32_t *out_x, int32_t *out_y, uint32_t *out_w, uint32_t *out_h);
+bool shell_atlas_atlas_scene_at_point(ShellAtlasContext *ctx, int32_t px, int32_t py,
+                                      uint8_t *out_scene_id);
 bool shell_atlas_handle_atlas_keyboard(ShellAtlasContext *ctx, uint8_t scancode);
 void shell_atlas_atlas_render_stub(ShellAtlasContext *ctx);
 void shell_atlas_atlas_clear_stub(ShellAtlasContext *ctx);
@@ -30,7 +42,8 @@ void shell_atlas_switch_scene(ShellAtlasContext *ctx, uint8_t scene_idx);
 void shell_atlas_next_scene(ShellAtlasContext *ctx);
 void shell_atlas_prev_scene(ShellAtlasContext *ctx);
 bool shell_atlas_atlas_cycle_scene(ShellAtlasContext *ctx, int32_t delta, const char *reason);
-bool shell_atlas_next_frame_in_scene(ShellAtlasContext *ctx, uint32_t start_frame_id, bool forward, uint32_t *out_frame_id);
+bool shell_atlas_next_frame_in_scene(ShellAtlasContext *ctx, uint32_t start_frame_id, bool forward,
+                                     uint32_t *out_frame_id);
 void shell_atlas_focus_next_frame(ShellAtlasContext *ctx);
 void shell_atlas_focus_prev_frame(ShellAtlasContext *ctx);
 void shell_atlas_focus_next_tab(ShellAtlasContext *ctx);
@@ -38,8 +51,10 @@ void shell_atlas_focus_prev_tab(ShellAtlasContext *ctx);
 bool shell_atlas_toggle_minimize_focused_frame(ShellAtlasContext *ctx);
 bool shell_atlas_toggle_zoom_focused_frame(ShellAtlasContext *ctx);
 bool shell_atlas_close_focused_tab_or_frame_safe(ShellAtlasContext *ctx);
-bool shell_atlas_atlas_same_scene_drop_noop(ShellAtlasContext *ctx, uint32_t frame_id, uint8_t source_scene, uint8_t target_scene);
-bool shell_atlas_reparent_frame_to_scene(ShellAtlasContext *ctx, uint32_t frame_id, uint8_t target_scene, const char *reason);
+bool shell_atlas_atlas_same_scene_drop_noop(ShellAtlasContext *ctx, uint32_t frame_id,
+                                            uint8_t source_scene, uint8_t target_scene);
+bool shell_atlas_reparent_frame_to_scene(ShellAtlasContext *ctx, uint32_t frame_id,
+                                         uint8_t target_scene, const char *reason);
 bool shell_atlas_atlas_pointer_drag_begin_at(ShellAtlasContext *ctx, int32_t px, int32_t py);
 bool shell_atlas_atlas_pointer_drop_at(ShellAtlasContext *ctx, int32_t px, int32_t py);
 bool shell_atlas_atlas_pointer_drag_cancel(ShellAtlasContext *ctx, const char *reason);
@@ -47,14 +62,16 @@ uint8_t shell_atlas_snap_compute_checksum(ShellAtlasContext *ctx, const SceneLay
 void shell_atlas_snap_capture_layout(ShellAtlasContext *ctx);
 bool shell_atlas_snap_validate(ShellAtlasContext *ctx, const SceneLayoutSnapshot *snap);
 bool shell_atlas_snap_restore_layout(ShellAtlasContext *ctx);
-bool shell_atlas_peer_active_surface_for_frame(ShellAtlasContext *ctx, uint32_t frame, uint64_t *out);
+bool shell_atlas_peer_active_surface_for_frame(ShellAtlasContext *ctx, uint32_t frame,
+                                               uint64_t *out);
 bool shell_atlas_peer_surface_is_alive(ShellAtlasContext *ctx, uint64_t sid);
 bool shell_atlas_peer_surface_is_lifecycle_focusable(ShellAtlasContext *ctx, uint64_t sid);
 bool shell_atlas_peer_is_tombstoned(ShellAtlasContext *ctx, uint64_t sid);
 bool shell_atlas_peer_try_set_focus(ShellAtlasContext *ctx, uint64_t sid);
 bool shell_atlas_peer_lifecycle_state(ShellAtlasContext *ctx, uint64_t sid, uint8_t *out);
 bool shell_atlas_peer_set_lifecycle_state(ShellAtlasContext *ctx, uint64_t sid, uint8_t state);
-bool shell_atlas_peer_get_surface_bounds(ShellAtlasContext *ctx, uint64_t sid, int32_t *x, int32_t *y, uint32_t *w, uint32_t *h);
+bool shell_atlas_peer_get_surface_bounds(ShellAtlasContext *ctx, uint64_t sid, int32_t *x,
+                                         int32_t *y, uint32_t *w, uint32_t *h);
 bool shell_atlas_peer_make_focus_ref(ShellAtlasContext *ctx, uint64_t sid, FocusRef *out);
 bool shell_atlas_peer_focus_ref_is_current(ShellAtlasContext *ctx, const FocusRef *ref);
 bool shell_atlas_peer_selected_frame_id(ShellAtlasContext *ctx, uint32_t *out);
@@ -67,11 +84,12 @@ void shell_atlas_peer_launcher_focus_discard(ShellAtlasContext *ctx);
 void shell_atlas_peer_tile_active_scene_frames(ShellAtlasContext *ctx);
 void shell_atlas_peer_cycle_scene_render_token_preset(ShellAtlasContext *ctx);
 void shell_atlas_peer_cycle_prev_scene_render_token_preset(ShellAtlasContext *ctx);
-const char * shell_atlas_peer_get_preset_name(ShellAtlasContext *ctx, uint8_t idx);
+const char *shell_atlas_peer_get_preset_name(ShellAtlasContext *ctx, uint8_t idx);
 void shell_atlas_peer_apply_custom_tint_bundle(ShellAtlasContext *ctx, size_t idx);
 void shell_atlas_peer_resolve_scene_render_tokens(ShellAtlasContext *ctx, uint32_t *out);
 void shell_atlas_peer_push_token_preset(ShellAtlasContext *ctx, const uint32_t *tokens);
-bool shell_atlas_peer_send_silkbar_phase2_update(ShellAtlasContext *ctx, uint32_t kind, uint64_t a, uint64_t b);
+bool shell_atlas_peer_send_silkbar_phase2_update(ShellAtlasContext *ctx, uint32_t kind, uint64_t a,
+                                                 uint64_t b);
 size_t shell_atlas_peer_bell_ring_count(ShellAtlasContext *ctx);
 bool shell_atlas_peer_frame_is_minimized(ShellAtlasContext *ctx, uint32_t id);
 bool shell_atlas_peer_minimize_frame(ShellAtlasContext *ctx, uint32_t id);
@@ -80,9 +98,12 @@ bool shell_atlas_peer_toggle_zoom_frame(ShellAtlasContext *ctx, uint32_t id);
 bool shell_atlas_peer_switch_to_tab(ShellAtlasContext *ctx, uint32_t frame, uint32_t tab);
 bool shell_atlas_peer_is_closeable_surface(ShellAtlasContext *ctx, uint64_t sid);
 bool shell_atlas_peer_close_surface_from_frame_light(ShellAtlasContext *ctx, uint64_t sid);
-void shell_atlas_peer_clamp_position(ShellAtlasContext *ctx, int32_t x, int32_t y, uint32_t w, uint32_t h, int32_t *out_x, int32_t *out_y);
-void shell_atlas_peer_clamp_surface_size(ShellAtlasContext *ctx, int32_t x, int32_t y, uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h);
+void shell_atlas_peer_clamp_position(ShellAtlasContext *ctx, int32_t x, int32_t y, uint32_t w,
+                                     uint32_t h, int32_t *out_x, int32_t *out_y);
+void shell_atlas_peer_clamp_surface_size(ShellAtlasContext *ctx, int32_t x, int32_t y, uint32_t w,
+                                         uint32_t h, uint32_t *out_w, uint32_t *out_h);
 int32_t shell_atlas_peer_desktop_width(ShellAtlasContext *ctx);
 int32_t shell_atlas_peer_desktop_height(ShellAtlasContext *ctx);
-bool shell_atlas_peer_shell_custody_has_surface(ShellAtlasContext *ctx, uint64_t sid, bool terminal_only);
+bool shell_atlas_peer_shell_custody_has_surface(ShellAtlasContext *ctx, uint64_t sid,
+                                                bool terminal_only);
 #endif

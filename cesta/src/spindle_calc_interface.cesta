@@ -1,69 +1,91 @@
 (cesta native-c/1 compact-c/2
  (unit
-  (native "#ifndef SEXOS_SPINDLE_CALC_H
+  (native "
+#ifndef SEXOS_SPINDLE_CALC_H
 #define SEXOS_SPINDLE_CALC_H
 #include \"sexos_client.h\"
 #define SPINDLE_CALC_INPUT_MAX ((size_t)200)
+/* A whole Spindle command line fits; the 200-byte bound applies to the expression once a
+   trailing ` in hex|bin|oct` is split off. */
+#define SPINDLE_CALC_COMMAND_MAX ((size_t)256)
 #define SPINDLE_CALC_LINE_MAX ((size_t)64)
 __extension__ typedef __int128 SpindleCalcInt;
 __extension__ typedef unsigned __int128 SpindleCalcUInt;
+
 typedef enum SpindleCalcError {
- SPINDLE_CALC_SYNTAX=0,
- SPINDLE_CALC_DIVIDE_BY_ZERO=1,
- SPINDLE_CALC_OVERFLOW=2,
- SPINDLE_CALC_TOO_DEEP=3,
- SPINDLE_CALC_NO_ANSWER=4,
- SPINDLE_CALC_EXPONENT=5,
- SPINDLE_CALC_DOMAIN=6,
- SPINDLE_CALC_UNKNOWN=7,
- SPINDLE_CALC_NOT_WHOLE=8
+    SPINDLE_CALC_SYNTAX = 0,
+    SPINDLE_CALC_DIVIDE_BY_ZERO = 1,
+    SPINDLE_CALC_OVERFLOW = 2,
+    SPINDLE_CALC_TOO_DEEP = 3,
+    SPINDLE_CALC_NO_ANSWER = 4,
+    SPINDLE_CALC_EXPONENT = 5,
+    SPINDLE_CALC_DOMAIN = 6,
+    SPINDLE_CALC_UNKNOWN = 7,
+    SPINDLE_CALC_NOT_WHOLE = 8,
+    SPINDLE_CALC_NOT_REAL = 9
 } SpindleCalcError;
+
 typedef struct SpindleCalcInput {
- uint8_t bytes[SPINDLE_CALC_INPUT_MAX];
- size_t len;
- bool too_long;
+    uint8_t bytes[SPINDLE_CALC_COMMAND_MAX];
+    size_t len;
+    bool too_long;
 } SpindleCalcInput;
+
+/* The real part is scaled; imag is the imaginary part, zero for a real value. */
 typedef struct SpindleCalcValue {
- SpindleCalcInt scaled;
- bool inexact;
+    SpindleCalcInt scaled;
+    SpindleCalcInt imag;
+    bool inexact;
 } SpindleCalcValue;
+
 typedef struct SpindleCalcResult {
- bool ok;
- SpindleCalcValue value;
- SpindleCalcError error;
+    bool ok;
+    SpindleCalcValue value;
+    SpindleCalcError error;
 } SpindleCalcResult;
+
 typedef struct SpindleCalcLine {
- uint8_t bytes[SPINDLE_CALC_LINE_MAX];
- size_t len;
+    uint8_t bytes[SPINDLE_CALC_LINE_MAX];
+    size_t len;
 } SpindleCalcLine;
+
 #define SPINDLE_CALC_VARIABLES ((size_t)8)
+
 typedef struct SpindleCalcVariable {
- uint8_t name[8];
- uint8_t len;
- SpindleCalcInt value;
+    uint8_t name[8];
+    uint8_t len;
+    SpindleCalcInt value;
+    SpindleCalcInt imag;
 } SpindleCalcVariable;
+
 typedef struct SpindleCalcEnv {
- bool has_answer;
- SpindleCalcInt answer;
- SpindleCalcVariable variables[SPINDLE_CALC_VARIABLES];
- size_t count;
+    bool has_answer;
+    SpindleCalcInt answer;
+    SpindleCalcInt answer_imag;
+    SpindleCalcVariable variables[SPINDLE_CALC_VARIABLES];
+    size_t count;
 } SpindleCalcEnv;
+
 typedef struct SpindleCalcSessionResult {
- SpindleCalcResult result;
- uint32_t radix;
- bool assigned;
- uint8_t assigned_name[8];
- uint8_t assigned_len;
+    SpindleCalcResult result;
+    uint32_t radix;
+    bool assigned;
+    uint8_t assigned_name[8];
+    uint8_t assigned_len;
 } SpindleCalcSessionResult;
+
 typedef struct SpindleCalcRenderResult {
- bool ok;
- SpindleCalcLine line;
- SpindleCalcError error;
+    bool ok;
+    SpindleCalcLine line;
+    SpindleCalcError error;
 } SpindleCalcRenderResult;
-SpindleCalcResult spindle_calc_eval(const SpindleCalcInput *input,bool has_answer,SpindleCalcInt answer);
+
+SpindleCalcResult spindle_calc_eval(const SpindleCalcInput *input, bool has_answer,
+                                    SpindleCalcInt answer);
 SpindleCalcLine spindle_calc_render(SpindleCalcValue value);
 void spindle_calc_env_init(SpindleCalcEnv *env);
-SpindleCalcSessionResult spindle_calc_eval_session(const SpindleCalcInput *input,SpindleCalcEnv *env);
+SpindleCalcSessionResult spindle_calc_eval_session(const SpindleCalcInput *input,
+                                                   SpindleCalcEnv *env);
 SpindleCalcRenderResult spindle_calc_render_session(SpindleCalcSessionResult result);
 const char *spindle_calc_error_text(SpindleCalcError error);
 const char *spindle_calc_error_name(SpindleCalcError error);

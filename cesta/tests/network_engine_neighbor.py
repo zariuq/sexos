@@ -8,6 +8,7 @@ from pathlib import Path
 import random
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 BASIS=0xCBF29CE484222325;MASK=(1<<64)-1
@@ -140,7 +141,7 @@ def main():
             run(cmd+["--","-Igenerated/include"]);sources.append(out)
         for mode,flags in (("O0",["-O0"]),("O2",["-O2"]),("SAN",["-O1","-fsanitize=address,undefined","-fno-sanitize-recover=all","-fno-pie","-no-pie"])):
             binary=w/f"{cc}-{mode}";run([cc,"-std=c11","-Wall","-Wextra","-Wpedantic","-Werror",*flags,"-Igenerated/include",*sources,host,"-o",binary]);actual=run([binary],commands,env={**os.environ,"ASAN_OPTIONS":"detect_leaks=1:abort_on_error=1"});assert actual==expected,(cc,mode);configs.append({"compiler":cc,"mode":mode,"sha256":hashlib.sha256(actual).hexdigest()})
-    base=exports["gcc"].read_text();mutations=[("multicast-mac","(mac.bytes[0]&1)==0","true"),("target-local","packet.target_ip!=config.local","false"),("sender-onlink","!net_config_contains(config,packet.sender_ip)","false"),("expiry-overflow","UINT64_MAX-now<NETWORK_NEIGHBOR_LIFETIME","false"),("expiry-edge","now>=table->entries[i].expires","now>table->entries[i].expires"),("lru-direction","last_used<table->entries[selected].last_used","last_used>table->entries[selected].last_used"),("route-next-hop","on_link?destination:config.gateway","destination"),("probe-interval","now+NETWORK_NEIGHBOR_PROBE_INTERVAL","now+1"),("probe-clear","if(table->probe_present&&table->probe_address==packet.sender_ip)","if(false)"),("touch-hit","table->entries[i].last_used=now","table->entries[i].last_used=0")];caught=[];prefix=[w/"network_config-gcc.c",w/"network_engine_frame-gcc.c",w/"network_engine_packet-gcc.c"]
+    base=LayoutText(exports["gcc"].read_text());mutations=[("multicast-mac","(mac.bytes[0]&1)==0","true"),("target-local","packet.target_ip!=config.local","false"),("sender-onlink","!net_config_contains(config,packet.sender_ip)","false"),("expiry-overflow","UINT64_MAX-now<NETWORK_NEIGHBOR_LIFETIME","false"),("expiry-edge","now>=table->entries[i].expires","now>table->entries[i].expires"),("lru-direction","last_used<table->entries[selected].last_used","last_used>table->entries[selected].last_used"),("route-next-hop","on_link?destination:config.gateway","destination"),("probe-interval","now+NETWORK_NEIGHBOR_PROBE_INTERVAL","now+1"),("probe-clear","if(table->probe_present&&table->probe_address==packet.sender_ip)","if(false)"),("touch-hit","table->entries[i].last_used=now","table->entries[i].last_used=0")];caught=[];prefix=[w/"network_config-gcc.c",w/"network_engine_frame-gcc.c",w/"network_engine_packet-gcc.c"]
     for name,old,new in mutations:
         assert base.count(old)>=1,(name,base.count(old));mut=w/f"mutant-{name}.c";mut.write_text(base.replace(old,new));binary=w/f"mutant-{name}";run(["gcc","-std=c11","-O2","-Igenerated/include",*prefix,mut,host,"-o",binary]);assert run([binary],commands)!=expected,("survived",name);caught.append(name)
     admission=[]

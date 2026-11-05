@@ -17,6 +17,7 @@ import random
 import shutil
 import subprocess
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -270,7 +271,7 @@ def main():
         print(compiler, route, "sanitized" if sanitizer else "native", ":", len(cases), "Rust client traces equal", flush=True)
     refused = []
     if args.mutations:
-        original_client = (HERE / "src/kaleidoscope.cesta").read_text()
+        original_client = LayoutText((HERE / "src/kaleidoscope.cesta").read_text())
         changes = [("color", "0x00CDD6F4", "0x00112233"),
                    ("body-routing", "(if (> body_length 0)\n              (block\n                (call sexos_line \"[browser.body.render.begin]\")",
                     "(if (== body_length 0)\n              (block\n                (call sexos_line \"[browser.body.render.begin]\")"),

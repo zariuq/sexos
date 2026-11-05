@@ -23,4 +23,8 @@ static inline void cpu_wrpkru(uint32_t mask){(void)mask;abort();}
 static inline void cpu_sti_hlt(void){abort();}
 static inline void cpu_stac(void){abort();}
 static inline void cpu_clac(void){abort();}
+/* FPU context switch: the host keeps no FPU state per task. */
+static inline void cpu_fxsave(void *area){(void)area;}
+static inline void cpu_fxrstor(const void *area){(void)area;}
+static inline void cpu_fpu_state_init(void *area){(void)area;}
 #endif

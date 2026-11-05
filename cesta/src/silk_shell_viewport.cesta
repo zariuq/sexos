@@ -3,295 +3,394 @@
     (ownership (check-all)
 (foreign shell_custody_catalog_at (obligation "Returns the descriptive immutable BOOT association at this index, without retaining borrowed references."))
 (foreign sexos_pdx_call (obligation "Uses an actually held PDX endpoint; retains no borrowed viewport state. Numeric route and payload fields confer no authority.")))
-    (native "#include \"silk_shell_viewport.h\"
-static uint32_t view_sub(uint32_t a,uint32_t b) {return a>b?a-b:0;
-    }
-static uint32_t view_min(uint32_t a,uint32_t b) {return a<b?a:b;
-    }
-static int32_t view_sat_add(int32_t a,int32_t b)
-{
-    int64_t sum=(int64_t)a+b;
-    
-    return sum>INT32_MAX?INT32_MAX:sum<INT32_MIN?INT32_MIN:(int32_t)sum;
-    
+    (native "
+#include \"silk_shell_viewport.h\"
+
+static uint32_t view_sub(uint32_t a, uint32_t b) {
+    return a > b ? a - b : 0;
 }
-static ShellViewportDelivery view_delivery_new(void) {return (ShellViewportDelivery){0};
-    }
-bool shell_viewport_target(uint8_t kind,uint32_t target)
-{
-    for(size_t i=0;i<SHELL_APP_COUNT;++i) {
-        ShellAppCatalogRow row=shell_custody_catalog_at(i);
-    
-        if(row.target==target) {
-            if(kind==SHELL_VIEW_DOCUMENT)return row.app==SHELL_APP_QUIL || row.app==SHELL_APP_BROWSER;
-    
-            return kind==SHELL_VIEW_SPINDLE && row.app==SHELL_APP_SPINDLE;
-    
+
+static uint32_t view_min(uint32_t a, uint32_t b) {
+    return a < b ? a : b;
+}
+
+static int32_t view_sat_add(int32_t a, int32_t b) {
+    int64_t sum = (int64_t)a + b;
+
+    return sum > INT32_MAX ? INT32_MAX : sum < INT32_MIN ? INT32_MIN : (int32_t)sum;
+}
+
+static ShellViewportDelivery view_delivery_new(void) {
+    return (ShellViewportDelivery){0};
+}
+
+bool shell_viewport_target(uint8_t kind, uint32_t target) {
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        ShellAppCatalogRow row = shell_custody_catalog_at(i);
+
+        if (row.target == target) {
+            if (kind == SHELL_VIEW_DOCUMENT)
+                return row.app == SHELL_APP_QUIL || row.app == SHELL_APP_BROWSER;
+
+            return kind == SHELL_VIEW_SPINDLE && row.app == SHELL_APP_SPINDLE;
         }
     }
     return false;
-    
 }
-static void view_delivery_retire(ShellViewportDelivery *delivery)
-{
-    delivery->dead=true;
-    delivery->desired=false;
-    delivery->last=false;
-    
-    delivery->notice=(ShellViewportNotice){0};
-    delivery->last_w=0;
-    delivery->last_h=0;
-    
+
+static void view_delivery_retire(ShellViewportDelivery *delivery) {
+    delivery->dead = true;
+    delivery->desired = false;
+    delivery->last = false;
+
+    delivery->notice = (ShellViewportNotice){0};
+    delivery->last_w = 0;
+    delivery->last_h = 0;
 }
-static void view_delivery_queue(ShellViewportDelivery *delivery,uint8_t kind,uint32_t target,uint32_t task,uint32_t w,uint32_t h)
-{
-    if(delivery->dead || !shell_viewport_target(kind,target) || !task || !w || !h || w>4096 || h>4096)return;
-    
-    bool same=delivery->desired ? delivery->notice.w==w && delivery->notice.h==h : delivery->last && delivery->last_w==w && delivery->last_h==h;
-    
-    if(same)return;
-    
-    if(delivery->sequence==UINT64_MAX){view_delivery_retire(delivery);
-    return;
+
+static void view_delivery_queue(ShellViewportDelivery *delivery, uint8_t kind, uint32_t target,
+                                uint32_t task, uint32_t w, uint32_t h) {
+    if (delivery->dead || !shell_viewport_target(kind, target) || !task || !w || !h || w > 4096 ||
+        h > 4096)
+        return;
+
+    bool same = delivery->desired
+                    ? delivery->notice.w == w && delivery->notice.h == h
+                    : delivery->last && delivery->last_w == w && delivery->last_h == h;
+
+    if (same)
+        return;
+
+    if (delivery->sequence == UINT64_MAX) {
+        view_delivery_retire(delivery);
+        return;
     }
     ++delivery->sequence;
-    
-    delivery->notice=(ShellViewportNotice){target,task,w,h,delivery->sequence};
-    delivery->desired=true;
-    
+
+    delivery->notice = (ShellViewportNotice){target, task, w, h, delivery->sequence};
+    delivery->desired = true;
 }
-static void view_delivery_refresh(ShellViewportDelivery *delivery)
-{
-    if(!delivery->dead){delivery->last=false;
-    delivery->last_w=0;
-    delivery->last_h=0;
+
+static void view_delivery_refresh(ShellViewportDelivery *delivery) {
+    if (!delivery->dead) {
+        delivery->last = false;
+        delivery->last_w = 0;
+        delivery->last_h = 0;
     }
 }
-static bool view_delivery_pending(const ShellViewportDelivery *delivery) {return delivery->desired;
-    }
-static void view_delivery_poll(ShellViewportDelivery *delivery,uint8_t kind,bool live,bool ready,uint64_t slot)
-{
-    if(!delivery->desired)return;
-    
-    if(!live){view_delivery_retire(delivery);
-    return;
-    }
-    if(!ready)return;
-    
-    if(kind!=SHELL_VIEW_DOCUMENT && kind!=SHELL_VIEW_SPINDLE){view_delivery_retire(delivery);
-    return;
-    }
-    ShellViewportNotice n=delivery->notice;
-    
-    SexosReply reply=sexos_pdx_call(slot,kind==SHELL_VIEW_DOCUMENT?UINT64_C(0x272):UINT64_C(0x270),
-        ((uint64_t)n.task<<32)|n.target,((uint64_t)n.h<<32)|n.w,n.sequence);
-    
-    if(reply.status==0){delivery->last=true;
-    delivery->last_w=n.w;
-    delivery->last_h=n.h;
-    delivery->desired=false;
-    delivery->notice=(ShellViewportNotice){0};
-    }
-    else if(reply.status!=SEXOS_ERR_SERVICE_NOT_READY)view_delivery_retire(delivery);
-    
+
+static bool view_delivery_pending(const ShellViewportDelivery *delivery) {
+    return delivery->desired;
 }
-ShellDocumentDelivery shell_document_delivery_new(void) {return (ShellDocumentDelivery){view_delivery_new()};
+
+static void view_delivery_poll(ShellViewportDelivery *delivery, uint8_t kind, bool live, bool ready,
+                               uint64_t slot) {
+    if (!delivery->desired)
+        return;
+
+    if (!live) {
+        view_delivery_retire(delivery);
+        return;
     }
-void shell_document_delivery_queue(ShellDocumentDelivery *delivery,uint32_t target,uint32_t task,uint32_t w,uint32_t h) {view_delivery_queue(&delivery->state,SHELL_VIEW_DOCUMENT,target,task,w,h);
+    if (!ready)
+        return;
+
+    if (kind != SHELL_VIEW_DOCUMENT && kind != SHELL_VIEW_SPINDLE) {
+        view_delivery_retire(delivery);
+        return;
     }
-void shell_document_delivery_refresh(ShellDocumentDelivery *delivery) {view_delivery_refresh(&delivery->state);
-    }
-bool shell_document_delivery_pending(const ShellDocumentDelivery *delivery) {return view_delivery_pending(&delivery->state);
-    }
-void shell_document_delivery_retire(ShellDocumentDelivery *delivery) {view_delivery_retire(&delivery->state);
-    }
-void shell_document_delivery_poll(ShellDocumentDelivery *delivery,bool live,bool ready,uint64_t slot) {view_delivery_poll(&delivery->state,SHELL_VIEW_DOCUMENT,live,ready,slot);
-    }
-ShellSpindleDelivery shell_spindle_delivery_new(void) {return (ShellSpindleDelivery){view_delivery_new()};
-    }
-void shell_spindle_delivery_queue(ShellSpindleDelivery *delivery,uint32_t target,uint32_t task,uint32_t w,uint32_t h) {view_delivery_queue(&delivery->state,SHELL_VIEW_SPINDLE,target,task,w,h);
-    }
-void shell_spindle_delivery_refresh(ShellSpindleDelivery *delivery) {view_delivery_refresh(&delivery->state);
-    }
-bool shell_spindle_delivery_pending(const ShellSpindleDelivery *delivery) {return view_delivery_pending(&delivery->state);
-    }
-void shell_spindle_delivery_retire(ShellSpindleDelivery *delivery) {view_delivery_retire(&delivery->state);
-    }
-void shell_spindle_delivery_poll(ShellSpindleDelivery *delivery,bool live,bool ready,uint64_t slot) {view_delivery_poll(&delivery->state,SHELL_VIEW_SPINDLE,live,ready,slot);
-    }
-bool shell_viewport_decode(uint8_t kind,uint32_t caller,uint32_t target,uint32_t task,uint64_t a,uint64_t b,uint64_t sequence,uint64_t last,ShellViewportNotice *out)
-{
-    ShellViewportNotice n={(uint32_t)a,(uint32_t)(a>>32),(uint32_t)b,(uint32_t)(b>>32),sequence};
-    
-    if(caller!=3 || !shell_viewport_target(kind,target) || !task || n.target!=target || n.task!=task || sequence<=last || !n.w || !n.h || n.w>4096 || n.h>4096)return false;
-    
-    *out=n;
+    ShellViewportNotice n = delivery->notice;
+
+    SexosReply reply = sexos_pdx_call(
+        slot, kind == SHELL_VIEW_DOCUMENT ? UINT64_C(0x272) : UINT64_C(0x270),
+        ((uint64_t)n.task << 32) | n.target, ((uint64_t)n.h << 32) | n.w, n.sequence);
+
+    if (reply.status == 0) {
+        delivery->last = true;
+        delivery->last_w = n.w;
+        delivery->last_h = n.h;
+        delivery->desired = false;
+        delivery->notice = (ShellViewportNotice){0};
+    } else if (reply.status != SEXOS_ERR_SERVICE_NOT_READY)
+        view_delivery_retire(delivery);
+}
+
+ShellDocumentDelivery shell_document_delivery_new(void) {
+    return (ShellDocumentDelivery){view_delivery_new()};
+}
+
+void shell_document_delivery_queue(ShellDocumentDelivery *delivery, uint32_t target, uint32_t task,
+                                   uint32_t w, uint32_t h) {
+    view_delivery_queue(&delivery->state, SHELL_VIEW_DOCUMENT, target, task, w, h);
+}
+
+void shell_document_delivery_refresh(ShellDocumentDelivery *delivery) {
+    view_delivery_refresh(&delivery->state);
+}
+
+bool shell_document_delivery_pending(const ShellDocumentDelivery *delivery) {
+    return view_delivery_pending(&delivery->state);
+}
+
+void shell_document_delivery_retire(ShellDocumentDelivery *delivery) {
+    view_delivery_retire(&delivery->state);
+}
+
+void shell_document_delivery_poll(ShellDocumentDelivery *delivery, bool live, bool ready,
+                                  uint64_t slot) {
+    view_delivery_poll(&delivery->state, SHELL_VIEW_DOCUMENT, live, ready, slot);
+}
+
+ShellSpindleDelivery shell_spindle_delivery_new(void) {
+    return (ShellSpindleDelivery){view_delivery_new()};
+}
+
+void shell_spindle_delivery_queue(ShellSpindleDelivery *delivery, uint32_t target, uint32_t task,
+                                  uint32_t w, uint32_t h) {
+    view_delivery_queue(&delivery->state, SHELL_VIEW_SPINDLE, target, task, w, h);
+}
+
+void shell_spindle_delivery_refresh(ShellSpindleDelivery *delivery) {
+    view_delivery_refresh(&delivery->state);
+}
+
+bool shell_spindle_delivery_pending(const ShellSpindleDelivery *delivery) {
+    return view_delivery_pending(&delivery->state);
+}
+
+void shell_spindle_delivery_retire(ShellSpindleDelivery *delivery) {
+    view_delivery_retire(&delivery->state);
+}
+
+void shell_spindle_delivery_poll(ShellSpindleDelivery *delivery, bool live, bool ready,
+                                 uint64_t slot) {
+    view_delivery_poll(&delivery->state, SHELL_VIEW_SPINDLE, live, ready, slot);
+}
+
+bool shell_viewport_decode(uint8_t kind, uint32_t caller, uint32_t target, uint32_t task,
+                           uint64_t a, uint64_t b, uint64_t sequence, uint64_t last,
+                           ShellViewportNotice *out) {
+    ShellViewportNotice n = {(uint32_t)a, (uint32_t)(a >> 32), (uint32_t)b, (uint32_t)(b >> 32),
+                             sequence};
+
+    if (caller != 3 || !shell_viewport_target(kind, target) || !task || n.target != target ||
+        n.task != task || sequence <= last || !n.w || !n.h || n.w > 4096 || n.h > 4096)
+        return false;
+
+    *out = n;
     return true;
-    
 }
-ShellWorkspaceRefresh shell_workspace_refresh_new(uint32_t target,uint32_t task)
-{
-    return (ShellWorkspaceRefresh){target,task,false,!(task && shell_viewport_target(SHELL_VIEW_DOCUMENT,target))};
-    
+
+ShellWorkspaceRefresh shell_workspace_refresh_new(uint32_t target, uint32_t task) {
+    return (ShellWorkspaceRefresh){target, task, false,
+                                   !(task && shell_viewport_target(SHELL_VIEW_DOCUMENT, target))};
 }
-void shell_workspace_refresh_changed(ShellWorkspaceRefresh *refresh) {if(!refresh->closed)refresh->pending=true;
-    }
-bool shell_workspace_refresh_pending(const ShellWorkspaceRefresh *refresh) {return refresh->pending && !refresh->closed;
-    }
-void shell_workspace_refresh_close(ShellWorkspaceRefresh *refresh) {refresh->pending=false;
-    refresh->closed=true;
-    }
-void shell_workspace_refresh_poll(ShellWorkspaceRefresh *refresh,uint64_t slot)
-{
-    if(!shell_workspace_refresh_pending(refresh))return;
-    
-    SexosReply reply=sexos_pdx_call(slot,UINT64_C(0x279),refresh->target,refresh->task,0);
-    
-    if(reply.status==0)refresh->pending=false;
-    
-    else if(reply.status!=SEXOS_ERR_SERVICE_NOT_READY)shell_workspace_refresh_close(refresh);
-    
+
+void shell_workspace_refresh_changed(ShellWorkspaceRefresh *refresh) {
+    if (!refresh->closed)
+        refresh->pending = true;
 }
-static size_t spindle_rows(uint32_t h,uint32_t scale)
-{
-    uint32_t usable=view_sub(h,12);
-    
-    return usable<7*scale?0:view_min(1+(usable-7*scale)/(9*scale),6);
-    
+
+bool shell_workspace_refresh_pending(const ShellWorkspaceRefresh *refresh) {
+    return refresh->pending && !refresh->closed;
 }
-ShellSpindleLayout shell_spindle_layout(uint32_t w,uint32_t h)
-{
-    uint32_t bw=view_sub(w,16),bh=view_sub(h,44),cw=view_sub(bw,8)/2,rw=view_sub(bw,cw+8);
-    
-    uint32_t left_scale=cw>=128?2:1,right_scale=rw>=128?2:1;
-    
-    uint32_t scale=left_scale>right_scale?left_scale:right_scale;
-    
-    bool split=bh>=2*(12+7*scale)+8;
-    
-    uint32_t top=split?view_sub(bh,8)/2:0,bottom=split?view_sub(bh,top+8):bh,by=36+(split?top+8:0);
-    
-    ShellSpindleLayout out={.panes={{8,36,cw,top},{16+cw,36,rw,top},{8,by,cw,bottom},{16+cw,by,rw,bottom}}};
-    
-    uint32_t cols=view_min(view_sub(cw,16)/(6*left_scale),view_sub(rw,16)/(6*right_scale));
-    
-    out.cols=view_min(view_sub(cols,1),20);
-    
-    if(out.cols){out.rows[0]=spindle_rows(top,scale);
-    out.rows[1]=spindle_rows(bottom,scale);
+
+void shell_workspace_refresh_close(ShellWorkspaceRefresh *refresh) {
+    refresh->pending = false;
+    refresh->closed = true;
+}
+
+void shell_workspace_refresh_poll(ShellWorkspaceRefresh *refresh, uint64_t slot) {
+    if (!shell_workspace_refresh_pending(refresh))
+        return;
+
+    SexosReply reply = sexos_pdx_call(slot, UINT64_C(0x279), refresh->target, refresh->task, 0);
+
+    if (reply.status == 0)
+        refresh->pending = false;
+
+    else if (reply.status != SEXOS_ERR_SERVICE_NOT_READY)
+        shell_workspace_refresh_close(refresh);
+}
+
+static size_t spindle_rows(uint32_t h, uint32_t scale) {
+    uint32_t usable = view_sub(h, 12);
+
+    return usable < 7 * scale ? 0 : view_min(1 + (usable - 7 * scale) / (9 * scale), 6);
+}
+
+ShellSpindleLayout shell_spindle_layout(uint32_t w, uint32_t h) {
+    uint32_t bw = view_sub(w, 16), bh = view_sub(h, 44), cw = view_sub(bw, 8) / 2,
+             rw = view_sub(bw, cw + 8);
+
+    uint32_t left_scale = cw >= 128 ? 2 : 1, right_scale = rw >= 128 ? 2 : 1;
+
+    uint32_t scale = left_scale > right_scale ? left_scale : right_scale;
+
+    bool split = bh >= 2 * (12 + 7 * scale) + 8;
+
+    uint32_t top = split ? view_sub(bh, 8) / 2 : 0, bottom = split ? view_sub(bh, top + 8) : bh,
+             by = 36 + (split ? top + 8 : 0);
+
+    ShellSpindleLayout out = {.panes = {{8, 36, cw, top},
+                                        {16 + cw, 36, rw, top},
+                                        {8, by, cw, bottom},
+                                        {16 + cw, by, rw, bottom}}};
+
+    uint32_t cols =
+        view_min(view_sub(cw, 16) / (6 * left_scale), view_sub(rw, 16) / (6 * right_scale));
+
+    out.cols = view_min(view_sub(cols, 1), 20);
+
+    if (out.cols) {
+        out.rows[0] = spindle_rows(top, scale);
+        out.rows[1] = spindle_rows(bottom, scale);
     }
     return out;
-    
 }
-size_t shell_spindle_columns(const ShellSpindleLayout *layout) {return layout->cols*2;
-    }
-size_t shell_spindle_lines(const ShellSpindleLayout *layout) {return layout->rows[0]+layout->rows[1];
-    }
-ShellDocumentLayout shell_document_layout(uint32_t target,uint32_t w,uint32_t h)
-{
-    uint32_t scale=w>=256?2:1;
-    
-    size_t cols=view_min(view_sub(view_sub(w,16)/(6*scale),1),79);
-    if(cols<1)cols=1;
-    
-    ShellAppCatalogRow row={0};
-    
-    for(size_t i=0;i<SHELL_APP_COUNT;++i){ShellAppCatalogRow candidate=shell_custody_catalog_at(i);
-    if(candidate.target==target){row=candidate;
-    break;
-    }}
-    uint32_t top=row.present && !row.shell_surface && row.app!=SHELL_APP_SPINDLE?36:12;
-    
-    size_t toolbar=cols>=32?1:cols>=16?2:cols>=8?4:0;
-    
-    size_t rows=w>=16+5*scale && view_sub(h,top)>=7*scale?1+(h-top-7*scale)/(9*scale):0;
-    
-    return (ShellDocumentLayout){w,h,scale,cols,rows,top,toolbar && rows>=toolbar+2?toolbar:0};
-    
+
+size_t shell_spindle_columns(const ShellSpindleLayout *layout) {
+    return layout->cols * 2;
 }
-size_t shell_document_header_rows(const ShellDocumentLayout *layout) {return layout->rows>=2;
+
+size_t shell_spindle_lines(const ShellSpindleLayout *layout) {
+    return layout->rows[0] + layout->rows[1];
+}
+
+ShellDocumentLayout shell_document_layout(uint32_t target, uint32_t w, uint32_t h) {
+    uint32_t scale = w >= 256 ? 2 : 1;
+
+    size_t cols = view_min(view_sub(view_sub(w, 16) / (6 * scale), 1), 79);
+    if (cols < 1)
+        cols = 1;
+
+    ShellAppCatalogRow row = {0};
+
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        ShellAppCatalogRow candidate = shell_custody_catalog_at(i);
+        if (candidate.target == target) {
+            row = candidate;
+            break;
+        }
     }
-size_t shell_document_toolbar_per_row(const ShellDocumentLayout *layout)
-{
-    if(layout->toolbar_rows==1)return 4;
-    if(layout->toolbar_rows==2)return 2;
-    if(layout->toolbar_rows==4)return 1;
+    uint32_t top = row.present && !row.shell_surface && row.app != SHELL_APP_SPINDLE ? 36 : 12;
+
+    size_t toolbar = cols >= 32 ? 1 : cols >= 16 ? 2 : cols >= 8 ? 4 : 0;
+
+    size_t rows = w >= 16 + 5 * scale && view_sub(h, top) >= 7 * scale
+                      ? 1 + (h - top - 7 * scale) / (9 * scale)
+                      : 0;
+
+    return (ShellDocumentLayout){
+        w, h, scale, cols, rows, top, toolbar && rows >= toolbar + 2 ? toolbar : 0};
+}
+
+size_t shell_document_header_rows(const ShellDocumentLayout *layout) {
+    return layout->rows >= 2;
+}
+
+size_t shell_document_toolbar_per_row(const ShellDocumentLayout *layout) {
+    if (layout->toolbar_rows == 1)
+        return 4;
+    if (layout->toolbar_rows == 2)
+        return 2;
+    if (layout->toolbar_rows == 4)
+        return 1;
     return 0;
-    
 }
-size_t shell_document_hint_rows(const ShellDocumentLayout *layout)
-{
-    return layout->cols>=8 && layout->rows>=shell_document_header_rows(layout)+layout->toolbar_rows+2;
-    
+
+size_t shell_document_hint_rows(const ShellDocumentLayout *layout) {
+    return layout->cols >= 8 &&
+           layout->rows >= shell_document_header_rows(layout) + layout->toolbar_rows + 2;
 }
-size_t shell_document_chrome_rows(const ShellDocumentLayout *layout) {return shell_document_header_rows(layout)+layout->toolbar_rows+shell_document_hint_rows(layout);
-    }
-size_t shell_document_body_rows(const ShellDocumentLayout *layout)
-{
-    size_t chrome=shell_document_chrome_rows(layout),rows=layout->rows>chrome?layout->rows-chrome:0,limit=24>chrome?24-chrome:0;
-    
-    return rows<limit?rows:limit;
-    
+
+size_t shell_document_chrome_rows(const ShellDocumentLayout *layout) {
+    return shell_document_header_rows(layout) + layout->toolbar_rows +
+           shell_document_hint_rows(layout);
 }
-uint8_t shell_document_hit(const ShellDocumentLayout *layout,uint32_t x,uint32_t y)
-{
-    if(layout->scale!=1 && layout->scale!=2)return 0;
-    
-    size_t per=shell_document_toolbar_per_row(layout);
-    
-    if(!per || x>=layout->w || y>=layout->h || x<8 || y<layout->top+shell_document_header_rows(layout)*9*layout->scale)return 0;
-    
-    size_t col=(x-8)/(6*layout->scale),row=(y-layout->top)/(9*layout->scale)-shell_document_header_rows(layout);
-    
-    size_t item=row*per+col/8;
-    
-    if(row>=layout->toolbar_rows || col>=layout->cols || col>=per*8 || item>=4)return 0;
-    
-    return (uint8_t)item+1;
-    
+
+size_t shell_document_body_rows(const ShellDocumentLayout *layout) {
+    size_t chrome = shell_document_chrome_rows(layout),
+           rows = layout->rows > chrome ? layout->rows - chrome : 0,
+           limit = 24 > chrome ? 24 - chrome : 0;
+
+    return rows < limit ? rows : limit;
 }
-ShellViewChildren shell_desktop_children(uint64_t frame,int32_t x,int32_t y,uint32_t w,uint32_t h)
-{
-    ShellViewChildren out={0};
-    uint32_t bw=view_sub(w,16),bh=view_sub(h,44);
-    
-    if(!bw || !bh)return out;
-    
-    for(size_t index=0;index<SHELL_APP_COUNT;++index) {
-        ShellAppCatalogRow row=shell_custody_catalog_at(index);
-    
-        if(!row.shell_surface || row.shell_surface!=frame)continue;
-    
-        if(row.app==SHELL_APP_QUIL)out.values[0]=(ShellViewChild){true,row.surface,view_sat_add(x,8),view_sat_add(y,36),bw,bh};
-    
-        if(row.app==SHELL_APP_SPINDLE && row.child_count==3){
-            ShellSpindleLayout layout=shell_spindle_layout(w,h);
-    
-            for(size_t i=0;i<4;++i){ShellViewRect pane=layout.panes[i];
-    uint64_t sid=row.surface;
-    if(i)sid=row.children[i-1];
-    out.values[i]=(ShellViewChild){true,sid,view_sat_add(x,(int32_t)pane.x),view_sat_add(y,(int32_t)pane.y),pane.w,pane.h};
-    }
+
+uint8_t shell_document_hit(const ShellDocumentLayout *layout, uint32_t x, uint32_t y) {
+    if (layout->scale != 1 && layout->scale != 2)
+        return 0;
+
+    size_t per = shell_document_toolbar_per_row(layout);
+
+    if (!per || x >= layout->w || y >= layout->h || x < 8 ||
+        y < layout->top + shell_document_header_rows(layout) * 9 * layout->scale)
+        return 0;
+
+    size_t col = (x - 8) / (6 * layout->scale),
+           row = (y - layout->top) / (9 * layout->scale) - shell_document_header_rows(layout);
+
+    size_t item = row * per + col / 8;
+
+    if (row >= layout->toolbar_rows || col >= layout->cols || col >= per * 8 || item >= 4)
+        return 0;
+
+    return (uint8_t)item + 1;
+}
+
+ShellViewChildren shell_desktop_children(uint64_t frame, int32_t x, int32_t y, uint32_t w,
+                                         uint32_t h) {
+    ShellViewChildren out = {0};
+    uint32_t bw = view_sub(w, 16), bh = view_sub(h, 44);
+
+    if (!bw || !bh)
+        return out;
+
+    for (size_t index = 0; index < SHELL_APP_COUNT; ++index) {
+        ShellAppCatalogRow row = shell_custody_catalog_at(index);
+
+        if (!row.shell_surface || row.shell_surface != frame)
+            continue;
+
+        if (row.app == SHELL_APP_QUIL)
+            out.values[0] = (ShellViewChild){
+                true, row.surface, view_sat_add(x, 8), view_sat_add(y, 36), bw, bh};
+
+        if (row.app == SHELL_APP_SPINDLE && row.child_count == 3) {
+            ShellSpindleLayout layout = shell_spindle_layout(w, h);
+
+            for (size_t i = 0; i < 4; ++i) {
+                ShellViewRect pane = layout.panes[i];
+                uint64_t sid = row.surface;
+                if (i)
+                    sid = row.children[i - 1];
+                out.values[i] = (ShellViewChild){true,
+                                                 sid,
+                                                 view_sat_add(x, (int32_t)pane.x),
+                                                 view_sat_add(y, (int32_t)pane.y),
+                                                 pane.w,
+                                                 pane.h};
+            }
         }
         break;
-    
     }
     return out;
-    
 }
-ShellCustodyWord shell_desktop_parent_frame(uint64_t child)
-{
-    for(size_t index=0;index<SHELL_APP_COUNT;++index) {
-        ShellAppCatalogRow row=shell_custody_catalog_at(index);
-    
-        if(!row.shell_surface)continue;
-    
-        if(row.surface==child)return (ShellCustodyWord){true,row.shell_surface};
-    
-        for(size_t i=0;i<row.child_count;++i)if(row.children[i]==child)return (ShellCustodyWord){true,row.shell_surface};
-    
+
+ShellCustodyWord shell_desktop_parent_frame(uint64_t child) {
+    for (size_t index = 0; index < SHELL_APP_COUNT; ++index) {
+        ShellAppCatalogRow row = shell_custody_catalog_at(index);
+
+        if (!row.shell_surface)
+            continue;
+
+        if (row.surface == child)
+            return (ShellCustodyWord){true, row.shell_surface};
+
+        for (size_t i = 0; i < row.child_count; ++i)
+            if (row.children[i] == child)
+                return (ShellCustodyWord){true, row.shell_surface};
     }
     return (ShellCustodyWord){0};
-    
 }
 ")))

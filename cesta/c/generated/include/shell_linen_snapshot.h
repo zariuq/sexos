@@ -1,29 +1,73 @@
+
 #ifndef SEXOS_SHELL_LINEN_SNAPSHOT_H
 #define SEXOS_SHELL_LINEN_SNAPSHOT_H
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-enum {SHELL_LINEN_CAPACITY=16,SHELL_LINEN_OPEN_CAPACITY=4};
-enum {SHELL_LINEN_IDLE=0,SHELL_LINEN_RESCAN=1,SHELL_LINEN_METADATA=2,SHELL_LINEN_NAME=3,SHELL_LINEN_OPEN=4};
-enum {SHELL_LINEN_IGNORED=0,SHELL_LINEN_PROGRESS=1,SHELL_LINEN_PUBLISHED=2,SHELL_LINEN_REJECTED=3,SHELL_LINEN_OPEN_COMPLETE=4};
-typedef struct ShellLinenObject {uint64_t id;uint8_t kind,name[24],len,disk;} ShellLinenObject;
-typedef struct ShellLinenOpen {bool present;uint64_t id,choice;} ShellLinenOpen;
-typedef struct ShellLinenRequest {uint64_t opcode,args[3];} ShellLinenRequest;
-typedef struct ShellLinenReply {uint8_t kind;uint64_t value;} ShellLinenReply;
+
+enum {
+    SHELL_LINEN_CAPACITY = 16,
+    SHELL_LINEN_OPEN_CAPACITY = 4
+};
+
+enum {
+    SHELL_LINEN_IDLE = 0,
+    SHELL_LINEN_RESCAN = 1,
+    SHELL_LINEN_METADATA = 2,
+    SHELL_LINEN_NAME = 3,
+    SHELL_LINEN_OPEN = 4
+};
+
+enum {
+    SHELL_LINEN_IGNORED = 0,
+    SHELL_LINEN_PROGRESS = 1,
+    SHELL_LINEN_PUBLISHED = 2,
+    SHELL_LINEN_REJECTED = 3,
+    SHELL_LINEN_OPEN_COMPLETE = 4
+};
+
+typedef struct ShellLinenObject {
+    uint64_t id;
+    uint8_t kind, name[24], len, disk;
+} ShellLinenObject;
+
+typedef struct ShellLinenOpen {
+    bool present;
+    uint64_t id, choice;
+} ShellLinenOpen;
+
+typedef struct ShellLinenRequest {
+    uint64_t opcode, args[3];
+} ShellLinenRequest;
+
+typedef struct ShellLinenReply {
+    uint8_t kind;
+    uint64_t value;
+} ShellLinenReply;
+
 typedef struct ShellLinenSnapshot {
- uint8_t phase;bool awaiting,refresh,rescan;
- uint8_t slot,offset;ShellLinenObject current;
- ShellLinenObject objects[SHELL_LINEN_CAPACITY];bool present[SHELL_LINEN_CAPACITY];size_t count;
- ShellLinenOpen opens[SHELL_LINEN_OPEN_CAPACITY];size_t open_count;
- uint64_t open_id,open_choice;
+    uint8_t phase;
+    bool awaiting, refresh, rescan;
+    uint8_t slot, offset;
+    ShellLinenObject current;
+    ShellLinenObject objects[SHELL_LINEN_CAPACITY];
+    bool present[SHELL_LINEN_CAPACITY];
+    size_t count;
+    ShellLinenOpen opens[SHELL_LINEN_OPEN_CAPACITY];
+    size_t open_count;
+    uint64_t open_id, open_choice;
 } ShellLinenSnapshot;
+
 ShellLinenSnapshot shell_linen_snapshot_new(void);
-void shell_linen_snapshot_refresh(ShellLinenSnapshot *state,bool rescan);
-bool shell_linen_snapshot_queue_open(ShellLinenSnapshot *state,uint64_t id,uint64_t choice);
+void shell_linen_snapshot_refresh(ShellLinenSnapshot *state, bool rescan);
+bool shell_linen_snapshot_queue_open(ShellLinenSnapshot *state, uint64_t id, uint64_t choice);
 bool shell_linen_snapshot_busy(const ShellLinenSnapshot *state);
 bool shell_linen_snapshot_can_send(const ShellLinenSnapshot *state);
-bool shell_linen_snapshot_request(ShellLinenSnapshot *state,ShellLinenRequest *out);
+bool shell_linen_snapshot_request(ShellLinenSnapshot *state, ShellLinenRequest *out);
 void shell_linen_snapshot_sent(ShellLinenSnapshot *state);
-ShellLinenReply shell_linen_snapshot_reply(ShellLinenSnapshot *state,uint32_t caller,uint64_t opcode,uint64_t value);
-bool shell_workspace_allows(uint64_t subject,uint8_t operation,uint64_t requested,uint64_t published_id,uint8_t disk_path,bool published,bool active,bool explicit_denial);
+ShellLinenReply shell_linen_snapshot_reply(ShellLinenSnapshot *state, uint32_t caller,
+                                           uint64_t opcode, uint64_t value);
+bool shell_workspace_allows(uint64_t subject, uint8_t operation, uint64_t requested,
+                            uint64_t published_id, uint8_t disk_path, bool published, bool active,
+                            bool explicit_denial);
 #endif

@@ -34,256 +34,333 @@
       (foreign sexos_reply (obligation "Uses the declared PDX transport without retaining caller-local data."))
       (foreign sexos_yield (obligation "Uses the declared PDX transport without retaining caller-local data.")))
     (native "
-static void sext_require(bool valid,const char *reason,uint64_t status)
-{
-    if (!valid) sext_fatal(reason,status);
+static void sext_require(bool valid, const char *reason, uint64_t status) {
+    if (!valid)
+        sext_fatal(reason, status);
 }
-static uint64_t sext_lifecycle_slot(size_t index)
-{
-    static const uint64_t slots[]={
+
+static uint64_t sext_lifecycle_slot(size_t index) {
+    static const uint64_t slots[] = {
 #define CATALOG_SLOT(slot) slot,
         SEXOS_APP_LIFECYCLE_ROWS(CATALOG_SLOT)
 #undef CATALOG_SLOT
     };
-    return index<SEXOS_APP_CATALOG_COUNT?slots[index]:0;
+    return index < SEXOS_APP_CATALOG_COUNT ? slots[index] : 0;
 }
-static const char *sext_reason_name(SextRejectReason reason)
-{
-    if(reason==SEXT_REASON_QUOTA)return \"Quota\";
-    if(reason==SEXT_REASON_EXHAUSTED)return \"PoolExhausted\";
-    if(reason==SEXT_REASON_POLICY)return \"Policy\";
+
+static const char *sext_reason_name(SextRejectReason reason) {
+    if (reason == SEXT_REASON_QUOTA)
+        return \"Quota\";
+    if (reason == SEXT_REASON_EXHAUSTED)
+        return \"PoolExhausted\";
+    if (reason == SEXT_REASON_POLICY)
+        return \"Policy\";
     return \"CommitDenied\";
 }
-void sext_service_init(SextService *s)
-{
-    *s=(SextService){0};
+
+void sext_service_init(SextService *s) {
+    *s = (SextService){0};
     sexos_line(\"[sext.init.start]\");
-    SextPagingInfo pool={0},primary={0},secondary={0};
-    sext_require(sext_native_info(SEXT_SLOT_POOL,&pool)==SEXT_OK,\"SEXT_FRAME_POOL_MISSING\",0);
-    sext_require(sext_native_info(SEXT_SLOT_MAPPING,&primary)==SEXT_OK,\"SEXT_MAPPING_MISSING\",0);
-    sext_require(sext_native_info(SEXT_SLOT_MAPPING_SECOND,&secondary)==SEXT_OK,\"SEXT_SECOND_MAPPING_MISSING\",0);
-    SextMappings mappings={{{true,SEXT_SLOT_MAPPING,primary},{true,SEXT_SLOT_MAPPING_SECOND,secondary}}};
-    sext_require(sext_pager_init(&s->pager,pool,mappings,4)==SEXT_OK,\"SEXT_INVALID_BOOT_AUTHORITY\",0);
+    SextPagingInfo pool = {0}, primary = {0}, secondary = {0};
+    sext_require(sext_native_info(SEXT_SLOT_POOL, &pool) == SEXT_OK, \"SEXT_FRAME_POOL_MISSING\", 0);
+    sext_require(sext_native_info(SEXT_SLOT_MAPPING, &primary) == SEXT_OK, \"SEXT_MAPPING_MISSING\",
+                 0);
+    sext_require(sext_native_info(SEXT_SLOT_MAPPING_SECOND, &secondary) == SEXT_OK,
+                 \"SEXT_SECOND_MAPPING_MISSING\", 0);
+    SextMappings mappings = {
+        {{true, SEXT_SLOT_MAPPING, primary}, {true, SEXT_SLOT_MAPPING_SECOND, secondary}}};
+    sext_require(sext_pager_init(&s->pager, pool, mappings, 4) == SEXT_OK,
+                 \"SEXT_INVALID_BOOT_AUTHORITY\", 0);
     sexos_line(\"[sext.ready] clients=2 frames=8 quota=4 zero_owner=sext\");
-    for(size_t i=0;i<2;++i) {
-        sexos_line(\"[sext.client.ready] target=%u frames=8 quota=4 pool_bytes=%llu arena_bytes=%llu zero_owner=sext\",
-            mappings.entries[i].info.target_pd,(unsigned long long)pool.length,
+    for (size_t i = 0; i < 2; ++i) {
+        sexos_line(
+            \"[sext.client.ready] target=%u frames=8 quota=4 pool_bytes=%llu arena_bytes=%llu zero_owner=sext\",
+            mappings.entries[i].info.target_pd, (unsigned long long)pool.length,
             (unsigned long long)mappings.entries[i].info.length);
     }
 }
-bool sext_service_can_progress(const SextService *s)
-{
-    for(size_t i=0;i<2;++i)if(s->cleanup_pending[i].present)return true;
-    for(size_t i=0;i<2;++i) {
-        SextWork w=s->pending[i];
-        if(w.tag==SEXT_WORK_WAIT) {
-            if(sext_pager_wait(&s->pager,w.wait).ready)return true;
-        } else if(w.tag!=SEXT_WORK_NONE)return true;
+
+bool sext_service_can_progress(const SextService *s) {
+    for (size_t i = 0; i < 2; ++i)
+        if (s->cleanup_pending[i].present)
+            return true;
+    for (size_t i = 0; i < 2; ++i) {
+        SextWork w = s->pending[i];
+        if (w.tag == SEXT_WORK_WAIT) {
+            if (sext_pager_wait(&s->pager, w.wait).ready)
+                return true;
+        } else if (w.tag != SEXT_WORK_NONE)
+            return true;
     }
     return false;
 }
-bool sext_service_pending(const SextService *s)
-{
-    for(size_t i=0;i<2;++i)
-        if(s->pending[i].tag!=SEXT_WORK_NONE || s->cleanup_pending[i].present)return true;
+
+bool sext_service_pending(const SextService *s) {
+    for (size_t i = 0; i < 2; ++i)
+        if (s->pending[i].tag != SEXT_WORK_NONE || s->cleanup_pending[i].present)
+            return true;
     return false;
 }
-static void sext_service_accept(SextService *s,SexosMessage m)
-{
-    if(m.type_id==0x107 && m.caller_pd==0 && m.arg0 && m.arg0<=UINT32_MAX &&
-        m.arg1 && m.arg1<=UINT32_MAX && m.arg2==0) {
-        SextAppNotice n={true,(uint32_t)m.arg0,(uint32_t)m.arg1};
-        for(size_t i=0;i<SEXOS_APP_CATALOG_COUNT;++i) {
-            SextCatalog c={0};
-            if(sext_native_catalog(sext_lifecycle_slot(i),&c)==0 &&
-                c.target_pd==n.target_pd && c.task_id==n.task_id && !s->workspaces[i].present)
-                s->app_pending[i]=n;
+
+static void sext_service_accept(SextService *s, SexosMessage m) {
+    if (m.type_id == 0x107 && m.caller_pd == 0 && m.arg0 && m.arg0 <= UINT32_MAX && m.arg1 &&
+        m.arg1 <= UINT32_MAX && m.arg2 == 0) {
+        SextAppNotice n = {true, (uint32_t)m.arg0, (uint32_t)m.arg1};
+        for (size_t i = 0; i < SEXOS_APP_CATALOG_COUNT; ++i) {
+            SextCatalog c = {0};
+            if (sext_native_catalog(sext_lifecycle_slot(i), &c) == 0 &&
+                c.target_pd == n.target_pd && c.task_id == n.task_id && !s->workspaces[i].present)
+                s->app_pending[i] = n;
         }
     }
-    SextExitNotice exit_notice={0};
-    if(sext_decode_exit(m.type_id,m.caller_pd,m.arg0,m.arg1,m.arg2,&exit_notice)) {
-        size_t client=sext_pager_client_index(&s->pager,exit_notice.target_pd);
-        if(client<2 && !s->cleanup_pending[client].present)
-            s->cleanup_pending[client]=(SextPendingExit){true,exit_notice};
+    SextExitNotice exit_notice = {0};
+    if (sext_decode_exit(m.type_id, m.caller_pd, m.arg0, m.arg1, m.arg2, &exit_notice)) {
+        size_t client = sext_pager_client_index(&s->pager, exit_notice.target_pd);
+        if (client < 2 && !s->cleanup_pending[client].present)
+            s->cleanup_pending[client] = (SextPendingExit){true, exit_notice};
     }
-    SextWork work={0};
-    if(m.type_id==SEXT_OP_WAIT_CLEANUP) {
-        SextWaitRequest request={0};
-        if(sext_decode_wait(m.type_id,m.caller_pd,m.arg0,m.arg1,m.arg2,&request))
-            work=(SextWork){.tag=SEXT_WORK_WAIT,.wait=request};
-        else work=(SextWork){.tag=SEXT_WORK_REPLY,.target=m.caller_pd,.value=sext_release_reply(m.arg1,SEXT_DENIED)};
-    } else if(m.type_id==SEXT_OP_RELEASE) {
-        SextReleaseRequest request={0};
-        if(sext_decode_release(m.type_id,m.caller_pd,m.arg0,m.arg1,m.arg2,&request))
-            work=(SextWork){.tag=SEXT_WORK_RELEASE,.release=request};
+    SextWork work = {0};
+    if (m.type_id == SEXT_OP_WAIT_CLEANUP) {
+        SextWaitRequest request = {0};
+        if (sext_decode_wait(m.type_id, m.caller_pd, m.arg0, m.arg1, m.arg2, &request))
+            work = (SextWork){.tag = SEXT_WORK_WAIT, .wait = request};
+        else
+            work = (SextWork){.tag = SEXT_WORK_REPLY,
+                              .target = m.caller_pd,
+                              .value = sext_release_reply(m.arg1, SEXT_DENIED)};
+    } else if (m.type_id == SEXT_OP_RELEASE) {
+        SextReleaseRequest request = {0};
+        if (sext_decode_release(m.type_id, m.caller_pd, m.arg0, m.arg1, m.arg2, &request))
+            work = (SextWork){.tag = SEXT_WORK_RELEASE, .release = request};
         else {
             sexos_line(\"[sext.release.denied] target=%u request=%llu page=%#llx status=3\",
-                m.caller_pd,(unsigned long long)m.arg1,(unsigned long long)m.arg0);
-            work=(SextWork){.tag=SEXT_WORK_REPLY,.target=m.caller_pd,.value=sext_release_reply(m.arg1,SEXT_DENIED)};
+                       m.caller_pd, (unsigned long long)m.arg1, (unsigned long long)m.arg0);
+            work = (SextWork){.tag = SEXT_WORK_REPLY,
+                              .target = m.caller_pd,
+                              .value = sext_release_reply(m.arg1, SEXT_DENIED)};
         }
     } else {
-        SextFaultNotice notice={0};
-        if(sext_decode_fault(m.type_id,m.caller_pd,m.arg0,m.arg1,m.arg2,&notice))
-            work=(SextWork){.tag=SEXT_WORK_FAULT,.fault=notice};
+        SextFaultNotice notice = {0};
+        if (sext_decode_fault(m.type_id, m.caller_pd, m.arg0, m.arg1, m.arg2, &notice))
+            work = (SextWork){.tag = SEXT_WORK_FAULT, .fault = notice};
     }
-    if(work.tag!=SEXT_WORK_NONE) {
-        size_t client=sext_pager_client_index(&s->pager,m.caller_pd);
-        if(client<2) {
-            if(s->pending[client].tag==SEXT_WORK_NONE)s->pending[client]=work;
-        } else if(m.type_id==SEXT_OP_RELEASE || m.type_id==SEXT_OP_WAIT_CLEANUP) {
-            (void)sexos_reply(m.caller_pd,sext_release_reply(m.arg1,SEXT_DENIED));
+    if (work.tag != SEXT_WORK_NONE) {
+        size_t client = sext_pager_client_index(&s->pager, m.caller_pd);
+        if (client < 2) {
+            if (s->pending[client].tag == SEXT_WORK_NONE)
+                s->pending[client] = work;
+        } else if (m.type_id == SEXT_OP_RELEASE || m.type_id == SEXT_OP_WAIT_CLEANUP) {
+            (void)sexos_reply(m.caller_pd, sext_release_reply(m.arg1, SEXT_DENIED));
         }
     }
 }
-static void sext_service_committed(SextService *s,SextOutcome result)
-{
-    size_t index=result.index;uint32_t target=result.target;uint64_t token=result.token;
-    sexos_line(\"[sext.fault.commit] target=%u token=%llu page=%#llx frame=%zu used=%zu zeroed=4096 ok=1\",
-        target,(unsigned long long)token,(unsigned long long)result.page,index,sext_allocator_used_by(&s->pager.allocator,target));
-    for(size_t i=0;i<SEXOS_APP_CATALOG_COUNT;++i)if(s->workspaces[i].present)
-        (void)sext_workspace_record(&s->workspaces[i].value,target,token);
-    SextMapping mapping=sext_pager_mapping(&s->pager,target);
-    sext_require(mapping.present,\"SEXT_MAPPING_AFTER_COMMIT\",0);
-    uint8_t rights=mapping.info.rights&(SEXT_READ|SEXT_WRITE);
-    uint64_t exact=sext_backend_commit(mapping.slot,index,token,rights);
-    uint64_t conflict=sext_backend_commit(mapping.slot,(index+1)%SEXT_FRAME_COUNT,token,rights);
-    uint64_t zero=sext_backend_commit(mapping.slot,index,0,rights);
-    uint64_t unknown=sext_backend_commit(mapping.slot,index,UINT64_MAX,rights);
-    sext_require(exact==SEXT_OK && conflict==SEXT_DENIED && zero!=SEXT_OK && unknown!=SEXT_OK,
-        \"SEXT_COMMIT_IDEMPOTENCE_FAILED\",0);
-    sexos_line(\"[sext.commit.negative] token=%llu exact=1 conflicting_frame=1 zero_token=1 unknown_token=1 ok=1\",
+
+static void sext_service_committed(SextService *s, SextOutcome result) {
+    size_t index = result.index;
+    uint32_t target = result.target;
+    uint64_t token = result.token;
+    sexos_line(
+        \"[sext.fault.commit] target=%u token=%llu page=%#llx frame=%zu used=%zu zeroed=4096 ok=1\",
+        target, (unsigned long long)token, (unsigned long long)result.page, index,
+        sext_allocator_used_by(&s->pager.allocator, target));
+    for (size_t i = 0; i < SEXOS_APP_CATALOG_COUNT; ++i)
+        if (s->workspaces[i].present)
+            (void)sext_workspace_record(&s->workspaces[i].value, target, token);
+    SextMapping mapping = sext_pager_mapping(&s->pager, target);
+    sext_require(mapping.present, \"SEXT_MAPPING_AFTER_COMMIT\", 0);
+    uint8_t rights = mapping.info.rights & (SEXT_READ | SEXT_WRITE);
+    uint64_t exact = sext_backend_commit(mapping.slot, index, token, rights);
+    uint64_t conflict =
+        sext_backend_commit(mapping.slot, (index + 1) % SEXT_FRAME_COUNT, token, rights);
+    uint64_t zero = sext_backend_commit(mapping.slot, index, 0, rights);
+    uint64_t unknown = sext_backend_commit(mapping.slot, index, UINT64_MAX, rights);
+    sext_require(exact == SEXT_OK && conflict == SEXT_DENIED && zero != SEXT_OK &&
+                     unknown != SEXT_OK,
+                 \"SEXT_COMMIT_IDEMPOTENCE_FAILED\", 0);
+    sexos_line(
+        \"[sext.commit.negative] token=%llu exact=1 conflicting_frame=1 zero_token=1 unknown_token=1 ok=1\",
         (unsigned long long)token);
-    SextRetiredFrame old=s->retired[index];
-    if(old.present) {
-        uint64_t old_commit=sext_backend_commit(old.mapping,index,old.token,6);
-        uint64_t old_reclaim=sext_backend_reclaim(old.mapping,index,old.token);
-        uint64_t new_commit=sext_backend_commit(mapping.slot,index,token,rights);
-        sext_require(old_commit==SEXT_DENIED && (old_reclaim==SEXT_OK || old_reclaim==SEXT_DENIED) && new_commit==SEXT_OK,
-            \"SEXT_STALE_REUSE_AUTHORITY\",0);
-        sexos_line(\"[sext.reuse.negative] frame=%zu old_token=%llu token=%llu old_target=%u target=%u stale_commit=1 stale_reclaim=1 new_commit=1 ok=1\",
-            index,(unsigned long long)old.token,(unsigned long long)token,old.target,target);
-        SextClosed expected=sext_pager_closed(&s->pager,old.target);
-        if(expected.present) {
-            SextCleanupResult repeated={0};
-            sext_require(sext_backend_cleanup(old.mapping,&repeated)==SEXT_OK,\"SEXT_CLEANUP_REPLAY_FAILED\",0);
-            uint64_t preserved=sext_backend_commit(mapping.slot,index,token,rights);
-            sext_require(repeated.frame_bitmap==expected.value.frame_bitmap && repeated.task_id==expected.value.task_id && preserved==SEXT_OK,
-                \"SEXT_CLEANUP_REPLAY_CHANGED_OWNER\",0);
-            sexos_line(\"[sext.cleanup.replay] target=%u task=%llu bitmap=%#llx frame=%zu new_target=%u new_token=%llu preserved=1 ok=1\",
-                old.target,(unsigned long long)repeated.task_id,(unsigned long long)repeated.frame_bitmap,
-                index,target,(unsigned long long)token);
+    SextRetiredFrame old = s->retired[index];
+    if (old.present) {
+        uint64_t old_commit = sext_backend_commit(old.mapping, index, old.token, 6);
+        uint64_t old_reclaim = sext_backend_reclaim(old.mapping, index, old.token);
+        uint64_t new_commit = sext_backend_commit(mapping.slot, index, token, rights);
+        sext_require(old_commit == SEXT_DENIED &&
+                         (old_reclaim == SEXT_OK || old_reclaim == SEXT_DENIED) &&
+                         new_commit == SEXT_OK,
+                     \"SEXT_STALE_REUSE_AUTHORITY\", 0);
+        sexos_line(
+            \"[sext.reuse.negative] frame=%zu old_token=%llu token=%llu old_target=%u target=%u stale_commit=1 stale_reclaim=1 new_commit=1 ok=1\",
+            index, (unsigned long long)old.token, (unsigned long long)token, old.target, target);
+        SextClosed expected = sext_pager_closed(&s->pager, old.target);
+        if (expected.present) {
+            SextCleanupResult repeated = {0};
+            sext_require(sext_backend_cleanup(old.mapping, &repeated) == SEXT_OK,
+                         \"SEXT_CLEANUP_REPLAY_FAILED\", 0);
+            uint64_t preserved = sext_backend_commit(mapping.slot, index, token, rights);
+            sext_require(repeated.frame_bitmap == expected.value.frame_bitmap &&
+                             repeated.task_id == expected.value.task_id && preserved == SEXT_OK,
+                         \"SEXT_CLEANUP_REPLAY_CHANGED_OWNER\", 0);
+            sexos_line(
+                \"[sext.cleanup.replay] target=%u task=%llu bitmap=%#llx frame=%zu new_target=%u new_token=%llu preserved=1 ok=1\",
+                old.target, (unsigned long long)repeated.task_id,
+                (unsigned long long)repeated.frame_bitmap, index, target,
+                (unsigned long long)token);
         }
     }
 }
-static void sext_service_released(SextService *s,SextReleaseRequest request,SextReleaseOutcome result)
-{
-    if(result.binding.present) {
-        SextBinding binding=result.binding.value;
-        sexos_line(\"[sext.release] target=%u request=%llu page=%#llx token=%llu frame=%zu status=%llu replay=%u used=%zu\",
-            request.caller_pd,(unsigned long long)request.request_id,(unsigned long long)request.page,
-            (unsigned long long)binding.token,binding.index,(unsigned long long)result.status,
-            (unsigned)result.replay,sext_allocator_used_by(&s->pager.allocator,request.caller_pd));
-        if(result.status==SEXT_OK && !result.replay) {
-            SextMapping mapping=sext_pager_mapping(&s->pager,request.caller_pd);
-            sext_require(mapping.present,\"SEXT_MAPPING_AFTER_RELEASE\",0);
-            s->retired[binding.index]=(SextRetiredFrame){true,mapping.slot,request.caller_pd,binding.token};
-            uint64_t stale=sext_backend_commit(mapping.slot,binding.index,binding.token,6);
-            uint64_t duplicate=sext_backend_reclaim(mapping.slot,binding.index,binding.token);
-            sext_require(stale!=SEXT_OK && duplicate==SEXT_OK,\"SEXT_RECLAIM_TOMBSTONE_FAILED\",0);
-            sexos_line(\"[sext.reclaim.negative] target=%u token=%llu frame=%zu stale_commit=1 duplicate_reclaim=1 ok=1\",
-                request.caller_pd,(unsigned long long)binding.token,binding.index);
+
+static void sext_service_released(SextService *s, SextReleaseRequest request,
+                                  SextReleaseOutcome result) {
+    if (result.binding.present) {
+        SextBinding binding = result.binding.value;
+        sexos_line(
+            \"[sext.release] target=%u request=%llu page=%#llx token=%llu frame=%zu status=%llu replay=%u used=%zu\",
+            request.caller_pd, (unsigned long long)request.request_id,
+            (unsigned long long)request.page, (unsigned long long)binding.token, binding.index,
+            (unsigned long long)result.status, (unsigned)result.replay,
+            sext_allocator_used_by(&s->pager.allocator, request.caller_pd));
+        if (result.status == SEXT_OK && !result.replay) {
+            SextMapping mapping = sext_pager_mapping(&s->pager, request.caller_pd);
+            sext_require(mapping.present, \"SEXT_MAPPING_AFTER_RELEASE\", 0);
+            s->retired[binding.index] =
+                (SextRetiredFrame){true, mapping.slot, request.caller_pd, binding.token};
+            uint64_t stale = sext_backend_commit(mapping.slot, binding.index, binding.token, 6);
+            uint64_t duplicate = sext_backend_reclaim(mapping.slot, binding.index, binding.token);
+            sext_require(stale != SEXT_OK && duplicate == SEXT_OK, \"SEXT_RECLAIM_TOMBSTONE_FAILED\",
+                         0);
+            sexos_line(
+                \"[sext.reclaim.negative] target=%u token=%llu frame=%zu stale_commit=1 duplicate_reclaim=1 ok=1\",
+                request.caller_pd, (unsigned long long)binding.token, binding.index);
         }
     } else {
         sexos_line(\"[sext.release.denied] target=%u request=%llu page=%#llx status=%llu\",
-            request.caller_pd,(unsigned long long)request.request_id,(unsigned long long)request.page,(unsigned long long)result.status);
+                   request.caller_pd, (unsigned long long)request.request_id,
+                   (unsigned long long)request.page, (unsigned long long)result.status);
     }
 }
-void sext_service_turn(SextService *s,bool incoming,SexosMessage message)
-{
-    if(incoming)sext_service_accept(s,message);
-    for(size_t offset=0;offset<2;++offset) {
-        size_t client=(s->turn+offset)%2;
-        if(s->cleanup_pending[client].present) {
-            SextExitNotice notice=s->cleanup_pending[client].value;
-            SextBindings bindings=sext_allocator_bindings(&s->pager.allocator,notice.target_pd);
-            SextCleanupOutcome result=sext_pager_cleanup(&s->pager,notice);
-            if(result.tag==SEXT_CLEANUP_RETRY)continue;
-            if(result.tag==SEXT_CLEANUP_LIVE || result.tag==SEXT_CLEANUP_IGNORED)
-                s->cleanup_pending[client].present=false;
-            else if(result.tag==SEXT_CLEANUP_FATAL)sext_fatal(\"SEXT_UNCERTAIN_CLEANUP\",result.status);
+
+void sext_service_turn(SextService *s, bool incoming, SexosMessage message) {
+    if (incoming)
+        sext_service_accept(s, message);
+    for (size_t offset = 0; offset < 2; ++offset) {
+        size_t client = (s->turn + offset) % 2;
+        if (s->cleanup_pending[client].present) {
+            SextExitNotice notice = s->cleanup_pending[client].value;
+            SextBindings bindings = sext_allocator_bindings(&s->pager.allocator, notice.target_pd);
+            SextCleanupOutcome result = sext_pager_cleanup(&s->pager, notice);
+            if (result.tag == SEXT_CLEANUP_RETRY)
+                continue;
+            if (result.tag == SEXT_CLEANUP_LIVE || result.tag == SEXT_CLEANUP_IGNORED)
+                s->cleanup_pending[client].present = false;
+            else if (result.tag == SEXT_CLEANUP_FATAL)
+                sext_fatal(\"SEXT_UNCERTAIN_CLEANUP\", result.status);
             else {
-                if(!result.replay) {
-                    SextMapping mapping=sext_pager_mapping(&s->pager,notice.target_pd);
-                    sext_require(mapping.present,\"SEXT_MAPPING_AFTER_CLEANUP\",0);
-                    for(size_t i=0;i<SEXT_FRAME_COUNT;++i)if(bindings.entries[i].present) {
-                        SextBinding b=bindings.entries[i].value;
-                        s->retired[b.index]=(SextRetiredFrame){true,mapping.slot,b.target,b.token};
-                    }
-                    sexos_line(\"[sext.cleanup] target=%u task=%llu bitmap=%#llx released=%zu remaining=%zu closed=1 ok=1\",
-                        notice.target_pd,(unsigned long long)result.result.task_id,(unsigned long long)result.result.frame_bitmap,
-                        result.released,sext_allocator_used_by(&s->pager.allocator,notice.target_pd));
+                if (!result.replay) {
+                    SextMapping mapping = sext_pager_mapping(&s->pager, notice.target_pd);
+                    sext_require(mapping.present, \"SEXT_MAPPING_AFTER_CLEANUP\", 0);
+                    for (size_t i = 0; i < SEXT_FRAME_COUNT; ++i)
+                        if (bindings.entries[i].present) {
+                            SextBinding b = bindings.entries[i].value;
+                            s->retired[b.index] =
+                                (SextRetiredFrame){true, mapping.slot, b.target, b.token};
+                        }
+                    sexos_line(
+                        \"[sext.cleanup] target=%u task=%llu bitmap=%#llx released=%zu remaining=%zu closed=1 ok=1\",
+                        notice.target_pd, (unsigned long long)result.result.task_id,
+                        (unsigned long long)result.result.frame_bitmap, result.released,
+                        sext_allocator_used_by(&s->pager.allocator, notice.target_pd));
                 }
-                s->cleanup_pending[client].present=false;s->pending[client]=(SextWork){0};continue;
+                s->cleanup_pending[client].present = false;
+                s->pending[client] = (SextWork){0};
+                continue;
             }
         }
-        SextWork work=s->pending[client];
-        if(work.tag==SEXT_WORK_FAULT) {
-            SextOutcome result=sext_pager_step(&s->pager,work.fault);
-            if(result.tag==SEXT_OUT_IGNORED)s->pending[client]=(SextWork){0};
-            else if(result.tag==SEXT_OUT_COMMITTED) {
-                sext_service_committed(s,result);s->pending[client]=(SextWork){0};
-            } else if(result.tag==SEXT_OUT_REJECTED) {
-                sexos_line(\"[sext.fault.reject] target=%u token=%llu page=%#llx reason=%s used=%zu quota=4\",
-                    result.target,(unsigned long long)result.token,(unsigned long long)result.page,
-                    sext_reason_name(result.reason),sext_allocator_used_by(&s->pager.allocator,result.target));
-                s->pending[client]=(SextWork){0};
-            } else if(result.tag==SEXT_OUT_FATAL)sext_fatal(\"SEXT_UNCERTAIN_COMMIT\",result.status);
-        } else if(work.tag==SEXT_WORK_RELEASE) {
-            SextReleaseOutcome result=sext_pager_release(&s->pager,work.release);
-            if(result.tag==SEXT_RELEASE_FATAL)sext_fatal(\"SEXT_UNCERTAIN_RECLAIM\",result.status);
-            else if(result.tag==SEXT_RELEASE_DONE) {
-                sext_service_released(s,work.release,result);
-                s->pending[client]=(SextWork){.tag=SEXT_WORK_REPLY,.target=work.release.caller_pd,
-                    .value=sext_release_reply(work.release.request_id,result.status)};
+        SextWork work = s->pending[client];
+        if (work.tag == SEXT_WORK_FAULT) {
+            SextOutcome result = sext_pager_step(&s->pager, work.fault);
+            if (result.tag == SEXT_OUT_IGNORED)
+                s->pending[client] = (SextWork){0};
+            else if (result.tag == SEXT_OUT_COMMITTED) {
+                sext_service_committed(s, result);
+                s->pending[client] = (SextWork){0};
+            } else if (result.tag == SEXT_OUT_REJECTED) {
+                sexos_line(
+                    \"[sext.fault.reject] target=%u token=%llu page=%#llx reason=%s used=%zu quota=4\",
+                    result.target, (unsigned long long)result.token,
+                    (unsigned long long)result.page, sext_reason_name(result.reason),
+                    sext_allocator_used_by(&s->pager.allocator, result.target));
+                s->pending[client] = (SextWork){0};
+            } else if (result.tag == SEXT_OUT_FATAL)
+                sext_fatal(\"SEXT_UNCERTAIN_COMMIT\", result.status);
+        } else if (work.tag == SEXT_WORK_RELEASE) {
+            SextReleaseOutcome result = sext_pager_release(&s->pager, work.release);
+            if (result.tag == SEXT_RELEASE_FATAL)
+                sext_fatal(\"SEXT_UNCERTAIN_RECLAIM\", result.status);
+            else if (result.tag == SEXT_RELEASE_DONE) {
+                sext_service_released(s, work.release, result);
+                s->pending[client] =
+                    (SextWork){.tag = SEXT_WORK_REPLY,
+                               .target = work.release.caller_pd,
+                               .value = sext_release_reply(work.release.request_id, result.status)};
             }
-        } else if(work.tag==SEXT_WORK_WAIT) {
-            SextWaitOutcome result=sext_pager_wait(&s->pager,work.wait);
-            if(result.ready) {
+        } else if (work.tag == SEXT_WORK_WAIT) {
+            SextWaitOutcome result = sext_pager_wait(&s->pager, work.wait);
+            if (result.ready) {
                 sexos_line(\"[sext.cleanup.wait] caller=%u target=%u request=%llu status=%llu\",
-                    work.wait.caller_pd,work.wait.target_pd,(unsigned long long)work.wait.request_id,(unsigned long long)result.status);
-                s->pending[client]=(SextWork){.tag=SEXT_WORK_REPLY,.target=work.wait.caller_pd,
-                    .value=sext_release_reply(work.wait.request_id,result.status)};
+                           work.wait.caller_pd, work.wait.target_pd,
+                           (unsigned long long)work.wait.request_id,
+                           (unsigned long long)result.status);
+                s->pending[client] =
+                    (SextWork){.tag = SEXT_WORK_REPLY,
+                               .target = work.wait.caller_pd,
+                               .value = sext_release_reply(work.wait.request_id, result.status)};
             }
-        } else if(work.tag==SEXT_WORK_REPLY) {
-            if(sexos_reply(work.target,work.value)==0)s->pending[client]=(SextWork){0};
+        } else if (work.tag == SEXT_WORK_REPLY) {
+            if (sexos_reply(work.target, work.value) == 0)
+                s->pending[client] = (SextWork){0};
         }
     }
-    for(size_t i=0;i<SEXOS_APP_CATALOG_COUNT;++i)if(s->app_pending[i].present) {
-        SextAppNotice notice=s->app_pending[i];SextRetiredPool pool={0};
-        uint64_t status=sext_native_retire(sext_lifecycle_slot(i),&pool);
-        if(status==0) {
-            sext_require(pool.task_id==notice.task_id,\"APP_POOL_TASK\",0);
-            SextWorkspace workspace={0};sext_workspace_admit(&workspace,pool.base,pool.length);
-            (void)sext_workspace_record(&workspace,notice.target_pd,notice.task_id);
-            sext_workspace_rewind(&workspace);
-            uint64_t records=sext_workspace_record(&workspace,14,notice.task_id);
-            s->workspaces[i]=(SextWorkspaceSlot){true,workspace};s->app_pending[i].present=false;
-            sexos_line(\"[sext.app.pool.ready] target=%u task=%u bytes=%llu zeroed=%llu workspace_records=%llu reused=1 zero_owner=sext ok=1\",
-                notice.target_pd,notice.task_id,(unsigned long long)pool.length,(unsigned long long)pool.length,(unsigned long long)records);
-        } else if(status!=2)sext_fatal(\"SEXT_APP_RETIRE\",status);
-    }
-    s->turn^=1;
+    for (size_t i = 0; i < SEXOS_APP_CATALOG_COUNT; ++i)
+        if (s->app_pending[i].present) {
+            SextAppNotice notice = s->app_pending[i];
+            SextRetiredPool pool = {0};
+            uint64_t status = sext_native_retire(sext_lifecycle_slot(i), &pool);
+            if (status == 0) {
+                sext_require(pool.task_id == notice.task_id, \"APP_POOL_TASK\", 0);
+                SextWorkspace workspace = {0};
+                sext_workspace_admit(&workspace, pool.base, pool.length);
+                (void)sext_workspace_record(&workspace, notice.target_pd, notice.task_id);
+                sext_workspace_rewind(&workspace);
+                uint64_t records = sext_workspace_record(&workspace, 14, notice.task_id);
+                s->workspaces[i] = (SextWorkspaceSlot){true, workspace};
+                s->app_pending[i].present = false;
+                sexos_line(
+                    \"[sext.app.pool.ready] target=%u task=%u bytes=%llu zeroed=%llu workspace_records=%llu reused=1 zero_owner=sext ok=1\",
+                    notice.target_pd, notice.task_id, (unsigned long long)pool.length,
+                    (unsigned long long)pool.length, (unsigned long long)records);
+            } else if (status != 2)
+                sext_fatal(\"SEXT_APP_RETIRE\", status);
+        }
+    s->turn ^= 1;
 }
-void sext_main(void)
-{
-    SextService state={0};sext_service_init(&state);
-    SexosListener listener={8};
-    for(;;) {
-        SexosMessage message={0};bool incoming;
-        if(sext_service_can_progress(&state))incoming=sexos_try_listen(0,&message);
-        else {message=sexos_listen(&listener,0);incoming=true;}
-        sext_service_turn(&state,incoming,message);
-        if(sext_service_pending(&state))sexos_yield();
+
+void sext_main(void) {
+    SextService state = {0};
+    sext_service_init(&state);
+    SexosListener listener = {8};
+    for (;;) {
+        SexosMessage message = {0};
+        bool incoming;
+        if (sext_service_can_progress(&state))
+            incoming = sexos_try_listen(0, &message);
+        else {
+            message = sexos_listen(&listener, 0);
+            incoming = true;
+        }
+        sext_service_turn(&state, incoming, message);
+        if (sext_service_pending(&state))
+            sexos_yield();
     }
 }
 ")))

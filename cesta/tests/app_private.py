@@ -8,6 +8,7 @@ import random
 import subprocess
 import sys
 import tempfile
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 MASK=(1<<64)-1
@@ -102,7 +103,7 @@ def main():
         ('missing_ack_role','(g.ack_bit&(g.ack_bit-1))','false'),
     ];caught=[]
     if args.mutations:
-        original=source.read_text()
+        original=LayoutText(source.read_text())
         for name,before,after in mutants:
             assert original.count(before)>=1,(name,'mutation anchor')
             try:

@@ -32,6 +32,7 @@ import random
 import shutil
 
 from differential_support import LISTEN, first_difference, pinned_function, run, run_commands
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -466,7 +467,7 @@ def main():
                 raise SystemExit(first_difference(actual, expected, f"variant {tag} scenario {number} {compiler}"))
         compared += sum(len(expected.splitlines()) for expected in expected_cases)
     # Controls: each change to the translation must change some trace or frame.
-    original = (HERE / "src/sexdisplay.cesta").read_text()
+    original = LayoutText((HERE / "src/sexdisplay.cesta").read_text())
     atlas = ("SEXOS_ATLAS_PHASE_C_RENDER_STUB_PROOF",)
     mutations = [
         ((), "(var uint32_t r (+ ar (/ (* (- br ar) ti) 255u)))", "(var uint32_t r (+ ar (/ (* (- br ar) ti) 256u)))"),

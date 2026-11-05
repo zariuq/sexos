@@ -1,0 +1,27 @@
+# The one layout rule for C in this port: native fragments in src/*.cesta
+# (applied by tools/native_format.py) and the hand-written runtime sources.
+# Only whitespace may change; options that edit tokens stay off.
+BasedOnStyle: LLVM
+ColumnLimit: 100
+IndentWidth: 4
+ContinuationIndentWidth: 4
+SortIncludes: Never
+IncludeBlocks: Preserve
+BreakStringLiterals: false
+ReflowComments: false
+InsertBraces: false
+RemoveBracesLLVM: false
+RemoveParentheses: Leave
+RemoveSemicolon: false
+QualifierAlignment: Leave
+InsertNewlineAtEOF: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
+MaxEmptyLinesToKeep: 1
+SeparateDefinitionBlocks: Always
+# Function-like macros that expand to whole statements and are written without a semicolon.
+StatementMacros: [SCRIPT_OP2, SCRIPT_OP3]

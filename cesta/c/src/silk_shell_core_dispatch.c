@@ -1,3 +1,16 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
+
 #include "silk_shell_core.h"
 #include "silk_shell_surfaces.h"
 #include "silk_shell_models_linen.h"
@@ -5,148 +18,208 @@
 #include "silk_shell_custody.h"
 #include "silk_shell_viewport.h"
 #include "silk_shell_chrome.h"
-static ShellInputContext core_input(SilkShellState *state)
-{
- return(ShellInputContext){.shell={.input=&state->input,.chrome=&state->chrome,.models=&state->models,.apps=&state->apps,.proofs_a=&state->proofs_a},.atlas=&state->atlas,.surfaces=&state->surfaces};
+
+static ShellInputContext core_input(SilkShellState *state) {
+    return (ShellInputContext){.shell = {.input = &state->input,
+                                         .chrome = &state->chrome,
+                                         .models = &state->models,
+                                         .apps = &state->apps,
+                                         .proofs_a = &state->proofs_a},
+                               .atlas = &state->atlas,
+                               .surfaces = &state->surfaces};
 }
-static ShellSurfacesContext core_surfaces(SilkShellState *state)
-{
- ShellInputContext input=core_input(state);
- return(ShellSurfacesContext){input.shell,input.surfaces};
+
+static ShellSurfacesContext core_surfaces(SilkShellState *state) {
+    ShellInputContext input = core_input(state);
+    return (ShellSurfacesContext){input.shell, input.surfaces};
 }
-static SilkShellDispatchResult core_handled(bool mutated)
-{
- return(SilkShellDispatchResult){true,mutated,false,0};
+
+static SilkShellDispatchResult core_handled(bool mutated) {
+    return (SilkShellDispatchResult){true, mutated, false, 0};
 }
-static bool core_custody_rejects(SilkShellState *state,const SexosMessage *message)
-{
- for(size_t i=0;i<SHELL_APP_COUNT;++i){
-  if(!state->apps.present[i]||state->apps.entries[i].target!=message->caller_pd)continue;
-  if(shell_custody_allows_operation(&state->apps.entries[i],message->caller_task,message->type_id,message->arg0,message->arg1,message->arg2))return false;
-  sexos_line("[shell.app.stale] target=%u opcode=%#llx rejected=1",message->caller_pd,(unsigned long long)message->type_id);
-  return true;
- }
- return false;
-}
-static bool core_document_sender(SilkShellState *state,const SexosMessage *message,size_t *document,uint64_t *frame)
-{
- size_t index=0;
- for(size_t i=0;i<SHELL_APP_COUNT;++i){
-  ShellAppCatalogRow row=shell_custody_catalog_at(i);
-  if(!row.present||(row.app!=SHELL_APP_QUIL&&row.app!=SHELL_APP_BROWSER))continue;
-  if(row.target==message->caller_pd){
-   for(size_t j=0;j<SHELL_APP_COUNT;++j){
-    ShellAppCustody *entry=&state->apps.entries[j];
-    if(state->apps.present[j]&&entry->target==message->caller_pd&&entry->task==message->caller_task&&shell_custody_allows_operation(entry,message->caller_task,message->type_id,message->arg0,message->arg1,message->arg2)){
-     *document=index;
-     *frame=row.shell_surface?row.shell_surface:row.surface;
-     return true;
+
+static bool core_custody_rejects(SilkShellState *state, const SexosMessage *message) {
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        if (!state->apps.present[i] || state->apps.entries[i].target != message->caller_pd)
+            continue;
+        if (shell_custody_allows_operation(&state->apps.entries[i], message->caller_task,
+                                           message->type_id, message->arg0, message->arg1,
+                                           message->arg2))
+            return false;
+        sexos_line("[shell.app.stale] target=%u opcode=%#llx rejected=1", message->caller_pd,
+                   (unsigned long long)message->type_id);
+        return true;
     }
-   }
-   return false;
-  }
-  ++index;
- }
- return false;
+    return false;
 }
-SilkShellDispatchResult silk_shell_dispatch(SilkShellState *state,const SexosMessage *message)
-{
- if(!state||!message)return(SilkShellDispatchResult){0};
- ShellLinenWorkspaceContext workspace={&state->apps,&state->linen};
- if(shell_models_workspace_receive(&workspace,message))return core_handled(false);
- ShellLinenModelsContext linen={&state->models,&state->linen};
- if(shell_models_linen_async_reply(&linen,message))return core_handled(false);
- if(core_custody_rejects(state,message))return core_handled(false);
- if(message->type_id==UINT64_C(0x275)||message->type_id==UINT64_C(0x274)){
-  size_t document=0;
-  uint64_t frame=0;
-  if(!core_document_sender(state,message,&document,&frame))return core_handled(false);
-  if(message->type_id==UINT64_C(0x275)){
-   if(document<SHELL_DOCUMENT_VIEW_COUNT){
-    shell_document_delivery_refresh(&state->apps.document[document]);
-    ShellInputContext input=core_input(state);
-    int32_t x=0,y=0;uint32_t w=0,h=0;
-    if(shell_chrome_peer_get_surface_bounds(&input.shell,frame,&x,&y,&w,&h))shell_chrome_native_child_geometry(&input.shell,frame,x,y,w,h);
-   }
-  }else{
-   ShellSurfacesContext surfaces=core_surfaces(state);
-   if(shell_surfaces_focus_or_open_linen(&surfaces))sexos_line("[shell.document.open] target=%u linen=200",message->caller_pd);
-  }
-  return core_handled(false);
- }
- if(message->type_id==OP_AUTODEMO_TICK){
-  ShellProofsBInputContext proof={core_input(state),&state->proofs_b};
-  shell_proofs_b_maybe_run_cursor_autodemo(&proof);
-  return(SilkShellDispatchResult){true,false,true,0};
- }
- if(message->type_id==UINT64_C(0x260)){
-  if(message->caller_pd!=4||message->caller_task!=4)return core_handled(false);
-  ShellInputContext input=core_input(state);
-  if(!state->input.POINTER_USB_STATE_INIT){
-   state->input.POINTER_X=shell_chrome_desktop_width(&input.shell)/2;
-   state->input.POINTER_Y=shell_chrome_desktop_height(&input.shell)/2;
-   state->input.POINTER_USB_STATE_INIT=true;
-  }
-  uint8_t previous=state->input.POINTER_BUTTONS,buttons=(uint8_t)message->arg1&7;
-  state->input.POINTER_BUTTONS=buttons;
-  int8_t wheel=(int8_t)(message->arg2>>16);
-  int64_t accumulated=(int64_t)state->input.POINTER_WHEEL_ACCUM+wheel;
-  if(accumulated>INT32_MAX)accumulated=INT32_MAX;
-  if(accumulated<INT32_MIN)accumulated=INT32_MIN;
-  state->input.POINTER_WHEEL_ACCUM=(int32_t)accumulated;
-  if((previous&1)!=(buttons&1))shell_input_handle_hid_event(&input,EV_BTN,1,(buttons&1)?1:0);
-  return core_handled(true);
- }
- if(message->type_id==OP_HID_EVENT){
-  if(message->caller_pd!=4||message->caller_task!=4)return core_handled(false);
-  ShellInputContext input=core_input(state);
-  shell_input_handle_hid_event(&input,message->arg2,message->arg0,message->arg1);
-  return core_handled(true);
- }
- if(message->type_id==OP_APP_SURFACE_REQ){
-  ShellSurfacesContext surfaces=core_surfaces(state);
-  bool accepted=shell_surfaces_handle_app_surface_req(&surfaces,message->arg0,message->arg1,message->arg2,message->caller_pd);
-  return(SilkShellDispatchResult){true,accepted,true,accepted?0:SEXOS_ERR_CAP_INVALID};
- }
- if(message->type_id==OP_SHELL_LAUNCH_REQUEST){
-  uint64_t surface=message->arg0==1?SURFACE_ID_QUIL:message->arg0==2?SURFACE_ID_LINEN:message->arg0==7?SURFACE_ID_BROWSER:0;
-  if(surface){ShellSurfacesContext surfaces=core_surfaces(state);shell_surfaces_open_app_in_active_scene_by_sid(&surfaces,surface);return core_handled(true);}
-  return core_handled(message->arg0==0);
- }
- if(message->type_id==OP_SHELL_BIND_BUFFER){
-  if(!shell_custody_buffer_sender(message->caller_pd))return core_handled(false);
-  for(size_t i=0;i<state->chrome.WINDOWS_len;++i)if(state->chrome.WINDOWS[i].desc.window_id==2){state->chrome.WINDOWS[i].desc.buffer_handle=message->arg0;return core_handled(true);}
-  if(state->chrome.WINDOWS_len<64){
-   state->chrome.WINDOWS[state->chrome.WINDOWS_len++]=(WindowState){.desc={.window_id=2,.buffer_handle=message->arg0,.x=100,.y=100,.width=1024,.height=768,.z_index=1,.focus_state=1}};
-   state->chrome.FOCUS_ID=2;
-   return core_handled(true);
-  }
-  return core_handled(false);
- }
- if(message->type_id==UINT64_C(0x271)){
-  for(size_t i=0;i<SHELL_APP_COUNT;++i)if(state->apps.present[i]){
-   ShellAppCustody *entry=&state->apps.entries[i];
-   if(entry->target==message->caller_pd){
-    bool valid=!entry->dead&&!entry->retired&&!entry->close_pending&&entry->task==message->caller_task&&message->arg0==((uint64_t)entry->task<<32|entry->target)&&message->arg1!=0&&message->arg2>=1&&message->arg2<=13;
-    if(valid)sexos_line("[shell.spindle.status.accepted] target=%u sequence=%llu state=%llu live=1",entry->target,(unsigned long long)message->arg1,(unsigned long long)message->arg2);
-    return core_handled(false);
-   }
-  }
-  return core_handled(false);
- }
- if(message->type_id==OP_SCENE_SETTINGS_CMD){
-  if(message->caller_pd!=3||message->caller_task!=3)return core_handled(false);
-  handle_scene_settings_cmd(message->arg0,message->arg1,message->arg2);
-  return core_handled(true);
- }
- if(message->type_id==UINT64_C(1)){
-  if(state->models.SEXSTORE_LOAD_PENDING&&message->caller_pd==8){
-   state->models.SEXSTORE_LOAD_PENDING=false;
-   handle_sexstore_get_reply(message->arg0);
-  }
-  return core_handled(false);
- }
- return(SilkShellDispatchResult){0};
+
+static bool core_document_sender(SilkShellState *state, const SexosMessage *message,
+                                 size_t *document, uint64_t *frame) {
+    size_t index = 0;
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        ShellAppCatalogRow row = shell_custody_catalog_at(i);
+        if (!row.present || (row.app != SHELL_APP_QUIL && row.app != SHELL_APP_BROWSER))
+            continue;
+        if (row.target == message->caller_pd) {
+            for (size_t j = 0; j < SHELL_APP_COUNT; ++j) {
+                ShellAppCustody *entry = &state->apps.entries[j];
+                if (state->apps.present[j] && entry->target == message->caller_pd &&
+                    entry->task == message->caller_task &&
+                    shell_custody_allows_operation(entry, message->caller_task, message->type_id,
+                                                   message->arg0, message->arg1, message->arg2)) {
+                    *document = index;
+                    *frame = row.shell_surface ? row.shell_surface : row.surface;
+                    return true;
+                }
+            }
+            return false;
+        }
+        ++index;
+    }
+    return false;
+}
+
+SilkShellDispatchResult silk_shell_dispatch(SilkShellState *state, const SexosMessage *message) {
+    if (!state || !message)
+        return (SilkShellDispatchResult){0};
+    ShellLinenWorkspaceContext workspace = {&state->apps, &state->linen};
+    if (shell_models_workspace_receive(&workspace, message))
+        return core_handled(false);
+    ShellLinenModelsContext linen = {&state->models, &state->linen};
+    if (shell_models_linen_async_reply(&linen, message))
+        return core_handled(false);
+    if (core_custody_rejects(state, message))
+        return core_handled(false);
+    if (message->type_id == UINT64_C(0x275) || message->type_id == UINT64_C(0x274)) {
+        size_t document = 0;
+        uint64_t frame = 0;
+        if (!core_document_sender(state, message, &document, &frame))
+            return core_handled(false);
+        if (message->type_id == UINT64_C(0x275)) {
+            if (document < SHELL_DOCUMENT_VIEW_COUNT) {
+                shell_document_delivery_refresh(&state->apps.document[document]);
+                ShellInputContext input = core_input(state);
+                int32_t x = 0, y = 0;
+                uint32_t w = 0, h = 0;
+                if (shell_chrome_peer_get_surface_bounds(&input.shell, frame, &x, &y, &w, &h))
+                    shell_chrome_native_child_geometry(&input.shell, frame, x, y, w, h);
+            }
+        } else {
+            ShellSurfacesContext surfaces = core_surfaces(state);
+            if (shell_surfaces_focus_or_open_linen(&surfaces))
+                sexos_line("[shell.document.open] target=%u linen=200", message->caller_pd);
+        }
+        return core_handled(false);
+    }
+    if (message->type_id == OP_AUTODEMO_TICK) {
+        ShellProofsBInputContext proof = {core_input(state), &state->proofs_b};
+        shell_proofs_b_maybe_run_cursor_autodemo(&proof);
+        return (SilkShellDispatchResult){true, false, true, 0};
+    }
+    if (message->type_id == UINT64_C(0x260)) {
+        if (message->caller_pd != 4 || message->caller_task != 4)
+            return core_handled(false);
+        ShellInputContext input = core_input(state);
+        if (!state->input.POINTER_USB_STATE_INIT) {
+            state->input.POINTER_X = shell_chrome_desktop_width(&input.shell) / 2;
+            state->input.POINTER_Y = shell_chrome_desktop_height(&input.shell) / 2;
+            state->input.POINTER_USB_STATE_INIT = true;
+        }
+        uint8_t previous = state->input.POINTER_BUTTONS, buttons = (uint8_t)message->arg1 & 7;
+        state->input.POINTER_BUTTONS = buttons;
+        int8_t wheel = (int8_t)(message->arg2 >> 16);
+        int64_t accumulated = (int64_t)state->input.POINTER_WHEEL_ACCUM + wheel;
+        if (accumulated > INT32_MAX)
+            accumulated = INT32_MAX;
+        if (accumulated < INT32_MIN)
+            accumulated = INT32_MIN;
+        state->input.POINTER_WHEEL_ACCUM = (int32_t)accumulated;
+        if ((previous & 1) != (buttons & 1))
+            shell_input_handle_hid_event(&input, EV_BTN, 1, (buttons & 1) ? 1 : 0);
+        return core_handled(true);
+    }
+    if (message->type_id == OP_HID_EVENT) {
+        if (message->caller_pd != 4 || message->caller_task != 4)
+            return core_handled(false);
+        ShellInputContext input = core_input(state);
+        shell_input_handle_hid_event(&input, message->arg2, message->arg0, message->arg1);
+        return core_handled(true);
+    }
+    if (message->type_id == OP_APP_SURFACE_REQ) {
+        ShellSurfacesContext surfaces = core_surfaces(state);
+        bool accepted = shell_surfaces_handle_app_surface_req(
+            &surfaces, message->arg0, message->arg1, message->arg2, message->caller_pd);
+        return (SilkShellDispatchResult){true, accepted, true,
+                                         accepted ? 0 : SEXOS_ERR_CAP_INVALID};
+    }
+    if (message->type_id == OP_SHELL_LAUNCH_REQUEST) {
+        uint64_t surface = message->arg0 == 1   ? SURFACE_ID_QUIL
+                           : message->arg0 == 2 ? SURFACE_ID_LINEN
+                           : message->arg0 == 7 ? SURFACE_ID_BROWSER
+                                                : 0;
+        if (surface) {
+            ShellSurfacesContext surfaces = core_surfaces(state);
+            shell_surfaces_open_app_in_active_scene_by_sid(&surfaces, surface);
+            return core_handled(true);
+        }
+        return core_handled(message->arg0 == 0);
+    }
+    if (message->type_id == OP_SHELL_BIND_BUFFER) {
+        if (!shell_custody_buffer_sender(message->caller_pd))
+            return core_handled(false);
+        for (size_t i = 0; i < state->chrome.WINDOWS_len; ++i)
+            if (state->chrome.WINDOWS[i].desc.window_id == 2) {
+                state->chrome.WINDOWS[i].desc.buffer_handle = message->arg0;
+                return core_handled(true);
+            }
+        if (state->chrome.WINDOWS_len < 64) {
+            state->chrome.WINDOWS[state->chrome.WINDOWS_len++] =
+                (WindowState){.desc = {.window_id = 2,
+                                       .buffer_handle = message->arg0,
+                                       .x = 100,
+                                       .y = 100,
+                                       .width = 1024,
+                                       .height = 768,
+                                       .z_index = 1,
+                                       .focus_state = 1}};
+            state->chrome.FOCUS_ID = 2;
+            return core_handled(true);
+        }
+        return core_handled(false);
+    }
+    if (message->type_id == UINT64_C(0x271)) {
+        for (size_t i = 0; i < SHELL_APP_COUNT; ++i)
+            if (state->apps.present[i]) {
+                ShellAppCustody *entry = &state->apps.entries[i];
+                if (entry->target == message->caller_pd) {
+                    bool valid = !entry->dead && !entry->retired && !entry->close_pending &&
+                                 entry->task == message->caller_task &&
+                                 message->arg0 == ((uint64_t)entry->task << 32 | entry->target) &&
+                                 message->arg1 != 0 && message->arg2 >= 1 && message->arg2 <= 13;
+                    if (valid)
+                        sexos_line(
+                            "[shell.spindle.status.accepted] target=%u sequence=%llu state=%llu live=1",
+                            entry->target, (unsigned long long)message->arg1,
+                            (unsigned long long)message->arg2);
+                    return core_handled(false);
+                }
+            }
+        return core_handled(false);
+    }
+    if (message->type_id == OP_SCENE_SETTINGS_CMD) {
+        if (message->caller_pd != 3 || message->caller_task != 3)
+            return core_handled(false);
+        handle_scene_settings_cmd(message->arg0, message->arg1, message->arg2);
+        return core_handled(true);
+    }
+    if (message->type_id == UINT64_C(1)) {
+        if (state->models.SEXSTORE_LOAD_PENDING && message->caller_pd == 8) {
+            state->models.SEXSTORE_LOAD_PENDING = false;
+            handle_sexstore_get_reply(message->arg0);
+        }
+        return core_handled(false);
+    }
+    return (SilkShellDispatchResult){0};
 }
 
 

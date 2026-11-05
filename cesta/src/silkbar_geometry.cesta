@@ -1,34 +1,40 @@
 (cesta native-c/1 compact-c/2
  (unit
   (ownership (check-all) (foreign silkbar_hit_test_action (obligation "Reads the given finite SilkBar layout without retaining its address.")))
-  (native "#include \"silkbar_geometry.h\"
+  (native "
+#include \"silkbar_geometry.h\"
 #include \"silkbar_model.h\"
-static bool silkbar_geometry_fit(size_t width,SilkBar *out)
-{
-    SilkBar bar=DEFAULT_SILK_BAR;
-    if(CHIP_X3>SIZE_MAX-CLOCK_W)return false;
-    size_t edge=CHIP_X3+CLOCK_W;
-    if(edge>SIZE_MAX-16)return false;
-    edge+=16;
-    size_t shift=edge>width?edge-width:0;
-    size_t left_end=0;
-    for(size_t i=0;i<6;++i){
-        size_t end=bar.layout[i].x+bar.layout[i].w;
-        if(end>left_end)left_end=end;
+
+static bool silkbar_geometry_fit(size_t width, SilkBar *out) {
+    SilkBar bar = DEFAULT_SILK_BAR;
+    if (CHIP_X3 > SIZE_MAX - CLOCK_W)
+        return false;
+    size_t edge = CHIP_X3 + CLOCK_W;
+    if (edge > SIZE_MAX - 16)
+        return false;
+    edge += 16;
+    size_t shift = edge > width ? edge - width : 0;
+    size_t left_end = 0;
+    for (size_t i = 0; i < 6; ++i) {
+        size_t end = bar.layout[i].x + bar.layout[i].w;
+        if (end > left_end)
+            left_end = end;
     }
-    if(CHIP_X0<shift || left_end>SIZE_MAX-16 || CHIP_X0-shift<left_end+16)return false;
-    for(size_t i=6;i<LAYOUT_COUNT;++i){
-        if(bar.layout[i].x<shift)return false;
-        bar.layout[i].x-=shift;
+    if (CHIP_X0 < shift || left_end > SIZE_MAX - 16 || CHIP_X0 - shift < left_end + 16)
+        return false;
+    for (size_t i = 6; i < LAYOUT_COUNT; ++i) {
+        if (bar.layout[i].x < shift)
+            return false;
+        bar.layout[i].x -= shift;
     }
-    *out=bar;
+    *out = bar;
     return true;
 }
-SilkBarDispatch silkbar_geometry_dispatch(size_t width,size_t x,size_t y)
-{
-    SilkBar bar=DEFAULT_SILK_BAR;
-    (void)silkbar_geometry_fit(width,&bar);
-    SilkBarAction action=silkbar_hit_test_action(&bar,x,y);
-    return (SilkBarDispatch){(uint8_t)action.tag,action.workspace};
+
+SilkBarDispatch silkbar_geometry_dispatch(size_t width, size_t x, size_t y) {
+    SilkBar bar = DEFAULT_SILK_BAR;
+    (void)silkbar_geometry_fit(width, &bar);
+    SilkBarAction action = silkbar_hit_test_action(&bar, x, y);
+    return (SilkBarDispatch){(uint8_t)action.tag, action.workspace};
 }
 ")))

@@ -2,6 +2,7 @@
 """Compare bounded provider calls and complete register replies with actual Rust."""
 import argparse,datetime,hashlib,json,random,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 U64=(1<<64)-1
 
@@ -99,7 +100,7 @@ def main():
   print(cc,len(rows),'register/provider traces match real Rust',flush=True)
  changes=[('wrong_task','a.task==b.task','true'),('reserved_alias','!(a|b|c)','!((a|b|c)&UINT64_C(0))'),('sample_zero_sentinel','if(word.present)','if(word.present && word.value)'),('unbounded_entropy','attempt<=SOURCE_ENTROPY_ATTEMPTS','attempt<SOURCE_ENTROPY_ATTEMPTS'),('clock_no_pair_check','!source_clock_raw_equal(first,pair.second)','false'),('clock_no_uip','(first.status_a&0x80)','false'),('wrong_busy_precedence','busy?SOURCE_BUSY:SOURCE_UNAVAILABLE','busy?SOURCE_UNAVAILABLE:SOURCE_BUSY'),('bad_dst','if(first.status_b&1)','if(false)'),('wrong_calendar','day.value>source_month_days(year,month.value)','day.value>31'),('reject_leap_day','!day.value || day.value>','!day.value || (month.value==2 && day.value==29) || day.value>'),('no_twelve_hour_conversion','hour.value=hour.value%12+((raw.hour&0x80)?12:0);','hour.value=hour.value;'),('wrong_trust_pack','g.consumer.pd|((uint64_t)g.consumer.task<<32)','((uint64_t)g.consumer.pd<<32)|g.consumer.task')];caught=[]
  if args.mutations:
-  original=source.read_text()
+  original=LayoutText(source.read_text())
   for name,before,after in changes:
    assert before in original,(name,'anchor')
    try:

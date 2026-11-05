@@ -1,8 +1,9 @@
+
 #ifndef SEXOS_SHELL_MODELS_PAINT_H
 #define SEXOS_SHELL_MODELS_PAINT_H
 #include "silk_shell_models_render.h"
 #include "silk_shell_models_linen.h"
 size_t shell_models_peer_object_count(const ShellLinenRenderContext *ctx);
-void shell_models_paint_surface(ShellLinenRenderContext *ctx,bool startup_pending);
+void shell_models_paint_surface(ShellLinenRenderContext *ctx, bool startup_pending);
 void shell_models_paint_surface_fast(ShellLinenRenderContext *ctx);
 #endif

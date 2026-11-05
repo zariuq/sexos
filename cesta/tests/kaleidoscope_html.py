@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -137,7 +138,7 @@ fn main(){let n:usize=std::env::args().nth(1).unwrap().parse().unwrap();let(inpu
             builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = exports["gcc"].read_text()
+        base = LayoutText(exports["gcc"].read_text())
         changes = [
             ("script-src", "bool plain=!src.present&&", "bool plain=true&&"),
             ("truncation-reserve", "return out->capacity>reserve?out->capacity-reserve:0", "return out->capacity"),

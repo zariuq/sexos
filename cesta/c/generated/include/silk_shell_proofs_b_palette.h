@@ -1,12 +1,18 @@
+
 #ifndef SEXOS_SHELL_PROOFS_B_PALETTE_H
 #define SEXOS_SHELL_PROOFS_B_PALETTE_H
 #include "silk_shell_input.h"
 #include "silk_shell_surfaces.h"
-typedef struct ShellProofsBFrame {bool present;uint32_t frame;} ShellProofsBFrame;
+
+typedef struct ShellProofsBFrame {
+    bool present;
+    uint32_t frame;
+} ShellProofsBFrame;
+
 size_t shell_proofs_b_palette_command_count(ShellInputContext *ctx);
-uint8_t shell_proofs_b_palette_command_code(ShellInputContext *ctx,size_t index);
-ShellPaletteString shell_proofs_b_palette_command_label(ShellInputContext *ctx,size_t index);
-ShellPaletteStatus shell_proofs_b_palette_status(ShellInputContext *ctx,uint8_t command);
+uint8_t shell_proofs_b_palette_command_code(ShellInputContext *ctx, size_t index);
+ShellPaletteString shell_proofs_b_palette_command_label(ShellInputContext *ctx, size_t index);
+ShellPaletteStatus shell_proofs_b_palette_status(ShellInputContext *ctx, uint8_t command);
 bool shell_proofs_b_palette_toggle(ShellInputContext *ctx);
 void shell_proofs_b_palette_render(ShellInputContext *ctx);
 bool shell_proofs_b_palette_execute(ShellInputContext *ctx);
@@ -17,13 +23,13 @@ size_t shell_proofs_b_bell_ring_count(ShellInputContext *ctx);
 uint8_t shell_proofs_b_bell_visible_count(ShellInputContext *ctx);
 void shell_proofs_b_bell_next(ShellInputContext *ctx);
 void shell_proofs_b_atlas_toggle(ShellInputContext *ctx);
-void shell_proofs_b_atlas_switch_scene(ShellInputContext *ctx,uint8_t scene);
+void shell_proofs_b_atlas_switch_scene(ShellInputContext *ctx, uint8_t scene);
 void shell_proofs_b_atlas_collect_snapshot(ShellInputContext *ctx);
 void shell_proofs_b_yield(ShellInputContext *ctx);
-const char *shell_proofs_b_registry_name(ShellInputContext *ctx,size_t index);
+const char *shell_proofs_b_registry_name(ShellInputContext *ctx, size_t index);
 ShellProofsBFrame shell_proofs_b_first_minimized_frame(ShellInputContext *ctx);
-ShellProofsBFrame shell_proofs_b_frame_for_surface(ShellInputContext *ctx,uint64_t surface);
-bool shell_proofs_b_minimize_frame(ShellInputContext *ctx,uint32_t frame);
+ShellProofsBFrame shell_proofs_b_frame_for_surface(ShellInputContext *ctx, uint64_t surface);
+bool shell_proofs_b_minimize_frame(ShellInputContext *ctx, uint32_t frame);
 uint64_t shell_proofs_b_browser_active_frame(ShellInputContext *ctx);
 void shell_proofs_b_maybe_run_command_palette_status_proof(ShellInputContext *ctx);
 void shell_proofs_b_maybe_run_command_palette_linen_status_proof(ShellInputContext *ctx);

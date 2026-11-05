@@ -2,6 +2,7 @@
 """Qualify the actual typed-source adapter with scripted processor operations."""
 import argparse,hashlib,json,subprocess,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 
 def run(argv):
@@ -37,7 +38,7 @@ def main():
         ('ignore_mode_change','source_cmos_register(0x0b)!=b','source_cmos_register(0x0b)==0xff'),
         ('skip_cpuid_bound','if(r[0]<7)return false;','if(false)return false;'),
         ('wrong_boot_consumer','boot_source_grant(h,c)','boot_source_grant(h,h)'),
-    ];caught=[];source=w/'kernel_sources.c';original=source.read_text()
+    ];caught=[];source=w/'kernel_sources.c';original=LayoutText(source.read_text())
     if args.mutations:
         for name,before,after in mutants:
             assert before in original,(name,'anchor')

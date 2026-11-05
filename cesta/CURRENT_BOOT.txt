@@ -2,9 +2,10 @@ Current BOOT construction and reserved incarnations
 ===================================================
 
 The current development profile uses interfaces/kernel_current.data, exported
-once into kernel_current.h. It declares twenty-nine domains with separate logical
-IDs, image layouts, hardware keys and initial-admission flags; one hundred fifty-six final
-Domain routes; seventeen app incarnations; and four typed source grants. The app rows are compared with the
+once into kernel_current.h. It declares forty domains with separate logical
+IDs, image layouts, hardware keys and initial-admission flags; two hundred twenty-nine final
+Domain routes; twenty-eight app incarnations; and ten typed source grants, one
+entropy/clock/trust triple per catalogued Browser plus the status bar's clock. The app rows are compared with the
 actual upstream app_catalog module, while layout/spawn facts are checked against
 init.rs. App-array capacity and route slots derive from the same declaration. The
 normal current profile audits actual captured task/lifecycle/self/route/activation
@@ -13,7 +14,8 @@ publishes the checked catalog records before sealing and records the first
 actual scheduler handoff, allowing the unchanged upstream recovery/pixel
 checkers to join held identities with native service evidence.
 
-IDs16/18/19..23 reuse key9; IDs17/24..29 reuse key12, all with separate layouts. Their image
+IDs16/18/19..23/32..39 reuse key9; IDs17/24..29/40 reuse key12; IDs30/31 reuse
+key15, all with separate layouts. Their image
 and stack backing is distinct from every other private image. They do not enter
 the run queue. BOOT clears and invalidates all their private leaves before any
 user entry, preserving the exact saved leaves for the later activation protocol.
@@ -43,10 +45,13 @@ BOOT must abort construction; no rollback of already-reserved backing is claimed
 Installed construction scope
 -----------------------------
 
-The current BOOT function loads all twenty-nine records, installs the one hundred fifty-six
+The current BOOT function loads all forty records, installs the two hundred twenty-nine
 routes and the input capability, then installs service/pager/self lifecycle
-metadata and the fourteen exact activation grants. It reserves successors, creates
-DMA/shared/document/UiIR region views, probes/restores BOOT PCI BAR0 state and
+metadata and the twenty-five exact activation grants. It reserves successors, reads back
+the Browser successors' Net and Bell routes and every Spindle's Net route, creates
+DMA/shared/document/UiIR region views and Display's two private frame buffers (one
+buddy reservation, verified by readback, INFO/VIEW dispatch, foreign denial, leaf
+permissions and zero contents before sealing), probes/restores BOOT PCI BAR0 state and
 publishes its bounded per-holder MMIO aliases. Command-register status bits
 are not echoed into W1C writes. Runtime BAR resolution only reads these grants.
 
@@ -86,7 +91,7 @@ not establish a completed device transfer.
 
 The host gate executes the production allocator, loader, capture, route, grant
 and page-table code on RAM with CPU/TLB providers. It loads a synthetic ELF into
-all twenty-nine layouts and exercises late-leaf failure before any clear. Semantic
+all forty layouts and exercises late-leaf failure before any clear. Semantic
 mutations must compile and be observed at runtime. The separate pure Rust gate
 compares complete leaf-effect traces, including validation failures and replay.
 
@@ -104,7 +109,7 @@ or retarget a demand client are rejected. Separate source-role, subject and
 slot constraints reject ambient Browser sources and communication-slot collisions;
 these metadata declarations are not interpreted as communication capabilities.
 
-Global key injectivity is intentionally false for the twenty-nine records. The
+Global key injectivity is intentionally false for the forty records. The
 certificate proves uniqueness among the fifteen initial admissions and records
 the intentional dormant reuse. Private-leaf detachment, future activation and
 native C realization have separate obligations and tests. The certificate does
@@ -120,6 +125,8 @@ alone is insufficient. New task identity, dormant phase, saved frame, queue room
 and every saved leaf are validated before restoring. All leaves are restored and
 flushed before authority/ready publication. Replay returns the spent receipt;
 retired successors are never restored. No new image, frame or capability is made.
-The RAM gate checks all dormant reservations, the eight-incarnation Quil chain
-and physical key-reuse fences. The normal-kernel/real-Sext CPU gate runs both eight-incarnation families;
+The RAM gate checks all dormant reservations, the sixteen-incarnation Quil chain
+and physical key-reuse fences. The normal-kernel/real-Sext CPU gate ran both
+families when each had eight incarnations; it has not been rerun on the
+sixteen Quil and nine Spindle reservations;
 real GUI cleanup has a separate paired gate (RETIREMENT.txt).

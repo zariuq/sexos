@@ -117,7 +117,7 @@ def main():
     generate(["export-c", "src/sex_object_model_interface.cesta", "--"], include / "sex_object_model.h")
     generate(["export-c", "src/sex_graphics_interface.cesta", "--"], include / "sex_graphics.h")
     generate(["export-c", "src/sexfiles_interface.cesta", "--"], include / "sexfiles.h")
-    generate(["export-c", "src/sexos_mmio_interface.cesta", "--"], include / "sexos_mmio.h")
+    generate(["export-c", "src/sexos_mmio_interface.cesta", "--std=c11", "--", "-Igenerated/include"], include / "sexos_mmio.h")
     subprocess.run([binary, "export-header", "interfaces/shell_apps.export", "-o", include / "shell_app_rows.h"], cwd=HERE, check=True)
     generate(["export-c", "src/silk_shell_custody_interface.cesta", "--"], include / "silk_shell_custody.h")
     generate(["export-c", "src/shell_text_delivery_interface.cesta", "--"], include / "shell_text_delivery.h")

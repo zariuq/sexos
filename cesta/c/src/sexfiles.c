@@ -1,3 +1,15 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 #include "sexfiles.h"
 #if !defined(SEXOS_SEXFILES_CURRENT_DOCUMENT)
 #define SEXOS_SEXFILES_CURRENT_DOCUMENT 1
@@ -1475,115 +1487,419 @@ static uint64_t handle_diskfs_rename(uint64_t path_id, uint64_t name_lo, uint64_
 }
 #if SEXOS_SEXFILES_CURRENT_DOCUMENT
 
-static bool document_quil_target(uint32_t caller)
-{
- static const uint32_t targets[16]={9,16,18,19,20,21,22,23,32,33,34,35,36,37,38,39};
- for(size_t i=0;i<16;i++)if(targets[i]==caller)return true;
- return false;
+static bool document_quil_target(uint32_t caller) {
+    static const uint32_t targets[16] = {9,  16, 18, 19, 20, 21, 22, 23,
+                                         32, 33, 34, 35, 36, 37, 38, 39};
+    for (size_t i = 0; i < 16; i++)
+        if (targets[i] == caller)
+            return true;
+    return false;
 }
-static bool document_v4_entry(uint8_t object,V4Entry *entry,uint64_t *buffer,uint32_t *error)
-{
- if(object<2||object>=DISKFS_SLOTS){*error=SEXOS_DOCUMENT_DENIED;return false;}
- uint64_t va=diskfs_bridge_get_buf_va();if(!va||va==UINT64_MAX){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t native_error=0;
- if(!v4_ensure(va,&native_error)){*error=SEXOS_DOCUMENT_IO;return false;}
- if(!v4_get(object,entry,&native_error)){*error=SEXOS_DOCUMENT_STALE;return false;}*buffer=va;return true;
+
+static bool document_v4_entry(uint8_t object, V4Entry *entry, uint64_t *buffer, uint32_t *error) {
+    if (object < 2 || object >= DISKFS_SLOTS) {
+        *error = SEXOS_DOCUMENT_DENIED;
+        return false;
+    }
+    uint64_t va = diskfs_bridge_get_buf_va();
+    if (!va || va == UINT64_MAX) {
+        *error = SEXOS_DOCUMENT_IO;
+        return false;
+    }
+    uint64_t native_error = 0;
+    if (!v4_ensure(va, &native_error)) {
+        *error = SEXOS_DOCUMENT_IO;
+        return false;
+    }
+    if (!v4_get(object, entry, &native_error)) {
+        *error = SEXOS_DOCUMENT_STALE;
+        return false;
+    }
+    *buffer = va;
+    return true;
 }
-bool document_backend_identity(uint8_t object,uint32_t *generation,uint32_t *error)
-{
- V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;(void)va;*generation=((uint32_t)object+1u)<<16|entry.gen;return true;
+
+bool document_backend_identity(uint8_t object, uint32_t *generation, uint32_t *error) {
+    V4Entry entry;
+    uint64_t va = 0;
+    if (!document_v4_entry(object, &entry, &va, error))
+        return false;
+    (void)va;
+    *generation = ((uint32_t)object + 1u) << 16 | entry.gen;
+    return true;
 }
-bool document_backend_name(uint8_t object,DocumentName *name,uint32_t *error)
-{
- V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;(void)va;for(size_t i=0;i<16;i++)name->bytes[i]=entry.name[i];return true;
+
+bool document_backend_name(uint8_t object, DocumentName *name, uint32_t *error) {
+    V4Entry entry;
+    uint64_t va = 0;
+    if (!document_v4_entry(object, &entry, &va, error))
+        return false;
+    (void)va;
+    for (size_t i = 0; i < 16; i++)
+        name->bytes[i] = entry.name[i];
+    return true;
 }
-bool document_backend_create(const DocumentName *name,bool fresh_only,uint8_t *object,uint32_t *generation,uint32_t *error)
-{
- (void)fresh_only;uint64_t va=diskfs_bridge_get_buf_va();if(!va||va==UINT64_MAX){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t native_error=0;if(!v4_ensure(va,&native_error)){*error=SEXOS_DOCUMENT_IO;return false;}
- uint64_t lo=0,hi=0;for(size_t i=0;i<8;i++){lo|=(uint64_t)name->bytes[i]<<(i*8);hi|=(uint64_t)name->bytes[i+8]<<(i*8);}uint64_t value=handle_diskfs_create(lo,hi,va);
- if(value==(uint64_t)ERR_EXISTS){*error=SEXOS_DOCUMENT_EXISTS;return false;}if(value<3||value>=15){*error=SEXOS_DOCUMENT_IO;return false;}*object=(uint8_t)value;return document_backend_identity(*object,generation,error);
+
+bool document_backend_create(const DocumentName *name, bool fresh_only, uint8_t *object,
+                             uint32_t *generation, uint32_t *error) {
+    (void)fresh_only;
+    uint64_t va = diskfs_bridge_get_buf_va();
+    if (!va || va == UINT64_MAX) {
+        *error = SEXOS_DOCUMENT_IO;
+        return false;
+    }
+    uint64_t native_error = 0;
+    if (!v4_ensure(va, &native_error)) {
+        *error = SEXOS_DOCUMENT_IO;
+        return false;
+    }
+    uint64_t lo = 0, hi = 0;
+    for (size_t i = 0; i < 8; i++) {
+        lo |= (uint64_t)name->bytes[i] << (i * 8);
+        hi |= (uint64_t)name->bytes[i + 8] << (i * 8);
+    }
+    uint64_t value = handle_diskfs_create(lo, hi, va);
+    if (value == (uint64_t)ERR_EXISTS) {
+        *error = SEXOS_DOCUMENT_EXISTS;
+        return false;
+    }
+    if (value < 3 || value >= 15) {
+        *error = SEXOS_DOCUMENT_IO;
+        return false;
+    }
+    *object = (uint8_t)value;
+    return document_backend_identity(*object, generation, error);
 }
-bool document_backend_delete(uint8_t object,uint32_t *error)
-{
- V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;(void)entry;uint64_t value=handle_diskfs_delete(object,va);if(!value)return true;
- *error=value==(uint64_t)ERR_PERM_DENIED?SEXOS_DOCUMENT_DENIED:value==(uint64_t)ERR_NOT_FOUND?SEXOS_DOCUMENT_STALE:value==(uint64_t)ERR_FULL?SEXOS_DOCUMENT_BUSY:SEXOS_DOCUMENT_IO;return false;
+
+bool document_backend_delete(uint8_t object, uint32_t *error) {
+    V4Entry entry;
+    uint64_t va = 0;
+    if (!document_v4_entry(object, &entry, &va, error))
+        return false;
+    (void)entry;
+    uint64_t value = handle_diskfs_delete(object, va);
+    if (!value)
+        return true;
+    *error = value == (uint64_t)ERR_PERM_DENIED ? SEXOS_DOCUMENT_DENIED
+             : value == (uint64_t)ERR_NOT_FOUND ? SEXOS_DOCUMENT_STALE
+             : value == (uint64_t)ERR_FULL      ? SEXOS_DOCUMENT_BUSY
+                                                : SEXOS_DOCUMENT_IO;
+    return false;
 }
-static void document_growth_cancel(DocumentBackendJob *job)
-{
- if(!job->growth.active)return;
- if(document_growth_cancel_releases(&job->growth)&&job->growth.count>job->growth.original)
-  v4_free_pool_only(sexfiles_state.v4_bitmap,job->growth_extents+job->growth.original,job->growth.count-job->growth.original);
- v4_cache_invalidate(job->object);document_growth_abort(&job->growth);
+
+static void document_growth_cancel(DocumentBackendJob *job) {
+    if (!job->growth.active)
+        return;
+    if (document_growth_cancel_releases(&job->growth) && job->growth.count > job->growth.original)
+        v4_free_pool_only(sexfiles_state.v4_bitmap, job->growth_extents + job->growth.original,
+                          job->growth.count - job->growth.original);
+    v4_cache_invalidate(job->object);
+    document_growth_abort(&job->growth);
 }
-static bool document_growth_begin(DocumentBackendJob *job,uint8_t object,uint32_t *error)
-{
- V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;
- if(entry.size_bytes==DOCUMENT_JOURNAL_CAPACITY){job->growth.active=false;return true;}
- if(entry.size_bytes>DOCUMENT_JOURNAL_CAPACITY){*error=SEXOS_DOCUMENT_INVALID;return false;}
- size_t count=v4_cache_get(object,va,job->growth_extents),original=count;uint64_t capacity=0;
- for(size_t i=0;i<count;i++)capacity+=(uint64_t)job->growth_extents[i].sector_count*512;
- if(capacity>DOCUMENT_JOURNAL_CAPACITY){*error=SEXOS_DOCUMENT_INVALID;return false;}
- if(capacity<DOCUMENT_JOURNAL_CAPACITY){
-  uint64_t more=(DOCUMENT_JOURNAL_CAPACITY-capacity+DISKFS_V4_BLOCK_BYTES-1)/DISKFS_V4_BLOCK_BYTES;size_t next=0;int64_t allocation=0;
-  if(!v4_allocate(sexfiles_state.v4_bitmap,more,job->growth_extents,count,&next,&allocation)){*error=SEXOS_DOCUMENT_BUSY;return false;}count=next;
- }
- uint16_t sector_count[DOCUMENT_GROWTH_MAX_EXTENTS]={0};for(size_t i=0;i<count;i++)sector_count[i]=job->growth_extents[i].sector_count;
- if(!document_growth_init(&job->growth,original,count)){if(count>original)v4_free_pool_only(sexfiles_state.v4_bitmap,job->growth_extents+original,count-original);*error=SEXOS_DOCUMENT_INVALID;return false;}
- for(size_t i=0;i<count;i++)if(!document_growth_set_extent(&job->growth,i,sector_count[i])){if(count>original)v4_free_pool_only(sexfiles_state.v4_bitmap,job->growth_extents+original,count-original);*error=SEXOS_DOCUMENT_INVALID;return false;}
- job->growth_buffer=va;job->growth_entry=entry;return true;
+
+static bool document_growth_begin(DocumentBackendJob *job, uint8_t object, uint32_t *error) {
+    V4Entry entry;
+    uint64_t va = 0;
+    if (!document_v4_entry(object, &entry, &va, error))
+        return false;
+    if (entry.size_bytes == DOCUMENT_JOURNAL_CAPACITY) {
+        job->growth.active = false;
+        return true;
+    }
+    if (entry.size_bytes > DOCUMENT_JOURNAL_CAPACITY) {
+        *error = SEXOS_DOCUMENT_INVALID;
+        return false;
+    }
+    size_t count = v4_cache_get(object, va, job->growth_extents), original = count;
+    uint64_t capacity = 0;
+    for (size_t i = 0; i < count; i++)
+        capacity += (uint64_t)job->growth_extents[i].sector_count * 512;
+    if (capacity > DOCUMENT_JOURNAL_CAPACITY) {
+        *error = SEXOS_DOCUMENT_INVALID;
+        return false;
+    }
+    if (capacity < DOCUMENT_JOURNAL_CAPACITY) {
+        uint64_t more = (DOCUMENT_JOURNAL_CAPACITY - capacity + DISKFS_V4_BLOCK_BYTES - 1) /
+                        DISKFS_V4_BLOCK_BYTES;
+        size_t next = 0;
+        int64_t allocation = 0;
+        if (!v4_allocate(sexfiles_state.v4_bitmap, more, job->growth_extents, count, &next,
+                         &allocation)) {
+            *error = SEXOS_DOCUMENT_BUSY;
+            return false;
+        }
+        count = next;
+    }
+    uint16_t sector_count[DOCUMENT_GROWTH_MAX_EXTENTS] = {0};
+    for (size_t i = 0; i < count; i++)
+        sector_count[i] = job->growth_extents[i].sector_count;
+    if (!document_growth_init(&job->growth, original, count)) {
+        if (count > original)
+            v4_free_pool_only(sexfiles_state.v4_bitmap, job->growth_extents + original,
+                              count - original);
+        *error = SEXOS_DOCUMENT_INVALID;
+        return false;
+    }
+    for (size_t i = 0; i < count; i++)
+        if (!document_growth_set_extent(&job->growth, i, sector_count[i])) {
+            if (count > original)
+                v4_free_pool_only(sexfiles_state.v4_bitmap, job->growth_extents + original,
+                                  count - original);
+            *error = SEXOS_DOCUMENT_INVALID;
+            return false;
+        }
+    job->growth_buffer = va;
+    job->growth_entry = entry;
+    return true;
 }
-static uint8_t document_growth_step(DocumentBackendJob *job,uint32_t *error)
-{
- uint64_t native_error=0;DocumentGrowthAction action=document_growth_current(&job->growth);
- if(!document_growth_begin_action(&job->growth,action)){*error=SEXOS_DOCUMENT_STALE;document_growth_cancel(job);return DOCUMENT_BACKEND_ERROR;}
- switch(action){
-  case DOCUMENT_GROWTH_ZERO:{V4Extent extent=job->growth_extents[job->growth.extent];
-   if(!v4_zero_block((uint64_t)extent.start_lba+job->growth.sector,job->growth_buffer,&native_error)){goto io_error;}break;}
-  case DOCUMENT_GROWTH_ZERO_BARRIER:if(diskfs_block_sync()!=0)goto io_error;break;
-  case DOCUMENT_GROWTH_DESCRIPTOR:
-   if(!v4_indirect_write(job->object,job->growth_buffer,job->growth_extents,job->growth.count,&native_error)){goto io_error;}break;
-  case DOCUMENT_GROWTH_DESCRIPTOR_BARRIER:if(diskfs_block_sync()!=0)goto io_error;break;
-  case DOCUMENT_GROWTH_PUBLISH:
-   v4_cache_put(job->object,job->growth_extents,job->growth.count);job->growth_entry.size_bytes=(uint32_t)DOCUMENT_JOURNAL_CAPACITY;
-   sexfiles_state.v4_table[job->object]=job->growth_entry;if(!v4_persist(job->growth_buffer,&native_error))goto io_error;break;
-  case DOCUMENT_GROWTH_PUBLISH_BARRIER:if(diskfs_block_sync()!=0)goto io_error;break;
-  default:*error=SEXOS_DOCUMENT_STALE;document_growth_cancel(job);return DOCUMENT_BACKEND_ERROR;
- }
- if(!document_growth_finish_action(&job->growth,action)){*error=SEXOS_DOCUMENT_STALE;document_growth_cancel(job);return DOCUMENT_BACKEND_ERROR;}
- return job->growth.active?DOCUMENT_BACKEND_PENDING:DOCUMENT_BACKEND_DONE;
-io_error:*error=SEXOS_DOCUMENT_IO;document_growth_cancel(job);return DOCUMENT_BACKEND_ERROR;
+
+static uint8_t document_growth_step(DocumentBackendJob *job, uint32_t *error) {
+    uint64_t native_error = 0;
+    DocumentGrowthAction action = document_growth_current(&job->growth);
+    if (!document_growth_begin_action(&job->growth, action)) {
+        *error = SEXOS_DOCUMENT_STALE;
+        document_growth_cancel(job);
+        return DOCUMENT_BACKEND_ERROR;
+    }
+    switch (action) {
+    case DOCUMENT_GROWTH_ZERO: {
+        V4Extent extent = job->growth_extents[job->growth.extent];
+        if (!v4_zero_block((uint64_t)extent.start_lba + job->growth.sector, job->growth_buffer,
+                           &native_error)) {
+            goto io_error;
+        }
+        break;
+    }
+    case DOCUMENT_GROWTH_ZERO_BARRIER:
+        if (diskfs_block_sync() != 0)
+            goto io_error;
+        break;
+    case DOCUMENT_GROWTH_DESCRIPTOR:
+        if (!v4_indirect_write(job->object, job->growth_buffer, job->growth_extents,
+                               job->growth.count, &native_error)) {
+            goto io_error;
+        }
+        break;
+    case DOCUMENT_GROWTH_DESCRIPTOR_BARRIER:
+        if (diskfs_block_sync() != 0)
+            goto io_error;
+        break;
+    case DOCUMENT_GROWTH_PUBLISH:
+        v4_cache_put(job->object, job->growth_extents, job->growth.count);
+        job->growth_entry.size_bytes = (uint32_t)DOCUMENT_JOURNAL_CAPACITY;
+        sexfiles_state.v4_table[job->object] = job->growth_entry;
+        if (!v4_persist(job->growth_buffer, &native_error))
+            goto io_error;
+        break;
+    case DOCUMENT_GROWTH_PUBLISH_BARRIER:
+        if (diskfs_block_sync() != 0)
+            goto io_error;
+        break;
+    default:
+        *error = SEXOS_DOCUMENT_STALE;
+        document_growth_cancel(job);
+        return DOCUMENT_BACKEND_ERROR;
+    }
+    if (!document_growth_finish_action(&job->growth, action)) {
+        *error = SEXOS_DOCUMENT_STALE;
+        document_growth_cancel(job);
+        return DOCUMENT_BACKEND_ERROR;
+    }
+    return job->growth.active ? DOCUMENT_BACKEND_PENDING : DOCUMENT_BACKEND_DONE;
+io_error:
+    *error = SEXOS_DOCUMENT_IO;
+    document_growth_cancel(job);
+    return DOCUMENT_BACKEND_ERROR;
 }
-bool document_journal_io_read(uint8_t object,uint64_t offset,DocumentJournalBlock *block,uint32_t *error)
-{
- V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;if(block->len>DOCUMENT_JOURNAL_IO_CHUNK||offset>entry.size_bytes||block->len>(size_t)((uint64_t)entry.size_bytes-offset)){*error=SEXOS_DOCUMENT_INVALID;return false;}
- size_t done=0;while(done<block->len){DiskManifestEntryV1 piece;uint64_t relative=0,native_error=0;if(!v4_resolve_offset(object,offset+done,va,&piece,&relative,&native_error)){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t available=(uint64_t)piece.len_bytes-relative;size_t count=block->len-done;if(count>available)count=(size_t)available;if(!count){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t got=0;if(!diskfs_read_object_entry(piece,relative,block->bytes+done,count,va,&got,&native_error)||got!=count){*error=SEXOS_DOCUMENT_IO;return false;}done+=count;}return true;
+
+bool document_journal_io_read(uint8_t object, uint64_t offset, DocumentJournalBlock *block,
+                              uint32_t *error) {
+    V4Entry entry;
+    uint64_t va = 0;
+    if (!document_v4_entry(object, &entry, &va, error))
+        return false;
+    if (block->len > DOCUMENT_JOURNAL_IO_CHUNK || offset > entry.size_bytes ||
+        block->len > (size_t)((uint64_t)entry.size_bytes - offset)) {
+        *error = SEXOS_DOCUMENT_INVALID;
+        return false;
+    }
+    size_t done = 0;
+    while (done < block->len) {
+        DiskManifestEntryV1 piece;
+        uint64_t relative = 0, native_error = 0;
+        if (!v4_resolve_offset(object, offset + done, va, &piece, &relative, &native_error)) {
+            *error = SEXOS_DOCUMENT_IO;
+            return false;
+        }
+        uint64_t available = (uint64_t)piece.len_bytes - relative;
+        size_t count = block->len - done;
+        if (count > available)
+            count = (size_t)available;
+        if (!count) {
+            *error = SEXOS_DOCUMENT_IO;
+            return false;
+        }
+        uint64_t got = 0;
+        if (!diskfs_read_object_entry(piece, relative, block->bytes + done, count, va, &got,
+                                      &native_error) ||
+            got != count) {
+            *error = SEXOS_DOCUMENT_IO;
+            return false;
+        }
+        done += count;
+    }
+    return true;
 }
-bool document_journal_io_write(uint8_t object,uint64_t offset,const DocumentJournalBlock *block,uint32_t *error)
-{
- V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return false;if(block->len>DOCUMENT_JOURNAL_IO_CHUNK||offset>entry.size_bytes||block->len>(size_t)((uint64_t)entry.size_bytes-offset)){*error=SEXOS_DOCUMENT_INVALID;return false;}
- size_t done=0;while(done<block->len){DiskManifestEntryV1 piece;uint64_t relative=0,native_error=0;if(!v4_resolve_offset(object,offset+done,va,&piece,&relative,&native_error)){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t available=(uint64_t)piece.len_bytes-relative;size_t count=block->len-done;if(count>available)count=(size_t)available;if(!count){*error=SEXOS_DOCUMENT_IO;return false;}uint64_t written=0;if(!diskfs_write_object_entry(piece,relative,block->bytes+done,count,va,&written,&native_error)||written!=count){*error=SEXOS_DOCUMENT_IO;return false;}done+=count;}return true;
+
+bool document_journal_io_write(uint8_t object, uint64_t offset, const DocumentJournalBlock *block,
+                               uint32_t *error) {
+    V4Entry entry;
+    uint64_t va = 0;
+    if (!document_v4_entry(object, &entry, &va, error))
+        return false;
+    if (block->len > DOCUMENT_JOURNAL_IO_CHUNK || offset > entry.size_bytes ||
+        block->len > (size_t)((uint64_t)entry.size_bytes - offset)) {
+        *error = SEXOS_DOCUMENT_INVALID;
+        return false;
+    }
+    size_t done = 0;
+    while (done < block->len) {
+        DiskManifestEntryV1 piece;
+        uint64_t relative = 0, native_error = 0;
+        if (!v4_resolve_offset(object, offset + done, va, &piece, &relative, &native_error)) {
+            *error = SEXOS_DOCUMENT_IO;
+            return false;
+        }
+        uint64_t available = (uint64_t)piece.len_bytes - relative;
+        size_t count = block->len - done;
+        if (count > available)
+            count = (size_t)available;
+        if (!count) {
+            *error = SEXOS_DOCUMENT_IO;
+            return false;
+        }
+        uint64_t written = 0;
+        if (!diskfs_write_object_entry(piece, relative, block->bytes + done, count, va, &written,
+                                       &native_error) ||
+            written != count) {
+            *error = SEXOS_DOCUMENT_IO;
+            return false;
+        }
+        done += count;
+    }
+    return true;
 }
-bool document_journal_io_sync(uint8_t object,uint32_t *error)
-{(void)object;if(diskfs_block_sync()==0)return true;*error=SEXOS_DOCUMENT_IO;return false;}
-uint8_t document_backend_load_step(uint32_t caller,uint8_t object,SexosDocumentPayload *payload,DocumentName *name,uint32_t *error)
-{
- uint32_t identity=0;if(!document_backend_identity(object,&identity,error))return DOCUMENT_BACKEND_ERROR;DocumentBackendJob *job=&sexfiles_state.document_job;
- if(!job->active){V4Entry entry;uint64_t va=0;if(!document_v4_entry(object,&entry,&va,error))return DOCUMENT_BACKEND_ERROR;job->active=true;job->loading=true;job->caller=caller;job->object=object;job->identity=identity;document_journal_load_init(&job->load,object,identity,entry.size_bytes==DOCUMENT_JOURNAL_CAPACITY);}
- if(!job->loading||job->caller!=caller||job->object!=object||job->identity!=identity){*error=SEXOS_DOCUMENT_BUSY;return DOCUMENT_BACKEND_ERROR;}DocumentJournalProgress progress=document_journal_load_step(&job->load,payload);if(progress.status==DOCUMENT_JOURNAL_PENDING)return DOCUMENT_BACKEND_PENDING;if(progress.status==DOCUMENT_JOURNAL_ERROR){*error=progress.error;return DOCUMENT_BACKEND_ERROR;}if(!document_backend_name(object,name,error))return DOCUMENT_BACKEND_ERROR;return DOCUMENT_BACKEND_DONE;
+
+bool document_journal_io_sync(uint8_t object, uint32_t *error) {
+    (void)object;
+    if (diskfs_block_sync() == 0)
+        return true;
+    *error = SEXOS_DOCUMENT_IO;
+    return false;
 }
-uint8_t document_backend_save_step(uint32_t caller,uint8_t object,const SexosDocumentPayload *payload,uint32_t *error)
-{
- uint32_t identity=0;if(!document_backend_identity(object,&identity,error))return DOCUMENT_BACKEND_ERROR;DocumentBackendJob *job=&sexfiles_state.document_job;
- if(!job->active){job->active=true;job->loading=false;job->caller=caller;job->object=object;job->identity=identity;document_journal_save_init(&job->save,object,identity);if(!document_growth_begin(job,object,error)){memset(job,0,sizeof *job);return DOCUMENT_BACKEND_ERROR;}}
- if(job->loading||job->caller!=caller||job->object!=object||job->identity!=identity){*error=SEXOS_DOCUMENT_BUSY;return DOCUMENT_BACKEND_ERROR;}
- if(job->growth.active){uint8_t status=document_growth_step(job,error);return status==DOCUMENT_BACKEND_DONE?DOCUMENT_BACKEND_PENDING:status;}
- DocumentJournalProgress progress=document_journal_save_step(&job->save,payload);if(progress.status==DOCUMENT_JOURNAL_PENDING)return DOCUMENT_BACKEND_PENDING;if(progress.status==DOCUMENT_JOURNAL_ERROR){*error=progress.error;return DOCUMENT_BACKEND_ERROR;}return DOCUMENT_BACKEND_DONE;
+
+uint8_t document_backend_load_step(uint32_t caller, uint8_t object, SexosDocumentPayload *payload,
+                                   DocumentName *name, uint32_t *error) {
+    uint32_t identity = 0;
+    if (!document_backend_identity(object, &identity, error))
+        return DOCUMENT_BACKEND_ERROR;
+    DocumentBackendJob *job = &sexfiles_state.document_job;
+    if (!job->active) {
+        V4Entry entry;
+        uint64_t va = 0;
+        if (!document_v4_entry(object, &entry, &va, error))
+            return DOCUMENT_BACKEND_ERROR;
+        job->active = true;
+        job->loading = true;
+        job->caller = caller;
+        job->object = object;
+        job->identity = identity;
+        document_journal_load_init(&job->load, object, identity,
+                                   entry.size_bytes == DOCUMENT_JOURNAL_CAPACITY);
+    }
+    if (!job->loading || job->caller != caller || job->object != object ||
+        job->identity != identity) {
+        *error = SEXOS_DOCUMENT_BUSY;
+        return DOCUMENT_BACKEND_ERROR;
+    }
+    DocumentJournalProgress progress = document_journal_load_step(&job->load, payload);
+    if (progress.status == DOCUMENT_JOURNAL_PENDING)
+        return DOCUMENT_BACKEND_PENDING;
+    if (progress.status == DOCUMENT_JOURNAL_ERROR) {
+        *error = progress.error;
+        return DOCUMENT_BACKEND_ERROR;
+    }
+    if (!document_backend_name(object, name, error))
+        return DOCUMENT_BACKEND_ERROR;
+    return DOCUMENT_BACKEND_DONE;
 }
-void document_backend_cancel_work(uint32_t caller)
-{DocumentBackendJob *job=&sexfiles_state.document_job;if(job->active&&job->caller==caller){document_growth_cancel(job);memset(job,0,sizeof *job);}}
-bool document_backend_publish_load(uint32_t caller,SexosDocumentRequest request,uint32_t generation,const SexosDocumentPayload *payload,const DocumentName *name,uint32_t *error)
-{DocumentSnapshotRegion region;if(!document_snapshot_resolve(caller,true,&region)){*error=SEXOS_DOCUMENT_DENIED;return false;}return document_snapshot_publish(&region,request,generation,name,payload,error);}
-bool document_backend_clear_load(uint32_t caller,uint32_t *error)
-{if(!document_quil_target(caller))return true;DocumentSnapshotRegion region;if(!document_snapshot_resolve(caller,true,&region)){*error=SEXOS_DOCUMENT_DENIED;return false;}return document_snapshot_clear(&region,error);}
+
+uint8_t document_backend_save_step(uint32_t caller, uint8_t object,
+                                   const SexosDocumentPayload *payload, uint32_t *error) {
+    uint32_t identity = 0;
+    if (!document_backend_identity(object, &identity, error))
+        return DOCUMENT_BACKEND_ERROR;
+    DocumentBackendJob *job = &sexfiles_state.document_job;
+    if (!job->active) {
+        job->active = true;
+        job->loading = false;
+        job->caller = caller;
+        job->object = object;
+        job->identity = identity;
+        document_journal_save_init(&job->save, object, identity);
+        if (!document_growth_begin(job, object, error)) {
+            memset(job, 0, sizeof *job);
+            return DOCUMENT_BACKEND_ERROR;
+        }
+    }
+    if (job->loading || job->caller != caller || job->object != object ||
+        job->identity != identity) {
+        *error = SEXOS_DOCUMENT_BUSY;
+        return DOCUMENT_BACKEND_ERROR;
+    }
+    if (job->growth.active) {
+        uint8_t status = document_growth_step(job, error);
+        return status == DOCUMENT_BACKEND_DONE ? DOCUMENT_BACKEND_PENDING : status;
+    }
+    DocumentJournalProgress progress = document_journal_save_step(&job->save, payload);
+    if (progress.status == DOCUMENT_JOURNAL_PENDING)
+        return DOCUMENT_BACKEND_PENDING;
+    if (progress.status == DOCUMENT_JOURNAL_ERROR) {
+        *error = progress.error;
+        return DOCUMENT_BACKEND_ERROR;
+    }
+    return DOCUMENT_BACKEND_DONE;
+}
+
+void document_backend_cancel_work(uint32_t caller) {
+    DocumentBackendJob *job = &sexfiles_state.document_job;
+    if (job->active && job->caller == caller) {
+        document_growth_cancel(job);
+        memset(job, 0, sizeof *job);
+    }
+}
+
+bool document_backend_publish_load(uint32_t caller, SexosDocumentRequest request,
+                                   uint32_t generation, const SexosDocumentPayload *payload,
+                                   const DocumentName *name, uint32_t *error) {
+    DocumentSnapshotRegion region;
+    if (!document_snapshot_resolve(caller, true, &region)) {
+        *error = SEXOS_DOCUMENT_DENIED;
+        return false;
+    }
+    return document_snapshot_publish(&region, request, generation, name, payload, error);
+}
+
+bool document_backend_clear_load(uint32_t caller, uint32_t *error) {
+    if (!document_quil_target(caller))
+        return true;
+    DocumentSnapshotRegion region;
+    if (!document_snapshot_resolve(caller, true, &region)) {
+        *error = SEXOS_DOCUMENT_DENIED;
+        return false;
+    }
+    return document_snapshot_clear(&region, error);
+}
 
 
 #endif

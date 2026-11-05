@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 PIN='44053ea9b017fe89008413f7cc8a6b1a4d28d015'
@@ -48,7 +49,7 @@ def main():
             actual=run([binary],data=data);assert actual==expected,(compiler,mode);builds.append((compiler,mode))
     mutations=[]
     if args.mutations:
-        base=c.read_text();changes=[
+        base=LayoutText(c.read_text());changes=[
           ('exact-not-prefix','if(!prefix||!spindle_commands[i][word->len])continue','if(!prefix)continue'),
           ('prefix-byte','(uint8_t)spindle_commands[i][k]!=word->bytes[k]','(uint8_t)spindle_commands[i][k]!=word->bytes[0]'),
           ('common-prefix','common=k','common=0'),

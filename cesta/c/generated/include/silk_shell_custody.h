@@ -1,29 +1,55 @@
+
 #ifndef SEXOS_SHELL_CUSTODY_H
 #define SEXOS_SHELL_CUSTODY_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "shell_app_rows.h"
-enum { SHELL_APP_QUIL=0, SHELL_APP_SPINDLE=1, SHELL_APP_BROWSER=2 };
-enum { SHELL_CLOSE_ASK=0, SHELL_CLOSE_CONFIRMED=1, SHELL_DECLINE_UNSAVED=1 };
-#define SHELL_COUNT_ROW(app,ordinal,target,surface,frame,life,close,has_activate,activate,route,n,c0,c1,c2) +1
-enum { SHELL_APP_COUNT=0 SEXOS_SHELL_APP_ROWS(SHELL_COUNT_ROW) };
+
+enum {
+    SHELL_APP_QUIL = 0,
+    SHELL_APP_SPINDLE = 1,
+    SHELL_APP_BROWSER = 2
+};
+
+enum {
+    SHELL_CLOSE_ASK = 0,
+    SHELL_CLOSE_CONFIRMED = 1,
+    SHELL_DECLINE_UNSAVED = 1
+};
+
+#define SHELL_COUNT_ROW(app, ordinal, target, surface, frame, life, close, has_activate, activate, \
+                        route, n, c0, c1, c2)                                                      \
+    +1
+
+enum {
+    SHELL_APP_COUNT = 0 SEXOS_SHELL_APP_ROWS(SHELL_COUNT_ROW)
+};
+
 #undef SHELL_COUNT_ROW
-#define SHELL_COUNT_NATIVE_ROW(app,ordinal,target,surface,frame,life,close,has_activate,activate,route,n,c0,c1,c2) + ((ordinal)>0 || (app)==SHELL_APP_BROWSER)
-#define SHELL_COUNT_BOOT_ROW(surface,state) +1
-#define SHELL_COUNT_LAZY_ROW(surface,state) +1
-enum { SHELL_NATIVE_LIFECYCLE_COUNT=0 SEXOS_SHELL_APP_ROWS(SHELL_COUNT_NATIVE_ROW),
-       SHELL_BOOT_LIFECYCLE_COUNT=0 SEXOS_SHELL_BOOT_LIFECYCLE_ROWS(SHELL_COUNT_BOOT_ROW),
-       SHELL_LAZY_LIFECYCLE_COUNT=0 SEXOS_SHELL_LAZY_LIFECYCLE_ROWS(SHELL_COUNT_LAZY_ROW),
-       SHELL_LIFECYCLE_CAPACITY=SHELL_BOOT_LIFECYCLE_COUNT+SHELL_NATIVE_LIFECYCLE_COUNT+SHELL_LAZY_LIFECYCLE_COUNT };
+#define SHELL_COUNT_NATIVE_ROW(app, ordinal, target, surface, frame, life, close, has_activate,    \
+                               activate, route, n, c0, c1, c2)                                     \
+    +((ordinal) > 0 || (app) == SHELL_APP_BROWSER)
+#define SHELL_COUNT_BOOT_ROW(surface, state) +1
+#define SHELL_COUNT_LAZY_ROW(surface, state) +1
+
+enum {
+    SHELL_NATIVE_LIFECYCLE_COUNT = 0 SEXOS_SHELL_APP_ROWS(SHELL_COUNT_NATIVE_ROW),
+    SHELL_BOOT_LIFECYCLE_COUNT = 0 SEXOS_SHELL_BOOT_LIFECYCLE_ROWS(SHELL_COUNT_BOOT_ROW),
+    SHELL_LAZY_LIFECYCLE_COUNT = 0 SEXOS_SHELL_LAZY_LIFECYCLE_ROWS(SHELL_COUNT_LAZY_ROW),
+    SHELL_LIFECYCLE_CAPACITY =
+        SHELL_BOOT_LIFECYCLE_COUNT + SHELL_NATIVE_LIFECYCLE_COUNT + SHELL_LAZY_LIFECYCLE_COUNT
+};
+
 #undef SHELL_COUNT_NATIVE_ROW
 #undef SHELL_COUNT_BOOT_ROW
 #undef SHELL_COUNT_LAZY_ROW
+
 /* Descriptive BOOT associations. These rows confer no kernel authority. */
 typedef struct ShellAppCatalogRow {
     bool present;
-    uint32_t app,ordinal,target;
-    uint64_t surface,shell_surface;
+    uint32_t app, ordinal, target;
+    uint64_t surface, shell_surface;
     size_t lifecycle_slot;
     uint64_t close_slot;
     bool has_activation;
@@ -32,33 +58,44 @@ typedef struct ShellAppCatalogRow {
     size_t child_count;
     uint64_t children[3];
 } ShellAppCatalogRow;
-typedef struct ShellCustodyWord { bool present; uint64_t value; } ShellCustodyWord;
+
+typedef struct ShellCustodyWord {
+    bool present;
+    uint64_t value;
+} ShellCustodyWord;
+
 typedef struct ShellAppCustody {
     size_t slot;
-    uint32_t target,task;
+    uint32_t target, task;
     uint64_t surface;
-    bool pending,dead,retired,acked,close_pending,has_close_attempt;
+    bool pending, dead, retired, acked, close_pending, has_close_attempt;
     uint64_t close_attempt;
-    bool close_declined,registration_reply,has_bounds;
-    int32_t x,y;
-    uint32_t w,h;
+    bool close_declined, registration_reply, has_bounds;
+    int32_t x, y;
+    uint32_t w, h;
 } ShellAppCustody;
+
 ShellAppCatalogRow shell_custody_catalog_at(size_t index);
-ShellAppCatalogRow shell_custody_catalog_find(uint32_t target,uint64_t surface);
-ShellAppCustody shell_custody_new(size_t slot,uint32_t target,uint32_t task,uint64_t surface);
+ShellAppCatalogRow shell_custody_catalog_find(uint32_t target, uint64_t surface);
+ShellAppCustody shell_custody_new(size_t slot, uint32_t target, uint32_t task, uint64_t surface);
 ShellCustodyWord shell_custody_shell_surface(const ShellAppCustody *entry);
-bool shell_custody_is_successor_frame(const ShellAppCustody *entry,uint64_t sid);
-bool shell_custody_owns_surface(const ShellAppCustody *entry,uint64_t sid);
+bool shell_custody_is_successor_frame(const ShellAppCustody *entry, uint64_t sid);
+bool shell_custody_owns_surface(const ShellAppCustody *entry, uint64_t sid);
 ShellCustodyWord shell_custody_close_slot(const ShellAppCustody *entry);
 bool shell_custody_request_close(ShellAppCustody *entry);
-bool shell_custody_close_due(const ShellAppCustody *entry,uint64_t tick);
-void shell_custody_attempted_close(ShellAppCustody *entry,uint64_t tick);
+bool shell_custody_close_due(const ShellAppCustody *entry, uint64_t tick);
+void shell_custody_attempted_close(ShellAppCustody *entry, uint64_t tick);
 uint64_t shell_custody_close_kind(const ShellAppCustody *entry);
-bool shell_custody_decline_close(ShellAppCustody *entry,uint32_t caller,uint64_t a,uint64_t b,uint64_t c);
-bool shell_custody_hint(ShellAppCustody *entry,uint32_t caller,uint64_t target,uint64_t task,uint64_t reserved);
-bool shell_custody_attest(ShellAppCustody *entry,uint32_t target,uint32_t task,uint64_t required);
-bool shell_custody_allows_operation(const ShellAppCustody *entry,uint32_t caller_task,uint64_t opcode,uint64_t a,uint64_t b,uint64_t c);
-bool shell_custody_allows(const ShellAppCustody *entry,uint32_t caller,uint64_t surface,uint16_t app_id);
+bool shell_custody_decline_close(ShellAppCustody *entry, uint32_t caller, uint64_t a, uint64_t b,
+                                 uint64_t c);
+bool shell_custody_hint(ShellAppCustody *entry, uint32_t caller, uint64_t target, uint64_t task,
+                        uint64_t reserved);
+bool shell_custody_attest(ShellAppCustody *entry, uint32_t target, uint32_t task,
+                          uint64_t required);
+bool shell_custody_allows_operation(const ShellAppCustody *entry, uint32_t caller_task,
+                                    uint64_t opcode, uint64_t a, uint64_t b, uint64_t c);
+bool shell_custody_allows(const ShellAppCustody *entry, uint32_t caller, uint64_t surface,
+                          uint16_t app_id);
 bool shell_custody_finish_ack(ShellAppCustody *entry);
 bool shell_custody_buffer_sender(uint32_t caller);
 #endif

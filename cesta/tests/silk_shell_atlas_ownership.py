@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -41,7 +42,7 @@ def main():
         names=set(re.findall(r'\(function ([^\s()]+) ',plan.read_text()))
         assert expected <= names,('atlas functions missing from ownership plan',sorted(expected-names))
         plans.append(dict(compiler=compiler,sha256=hashlib.sha256(plan.read_bytes()).hexdigest(),plan=plan.name,functions=len(names)))
-    original=frozen[source].decode()
+    original=LayoutText(frozen[source].decode())
     opening='void shell_atlas_collect_atlas_snapshot(ShellAtlasContext *ctx)\n{'
     assert original.count(opening)==1
     changes=[

@@ -1,12 +1,39 @@
+
 #ifndef SEXOS_SHELL_SURFACES_H
 #define SEXOS_SHELL_SURFACES_H
 #include "silk_shell_chrome.h"
-typedef struct ShellPaletteString {char bytes[128];size_t len;} ShellPaletteString;
-typedef struct ShellPaletteStatus {bool available;ShellPaletteString status,reason;} ShellPaletteStatus;
-typedef struct ShellPaletteRows {ShellPaletteString names[11],statuses[11];size_t count;} ShellPaletteRows;
-typedef struct ShellPaletteView {ShellTextBytes text;size_t first,rows;uint32_t scale,row_y,row_h;} ShellPaletteView;
-typedef struct ShellPaletteLabel {bool present;ShellPaletteString text;} ShellPaletteLabel;
-typedef struct ShellByteOption {bool present;uint8_t value;} ShellByteOption;
+
+typedef struct ShellPaletteString {
+    char bytes[128];
+    size_t len;
+} ShellPaletteString;
+
+typedef struct ShellPaletteStatus {
+    bool available;
+    ShellPaletteString status, reason;
+} ShellPaletteStatus;
+
+typedef struct ShellPaletteRows {
+    ShellPaletteString names[11], statuses[11];
+    size_t count;
+} ShellPaletteRows;
+
+typedef struct ShellPaletteView {
+    ShellTextBytes text;
+    size_t first, rows;
+    uint32_t scale, row_y, row_h;
+} ShellPaletteView;
+
+typedef struct ShellPaletteLabel {
+    bool present;
+    ShellPaletteString text;
+} ShellPaletteLabel;
+
+typedef struct ShellByteOption {
+    bool present;
+    uint8_t value;
+} ShellByteOption;
+
 ShellPaletteString shell_surfaces_command_label(size_t index);
 uint8_t shell_surfaces_command_code(size_t index);
 size_t shell_surfaces_command_count(void);
@@ -14,57 +41,111 @@ size_t shell_surfaces_command_count(void);
 typedef uint8_t ShellCommandBytes[YARN_CMD_BUF_CAP];
 typedef uint8_t ShellOutputLine[YARN_OUTPUT_LINE_CAP];
 typedef uint8_t ShellDecimalBytes[10];
-typedef struct ShellCommandRecord {ShellCommandBytes bytes;} ShellCommandRecord;
-typedef struct ShellLineRecord {ShellOutputLine bytes;} ShellLineRecord;
-typedef struct ShellByteRange {size_t start,len;} ShellByteRange;
-typedef struct ShellDebugChunk {uint8_t bytes[64];} ShellDebugChunk;
-typedef struct ShellDebugRecord {uint8_t bytes[1536];size_t len;} ShellDebugRecord;
+
+typedef struct ShellCommandRecord {
+    ShellCommandBytes bytes;
+} ShellCommandRecord;
+
+typedef struct ShellLineRecord {
+    ShellOutputLine bytes;
+} ShellLineRecord;
+
+typedef struct ShellByteRange {
+    size_t start, len;
+} ShellByteRange;
+
+typedef struct ShellDebugChunk {
+    uint8_t bytes[64];
+} ShellDebugChunk;
+
+typedef struct ShellDebugRecord {
+    uint8_t bytes[1536];
+    size_t len;
+} ShellDebugRecord;
+
 void shell_surfaces_debug_record(const ShellDebugRecord *record);
-typedef struct ShellSpindleSuffix {bool present;uint8_t bytes[YARN_CMD_BUF_CAP];size_t len;} ShellSpindleSuffix;
-typedef struct ShellActivationRaw {uint64_t status,pd,task,surface,state;} ShellActivationRaw;
-typedef struct ShellActivationInfo {uint32_t successor,task;uint64_t surface,state;} ShellActivationInfo;
-typedef struct ShellActivationResult {uint64_t status;ShellActivationInfo info;} ShellActivationResult;
-typedef struct ShellSurfaceSubject {bool present;uint32_t target;uint64_t frame;} ShellSurfaceSubject;
-typedef struct ShellSurfaceBool {bool present,value;} ShellSurfaceBool;
-ShellActivationRaw shell_surfaces_activation_call(uint64_t slot,bool commit);
-typedef struct ShellSurfacesContext {ShellChromeContext shell;SilkShellSurfacesState *surfaces;} ShellSurfacesContext;
-ShellActivationResult shell_surfaces_quil_activation_edge(ShellSurfacesContext *ctx,size_t slot,uint32_t target,uint64_t surface,size_t lifecycle,bool commit);
-ShellActivationResult shell_surfaces_app_activation_info(ShellSurfacesContext *ctx,uint8_t app,bool commit);
-ShellActivationResult shell_surfaces_quil_activation_info(ShellSurfacesContext *ctx,bool commit);
-ShellActivationResult shell_surfaces_spindle_activation_info(ShellSurfacesContext *ctx,bool commit);
+
+typedef struct ShellSpindleSuffix {
+    bool present;
+    uint8_t bytes[YARN_CMD_BUF_CAP];
+    size_t len;
+} ShellSpindleSuffix;
+
+typedef struct ShellActivationRaw {
+    uint64_t status, pd, task, surface, state;
+} ShellActivationRaw;
+
+typedef struct ShellActivationInfo {
+    uint32_t successor, task;
+    uint64_t surface, state;
+} ShellActivationInfo;
+
+typedef struct ShellActivationResult {
+    uint64_t status;
+    ShellActivationInfo info;
+} ShellActivationResult;
+
+typedef struct ShellSurfaceSubject {
+    bool present;
+    uint32_t target;
+    uint64_t frame;
+} ShellSurfaceSubject;
+
+typedef struct ShellSurfaceBool {
+    bool present, value;
+} ShellSurfaceBool;
+
+ShellActivationRaw shell_surfaces_activation_call(uint64_t slot, bool commit);
+
+typedef struct ShellSurfacesContext {
+    ShellChromeContext shell;
+    SilkShellSurfacesState *surfaces;
+} ShellSurfacesContext;
+
+ShellActivationResult shell_surfaces_quil_activation_edge(ShellSurfacesContext *ctx, size_t slot,
+                                                          uint32_t target, uint64_t surface,
+                                                          size_t lifecycle, bool commit);
+ShellActivationResult shell_surfaces_app_activation_info(ShellSurfacesContext *ctx, uint8_t app,
+                                                         bool commit);
+ShellActivationResult shell_surfaces_quil_activation_info(ShellSurfacesContext *ctx, bool commit);
+ShellActivationResult shell_surfaces_spindle_activation_info(ShellSurfacesContext *ctx,
+                                                             bool commit);
 ShellSurfaceSubject shell_surfaces_spindle_active_frame(ShellSurfacesContext *ctx);
-bool shell_surfaces_handle_app_surface_req(ShellSurfacesContext *ctx,uint64_t sid,uint64_t title,uint64_t packed,uint32_t caller);
-bool shell_surfaces_spindle_scan_to_char(uint8_t scan,uint8_t *out);
+bool shell_surfaces_handle_app_surface_req(ShellSurfacesContext *ctx, uint64_t sid, uint64_t title,
+                                           uint64_t packed, uint32_t caller);
+bool shell_surfaces_spindle_scan_to_char(uint8_t scan, uint8_t *out);
 void shell_surfaces_spindle_vi_save_undo(ShellSurfacesContext *ctx);
 void shell_surfaces_spindle_vi_undo(ShellSurfacesContext *ctx);
 void shell_surfaces_spindle_vi_word_fwd(ShellSurfacesContext *ctx);
 void shell_surfaces_spindle_vi_word_back(ShellSurfacesContext *ctx);
 void shell_surfaces_spindle_vi_word_end(ShellSurfacesContext *ctx);
-void shell_surfaces_spindle_vi_insert_at(ShellSurfacesContext *ctx,size_t pos,uint8_t byte);
-void shell_surfaces_spindle_vi_delete_at(ShellSurfacesContext *ctx,size_t pos);
+void shell_surfaces_spindle_vi_insert_at(ShellSurfacesContext *ctx, size_t pos, uint8_t byte);
+void shell_surfaces_spindle_vi_delete_at(ShellSurfacesContext *ctx, size_t pos);
 size_t shell_surfaces_spindle_history_entry_len(const ShellCommandBytes *entry);
-void shell_surfaces_spindle_history_load(ShellSurfacesContext *ctx,size_t index);
+void shell_surfaces_spindle_history_load(ShellSurfacesContext *ctx, size_t index);
 void shell_surfaces_spindle_history_up(ShellSurfacesContext *ctx);
 void shell_surfaces_spindle_history_down(ShellSurfacesContext *ctx);
 ShellSpindleSuffix shell_surfaces_spindle_ghost_suffix(ShellSurfacesContext *ctx);
 bool shell_surfaces_spindle_ghost_accept(ShellSurfacesContext *ctx);
-void shell_surfaces_spindle_vi_normal_key(ShellSurfacesContext *ctx,uint8_t scan);
-void shell_surfaces_spindle_session_save(ShellSurfacesContext *ctx,size_t index);
-void shell_surfaces_spindle_session_load(ShellSurfacesContext *ctx,size_t index);
+void shell_surfaces_spindle_vi_normal_key(ShellSurfacesContext *ctx, uint8_t scan);
+void shell_surfaces_spindle_session_save(ShellSurfacesContext *ctx, size_t index);
+void shell_surfaces_spindle_session_load(ShellSurfacesContext *ctx, size_t index);
 void shell_surfaces_spindle_session_switch(ShellSurfacesContext *ctx);
-ShellByteRange shell_surfaces_trim_ascii(const ShellCommandBytes *bytes,ShellByteRange span);
-void shell_surfaces_yarn_append_output(ShellSurfacesContext *ctx,const ShellCommandBytes *bytes,ShellByteRange span);
+ShellByteRange shell_surfaces_trim_ascii(const ShellCommandBytes *bytes, ShellByteRange span);
+void shell_surfaces_yarn_append_output(ShellSurfacesContext *ctx, const ShellCommandBytes *bytes,
+                                       ShellByteRange span);
 void shell_surfaces_yarn_cmd_help(ShellSurfacesContext *ctx);
 void shell_surfaces_yarn_cmd_clear(ShellSurfacesContext *ctx);
-void shell_surfaces_yarn_cmd_echo(ShellSurfacesContext *ctx,const ShellCommandBytes *bytes,ShellByteRange span);
+void shell_surfaces_yarn_cmd_echo(ShellSurfacesContext *ctx, const ShellCommandBytes *bytes,
+                                  ShellByteRange span);
 void shell_surfaces_yarn_cmd_about(ShellSurfacesContext *ctx);
 void shell_surfaces_yarn_cmd_time(ShellSurfacesContext *ctx);
 void shell_surfaces_yarn_cmd_pd(ShellSurfacesContext *ctx);
 void shell_surfaces_yarn_cmd_scene(ShellSurfacesContext *ctx);
 void shell_surfaces_yarn_cmd_routes(ShellSurfacesContext *ctx);
 void shell_surfaces_yarn_cmd_faults(ShellSurfacesContext *ctx);
-size_t shell_surfaces_fmt_u32(uint32_t value,ShellDecimalBytes *out);
-void shell_surfaces_spindle_result_render(ShellSurfacesContext *ctx,const SpindleResult *result);
+size_t shell_surfaces_fmt_u32(uint32_t value, ShellDecimalBytes *out);
+void shell_surfaces_spindle_result_render(ShellSurfacesContext *ctx, const SpindleResult *result);
 SpindleResult shell_surfaces_spindle_cmd_session(ShellSurfacesContext *ctx);
 SpindleResult shell_surfaces_spindle_cmd_panes(ShellSurfacesContext *ctx);
 SpindleResult shell_surfaces_spindle_cmd_history(ShellSurfacesContext *ctx);
@@ -72,28 +153,29 @@ SpindleResult shell_surfaces_spindle_cmd_status(ShellSurfacesContext *ctx);
 void shell_surfaces_spindle_dispatch(ShellSurfacesContext *ctx);
 void shell_surfaces_spindle_render_cmdline(ShellSurfacesContext *ctx);
 void shell_surfaces_spindle_render(ShellSurfacesContext *ctx);
-bool shell_surfaces_spiderweb_match(const ShellCommandBytes *query,size_t query_len,const ShellCommandBytes *candidate,size_t candidate_len);
+bool shell_surfaces_spiderweb_match(const ShellCommandBytes *query, size_t query_len,
+                                    const ShellCommandBytes *candidate, size_t candidate_len);
 void shell_surfaces_spiderweb_search(ShellSurfacesContext *ctx);
 void shell_surfaces_spiderweb_render(ShellSurfacesContext *ctx);
-void shell_surfaces_spiderweb_open(ShellSurfacesContext *ctx,uint8_t mode);
+void shell_surfaces_spiderweb_open(ShellSurfacesContext *ctx, uint8_t mode);
 void shell_surfaces_spiderweb_accept(ShellSurfacesContext *ctx);
 void shell_surfaces_spiderweb_cancel(ShellSurfacesContext *ctx);
-void shell_surfaces_spiderweb_handle_key(ShellSurfacesContext *ctx,uint8_t scan);
-uint32_t shell_surfaces_bell_row_color(ShellSurfacesContext *ctx,const BellEvent *event);
+void shell_surfaces_spiderweb_handle_key(ShellSurfacesContext *ctx, uint8_t scan);
+uint32_t shell_surfaces_bell_row_color(ShellSurfacesContext *ctx, const BellEvent *event);
 uint8_t shell_surfaces_bell_visible_event_count(ShellSurfacesContext *ctx);
 uint32_t shell_surfaces_bell_selected_row_highlight(uint32_t color);
 void shell_surfaces_bell_select_next_row(ShellSurfacesContext *ctx);
 void shell_surfaces_bell_select_prev_row(ShellSurfacesContext *ctx);
-bool shell_surfaces_bell_selected_event_snapshot(ShellSurfacesContext *ctx,BellEvent *event);
+bool shell_surfaces_bell_selected_event_snapshot(ShellSurfacesContext *ctx, BellEvent *event);
 void shell_surfaces_bell_emit_selected_event_detail_proof(ShellSurfacesContext *ctx);
 void shell_surfaces_bell_close_detail(ShellSurfacesContext *ctx);
 bool shell_surfaces_bell_cycle_lane(ShellSurfacesContext *ctx);
 bool shell_surfaces_bell_is_visible_in_active_scene(ShellSurfacesContext *ctx);
 void shell_surfaces_bell_render_lane_text(ShellSurfacesContext *ctx);
 void shell_surfaces_bell_render_event_list(ShellSurfacesContext *ctx);
-ShellByteOption shell_surfaces_app_reserve_remaining(ShellSurfacesContext *ctx,uint8_t app);
-ShellPaletteStatus shell_surfaces_app_launcher_status(ShellSurfacesContext *ctx,uint8_t app);
-ShellPaletteStatus shell_surfaces_palette_item_status(ShellSurfacesContext *ctx,uint8_t command);
+ShellByteOption shell_surfaces_app_reserve_remaining(ShellSurfacesContext *ctx, uint8_t app);
+ShellPaletteStatus shell_surfaces_app_launcher_status(ShellSurfacesContext *ctx, uint8_t app);
+ShellPaletteStatus shell_surfaces_palette_item_status(ShellSurfacesContext *ctx, uint8_t command);
 uint32_t shell_surfaces_command_kind_color(uint8_t command);
 uint32_t shell_surfaces_command_palette_selected_accent(ShellSurfacesContext *ctx);
 void shell_surfaces_palette_render_list(ShellSurfacesContext *ctx);
@@ -101,23 +183,26 @@ void shell_surfaces_palette_show(ShellSurfacesContext *ctx);
 bool shell_surfaces_toggle_command_palette(ShellSurfacesContext *ctx);
 void shell_surfaces_palette_select_next(ShellSurfacesContext *ctx);
 void shell_surfaces_palette_select_prev(ShellSurfacesContext *ctx);
-void shell_surfaces_palette_batch_emit_app_focus(ShellSurfacesContext *ctx,const ShellPaletteString *app,uint64_t sid,bool ok,const ShellPaletteString *reason);
-ShellActivationResult shell_surfaces_browser_activation_info(ShellSurfacesContext *ctx,bool commit);
+void shell_surfaces_palette_batch_emit_app_focus(ShellSurfacesContext *ctx,
+                                                 const ShellPaletteString *app, uint64_t sid,
+                                                 bool ok, const ShellPaletteString *reason);
+ShellActivationResult shell_surfaces_browser_activation_info(ShellSurfacesContext *ctx,
+                                                             bool commit);
 ShellSurfaceSubject shell_surfaces_browser_active_frame(ShellSurfacesContext *ctx);
 bool shell_surfaces_open_browser_in_active_scene(ShellSurfacesContext *ctx);
 bool shell_surfaces_palette_execute_selected(ShellSurfacesContext *ctx);
-bool shell_surfaces_ensure_linen_frame(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_ensure_quil_frame(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_ensure_mesh_frame(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_ensure_collar_frame(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_ensure_spindle_frame(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_ensure_bell_frame(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_ensure_command_palette_frame(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_linen_frame_id(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_quil_frame_id(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_mesh_frame_id(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_collar_frame_id(ShellSurfacesContext *ctx,uint32_t *out);
-bool shell_surfaces_bell_frame_id(ShellSurfacesContext *ctx,uint32_t *out);
+bool shell_surfaces_ensure_linen_frame(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_ensure_quil_frame(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_ensure_mesh_frame(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_ensure_collar_frame(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_ensure_spindle_frame(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_ensure_bell_frame(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_ensure_command_palette_frame(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_linen_frame_id(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_quil_frame_id(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_mesh_frame_id(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_collar_frame_id(ShellSurfacesContext *ctx, uint32_t *out);
+bool shell_surfaces_bell_frame_id(ShellSurfacesContext *ctx, uint32_t *out);
 bool shell_surfaces_open_linen_in_active_scene(ShellSurfacesContext *ctx);
 bool shell_surfaces_focus_or_open_linen(ShellSurfacesContext *ctx);
 bool shell_surfaces_toggle_linen(ShellSurfacesContext *ctx);
@@ -135,22 +220,37 @@ bool shell_surfaces_toggle_spindle(ShellSurfacesContext *ctx);
 bool shell_surfaces_open_bell_in_active_scene(ShellSurfacesContext *ctx);
 bool shell_surfaces_focus_or_open_bell(ShellSurfacesContext *ctx);
 bool shell_surfaces_toggle_bell(ShellSurfacesContext *ctx);
-void shell_surfaces_open_app_in_active_scene_by_sid(ShellSurfacesContext *ctx,uint64_t sid);
-ShellPaletteStatus shell_surfaces_peer_native_launcher_status(ShellSurfacesContext *ctx,uint32_t target);
-ShellPaletteString shell_surfaces_peer_spindle_history_label(ShellSurfacesContext *ctx,ShellPaletteString fallback,bool available,ShellPaletteString reason);
-ShellPaletteString shell_surfaces_peer_launcher_row_title(ShellSurfacesContext *ctx,uint8_t command,ShellPaletteString fallback);
-bool shell_surfaces_peer_send_silkbar_phase2_update(ShellSurfacesContext *ctx,uint32_t kind,uint64_t a,uint64_t b);
-void shell_surfaces_peer_launcher_palette_closed(ShellSurfacesContext *ctx,ShellLauncherFocus pending);
+void shell_surfaces_open_app_in_active_scene_by_sid(ShellSurfacesContext *ctx, uint64_t sid);
+ShellPaletteStatus shell_surfaces_peer_native_launcher_status(ShellSurfacesContext *ctx,
+                                                              uint32_t target);
+ShellPaletteString shell_surfaces_peer_spindle_history_label(ShellSurfacesContext *ctx,
+                                                             ShellPaletteString fallback,
+                                                             bool available,
+                                                             ShellPaletteString reason);
+ShellPaletteString shell_surfaces_peer_launcher_row_title(ShellSurfacesContext *ctx,
+                                                          uint8_t command,
+                                                          ShellPaletteString fallback);
+bool shell_surfaces_peer_send_silkbar_phase2_update(ShellSurfacesContext *ctx, uint32_t kind,
+                                                    uint64_t a, uint64_t b);
+void shell_surfaces_peer_launcher_palette_closed(ShellSurfacesContext *ctx,
+                                                 ShellLauncherFocus pending);
 void shell_surfaces_peer_atlas_toggle(ShellSurfacesContext *ctx);
-void shell_surfaces_peer_collar_auto_grant_from_manifest(ShellSurfacesContext *ctx,const AppManifest *manifest);
+void shell_surfaces_peer_collar_auto_grant_from_manifest(ShellSurfacesContext *ctx,
+                                                         const AppManifest *manifest);
 void shell_surfaces_peer_registration_reply_poll(ShellSurfacesContext *ctx);
 void shell_surfaces_peer_launcher_focus_discard(ShellSurfacesContext *ctx);
-void shell_surfaces_peer_launcher_action_record(ShellSurfacesContext *ctx,uint32_t target,uint64_t frame,uint8_t action,uint8_t from,bool activated,bool ok);
-ShellSurfaceBool shell_surfaces_peer_launcher_focus_existing(ShellSurfacesContext *ctx,uint32_t target,uint64_t frame,bool has_action,uint8_t action);
-bool shell_surfaces_peer_native_launcher_available(ShellSurfacesContext *ctx,uint32_t target);
-SexosReply shell_surfaces_peer_raw_pdx_call(ShellSurfacesContext *ctx,uint64_t slot,uint64_t opcode,uint64_t a,uint64_t b,uint64_t c);
-SexosReply shell_surfaces_peer_pdx_call(ShellSurfacesContext *ctx,uint64_t slot,uint64_t opcode,uint64_t a,uint64_t b,uint64_t c);
-void shell_surfaces_peer_linen_refresh(ShellSurfacesContext *ctx,bool notify);
+void shell_surfaces_peer_launcher_action_record(ShellSurfacesContext *ctx, uint32_t target,
+                                                uint64_t frame, uint8_t action, uint8_t from,
+                                                bool activated, bool ok);
+ShellSurfaceBool shell_surfaces_peer_launcher_focus_existing(ShellSurfacesContext *ctx,
+                                                             uint32_t target, uint64_t frame,
+                                                             bool has_action, uint8_t action);
+bool shell_surfaces_peer_native_launcher_available(ShellSurfacesContext *ctx, uint32_t target);
+SexosReply shell_surfaces_peer_raw_pdx_call(ShellSurfacesContext *ctx, uint64_t slot,
+                                            uint64_t opcode, uint64_t a, uint64_t b, uint64_t c);
+SexosReply shell_surfaces_peer_pdx_call(ShellSurfacesContext *ctx, uint64_t slot, uint64_t opcode,
+                                        uint64_t a, uint64_t b, uint64_t c);
+void shell_surfaces_peer_linen_refresh(ShellSurfacesContext *ctx, bool notify);
 void shell_surfaces_peer_linen_paint_surface(ShellSurfacesContext *ctx);
 void shell_surfaces_peer_linen_paint_surface_fast(ShellSurfacesContext *ctx);
 size_t shell_surfaces_peer_linen_object_count(ShellSurfacesContext *ctx);
@@ -160,6 +260,7 @@ void shell_surfaces_peer_mesh_render_fact_list(ShellSurfacesContext *ctx);
 void shell_surfaces_peer_mesh_emit_linen_quil_links(ShellSurfacesContext *ctx);
 void shell_surfaces_peer_collar_render_grants_text(ShellSurfacesContext *ctx);
 void shell_surfaces_peer_snap_capture_layout(ShellSurfacesContext *ctx);
-bool shell_surfaces_peer_surface_is_alive(ShellSurfacesContext *ctx,uint64_t sid);
-uint8_t shell_surfaces_peer_collar_check_operation(ShellSurfacesContext *ctx,uint8_t operation,uint64_t caller,uint64_t object);
+bool shell_surfaces_peer_surface_is_alive(ShellSurfacesContext *ctx, uint64_t sid);
+uint8_t shell_surfaces_peer_collar_check_operation(ShellSurfacesContext *ctx, uint8_t operation,
+                                                   uint64_t caller, uint64_t object);
 #endif

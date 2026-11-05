@@ -2,6 +2,7 @@
 """Compare real PCI adapters and complete config-port effects with upstream Rust."""
 import argparse,hashlib,json,random,re,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 U64=(1<<64)-1
 
@@ -123,7 +124,7 @@ def main():
     caught=[]
     if args.mutations:
         for name,unit,before,after in changes:
-            path=w/(unit+'.c');original=path.read_text();assert before in original,(name,'anchor')
+            path=w/(unit+'.c');original=LayoutText(path.read_text());assert before in original,(name,'anchor')
             try:
                 path.write_text(original.replace(before,after));binary=build('gcc',['-O2'],name)
                 result=subprocess.run([binary],cwd=HERE,input=data,capture_output=True)

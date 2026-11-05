@@ -22,8 +22,8 @@
           (uint32_t (* virtual_address))
           (uint32_t width) (uint32_t height) (uint32_t stride)) WindowBuffer)
 
-        (native "_Static_assert(sizeof(SexGraphicsRect) == 16 && offsetof(SexGraphicsRect, height) == 12, \"SexGraphicsRect ABI\");\n")
-        (native "_Static_assert(sizeof(WindowBuffer) == 24 && offsetof(WindowBuffer, width) == 8 && offsetof(WindowBuffer, stride) == 16, \"WindowBuffer ABI\");\n")
+        (_Static_assert (&& (== (sizeof type SexGraphicsRect) 16) (== (__builtin_offsetof SexGraphicsRect height) 12)) "\"SexGraphicsRect ABI\"")
+        (_Static_assert (&& (&& (== (sizeof type WindowBuffer) 24) (== (__builtin_offsetof WindowBuffer width) 8)) (== (__builtin_offsetof WindowBuffer stride) 16)) "\"WindowBuffer ABI\"")
 
         (var (extern const uint8_t) ([] ([] SEX_GRAPHICS_FONT SEX_GRAPHICS_FONT_GLYPHS) SEX_GRAPHICS_FONT_ROWS))
 

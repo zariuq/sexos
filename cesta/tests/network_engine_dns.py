@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 BASIS=0xCBF29CE484222325;MASK=(1<<64)-1
@@ -107,7 +108,7 @@ def main():
             binary=w/f"{cc}-{mode}";run([cc,"-std=c11","-Wall","-Wextra","-Wpedantic","-Werror",*flags,"-Igenerated/include",*sources,host,"-o",binary]);actual=run([binary],commands,env={**os.environ,"ASAN_OPTIONS":"detect_leaks=1:abort_on_error=1"});
             if actual!=expected:(w/f"{cc}-{mode}.actual").write_bytes(actual);(w/"expected").write_bytes(expected);raise AssertionError((cc,mode))
             configs.append({"compiler":cc,"mode":mode,"sha256":hashlib.sha256(actual).hexdigest()})
-    base=exports["gcc"].read_text();mutations=[("backpressure","if(engine->tx_present)return","if(false)return"),("ticket-before-abort","if(!ticket||ticket>NET_CONFIG_MAX_TICKET)return NETWORK_ENGINE_LENGTH","if(false)return NETWORK_ENGINE_LENGTH"),("source-binding","ip.source!=engine->config.dns","false"),("destination-binding","ip.destination!=engine->config.local","false"),("port-binding","udp.source_port!=engine->config.dns_port","false"),("ticket-port","udp.destination_port!=port","false"),("single-response","engine->response_present)return","false)return"),("abort-own-frame","engine->tx_kind==NETWORK_ENGINE_TX_DNS","true"),("clock-rollback","now<engine->last","false"),("arp-request-reply","arp.operation==1","false")];caught=[];prefix=[w/f"{n}-gcc.c" for n in ("network_config","network_engine_frame","network_engine_packet","network_engine_neighbor","network_dns_codec")]
+    base=LayoutText(exports["gcc"].read_text());mutations=[("backpressure","if(engine->tx_present)return","if(false)return"),("ticket-before-abort","if(!ticket||ticket>NET_CONFIG_MAX_TICKET)return NETWORK_ENGINE_LENGTH","if(false)return NETWORK_ENGINE_LENGTH"),("source-binding","ip.source!=engine->config.dns","false"),("destination-binding","ip.destination!=engine->config.local","false"),("port-binding","udp.source_port!=engine->config.dns_port","false"),("ticket-port","udp.destination_port!=port","false"),("single-response","engine->response_present)return","false)return"),("abort-own-frame","engine->tx_kind==NETWORK_ENGINE_TX_DNS","true"),("clock-rollback","now<engine->last","false"),("arp-request-reply","arp.operation==1","false")];caught=[];prefix=[w/f"{n}-gcc.c" for n in ("network_config","network_engine_frame","network_engine_packet","network_engine_neighbor","network_dns_codec")]
     for name,old,new in mutations:
         assert base.count(old)>=1,(name,base.count(old));mut=w/f"mutant-{name}.c";mut.write_text(base.replace(old,new));binary=w/f"mutant-{name}";run(["gcc","-std=c11","-O2","-Igenerated/include",*prefix,mut,host,"-o",binary]);assert run([binary],commands)!=expected,("survived",name);caught.append(name)
     admission=[]

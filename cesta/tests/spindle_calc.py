@@ -1,4 +1,4 @@
-"""Current upstream Spindle exact-decimal calculator against checked Cesta."""
+"""The non-session Spindle calculator (ans, no names or powers) against upstream ebf51ff9."""
 import argparse
 import hashlib
 import importlib
@@ -8,6 +8,7 @@ from pathlib import Path
 import random
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -106,13 +107,12 @@ def main():
             actual=run([binary],data,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=1:abort_on_error=1'})
             assert actual==expected,(compiler,mode)
             records.append(dict(compiler=compiler,mode=mode,sha256=hashlib.sha256(actual).hexdigest()))
-    base=exports['gcc'].read_text();mutations=[
+    base=LayoutText(exports['gcc'].read_text());mutations=[
       ('scale','1000000000','100000000'),
       ('depth','((uint8_t)16)','((uint8_t)15)'),
       ('fraction-inexact','else if(digit)parser->inexact=true','else if(digit)parser->inexact=false'),
       ('mul-bound','if(a>bound)','if(a>bound||a==2)'),
-      ('division-inexact','if(!calc_divmod_signed(numerator,right,&quotient,&remainder)){*error=SPINDLE_CALC_OVERFLOW;return false;}if(remainder)parser->inexact=true',
-       'if(!calc_divmod_signed(numerator,right,&quotient,&remainder)){*error=SPINDLE_CALC_OVERFLOW;return false;}if(false)parser->inexact=true'),
+      ('quotient-inexact','if(remainder)parser->inexact=true;*out=quotient;','if(false)parser->inexact=true;*out=quotient;'),
       ('render-marker',"value.inexact?'~':'='","value.inexact?'=':'='"),
     ];caught=[]
     for name,old,new in mutations:

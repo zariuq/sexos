@@ -1,154 +1,476 @@
 (cesta native-c/1 compact-c/2
  (unit
-  (native "#include \"silk_shell_proofs_a_routes.h\"
+  (ownership (check-all)
+    (unchecked (maybe_run_atlas_scene_keyboard_proof maybe_run_atlas_theme_presets_proof
+                maybe_run_atlas_theme_visual_proof maybe_run_bell_app_event_integration_proof
+                maybe_run_bell_detail_seed_proof maybe_run_bell_keyboard_detail_proof
+                maybe_run_bell_system_events_proof maybe_run_bell_workflow_event_proof
+                maybe_run_collar_keyboard_grants_proof maybe_run_frame_lights_keyboard_proof
+                maybe_run_frame_lights_stub_proof maybe_run_linen_keyboard_route_proof
+                maybe_run_linen_nonblocking_open_proof maybe_run_linen_object_detail_proof
+                maybe_run_physical_keyboard_to_quil_focus_proof
+                maybe_run_quil_visible_typing_e2e_proof maybe_run_silk_drag_reject_proof
+                maybe_run_silk_focus_reject_proof maybe_run_silk_window_move_proof
+                maybe_run_silkbar_keyboard_status_proof maybe_run_silkbar_palette_status_proof
+                maybe_run_silkbar_phase2_shell_proof maybe_run_window_workflow_v2_proof
+                proof_routes_atlas proof_routes_binding proof_routes_context proof_routes_surfaces
+                shell_proofs_a_route_abs_screen_to_raw shell_proofs_a_route_atlas_keyboard
+                shell_proofs_a_route_atlas_toggle shell_proofs_a_route_bell_close_detail
+                shell_proofs_a_route_bell_count shell_proofs_a_route_bell_cycle_lane
+                shell_proofs_a_route_bell_emit_detail shell_proofs_a_route_bell_event
+                shell_proofs_a_route_bell_record_event shell_proofs_a_route_bell_select_next
+                shell_proofs_a_route_bell_select_previous shell_proofs_a_route_bell_selected
+                shell_proofs_a_route_close_surface shell_proofs_a_route_collar_emit_detail
+                shell_proofs_a_route_collar_select_next shell_proofs_a_route_collar_select_previous
+                shell_proofs_a_route_collar_selected_grant shell_proofs_a_route_command_count
+                shell_proofs_a_route_desktop_height shell_proofs_a_route_desktop_width
+                shell_proofs_a_route_focus_or_open_bell shell_proofs_a_route_focus_or_open_collar
+                shell_proofs_a_route_focus_or_open_linen shell_proofs_a_route_focus_or_open_mesh
+                shell_proofs_a_route_focus_or_open_quil shell_proofs_a_route_frame_close_allowed
+                shell_proofs_a_route_handle_hid shell_proofs_a_route_is_closeable_surface
+                shell_proofs_a_route_lifecycle_present shell_proofs_a_route_linen_detail_close
+                shell_proofs_a_route_linen_detail_open shell_proofs_a_route_linen_first_object
+                shell_proofs_a_route_linen_open_in_quil shell_proofs_a_route_linen_queue_open
+                shell_proofs_a_route_linen_select_next shell_proofs_a_route_linen_select_previous
+                shell_proofs_a_route_linen_selected_id shell_proofs_a_route_open_linen
+                shell_proofs_a_route_open_spindle shell_proofs_a_route_palette_available
+                shell_proofs_a_route_pdx_call shell_proofs_a_route_preset_name
+                shell_proofs_a_route_silkbar_update shell_proofs_a_route_surface_bounds
+                shell_proofs_a_route_synthetic_drag_target shell_proofs_a_route_toggle_collar
+                shell_proofs_a_route_toggle_palette shell_proofs_a_route_try_set_focus)
+      (obligation "Native binding between the single shell state and the checked component contexts: records carrying references without field contracts, nested LinenObject labels and the legacy address-word ABI. It relies on the single-threaded shell loop lending each context for one call and retaining no loan."))
+    (record LinenObject (field display_name (static nullable))))
+  (native "
+#include \"silk_shell_proofs_a_routes.h\"
 #include \"silk_shell_surfaces.h\"
 #include \"silk_shell_models_bell.h\"
 #include \"silk_shell_atlas.h\"
 #include \"silk_shell_models_root.h\"
-static ShellInputContext proof_routes_context(void)
-{
- return(ShellInputContext){.shell={.input=&SILK_SHELL_STATE.input,.chrome=&SILK_SHELL_STATE.chrome,
-  .models=&SILK_SHELL_STATE.models,.apps=&SILK_SHELL_STATE.apps,.proofs_a=&SILK_SHELL_STATE.proofs_a},
-  .atlas=&SILK_SHELL_STATE.atlas,.surfaces=&SILK_SHELL_STATE.surfaces};
+
+static ShellInputContext proof_routes_context(void) {
+    return (ShellInputContext){.shell = {.input = &SILK_SHELL_STATE.input,
+                                         .chrome = &SILK_SHELL_STATE.chrome,
+                                         .models = &SILK_SHELL_STATE.models,
+                                         .apps = &SILK_SHELL_STATE.apps,
+                                         .proofs_a = &SILK_SHELL_STATE.proofs_a},
+                               .atlas = &SILK_SHELL_STATE.atlas,
+                               .surfaces = &SILK_SHELL_STATE.surfaces};
 }
-static void proof_routes_binding(const ShellInputContext *ctx)
-{
- if(ctx && ctx->shell.input==&SILK_SHELL_STATE.input && ctx->shell.chrome==&SILK_SHELL_STATE.chrome &&
-  ctx->shell.models==&SILK_SHELL_STATE.models && ctx->shell.apps==&SILK_SHELL_STATE.apps &&
-  ctx->shell.proofs_a==&SILK_SHELL_STATE.proofs_a && ctx->atlas==&SILK_SHELL_STATE.atlas &&
-  ctx->surfaces==&SILK_SHELL_STATE.surfaces)return;
- sexos_fail();for(;;){}
+
+static void proof_routes_binding(const ShellInputContext *ctx) {
+    if (ctx && ctx->shell.input == &SILK_SHELL_STATE.input &&
+        ctx->shell.chrome == &SILK_SHELL_STATE.chrome &&
+        ctx->shell.models == &SILK_SHELL_STATE.models &&
+        ctx->shell.apps == &SILK_SHELL_STATE.apps &&
+        ctx->shell.proofs_a == &SILK_SHELL_STATE.proofs_a &&
+        ctx->atlas == &SILK_SHELL_STATE.atlas && ctx->surfaces == &SILK_SHELL_STATE.surfaces)
+        return;
+    sexos_fail();
+    for (;;) {
+    }
 }
-bool shell_proofs_a_route_try_set_focus(ShellInputContext *ctx,uint64_t surface)
-{proof_routes_binding(ctx);return shell_chrome_try_set_focus(&ctx->shell,surface);}
-bool shell_proofs_a_route_focus_or_open_quil(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view={ctx->shell,ctx->surfaces};return shell_surfaces_focus_or_open_quil(&view);}
-SexosReply shell_proofs_a_route_pdx_call(ShellInputContext *ctx,uint64_t slot,uint64_t op,uint64_t a,uint64_t b,uint64_t c)
-{proof_routes_binding(ctx);return sexos_pdx_call(slot,op,a,b,c);}
-void shell_proofs_a_route_bell_event(ShellInputContext *ctx,const ShellDiagnosticLabel *source,uint64_t event)
-{proof_routes_binding(ctx);shell_diagnostics_bell_send_app_event(source,event);}
-static ShellSurfacesContext proof_routes_surfaces(ShellInputContext *ctx)
-{return(ShellSurfacesContext){ctx->shell,ctx->surfaces};}
-bool shell_proofs_a_route_focus_or_open_bell(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_focus_or_open_bell(&view);}
-void shell_proofs_a_route_bell_select_next(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);shell_surfaces_bell_select_next_row(&view);}
-void shell_proofs_a_route_bell_select_previous(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);shell_surfaces_bell_select_prev_row(&view);}
-void shell_proofs_a_route_bell_emit_detail(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);shell_surfaces_bell_emit_selected_event_detail_proof(&view);}
-void shell_proofs_a_route_bell_close_detail(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);shell_surfaces_bell_close_detail(&view);}
-bool shell_proofs_a_route_bell_cycle_lane(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_bell_cycle_lane(&view);}
-void shell_proofs_a_route_bell_record_event(ShellInputContext *ctx,uint64_t object_id,uint64_t buffer_id)
-{proof_routes_binding(ctx);ShellBellModelsContext view={ctx->shell.models};shell_models_bell_record_event(&view,object_id,buffer_id);}
-size_t shell_proofs_a_route_bell_count(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellBellModelsContext view={ctx->shell.models};return shell_models_bell_ring_count(&view);}
-bool shell_proofs_a_route_bell_selected(ShellInputContext *ctx,BellEvent *event)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_bell_selected_event_snapshot(&view,event);}
-static ShellAtlasContext proof_routes_atlas(ShellInputContext *ctx)
-{return(ShellAtlasContext){ctx->atlas,ctx->shell.chrome,ctx->shell.models};}
-void shell_proofs_a_route_atlas_toggle(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellAtlasContext view=proof_routes_atlas(ctx);shell_atlas_atlas_toggle(&view);}
-bool shell_proofs_a_route_atlas_keyboard(ShellInputContext *ctx,uint8_t scancode)
-{proof_routes_binding(ctx);ShellAtlasContext view=proof_routes_atlas(ctx);return shell_atlas_handle_atlas_keyboard(&view,scancode);}
-const char *shell_proofs_a_route_preset_name(ShellInputContext *ctx,uint8_t preset)
-{proof_routes_binding(ctx);ShellAtlasContext view=proof_routes_atlas(ctx);return shell_atlas_peer_get_preset_name(&view,preset);}
-bool shell_proofs_a_route_open_spindle(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_open_spindle_in_active_scene(&view);}
-bool shell_proofs_a_route_focus_or_open_mesh(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_focus_or_open_mesh(&view);}
-bool shell_proofs_a_route_focus_or_open_linen(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_focus_or_open_linen(&view);}
-bool shell_proofs_a_route_toggle_palette(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_toggle_command_palette(&view);}
-size_t shell_proofs_a_route_command_count(ShellInputContext *ctx)
-{proof_routes_binding(ctx);return shell_surfaces_command_count();}
-bool shell_proofs_a_route_palette_available(ShellInputContext *ctx,size_t index)
-{
- proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);
- if(index>=shell_surfaces_command_count())return false;
- return shell_surfaces_palette_item_status(&view,shell_surfaces_command_code(index)).available;
+
+bool shell_proofs_a_route_try_set_focus(ShellInputContext *ctx, uint64_t surface) {
+    proof_routes_binding(ctx);
+    return shell_chrome_try_set_focus(&ctx->shell, surface);
 }
-bool shell_proofs_a_route_silkbar_update(ShellInputContext *ctx,uint32_t kind,uint64_t a,uint64_t b)
-{proof_routes_binding(ctx);return shell_diagnostics_send_silkbar_phase2_update(kind,a,b);}
-bool shell_proofs_a_route_frame_close_allowed(ShellInputContext *ctx,uint32_t frame)
-{proof_routes_binding(ctx);return shell_chrome_frame_close_allowed(&ctx->shell,frame);}
-bool shell_proofs_a_route_lifecycle_present(ShellInputContext *ctx,uint64_t surface)
-{proof_routes_binding(ctx);uint8_t state=0;return shell_chrome_lifecycle_state(&ctx->shell,surface,&state);}
-bool shell_proofs_a_route_is_closeable_surface(ShellInputContext *ctx,uint64_t surface)
-{proof_routes_binding(ctx);return shell_chrome_is_closeable_surface(&ctx->shell,surface);}
-bool shell_proofs_a_route_close_surface(ShellInputContext *ctx,uint64_t surface)
-{proof_routes_binding(ctx);return shell_chrome_close_surface_from_frame_light(&ctx->shell,surface);}
-void shell_proofs_a_route_handle_hid(ShellInputContext *ctx,uint64_t event_class,uint64_t arg0,uint64_t arg1)
-{proof_routes_binding(ctx);shell_input_handle_hid_event(ctx,event_class,arg0,arg1);}
-uint64_t shell_proofs_a_route_abs_screen_to_raw(ShellInputContext *ctx,int32_t screen,int32_t dimension)
-{proof_routes_binding(ctx);return shell_chrome_abs_screen_to_raw(&ctx->shell,screen,dimension);}
-int32_t shell_proofs_a_route_desktop_width(ShellInputContext *ctx)
-{proof_routes_binding(ctx);return shell_chrome_desktop_width(&ctx->shell);}
-int32_t shell_proofs_a_route_desktop_height(ShellInputContext *ctx)
-{proof_routes_binding(ctx);return shell_chrome_desktop_height(&ctx->shell);}
-ShellProofDragTarget shell_proofs_a_route_synthetic_drag_target(ShellInputContext *ctx)
-{
- proof_routes_binding(ctx);ShellChromeDragTarget value={0};bool present=shell_chrome_synthetic_window_drag_target(&ctx->shell,&value);
- return(ShellProofDragTarget){present,value.frame,value.sid,value.x,value.y,value.w,value.h,value.px,value.py};
+
+bool shell_proofs_a_route_focus_or_open_quil(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = {ctx->shell, ctx->surfaces};
+    return shell_surfaces_focus_or_open_quil(&view);
 }
-ShellProofBounds shell_proofs_a_route_surface_bounds(ShellInputContext *ctx,uint64_t surface)
-{
- proof_routes_binding(ctx);ShellProofBounds result={0};result.present=shell_chrome_peer_get_surface_bounds(&ctx->shell,surface,&result.x,&result.y,&result.w,&result.h);return result;
+
+SexosReply shell_proofs_a_route_pdx_call(ShellInputContext *ctx, uint64_t slot, uint64_t op,
+                                         uint64_t a, uint64_t b, uint64_t c) {
+    proof_routes_binding(ctx);
+    return sexos_pdx_call(slot, op, a, b, c);
 }
-void shell_proofs_a_route_linen_select_next(ShellInputContext *ctx)
-{proof_routes_binding(ctx);shell_input_peer_linen_select_next_object(ctx);}
-void shell_proofs_a_route_linen_select_previous(ShellInputContext *ctx)
-{proof_routes_binding(ctx);shell_input_peer_linen_select_prev_object(ctx);}
-uint64_t shell_proofs_a_route_linen_selected_id(ShellInputContext *ctx)
-{proof_routes_binding(ctx);return shell_input_peer_linen_selected_object_id(ctx);}
-void shell_proofs_a_route_linen_detail_open(ShellInputContext *ctx)
-{proof_routes_binding(ctx);linen_object_detail_open();}
-void shell_proofs_a_route_linen_detail_close(ShellInputContext *ctx)
-{proof_routes_binding(ctx);linen_object_detail_close();}
-bool shell_proofs_a_route_open_linen(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_open_linen_in_active_scene(&view);}
-ShellProofLinenFirst shell_proofs_a_route_linen_first_object(ShellInputContext *ctx)
-{proof_routes_binding(ctx);size_t count=linen_object_count();LinenObject object=ctx->shell.models->LINEN_OBJECTS[0];return(ShellProofLinenFirst){count,object.present,object.object_id};}
-void shell_proofs_a_route_linen_queue_open(ShellInputContext *ctx,uint64_t object)
-{proof_routes_binding(ctx);linen_queue_open(object,0);}
-bool shell_proofs_a_route_linen_open_in_quil(ShellInputContext *ctx,uint64_t object)
-{proof_routes_binding(ctx);return shell_input_peer_open_linen_object_in_quil(ctx,object);}
-bool shell_proofs_a_route_focus_or_open_collar(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_focus_or_open_collar(&view);}
-void shell_proofs_a_route_collar_select_next(ShellInputContext *ctx)
-{proof_routes_binding(ctx);shell_input_peer_collar_select_next_grant(ctx);}
-void shell_proofs_a_route_collar_select_previous(ShellInputContext *ctx)
-{proof_routes_binding(ctx);shell_input_peer_collar_select_prev_grant(ctx);}
-bool shell_proofs_a_route_collar_emit_detail(ShellInputContext *ctx)
-{proof_routes_binding(ctx);return shell_input_peer_collar_emit_selected_grant_detail(ctx);}
-ShellProofId shell_proofs_a_route_collar_selected_grant(ShellInputContext *ctx)
-{proof_routes_binding(ctx);CollarGrant grant={0};bool present=collar_grant_at_visible_index(ctx->shell.models->COLLAR_SELECTED_GRANT_IDX,&grant);return(ShellProofId){present,grant.grant_id};}
-bool shell_proofs_a_route_toggle_collar(ShellInputContext *ctx)
-{proof_routes_binding(ctx);ShellSurfacesContext view=proof_routes_surfaces(ctx);return shell_surfaces_toggle_collar(&view);}
-void maybe_run_linen_keyboard_route_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_linen_keyboard_route_proof(&ctx);}
-void maybe_run_physical_keyboard_to_quil_focus_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_physical_keyboard_to_quil_focus_proof(&ctx);}
-void maybe_run_bell_app_event_integration_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_bell_app_event_integration_proof(&ctx);}
-void maybe_run_bell_workflow_event_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_bell_workflow_event_proof(&ctx);}
-void maybe_run_window_workflow_v2_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_window_workflow_v2_proof(&ctx);}
-void maybe_run_bell_keyboard_detail_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_bell_keyboard_detail_proof(&ctx);}
-void maybe_run_bell_detail_seed_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_bell_detail_seed_proof(&ctx);}
-void maybe_run_bell_system_events_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_bell_system_events_proof(&ctx);}
-void maybe_run_atlas_scene_keyboard_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_atlas_scene_keyboard_proof(&ctx);}
-void maybe_run_atlas_theme_visual_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_atlas_theme_visual_proof(&ctx);}
-void maybe_run_atlas_theme_presets_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_atlas_theme_presets_proof(&ctx);}
-void maybe_run_silkbar_keyboard_status_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_silkbar_keyboard_status_proof(&ctx);}
-void maybe_run_silkbar_palette_status_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_silkbar_palette_status_proof(&ctx);}
-void maybe_run_silkbar_phase2_shell_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_silkbar_phase2_shell_proof(&ctx);}
-void maybe_run_frame_lights_stub_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_frame_lights_stub_proof(&ctx);}
-void maybe_run_frame_lights_keyboard_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_frame_lights_keyboard_proof(&ctx);}
-void maybe_run_silk_focus_reject_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_silk_focus_reject_proof(&ctx);}
-void maybe_run_silk_drag_reject_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_silk_drag_reject_proof(&ctx);}
-void maybe_run_silk_window_move_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_silk_window_move_proof(&ctx);}
-void maybe_run_quil_visible_typing_e2e_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_quil_visible_typing_e2e_proof(&ctx);}
-void maybe_run_linen_object_detail_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_linen_object_detail_proof(&ctx);}
-void maybe_run_linen_nonblocking_open_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_linen_nonblocking_open_proof(&ctx);}
-void maybe_run_collar_keyboard_grants_proof(void){ShellInputContext ctx=proof_routes_context();shell_proofs_a_maybe_run_collar_keyboard_grants_proof(&ctx);}
+
+void shell_proofs_a_route_bell_event(ShellInputContext *ctx, const ShellDiagnosticLabel *source,
+                                     uint64_t event) {
+    proof_routes_binding(ctx);
+    shell_diagnostics_bell_send_app_event(source, event);
+}
+
+static ShellSurfacesContext proof_routes_surfaces(ShellInputContext *ctx) {
+    return (ShellSurfacesContext){ctx->shell, ctx->surfaces};
+}
+
+bool shell_proofs_a_route_focus_or_open_bell(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_focus_or_open_bell(&view);
+}
+
+void shell_proofs_a_route_bell_select_next(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    shell_surfaces_bell_select_next_row(&view);
+}
+
+void shell_proofs_a_route_bell_select_previous(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    shell_surfaces_bell_select_prev_row(&view);
+}
+
+void shell_proofs_a_route_bell_emit_detail(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    shell_surfaces_bell_emit_selected_event_detail_proof(&view);
+}
+
+void shell_proofs_a_route_bell_close_detail(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    shell_surfaces_bell_close_detail(&view);
+}
+
+bool shell_proofs_a_route_bell_cycle_lane(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_bell_cycle_lane(&view);
+}
+
+void shell_proofs_a_route_bell_record_event(ShellInputContext *ctx, uint64_t object_id,
+                                            uint64_t buffer_id) {
+    proof_routes_binding(ctx);
+    ShellBellModelsContext view = {ctx->shell.models};
+    shell_models_bell_record_event(&view, object_id, buffer_id);
+}
+
+size_t shell_proofs_a_route_bell_count(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellBellModelsContext view = {ctx->shell.models};
+    return shell_models_bell_ring_count(&view);
+}
+
+bool shell_proofs_a_route_bell_selected(ShellInputContext *ctx, BellEvent *event) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_bell_selected_event_snapshot(&view, event);
+}
+
+static ShellAtlasContext proof_routes_atlas(ShellInputContext *ctx) {
+    return (ShellAtlasContext){ctx->atlas, ctx->shell.chrome, ctx->shell.models};
+}
+
+void shell_proofs_a_route_atlas_toggle(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellAtlasContext view = proof_routes_atlas(ctx);
+    shell_atlas_atlas_toggle(&view);
+}
+
+bool shell_proofs_a_route_atlas_keyboard(ShellInputContext *ctx, uint8_t scancode) {
+    proof_routes_binding(ctx);
+    ShellAtlasContext view = proof_routes_atlas(ctx);
+    return shell_atlas_handle_atlas_keyboard(&view, scancode);
+}
+
+const char *shell_proofs_a_route_preset_name(ShellInputContext *ctx, uint8_t preset) {
+    proof_routes_binding(ctx);
+    ShellAtlasContext view = proof_routes_atlas(ctx);
+    return shell_atlas_peer_get_preset_name(&view, preset);
+}
+
+bool shell_proofs_a_route_open_spindle(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_open_spindle_in_active_scene(&view);
+}
+
+bool shell_proofs_a_route_focus_or_open_mesh(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_focus_or_open_mesh(&view);
+}
+
+bool shell_proofs_a_route_focus_or_open_linen(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_focus_or_open_linen(&view);
+}
+
+bool shell_proofs_a_route_toggle_palette(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_toggle_command_palette(&view);
+}
+
+size_t shell_proofs_a_route_command_count(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    return shell_surfaces_command_count();
+}
+
+bool shell_proofs_a_route_palette_available(ShellInputContext *ctx, size_t index) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    if (index >= shell_surfaces_command_count())
+        return false;
+    return shell_surfaces_palette_item_status(&view, shell_surfaces_command_code(index)).available;
+}
+
+bool shell_proofs_a_route_silkbar_update(ShellInputContext *ctx, uint32_t kind, uint64_t a,
+                                         uint64_t b) {
+    proof_routes_binding(ctx);
+    return shell_diagnostics_send_silkbar_phase2_update(kind, a, b);
+}
+
+bool shell_proofs_a_route_frame_close_allowed(ShellInputContext *ctx, uint32_t frame) {
+    proof_routes_binding(ctx);
+    return shell_chrome_frame_close_allowed(&ctx->shell, frame);
+}
+
+bool shell_proofs_a_route_lifecycle_present(ShellInputContext *ctx, uint64_t surface) {
+    proof_routes_binding(ctx);
+    uint8_t state = 0;
+    return shell_chrome_lifecycle_state(&ctx->shell, surface, &state);
+}
+
+bool shell_proofs_a_route_is_closeable_surface(ShellInputContext *ctx, uint64_t surface) {
+    proof_routes_binding(ctx);
+    return shell_chrome_is_closeable_surface(&ctx->shell, surface);
+}
+
+bool shell_proofs_a_route_close_surface(ShellInputContext *ctx, uint64_t surface) {
+    proof_routes_binding(ctx);
+    return shell_chrome_close_surface_from_frame_light(&ctx->shell, surface);
+}
+
+void shell_proofs_a_route_handle_hid(ShellInputContext *ctx, uint64_t event_class, uint64_t arg0,
+                                     uint64_t arg1) {
+    proof_routes_binding(ctx);
+    shell_input_handle_hid_event(ctx, event_class, arg0, arg1);
+}
+
+uint64_t shell_proofs_a_route_abs_screen_to_raw(ShellInputContext *ctx, int32_t screen,
+                                                int32_t dimension) {
+    proof_routes_binding(ctx);
+    return shell_chrome_abs_screen_to_raw(&ctx->shell, screen, dimension);
+}
+
+int32_t shell_proofs_a_route_desktop_width(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    return shell_chrome_desktop_width(&ctx->shell);
+}
+
+int32_t shell_proofs_a_route_desktop_height(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    return shell_chrome_desktop_height(&ctx->shell);
+}
+
+ShellProofDragTarget shell_proofs_a_route_synthetic_drag_target(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellChromeDragTarget value = {0};
+    bool present = shell_chrome_synthetic_window_drag_target(&ctx->shell, &value);
+    return (ShellProofDragTarget){present, value.frame, value.sid, value.x, value.y,
+                                  value.w, value.h,     value.px,  value.py};
+}
+
+ShellProofBounds shell_proofs_a_route_surface_bounds(ShellInputContext *ctx, uint64_t surface) {
+    proof_routes_binding(ctx);
+    ShellProofBounds result = {0};
+    result.present = shell_chrome_peer_get_surface_bounds(&ctx->shell, surface, &result.x,
+                                                          &result.y, &result.w, &result.h);
+    return result;
+}
+
+void shell_proofs_a_route_linen_select_next(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    shell_input_peer_linen_select_next_object(ctx);
+}
+
+void shell_proofs_a_route_linen_select_previous(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    shell_input_peer_linen_select_prev_object(ctx);
+}
+
+uint64_t shell_proofs_a_route_linen_selected_id(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    return shell_input_peer_linen_selected_object_id(ctx);
+}
+
+void shell_proofs_a_route_linen_detail_open(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    linen_object_detail_open();
+}
+
+void shell_proofs_a_route_linen_detail_close(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    linen_object_detail_close();
+}
+
+bool shell_proofs_a_route_open_linen(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_open_linen_in_active_scene(&view);
+}
+
+ShellProofLinenFirst shell_proofs_a_route_linen_first_object(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    size_t count = linen_object_count();
+    LinenObject object = ctx->shell.models->LINEN_OBJECTS[0];
+    return (ShellProofLinenFirst){count, object.present, object.object_id};
+}
+
+void shell_proofs_a_route_linen_queue_open(ShellInputContext *ctx, uint64_t object) {
+    proof_routes_binding(ctx);
+    linen_queue_open(object, 0);
+}
+
+bool shell_proofs_a_route_linen_open_in_quil(ShellInputContext *ctx, uint64_t object) {
+    proof_routes_binding(ctx);
+    return shell_input_peer_open_linen_object_in_quil(ctx, object);
+}
+
+bool shell_proofs_a_route_focus_or_open_collar(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_focus_or_open_collar(&view);
+}
+
+void shell_proofs_a_route_collar_select_next(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    shell_input_peer_collar_select_next_grant(ctx);
+}
+
+void shell_proofs_a_route_collar_select_previous(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    shell_input_peer_collar_select_prev_grant(ctx);
+}
+
+bool shell_proofs_a_route_collar_emit_detail(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    return shell_input_peer_collar_emit_selected_grant_detail(ctx);
+}
+
+ShellProofId shell_proofs_a_route_collar_selected_grant(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    CollarGrant grant = {0};
+    bool present =
+        collar_grant_at_visible_index(ctx->shell.models->COLLAR_SELECTED_GRANT_IDX, &grant);
+    return (ShellProofId){present, grant.grant_id};
+}
+
+bool shell_proofs_a_route_toggle_collar(ShellInputContext *ctx) {
+    proof_routes_binding(ctx);
+    ShellSurfacesContext view = proof_routes_surfaces(ctx);
+    return shell_surfaces_toggle_collar(&view);
+}
+
+void maybe_run_linen_keyboard_route_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_linen_keyboard_route_proof(&ctx);
+}
+
+void maybe_run_physical_keyboard_to_quil_focus_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_physical_keyboard_to_quil_focus_proof(&ctx);
+}
+
+void maybe_run_bell_app_event_integration_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_bell_app_event_integration_proof(&ctx);
+}
+
+void maybe_run_bell_workflow_event_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_bell_workflow_event_proof(&ctx);
+}
+
+void maybe_run_window_workflow_v2_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_window_workflow_v2_proof(&ctx);
+}
+
+void maybe_run_bell_keyboard_detail_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_bell_keyboard_detail_proof(&ctx);
+}
+
+void maybe_run_bell_detail_seed_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_bell_detail_seed_proof(&ctx);
+}
+
+void maybe_run_bell_system_events_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_bell_system_events_proof(&ctx);
+}
+
+void maybe_run_atlas_scene_keyboard_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_atlas_scene_keyboard_proof(&ctx);
+}
+
+void maybe_run_atlas_theme_visual_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_atlas_theme_visual_proof(&ctx);
+}
+
+void maybe_run_atlas_theme_presets_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_atlas_theme_presets_proof(&ctx);
+}
+
+void maybe_run_silkbar_keyboard_status_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_silkbar_keyboard_status_proof(&ctx);
+}
+
+void maybe_run_silkbar_palette_status_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_silkbar_palette_status_proof(&ctx);
+}
+
+void maybe_run_silkbar_phase2_shell_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_silkbar_phase2_shell_proof(&ctx);
+}
+
+void maybe_run_frame_lights_stub_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_frame_lights_stub_proof(&ctx);
+}
+
+void maybe_run_frame_lights_keyboard_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_frame_lights_keyboard_proof(&ctx);
+}
+
+void maybe_run_silk_focus_reject_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_silk_focus_reject_proof(&ctx);
+}
+
+void maybe_run_silk_drag_reject_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_silk_drag_reject_proof(&ctx);
+}
+
+void maybe_run_silk_window_move_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_silk_window_move_proof(&ctx);
+}
+
+void maybe_run_quil_visible_typing_e2e_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_quil_visible_typing_e2e_proof(&ctx);
+}
+
+void maybe_run_linen_object_detail_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_linen_object_detail_proof(&ctx);
+}
+
+void maybe_run_linen_nonblocking_open_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_linen_nonblocking_open_proof(&ctx);
+}
+
+void maybe_run_collar_keyboard_grants_proof(void) {
+    ShellInputContext ctx = proof_routes_context();
+    shell_proofs_a_maybe_run_collar_keyboard_grants_proof(&ctx);
+}
 ")))

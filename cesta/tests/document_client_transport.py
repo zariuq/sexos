@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -39,7 +40,7 @@ def main():
             run([binary], env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=1"}); builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = sources["gcc"].read_text(); dependencies = [work / "document_protocol-gcc.c", work / "document_client-gcc.c"]
+        base = LayoutText(sources["gcc"].read_text()); dependencies = [work / "document_protocol-gcc.c", work / "document_client-gcc.c"]
         changes = [
             ("specific-poll", "sexos_rpc_poll(entry.request_id)", "sexos_rpc_poll(entry.request_id+1)"),
             ("busy-retained", "reply.status!=SEXOS_RPC_BUSY", "true"),

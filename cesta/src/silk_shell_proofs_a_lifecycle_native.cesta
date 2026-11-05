@@ -1,25 +1,118 @@
 (cesta native-c/1 compact-c/2
  (unit
-  (native "#include \"silk_shell_proofs_a_lifecycle.h\"
+  (ownership (check-all)
+    (unchecked (lifecycle_context maybe_run_appdeath_cleanup_proof
+                maybe_run_atlas_visible_restore_proof maybe_run_frame_lights_pointer_proof
+                maybe_run_lifecycle_multitab_proof shell_proofs_a_lifecycle_clear_focus_dead
+                shell_proofs_a_lifecycle_close shell_proofs_a_lifecycle_deactivate
+                shell_proofs_a_lifecycle_display_create shell_proofs_a_lifecycle_first_minimized
+                shell_proofs_a_lifecycle_focus shell_proofs_a_lifecycle_frame_minimized
+                shell_proofs_a_lifecycle_frame_zoomed shell_proofs_a_lifecycle_minimize
+                shell_proofs_a_lifecycle_pointer_click shell_proofs_a_lifecycle_restore
+                shell_proofs_a_lifecycle_send_tab_info shell_proofs_a_lifecycle_surface_alive
+                shell_proofs_a_lifecycle_zoom)
+      (obligation "Native binding between the single shell state and the checked component contexts: records carrying references without field contracts, nested LinenObject labels and the legacy address-word ABI. It relies on the single-threaded shell loop lending each context for one call and retaining no loan.")))
+  (native "
+#include \"silk_shell_proofs_a_lifecycle.h\"
 #include \"silk_shell_surfaces.h\"
-static ShellInputContext lifecycle_context(void){return(ShellInputContext){.shell={.input=&SILK_SHELL_STATE.input,.chrome=&SILK_SHELL_STATE.chrome,.models=&SILK_SHELL_STATE.models,.apps=&SILK_SHELL_STATE.apps,.proofs_a=&SILK_SHELL_STATE.proofs_a},.atlas=&SILK_SHELL_STATE.atlas,.surfaces=&SILK_SHELL_STATE.surfaces};}
-ShellProofFixtureRect shell_proofs_a_lifecycle_boot_rect(uint64_t surface){Rect r=surface==SURFACE_ID_TEST3?P.boot_rect_102:P.boot_rect_103;return(ShellProofFixtureRect){r.x,r.y,r.w,r.h};}
-bool shell_proofs_a_lifecycle_display_create(ShellInputContext *ctx,uint64_t surface,ShellProofFixtureRect r){(void)ctx;return sexos_pdx_call(SLOT_DISPLAY,0xec,surface,((uint64_t)(uint32_t)r.y<<32)|(uint32_t)r.x,((uint64_t)r.h<<32)|r.w).status==0;}
-void shell_proofs_a_lifecycle_send_tab_info(ShellInputContext *ctx,uint32_t frame){shell_chrome_send_frame_tab_info(&ctx->shell,frame);}
-bool shell_proofs_a_lifecycle_focus(ShellInputContext *ctx,uint64_t surface){return shell_chrome_try_set_focus(&ctx->shell,surface);}
-bool shell_proofs_a_lifecycle_close(ShellInputContext *ctx,uint64_t surface){return shell_chrome_close_surface_from_frame_light(&ctx->shell,surface);}
-bool shell_proofs_a_lifecycle_minimize(ShellInputContext *ctx,uint32_t frame){return shell_chrome_minimize_frame(&ctx->shell,frame);}
-bool shell_proofs_a_lifecycle_restore(ShellInputContext *ctx,uint32_t frame){return shell_chrome_restore_minimized_frame(&ctx->shell,frame);}
-bool shell_proofs_a_lifecycle_zoom(ShellInputContext *ctx,uint32_t frame,bool enabled){if(enabled==shell_chrome_frame_is_zoomed(&ctx->shell,frame))return true;return enabled?shell_chrome_zoom_frame(&ctx->shell,frame):shell_chrome_unzoom_frame(&ctx->shell,frame);}
-bool shell_proofs_a_lifecycle_frame_minimized(ShellInputContext *ctx,uint32_t frame){return shell_chrome_frame_is_minimized(&ctx->shell,frame);}
-bool shell_proofs_a_lifecycle_frame_zoomed(ShellInputContext *ctx,uint32_t frame){return shell_chrome_frame_is_zoomed(&ctx->shell,frame);}
-bool shell_proofs_a_lifecycle_first_minimized(ShellInputContext *ctx,uint32_t *frame){return shell_chrome_first_minimized_frame_id(&ctx->shell,frame);}
-void shell_proofs_a_lifecycle_pointer_click(ShellInputContext *ctx,int32_t x,int32_t y){(void)shell_chrome_click_hit_test_and_focus(&ctx->shell,x,y,1);}
-void shell_proofs_a_lifecycle_clear_focus_dead(ShellInputContext *ctx){shell_chrome_peer_clear_focus_if_dead(&ctx->shell);}
-bool shell_proofs_a_lifecycle_surface_alive(ShellInputContext *ctx,uint64_t surface){return shell_chrome_peer_surface_is_alive(&ctx->shell,surface);}
-void shell_proofs_a_lifecycle_deactivate(ShellInputContext *ctx,uint64_t surface){(void)ctx;(void)sexos_pdx_call(SLOT_DISPLAY,OP_SURFACE_DEACTIVATE,surface,0,0);}
-void maybe_run_frame_lights_pointer_proof(void){ShellInputContext ctx=lifecycle_context();shell_proofs_a_maybe_run_frame_lights_pointer_proof(&ctx);}
-void maybe_run_lifecycle_multitab_proof(void){ShellInputContext ctx=lifecycle_context();shell_proofs_a_maybe_run_lifecycle_multitab_proof(&ctx);}
-void maybe_run_atlas_visible_restore_proof(void){ShellInputContext ctx=lifecycle_context();shell_proofs_a_maybe_run_atlas_visible_restore_proof(&ctx);}
-void maybe_run_appdeath_cleanup_proof(void){ShellInputContext ctx=lifecycle_context();shell_proofs_a_maybe_run_appdeath_cleanup_proof(&ctx);}
+
+static ShellInputContext lifecycle_context(void) {
+    return (ShellInputContext){.shell = {.input = &SILK_SHELL_STATE.input,
+                                         .chrome = &SILK_SHELL_STATE.chrome,
+                                         .models = &SILK_SHELL_STATE.models,
+                                         .apps = &SILK_SHELL_STATE.apps,
+                                         .proofs_a = &SILK_SHELL_STATE.proofs_a},
+                               .atlas = &SILK_SHELL_STATE.atlas,
+                               .surfaces = &SILK_SHELL_STATE.surfaces};
+}
+
+ShellProofFixtureRect shell_proofs_a_lifecycle_boot_rect(uint64_t surface) {
+    Rect r = surface == SURFACE_ID_TEST3 ? P.boot_rect_102 : P.boot_rect_103;
+    return (ShellProofFixtureRect){r.x, r.y, r.w, r.h};
+}
+
+bool shell_proofs_a_lifecycle_display_create(ShellInputContext *ctx, uint64_t surface,
+                                             ShellProofFixtureRect r) {
+    (void)ctx;
+    return sexos_pdx_call(SLOT_DISPLAY, 0xec, surface,
+                          ((uint64_t)(uint32_t)r.y << 32) | (uint32_t)r.x,
+                          ((uint64_t)r.h << 32) | r.w)
+               .status == 0;
+}
+
+void shell_proofs_a_lifecycle_send_tab_info(ShellInputContext *ctx, uint32_t frame) {
+    shell_chrome_send_frame_tab_info(&ctx->shell, frame);
+}
+
+bool shell_proofs_a_lifecycle_focus(ShellInputContext *ctx, uint64_t surface) {
+    return shell_chrome_try_set_focus(&ctx->shell, surface);
+}
+
+bool shell_proofs_a_lifecycle_close(ShellInputContext *ctx, uint64_t surface) {
+    return shell_chrome_close_surface_from_frame_light(&ctx->shell, surface);
+}
+
+bool shell_proofs_a_lifecycle_minimize(ShellInputContext *ctx, uint32_t frame) {
+    return shell_chrome_minimize_frame(&ctx->shell, frame);
+}
+
+bool shell_proofs_a_lifecycle_restore(ShellInputContext *ctx, uint32_t frame) {
+    return shell_chrome_restore_minimized_frame(&ctx->shell, frame);
+}
+
+bool shell_proofs_a_lifecycle_zoom(ShellInputContext *ctx, uint32_t frame, bool enabled) {
+    if (enabled == shell_chrome_frame_is_zoomed(&ctx->shell, frame))
+        return true;
+    return enabled ? shell_chrome_zoom_frame(&ctx->shell, frame)
+                   : shell_chrome_unzoom_frame(&ctx->shell, frame);
+}
+
+bool shell_proofs_a_lifecycle_frame_minimized(ShellInputContext *ctx, uint32_t frame) {
+    return shell_chrome_frame_is_minimized(&ctx->shell, frame);
+}
+
+bool shell_proofs_a_lifecycle_frame_zoomed(ShellInputContext *ctx, uint32_t frame) {
+    return shell_chrome_frame_is_zoomed(&ctx->shell, frame);
+}
+
+bool shell_proofs_a_lifecycle_first_minimized(ShellInputContext *ctx, uint32_t *frame) {
+    return shell_chrome_first_minimized_frame_id(&ctx->shell, frame);
+}
+
+void shell_proofs_a_lifecycle_pointer_click(ShellInputContext *ctx, int32_t x, int32_t y) {
+    (void)shell_chrome_click_hit_test_and_focus(&ctx->shell, x, y, 1);
+}
+
+void shell_proofs_a_lifecycle_clear_focus_dead(ShellInputContext *ctx) {
+    shell_chrome_peer_clear_focus_if_dead(&ctx->shell);
+}
+
+bool shell_proofs_a_lifecycle_surface_alive(ShellInputContext *ctx, uint64_t surface) {
+    return shell_chrome_peer_surface_is_alive(&ctx->shell, surface);
+}
+
+void shell_proofs_a_lifecycle_deactivate(ShellInputContext *ctx, uint64_t surface) {
+    (void)ctx;
+    (void)sexos_pdx_call(SLOT_DISPLAY, OP_SURFACE_DEACTIVATE, surface, 0, 0);
+}
+
+void maybe_run_frame_lights_pointer_proof(void) {
+    ShellInputContext ctx = lifecycle_context();
+    shell_proofs_a_maybe_run_frame_lights_pointer_proof(&ctx);
+}
+
+void maybe_run_lifecycle_multitab_proof(void) {
+    ShellInputContext ctx = lifecycle_context();
+    shell_proofs_a_maybe_run_lifecycle_multitab_proof(&ctx);
+}
+
+void maybe_run_atlas_visible_restore_proof(void) {
+    ShellInputContext ctx = lifecycle_context();
+    shell_proofs_a_maybe_run_atlas_visible_restore_proof(&ctx);
+}
+
+void maybe_run_appdeath_cleanup_proof(void) {
+    ShellInputContext ctx = lifecycle_context();
+    shell_proofs_a_maybe_run_appdeath_cleanup_proof(&ctx);
+}
 ")))

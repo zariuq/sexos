@@ -1,6 +1,33 @@
 (cesta native-c/1 compact-c/2
   (unit
-    (include "sexos_kernel.h")
+    (ownership (check-all)
+    (unchecked (cap_boot_available cap_get cap_install_lend cap_set contains cpu_clac cpu_cli
+                cpu_cpuid cpu_fpu_state_init cpu_fxrstor cpu_fxsave cpu_hlt cpu_inb cpu_inl
+                cpu_invlpg cpu_irq_restore cpu_irq_save cpu_lidt cpu_ltr cpu_outb cpu_outl cpu_outw
+                cpu_pause cpu_rdmsr cpu_rdseed cpu_read_cr0 cpu_read_cr2 cpu_read_cr3 cpu_read_cr4
+                cpu_read_rsp cpu_stac cpu_sti cpu_sti_hlt cpu_write_cr0 cpu_write_cr4 cpu_wrmsr
+                cpu_wrpkru cpu_xgetbv domain_boot_record domain_enqueue domain_get domain_of_key
+                domain_spawn domain_spawn_at domains_boot elf_load frame_byte grant_input grant_ring
+                has_key_write input_pop input_push kernel_boot_framebuffer kernel_current_task
+                kernel_epoch_current kernel_epoch_record_event kernel_fpu_restore
+                kernel_fpu_save_current kernel_idle_loop kernel_input_epoch_log
+                kernel_input_pop_commit kernel_input_pop_current kernel_input_pop_is_snapshotted
+                kernel_input_pop_is_swapped kernel_input_pop_is_transformed kernel_input_pop_run
+                kernel_input_pop_snapshot kernel_input_pop_swap kernel_input_pop_transform
+                kernel_input_push_commit kernel_input_push_current kernel_input_push_is_snapshotted
+                kernel_input_push_is_swapped kernel_input_push_is_transformed kernel_input_push_run
+                kernel_input_push_snapshot kernel_input_push_swap kernel_input_push_transform
+                kernel_nvme_msix_enable kernel_nvme_msix_set_mask kernel_nvme_reset_bind
+                kernel_ring_advance kernel_ring_copy kernel_ring_inspect kernel_ring_is_copied
+                kernel_ring_is_current kernel_ring_is_swapped kernel_ring_push_commit
+                kernel_ring_push_current kernel_ring_push_is_snapshotted kernel_ring_push_is_swapped
+                kernel_ring_push_is_transformed kernel_ring_push_run kernel_ring_push_snapshot
+                kernel_ring_push_swap kernel_ring_push_transform kernel_ring_run kernel_ring_swap
+                kernel_seal_genesis lease_devices pci_cap program_header resume_frame ring_pop
+                ring_push run_pop run_push schedule_tick schedule_yield select_display_lease
+                switch_to task_attach)
+      (obligation "Kernel code on the serialized BSP lane with interrupts masked and application processors parked. It reaches physical frames, page tables and device registers through integer-derived pointers, volatile accesses and the kernel runtime's inline assembly and do-while helpers, which the native ownership profile does not admit. It relies on the kernel owning each frame and device exclusively from BOOT; here capability tables, rings, image loading and device leases.")))
+  (include "sexos_kernel.h")
     (cpp-if "!defined(SEXOS_NVME_INTERRUPT_MODE)"
       (then (define SEXOS_NVME_INTERRUPT_MODE "0")))
     (comment "Protection domains: their capability tables and rings, loading their images, the boot genesis, device leases, the framebuffer hand-off, and the scheduler. Translated from kernel/src/init.rs, pd/create.rs, loader/elf.rs, elf.rs, capability.rs, devmgr.rs, graphics/gpu_lease.rs and scheduler.rs.")
@@ -24,9 +51,29 @@
     (define PT_LOAD "1u")
     (define PT_DYNAMIC "2u")
 
-    (native "enum KernelDomainKey {\n#define KERNEL_DOMAIN_KEY(id, name, module, log_name) KERNEL_DOMAIN_KEY_##name = id,\nSEXOS_KERNEL_DOMAIN_ROWS(KERNEL_DOMAIN_KEY)\n#undef KERNEL_DOMAIN_KEY\n};\n")
-    (native "typedef struct GenesisDomain { uint8_t key; const char *module; const char *log_name; uint32_t label; } GenesisDomain;\n")
-    (native "static const GenesisDomain genesis_domains[] = {\n#define KERNEL_DOMAIN_ROW(id, name, module, log_name) { (uint8_t)(id), module, log_name, KERNEL_DOMAIN_KEY_##name },\nSEXOS_KERNEL_DOMAIN_ROWS(KERNEL_DOMAIN_ROW)\n#undef KERNEL_DOMAIN_ROW\n};\n")
+    (native "
+enum KernelDomainKey {
+#define KERNEL_DOMAIN_KEY(id, name, module, log_name) KERNEL_DOMAIN_KEY_##name = id,
+    SEXOS_KERNEL_DOMAIN_ROWS(KERNEL_DOMAIN_KEY)
+#undef KERNEL_DOMAIN_KEY
+};
+")
+    (native "
+typedef struct GenesisDomain {
+    uint8_t key;
+    const char *module;
+    const char *log_name;
+    uint32_t label;
+} GenesisDomain;
+")
+    (native "
+static const GenesisDomain genesis_domains[] = {
+#define KERNEL_DOMAIN_ROW(id, name, module, log_name)                                              \\
+    {(uint8_t)(id), module, log_name, KERNEL_DOMAIN_KEY_##name},
+    SEXOS_KERNEL_DOMAIN_ROWS(KERNEL_DOMAIN_ROW)
+#undef KERNEL_DOMAIN_ROW
+};
+")
 
     (var Kernel kernel)
     (var uint64_t kernel_syscall_stack_top 0)
@@ -34,15 +81,68 @@
     (var uint8_t kernel_smap_enabled 0)
 
     (comment "One kernel stack per domain; a domain's saved user context is the trap frame at the top of its stack.")
-    (native "static uint8_t kernel_stacks[KERNEL_STACK_RECORDS][KERNEL_STACK_SIZE] __attribute__((aligned(16)));\n")
-    (native "#if SEXOS_KERNEL_CURRENT_FPU\nstatic uint8_t kernel_fpu_states[KERNEL_STACK_RECORDS][512] __attribute__((aligned(16)));\nvoid kernel_fpu_save_current(void)\n{\n    Domain *current=domain_get(kernel.current);\n    if(current)cpu_fxsave(kernel_fpu_states[current->storage_index]);\n}\nstatic void kernel_fpu_restore(Domain *domain)\n{\n#if SEXOS_FPU_CONTEXT_CORRUPT_PROBE\n    (void)domain;\n#else\n    cpu_fxrstor(kernel_fpu_states[domain->storage_index]);\n#endif\n}\n#endif\n")
+    (native "
+static uint8_t kernel_stacks[KERNEL_STACK_RECORDS][KERNEL_STACK_SIZE] __attribute__((aligned(16)));
+")
+    (native "
+#if SEXOS_KERNEL_CURRENT_FPU
+static uint8_t kernel_fpu_states[KERNEL_STACK_RECORDS][512] __attribute__((aligned(16)));
+
+void kernel_fpu_save_current(void) {
+    Domain *current = domain_get(kernel.current);
+    if (current)
+        cpu_fxsave(kernel_fpu_states[current->storage_index]);
+}
+
+static void kernel_fpu_restore(Domain *domain) {
+#if SEXOS_FPU_CONTEXT_CORRUPT_PROBE
+    (void)domain;
+#else
+    cpu_fxrstor(kernel_fpu_states[domain->storage_index]);
+#endif
+}
+#endif
+")
 
     (comment "Domain ids by protection key (the genesis table's id column), filled by spawning.")
     (var (static uint32_t) ([] pd_of_key KERNEL_MAX_DOMAINS))
     (var (static uint32_t) next_pd_id 1)
     (var (static uint32_t) next_task_id 1)
 
-    (native "Domain *domain_get(uint32_t id)\n{\n    if (!id || id >= KERNEL_MAX_DOMAINS) return NULL;\n#if SEXOS_KERNEL_CURRENT_PDX\n    Domain *d=kernel.domains.slots[id];\n#else\n    Domain *d=&kernel.domains[id];\n#endif\n    return d && d->live && d->id == id ? d : NULL;\n}\n/* Allocate metadata at BOOT only. Logical IDs are not dense storage indexes.\n * Failed construction retains its identity reservation and cannot alias a later PD. */\nstatic Domain *domain_boot_record(uint32_t id)\n{\n    if (kernel.genesis_sealed || !id || id >= KERNEL_MAX_DOMAINS) return NULL;\n#if SEXOS_KERNEL_CURRENT_PDX\n    if (kernel.domains.slots[id] || kernel.domains.count >= KERNEL_BOOT_DOMAINS) return NULL;\n    uint32_t index=kernel.domains.count++;\n    Domain *d=&kernel.domains.records[index];\n    kernel.domains.slots[id]=d;\n    d->storage_index=(uint16_t)index;\n#else\n    Domain *d=&kernel.domains[id];\n    if (d->id) return NULL;\n    d->storage_index=(uint16_t)id;\n#endif\n    d->id=id;\n    return d;\n}\n")
+    (native "
+Domain *domain_get(uint32_t id) {
+    if (!id || id >= KERNEL_MAX_DOMAINS)
+        return NULL;
+#if SEXOS_KERNEL_CURRENT_PDX
+    Domain *d = kernel.domains.slots[id];
+#else
+    Domain *d = &kernel.domains[id];
+#endif
+    return d && d->live && d->id == id ? d : NULL;
+}
+
+/* Allocate metadata at BOOT only. Logical IDs are not dense storage indexes.
+ * Failed construction retains its identity reservation and cannot alias a later PD. */
+static Domain *domain_boot_record(uint32_t id) {
+    if (kernel.genesis_sealed || !id || id >= KERNEL_MAX_DOMAINS)
+        return NULL;
+#if SEXOS_KERNEL_CURRENT_PDX
+    if (kernel.domains.slots[id] || kernel.domains.count >= KERNEL_BOOT_DOMAINS)
+        return NULL;
+    uint32_t index = kernel.domains.count++;
+    Domain *d = &kernel.domains.records[index];
+    kernel.domains.slots[id] = d;
+    d->storage_index = (uint16_t)index;
+#else
+    Domain *d = &kernel.domains[id];
+    if (d->id)
+        return NULL;
+    d->storage_index = (uint16_t)id;
+#endif
+    d->id = id;
+    return d;
+}
+")
 
     (comment "BOOT attaches a fresh task identity once. Exhaustion leaves subsequent records unattached; identities never wrap or derive from a domain number.")
     (fn (static bool) task_attach ((Domain (* d)))
@@ -61,21 +161,178 @@
       (if (>= key KERNEL_MAX_DOMAINS) (return NULL))
       (return (call domain_get ([] pd_of_key key))))
 
-    (native "bool kernel_epoch_current(uint64_t epoch)\n{\n    return kernel.genesis_sealed && kernel.epoch==epoch && epoch<UINT64_MAX &&\n        kernel.epoch_event_count<KERNEL_EPOCH_EVENT_CAPACITY\n#if SEXOS_KERNEL_CURRENT_SMP\n        && kernel_smp_epoch_current(epoch)\n#endif\n        ;\n}\nstatic void kernel_epoch_record_event(uint64_t expected,KernelEpochEvent event)\n{\n    if(!kernel_epoch_current(expected))kernel_halt(\"epoch ledger commit invariant\");\n    uint64_t next=expected+1u;uint32_t slot=kernel.epoch_event_count;\n#if SEXOS_KERNEL_CURRENT_SMP\n    if(!kernel_smp_epoch_advance(expected,next))kernel_halt(\"SMP epoch quiescence invariant\");\n#endif\n    event.epoch=next;\n    kernel.epoch_events[slot]=event;\n    kernel.epoch=next;\n    kernel.epoch_event_count=slot+1u;\n    uint32_t count=slot+1u;\n    if(count<=8u || (count&(count-1u))==0)\n        klog(\"[kernel.epoch.commit] epoch=%llu count=%u kind=%u subject=%u revision=%llu\\n\",\n             (unsigned long long)next,(unsigned)count,(unsigned)event.kind,(unsigned)event.subject,\n             (unsigned long long)event.revision);\n}\nstatic void kernel_epoch_record(uint64_t expected,uint8_t kind,uint32_t subject,\n                                uint64_t revision,const RingEntry *message,uint8_t scancode)\n{\n    KernelEpochEvent event={.subject=subject,.kind=kind,.scancode=scancode,.revision=revision};\n    if(message)event.message=*message;\n    kernel_epoch_record_event(expected,event);\n}\nvoid kernel_epoch_record_page(uint64_t expected,uint8_t kind,uint32_t subject,\n                              uint64_t address,uint64_t token,uint64_t frame,uint8_t rights)\n{\n    KernelEpochEvent event={.subject=subject,.kind=kind,.rights=rights,.revision=token,\n                            .address=address,.token=token,.frame=frame};\n    kernel_epoch_record_event(expected,event);\n}\n")
+    (native "
+bool kernel_epoch_current(uint64_t epoch) {
+    return kernel.genesis_sealed && kernel.epoch == epoch && epoch < UINT64_MAX &&
+           kernel.epoch_event_count < KERNEL_EPOCH_EVENT_CAPACITY
+#if SEXOS_KERNEL_CURRENT_SMP
+           && kernel_smp_epoch_current(epoch)
+#endif
+        ;
+}
 
-    (native "void kernel_epoch_record_page_key(uint64_t expected,uint8_t kind,uint32_t subject,\n                                     uint64_t address,uint64_t token,uint64_t frame,\n                                     uint8_t rights,uint8_t key)\n{\n    KernelEpochEvent event={.subject=subject,.kind=kind,.rights=rights,.key=key,.revision=token,\n                            .address=address,.token=token,.frame=frame};\n    kernel_epoch_record_event(expected,event);\n}\n")
+static void kernel_epoch_record_event(uint64_t expected, KernelEpochEvent event) {
+    if (!kernel_epoch_current(expected))
+        kernel_halt(\"epoch ledger commit invariant\");
+    uint64_t next = expected + 1u;
+    uint32_t slot = kernel.epoch_event_count;
+#if SEXOS_KERNEL_CURRENT_SMP
+    if (!kernel_smp_epoch_advance(expected, next))
+        kernel_halt(\"SMP epoch quiescence invariant\");
+#endif
+    event.epoch = next;
+    kernel.epoch_events[slot] = event;
+    kernel.epoch = next;
+    kernel.epoch_event_count = slot + 1u;
+    uint32_t count = slot + 1u;
+    if (count <= 8u || (count & (count - 1u)) == 0)
+        klog(\"[kernel.epoch.commit] epoch=%llu count=%u kind=%u subject=%u revision=%llu\\n\",
+             (unsigned long long)next, (unsigned)count, (unsigned)event.kind,
+             (unsigned)event.subject, (unsigned long long)event.revision);
+}
 
-    (native "void kernel_epoch_record_cleanup(uint64_t expected,uint32_t subject,uint64_t address,\n                                 uint64_t task,uint64_t bitmap,uint8_t key)\n{\n    KernelEpochEvent event={.subject=subject,.kind=KERNEL_EPOCH_PAGE_CLEANUP,.key=key,.revision=task,\n                            .address=address,.token=task,.bitmap=bitmap};\n    kernel_epoch_record_event(expected,event);\n}\n")
+static void kernel_epoch_record(uint64_t expected, uint8_t kind, uint32_t subject,
+                                uint64_t revision, const RingEntry *message, uint8_t scancode) {
+    KernelEpochEvent event = {
+        .subject = subject, .kind = kind, .scancode = scancode, .revision = revision};
+    if (message)
+        event.message = *message;
+    kernel_epoch_record_event(expected, event);
+}
 
-    (native "void kernel_epoch_record_handover(uint64_t expected,uint32_t subject,uint64_t task,\n                                  uint64_t pool,uint64_t pages,uint8_t source_key,uint8_t key)\n{\n    KernelEpochEvent event={.subject=subject,.kind=KERNEL_EPOCH_APP_HANDOVER,.key=key,\n                            .source_key=source_key,.revision=task,.address=pool,.token=task,.pages=pages};\n    kernel_epoch_record_event(expected,event);\n}\n")
+void kernel_epoch_record_page(uint64_t expected, uint8_t kind, uint32_t subject, uint64_t address,
+                              uint64_t token, uint64_t frame, uint8_t rights) {
+    KernelEpochEvent event = {.subject = subject,
+                              .kind = kind,
+                              .rights = rights,
+                              .revision = token,
+                              .address = address,
+                              .token = token,
+                              .frame = frame};
+    kernel_epoch_record_event(expected, event);
+}
+")
 
-    (native "void kernel_epoch_record_activation(uint64_t expected,uint32_t predecessor,uint32_t successor,\n                                    uint64_t task,uint64_t surface,uint64_t pages,uint8_t key)\n{\n    KernelEpochEvent event={.subject=successor,.peer=predecessor,.kind=KERNEL_EPOCH_APP_ACTIVATION,\n                            .key=key,.revision=task,.address=surface,.token=task,.pages=pages};\n    kernel_epoch_record_event(expected,event);\n}\n")
+    (native "
+void kernel_epoch_record_page_key(uint64_t expected, uint8_t kind, uint32_t subject,
+                                  uint64_t address, uint64_t token, uint64_t frame, uint8_t rights,
+                                  uint8_t key) {
+    KernelEpochEvent event = {.subject = subject,
+                              .kind = kind,
+                              .rights = rights,
+                              .key = key,
+                              .revision = token,
+                              .address = address,
+                              .token = token,
+                              .frame = frame};
+    kernel_epoch_record_event(expected, event);
+}
+")
 
-    (native "void kernel_epoch_record_pci(uint64_t expected,uint32_t subject,uint64_t slot,\n                             uint64_t set,uint64_t clear,PciCommandGrant grant,PciApplyTrace trace)\n{\n    uint32_t device=((uint32_t)grant.bus<<16)|((uint32_t)grant.device<<8)|grant.function;\n    uint32_t expected_identity=(uint32_t)grant.vendor_id|((uint32_t)grant.device_id<<16);\n    KernelEpochEvent event={.subject=subject,.kind=KERNEL_EPOCH_PCI_COMMAND,.revision=slot,\n        .address=slot,.token=set,.frame=clear,.device=device,.device_identity=trace.identity,\n        .device_expected_identity=expected_identity,.device_before=trace.before,\n        .device_expected=trace.expected,.device_after=trace.after,.device_attempted=trace.attempted,\n        .device_status=trace.reply.status};\n    kernel_epoch_record_event(expected,event);\n}\n")
+    (native "
+void kernel_epoch_record_cleanup(uint64_t expected, uint32_t subject, uint64_t address,
+                                 uint64_t task, uint64_t bitmap, uint8_t key) {
+    KernelEpochEvent event = {.subject = subject,
+                              .kind = KERNEL_EPOCH_PAGE_CLEANUP,
+                              .key = key,
+                              .revision = task,
+                              .address = address,
+                              .token = task,
+                              .bitmap = bitmap};
+    kernel_epoch_record_event(expected, event);
+}
+")
 
-    (native "void kernel_epoch_record_writer(uint64_t expected,uint32_t subject,uint32_t peer,\n                                uint32_t region,uint64_t revision,uint64_t job,uint64_t pages,\n                                uint8_t source_key,uint8_t target_key,uint8_t action)\n{\n    KernelEpochEvent event={.subject=subject,.peer=peer,.kind=KERNEL_EPOCH_REGION_WRITER,\n        .rights=action,.key=target_key,.source_key=source_key,.revision=revision,.address=region,\n        .token=job,.pages=pages};\n    kernel_epoch_record_event(expected,event);\n}\n")
+    (native "
+void kernel_epoch_record_handover(uint64_t expected, uint32_t subject, uint64_t task, uint64_t pool,
+                                  uint64_t pages, uint8_t source_key, uint8_t key) {
+    KernelEpochEvent event = {.subject = subject,
+                              .kind = KERNEL_EPOCH_APP_HANDOVER,
+                              .key = key,
+                              .source_key = source_key,
+                              .revision = task,
+                              .address = pool,
+                              .token = task,
+                              .pages = pages};
+    kernel_epoch_record_event(expected, event);
+}
+")
 
-    (native "void kernel_epoch_record_device_reset(uint64_t expected,uint32_t subject,uint64_t slot,\n    uint32_t device,uint32_t identity,uint8_t vector,uint8_t action,uint64_t generation,\n    uint64_t interrupt_revision,uint32_t cc,uint32_t csts)\n{\n    KernelEpochEvent event={.subject=subject,.kind=KERNEL_EPOCH_DEVICE_RESET,\n        .rights=action,.revision=generation,.address=slot,.token=interrupt_revision,\n        .frame=((uint64_t)cc<<32)|csts,.device=device,.device_identity=identity,\n        .device_expected_identity=identity,.pages=vector};\n    kernel_epoch_record_event(expected,event);\n}\n")
+    (native "
+void kernel_epoch_record_activation(uint64_t expected, uint32_t predecessor, uint32_t successor,
+                                    uint64_t task, uint64_t surface, uint64_t pages, uint8_t key) {
+    KernelEpochEvent event = {.subject = successor,
+                              .peer = predecessor,
+                              .kind = KERNEL_EPOCH_APP_ACTIVATION,
+                              .key = key,
+                              .revision = task,
+                              .address = surface,
+                              .token = task,
+                              .pages = pages};
+    kernel_epoch_record_event(expected, event);
+}
+")
+
+    (native "
+void kernel_epoch_record_pci(uint64_t expected, uint32_t subject, uint64_t slot, uint64_t set,
+                             uint64_t clear, PciCommandGrant grant, PciApplyTrace trace) {
+    uint32_t device = ((uint32_t)grant.bus << 16) | ((uint32_t)grant.device << 8) | grant.function;
+    uint32_t expected_identity = (uint32_t)grant.vendor_id | ((uint32_t)grant.device_id << 16);
+    KernelEpochEvent event = {.subject = subject,
+                              .kind = KERNEL_EPOCH_PCI_COMMAND,
+                              .revision = slot,
+                              .address = slot,
+                              .token = set,
+                              .frame = clear,
+                              .device = device,
+                              .device_identity = trace.identity,
+                              .device_expected_identity = expected_identity,
+                              .device_before = trace.before,
+                              .device_expected = trace.expected,
+                              .device_after = trace.after,
+                              .device_attempted = trace.attempted,
+                              .device_status = trace.reply.status};
+    kernel_epoch_record_event(expected, event);
+}
+")
+
+    (native "
+void kernel_epoch_record_writer(uint64_t expected, uint32_t subject, uint32_t peer, uint32_t region,
+                                uint64_t revision, uint64_t job, uint64_t pages, uint8_t source_key,
+                                uint8_t target_key, uint8_t action) {
+    KernelEpochEvent event = {.subject = subject,
+                              .peer = peer,
+                              .kind = KERNEL_EPOCH_REGION_WRITER,
+                              .rights = action,
+                              .key = target_key,
+                              .source_key = source_key,
+                              .revision = revision,
+                              .address = region,
+                              .token = job,
+                              .pages = pages};
+    kernel_epoch_record_event(expected, event);
+}
+")
+
+    (native "
+void kernel_epoch_record_device_reset(uint64_t expected, uint32_t subject, uint64_t slot,
+                                      uint32_t device, uint32_t identity, uint8_t vector,
+                                      uint8_t action, uint64_t generation,
+                                      uint64_t interrupt_revision, uint32_t cc, uint32_t csts) {
+    KernelEpochEvent event = {.subject = subject,
+                              .kind = KERNEL_EPOCH_DEVICE_RESET,
+                              .rights = action,
+                              .revision = generation,
+                              .address = slot,
+                              .token = interrupt_revision,
+                              .frame = ((uint64_t)cc << 32) | csts,
+                              .device = device,
+                              .device_identity = identity,
+                              .device_expected_identity = identity,
+                              .pages = vector};
+    kernel_epoch_record_event(expected, event);
+}
+")
 
     (comment "Enqueue is a real snapshot-transform-swap-commit boundary. The tail slot is inactive until commit advances count and revision. An aborted transform may change only that inactive slot; the published FIFO remains unchanged.")
     (native "
@@ -86,26 +343,31 @@ typedef struct KernelRingPushContext {
     uint64_t revision, epoch;
     bool snapshotted, transformed, swapped;
 } KernelRingPushContext;
+
 static bool kernel_ring_push_current(const KernelRingPushContext *c) {
     return c->snapshotted && c->ring && c->head < KERNEL_RING_CAPACITY &&
-        c->count < KERNEL_RING_CAPACITY && c->revision < UINT64_MAX &&
-        c->ring->head == c->head && c->ring->count == c->count &&
-        c->ring->revision == c->revision && kernel_epoch_current(c->epoch) &&
-        c->tail == (c->head + c->count) % KERNEL_RING_CAPACITY;
+           c->count < KERNEL_RING_CAPACITY && c->revision < UINT64_MAX &&
+           c->ring->head == c->head && c->ring->count == c->count &&
+           c->ring->revision == c->revision && kernel_epoch_current(c->epoch) &&
+           c->tail == (c->head + c->count) % KERNEL_RING_CAPACITY;
 }
+
 static bool kernel_ring_push_is_snapshotted(KernelRingPushContext *c) {
     return kernel_ring_push_current(c);
 }
+
 static bool kernel_ring_push_is_transformed(KernelRingPushContext *c) {
     return c->transformed && kernel_ring_push_current(c);
 }
+
 static bool kernel_ring_push_is_swapped(KernelRingPushContext *c) {
     return c->swapped && c->transformed && kernel_ring_push_current(c);
 }
+
 static bool kernel_ring_push_snapshot(KernelRingPushContext *c) {
     if (!c->ring || !c->subject || !kernel_epoch_current(kernel.epoch) ||
-        c->ring->head >= KERNEL_RING_CAPACITY ||
-        c->ring->count >= KERNEL_RING_CAPACITY || c->ring->revision == UINT64_MAX)
+        c->ring->head >= KERNEL_RING_CAPACITY || c->ring->count >= KERNEL_RING_CAPACITY ||
+        c->ring->revision == UINT64_MAX)
         return false;
     c->head = c->ring->head;
     c->count = c->ring->count;
@@ -115,28 +377,36 @@ static bool kernel_ring_push_snapshot(KernelRingPushContext *c) {
     c->snapshotted = true;
     return kernel_ring_push_current(c);
 }
+
 static bool kernel_ring_push_transform(KernelRingPushContext *c) {
-    if (!kernel_ring_push_current(c)) return false;
+    if (!kernel_ring_push_current(c))
+        return false;
     c->transformed = true;
     return true;
 }
+
 static bool kernel_ring_push_swap(KernelRingPushContext *c) {
-    if (!c->transformed || !kernel_ring_push_current(c)) return false;
+    if (!c->transformed || !kernel_ring_push_current(c))
+        return false;
     c->ring->entries[c->tail] = c->entry;
     c->swapped = true;
     return true;
 }
+
 static bool kernel_ring_push_commit(KernelRingPushContext *c) {
-    if (!c->swapped || !kernel_ring_push_current(c)) return false;
+    if (!c->swapped || !kernel_ring_push_current(c))
+        return false;
     c->ring->count = c->count + 1u;
     c->ring->revision = c->revision + 1u;
-    kernel_epoch_record(c->epoch,KERNEL_EPOCH_RING_PUSH,c->subject,
-                        c->revision+1u,&c->entry,0);
+    kernel_epoch_record(c->epoch, KERNEL_EPOCH_RING_PUSH, c->subject, c->revision + 1u, &c->entry,
+                        0);
     c->snapshotted = c->transformed = c->swapped = false;
     return true;
 }
+
 #define kernel_ring_push_run_CHECKED 1
-#define kernel_ring_push_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt(\"ring push epoch invariant\")
+#define kernel_ring_push_run_CHECK_FAILURE(ctx, kind, id, expected)                                \\
+    kernel_halt(\"ring push epoch invariant\")
 ")
     (use-protocols "../interfaces/kernel_ring_push_protocol.module" Protocols)
     (fn (static bool) ring_push ((Ring (* r)) (uint32_t subject) (RingEntry entry))
@@ -145,7 +415,70 @@ static bool kernel_ring_push_commit(KernelRingPushContext *c) {
       (return (== (call kernel_ring_push_run (& context)) kernel_ring_push_run_done)))
 
     (comment "A ring cursor is current only until the head or count changes. Copy the entry before advancing, and discard the cursor certificate on advance.")
-    (native "\ntypedef struct KernelRingContext {\n    Ring *ring;\n    RingEntry *out;\n    uint32_t subject, head, count;\n    uint64_t revision, epoch;\n    bool copied, swapped;\n} KernelRingContext;\nstatic bool kernel_ring_is_current(KernelRingContext *c) {\n    return c->ring && c->out && c->subject && c->ring->revision == c->revision &&\n        c->revision < UINT64_MAX && kernel_epoch_current(c->epoch) &&\n        c->ring->head == c->head && c->ring->count == c->count &&\n        c->head < KERNEL_RING_CAPACITY && c->count > 0 && c->count <= KERNEL_RING_CAPACITY;\n}\nstatic bool kernel_ring_is_copied(KernelRingContext *c) {\n    return c->copied && kernel_ring_is_current(c);\n}\nstatic bool kernel_ring_is_swapped(KernelRingContext *c) {\n    return c->swapped && c->copied && kernel_ring_is_current(c);\n}\nstatic bool kernel_ring_inspect(KernelRingContext *c) {\n    if(!c->ring || !c->out || !c->subject || !kernel_epoch_current(kernel.epoch))return false;\n    c->revision = c->ring->revision;\n    c->epoch = kernel.epoch;\n    c->head = c->ring->head;\n    c->count = c->ring->count;\n    return kernel_ring_is_current(c);\n}\nstatic bool kernel_ring_copy(KernelRingContext *c) {\n    if (!kernel_ring_is_current(c)) return false;\n    *c->out = c->ring->entries[c->head];\n    c->copied = true;\n    return true;\n}\nstatic bool kernel_ring_swap(KernelRingContext *c) {\n    if (!kernel_ring_is_copied(c)) return false;\n    c->swapped = true;\n    return true;\n}\nstatic bool kernel_ring_advance(KernelRingContext *c) {\n    if (!kernel_ring_is_swapped(c)) return false;\n    c->ring->head = (c->head + 1u) % KERNEL_RING_CAPACITY;\n    c->ring->count = c->count - 1u;\n    c->ring->revision = c->revision + 1u;\n    kernel_epoch_record(c->epoch,KERNEL_EPOCH_RING_POP,c->subject,\n                        c->revision+1u,c->out,0);\n    c->copied = c->swapped = false;\n    return true;\n}\n#define kernel_ring_run_CHECKED 1\n#define kernel_ring_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt(\"ring protocol invariant\")\n")
+    (native "
+typedef struct KernelRingContext {
+    Ring *ring;
+    RingEntry *out;
+    uint32_t subject, head, count;
+    uint64_t revision, epoch;
+    bool copied, swapped;
+} KernelRingContext;
+
+static bool kernel_ring_is_current(KernelRingContext *c) {
+    return c->ring && c->out && c->subject && c->ring->revision == c->revision &&
+           c->revision < UINT64_MAX && kernel_epoch_current(c->epoch) && c->ring->head == c->head &&
+           c->ring->count == c->count && c->head < KERNEL_RING_CAPACITY && c->count > 0 &&
+           c->count <= KERNEL_RING_CAPACITY;
+}
+
+static bool kernel_ring_is_copied(KernelRingContext *c) {
+    return c->copied && kernel_ring_is_current(c);
+}
+
+static bool kernel_ring_is_swapped(KernelRingContext *c) {
+    return c->swapped && c->copied && kernel_ring_is_current(c);
+}
+
+static bool kernel_ring_inspect(KernelRingContext *c) {
+    if (!c->ring || !c->out || !c->subject || !kernel_epoch_current(kernel.epoch))
+        return false;
+    c->revision = c->ring->revision;
+    c->epoch = kernel.epoch;
+    c->head = c->ring->head;
+    c->count = c->ring->count;
+    return kernel_ring_is_current(c);
+}
+
+static bool kernel_ring_copy(KernelRingContext *c) {
+    if (!kernel_ring_is_current(c))
+        return false;
+    *c->out = c->ring->entries[c->head];
+    c->copied = true;
+    return true;
+}
+
+static bool kernel_ring_swap(KernelRingContext *c) {
+    if (!kernel_ring_is_copied(c))
+        return false;
+    c->swapped = true;
+    return true;
+}
+
+static bool kernel_ring_advance(KernelRingContext *c) {
+    if (!kernel_ring_is_swapped(c))
+        return false;
+    c->ring->head = (c->head + 1u) % KERNEL_RING_CAPACITY;
+    c->ring->count = c->count - 1u;
+    c->ring->revision = c->revision + 1u;
+    kernel_epoch_record(c->epoch, KERNEL_EPOCH_RING_POP, c->subject, c->revision + 1u, c->out, 0);
+    c->copied = c->swapped = false;
+    return true;
+}
+
+#define kernel_ring_run_CHECKED 1
+#define kernel_ring_run_CHECK_FAILURE(ctx, kind, id, expected)                                     \\
+    kernel_halt(\"ring protocol invariant\")
+")
     (use-protocols "../interfaces/kernel_ring_protocol.module" Protocols)
     (fn (static bool) ring_pop ((Ring (* r)) (uint32_t subject) (RingEntry (* out)))
       (var KernelRingContext context (compound KernelRingContext (= (. ring) r) (= (. subject) subject) (= (. out) out)))
@@ -167,27 +500,32 @@ typedef struct KernelInputPushContext {
     uint64_t revision, epoch;
     bool snapshotted, transformed, swapped;
 } KernelInputPushContext;
+
 static bool kernel_input_push_current(const KernelInputPushContext *c) {
     return c->snapshotted && c->state && c->head < KERNEL_INPUT_CAPACITY &&
-        c->count < KERNEL_INPUT_CAPACITY && c->revision < UINT64_MAX &&
-        c->state->input_head == c->head && c->state->input_count == c->count &&
-        c->state->input_revision == c->revision && kernel_epoch_current(c->epoch) &&
-        c->tail == (c->head + c->count) % KERNEL_INPUT_CAPACITY;
+           c->count < KERNEL_INPUT_CAPACITY && c->revision < UINT64_MAX &&
+           c->state->input_head == c->head && c->state->input_count == c->count &&
+           c->state->input_revision == c->revision && kernel_epoch_current(c->epoch) &&
+           c->tail == (c->head + c->count) % KERNEL_INPUT_CAPACITY;
 }
+
 static bool kernel_input_push_is_snapshotted(KernelInputPushContext *c) {
     return kernel_input_push_current(c);
 }
+
 static bool kernel_input_push_is_transformed(KernelInputPushContext *c) {
     return c->transformed && kernel_input_push_current(c);
 }
+
 static bool kernel_input_push_is_swapped(KernelInputPushContext *c) {
     return c->swapped && c->transformed && kernel_input_push_current(c);
 }
+
 static bool kernel_input_push_snapshot(KernelInputPushContext *c) {
     if (!c->state || !kernel.input_pd || !kernel_epoch_current(kernel.epoch) ||
         c->state->input_head >= KERNEL_INPUT_CAPACITY ||
-        c->state->input_count >= KERNEL_INPUT_CAPACITY ||
-        c->state->input_revision == UINT64_MAX) return false;
+        c->state->input_count >= KERNEL_INPUT_CAPACITY || c->state->input_revision == UINT64_MAX)
+        return false;
     c->head = c->state->input_head;
     c->count = c->state->input_count;
     c->revision = c->state->input_revision;
@@ -196,26 +534,33 @@ static bool kernel_input_push_snapshot(KernelInputPushContext *c) {
     c->snapshotted = true;
     return kernel_input_push_current(c);
 }
+
 static bool kernel_input_push_transform(KernelInputPushContext *c) {
-    if (!kernel_input_push_current(c)) return false;
+    if (!kernel_input_push_current(c))
+        return false;
     c->transformed = true;
     return true;
 }
+
 static bool kernel_input_push_swap(KernelInputPushContext *c) {
-    if (!kernel_input_push_is_transformed(c)) return false;
+    if (!kernel_input_push_is_transformed(c))
+        return false;
     c->state->input[c->tail] = c->scancode;
     c->swapped = true;
     return true;
 }
+
 static bool kernel_input_push_commit(KernelInputPushContext *c) {
-    if (!kernel_input_push_is_swapped(c)) return false;
+    if (!kernel_input_push_is_swapped(c))
+        return false;
     c->state->input_count = c->count + 1u;
     c->state->input_revision = c->revision + 1u;
-    kernel_epoch_record(c->epoch,KERNEL_EPOCH_INPUT_PUSH,kernel.input_pd,
-                        c->revision+1u,NULL,c->scancode);
+    kernel_epoch_record(c->epoch, KERNEL_EPOCH_INPUT_PUSH, kernel.input_pd, c->revision + 1u, NULL,
+                        c->scancode);
     c->snapshotted = c->transformed = c->swapped = false;
     return true;
 }
+
 typedef struct KernelInputPopContext {
     Kernel *state;
     uint8_t *out;
@@ -223,27 +568,31 @@ typedef struct KernelInputPopContext {
     uint64_t revision, epoch;
     bool snapshotted, transformed, swapped;
 } KernelInputPopContext;
+
 static bool kernel_input_pop_current(const KernelInputPopContext *c) {
-    return c->snapshotted && c->state && c->out &&
-        c->head < KERNEL_INPUT_CAPACITY && c->count > 0 &&
-        c->count <= KERNEL_INPUT_CAPACITY && c->revision < UINT64_MAX &&
-        c->state->input_head == c->head && c->state->input_count == c->count &&
-        c->state->input_revision == c->revision && kernel_epoch_current(c->epoch);
+    return c->snapshotted && c->state && c->out && c->head < KERNEL_INPUT_CAPACITY &&
+           c->count > 0 && c->count <= KERNEL_INPUT_CAPACITY && c->revision < UINT64_MAX &&
+           c->state->input_head == c->head && c->state->input_count == c->count &&
+           c->state->input_revision == c->revision && kernel_epoch_current(c->epoch);
 }
+
 static bool kernel_input_pop_is_snapshotted(KernelInputPopContext *c) {
     return kernel_input_pop_current(c);
 }
+
 static bool kernel_input_pop_is_transformed(KernelInputPopContext *c) {
     return c->transformed && kernel_input_pop_current(c);
 }
+
 static bool kernel_input_pop_is_swapped(KernelInputPopContext *c) {
     return c->swapped && c->transformed && kernel_input_pop_current(c);
 }
+
 static bool kernel_input_pop_snapshot(KernelInputPopContext *c) {
     if (!c->state || !c->out || !kernel.input_pd || !kernel_epoch_current(kernel.epoch) ||
-        c->state->input_head >= KERNEL_INPUT_CAPACITY ||
-        !c->state->input_count || c->state->input_count > KERNEL_INPUT_CAPACITY ||
-        c->state->input_revision == UINT64_MAX) return false;
+        c->state->input_head >= KERNEL_INPUT_CAPACITY || !c->state->input_count ||
+        c->state->input_count > KERNEL_INPUT_CAPACITY || c->state->input_revision == UINT64_MAX)
+        return false;
     c->head = c->state->input_head;
     c->count = c->state->input_count;
     c->revision = c->state->input_revision;
@@ -251,34 +600,54 @@ static bool kernel_input_pop_snapshot(KernelInputPopContext *c) {
     c->snapshotted = true;
     return kernel_input_pop_current(c);
 }
+
 static bool kernel_input_pop_transform(KernelInputPopContext *c) {
-    if (!kernel_input_pop_current(c)) return false;
+    if (!kernel_input_pop_current(c))
+        return false;
     *c->out = c->state->input[c->head];
     c->transformed = true;
     return true;
 }
+
 static bool kernel_input_pop_swap(KernelInputPopContext *c) {
-    if (!kernel_input_pop_is_transformed(c)) return false;
+    if (!kernel_input_pop_is_transformed(c))
+        return false;
     c->swapped = true;
     return true;
 }
+
 static bool kernel_input_pop_commit(KernelInputPopContext *c) {
-    if (!kernel_input_pop_is_swapped(c)) return false;
+    if (!kernel_input_pop_is_swapped(c))
+        return false;
     c->state->input_head = (c->head + 1u) % KERNEL_INPUT_CAPACITY;
     c->state->input_count = c->count - 1u;
     c->state->input_revision = c->revision + 1u;
-    kernel_epoch_record(c->epoch,KERNEL_EPOCH_INPUT_POP,kernel.input_pd,
-                        c->revision+1u,NULL,*c->out);
+    kernel_epoch_record(c->epoch, KERNEL_EPOCH_INPUT_POP, kernel.input_pd, c->revision + 1u, NULL,
+                        *c->out);
     c->snapshotted = c->transformed = c->swapped = false;
     return true;
 }
+
 #define kernel_input_push_run_CHECKED 1
 #define kernel_input_pop_run_CHECKED 1
-#define kernel_input_push_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt(\"input push epoch invariant\")
-#define kernel_input_pop_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt(\"input pop epoch invariant\")
+#define kernel_input_push_run_CHECK_FAILURE(ctx, kind, id, expected)                               \\
+    kernel_halt(\"input push epoch invariant\")
+#define kernel_input_pop_run_CHECK_FAILURE(ctx, kind, id, expected)                                \\
+    kernel_halt(\"input pop epoch invariant\")
 ")
     (use-protocols "../interfaces/kernel_input_protocol.module" Protocols)
-    (native "static uint32_t kernel_input_epoch_log_budget=16;\nstatic void kernel_input_epoch_log(const char *kind,uint8_t scancode)\n{\n    if(!kernel_input_epoch_log_budget)return;\n    --kernel_input_epoch_log_budget;\n    klog(\"[kernel.input.epoch.commit] kind=%s revision=%llu scancode=%u count=%u\\n\",kind,(unsigned long long)kernel.input_revision,(unsigned)scancode,(unsigned)kernel.input_count);\n}\n")
+    (native "
+static uint32_t kernel_input_epoch_log_budget = 16;
+
+static void kernel_input_epoch_log(const char *kind, uint8_t scancode) {
+    if (!kernel_input_epoch_log_budget)
+        return;
+    --kernel_input_epoch_log_budget;
+    klog(\"[kernel.input.epoch.commit] kind=%s revision=%llu scancode=%u count=%u\\n\", kind,
+         (unsigned long long)kernel.input_revision, (unsigned)scancode,
+         (unsigned)kernel.input_count);
+}
+")
     (fn bool input_push ((uint8_t scancode))
       (var KernelInputPushContext context
         (compound KernelInputPushContext (= (. state) (& kernel)) (= (. scancode) scancode)))
@@ -293,7 +662,58 @@ static bool kernel_input_pop_commit(KernelInputPopContext *c) {
       (if accepted (call kernel_input_epoch_log "pop" (* out)))
       (return accepted))
 
-    (native "const Cap *cap_get(Domain *d, uint64_t slot)\n{\n    if (!slot || slot >= KERNEL_CAP_SLOTS) return NULL;\n#if SEXOS_KERNEL_CURRENT_PDX\n    const Cap *c=d->caps[slot];\n#else\n    const Cap *c=&d->caps[slot];\n#endif\n    return c && c->kind != CAP_NONE ? c : NULL;\n}\nbool cap_set(Domain *d, uint64_t slot, Cap c)\n{\n    if (kernel.genesis_sealed || !slot || slot >= KERNEL_CAP_SLOTS ||\n        c.kind == CAP_NONE || c.kind == CAP_MEM_LEND || cap_get(d,slot)) return false;\n#if SEXOS_KERNEL_CURRENT_PDX\n    if (kernel.cap_storage.count >= KERNEL_BOOT_CAPS) return false;\n    Cap *stored=&kernel.cap_storage.entries[kernel.cap_storage.count++];\n    *stored=c;\n    d->caps[slot]=stored;\n#else\n    d->caps[slot]=c;\n#endif\n    return true;\n}\nbool cap_boot_available(uint32_t count)\n{\n#if SEXOS_KERNEL_CURRENT_PDX\n    return kernel.cap_storage.count <= KERNEL_BOOT_CAPS && count <= KERNEL_BOOT_CAPS - kernel.cap_storage.count;\n#else\n    (void)count; return true;\n#endif\n}\nbool cap_install_lend(Domain *d, uint64_t slot, Cap c)\n{\n#if SEXOS_KERNEL_CURRENT_PDX\n    (void)d; (void)slot; (void)c;\n    return false;\n#else\n    if (!slot || slot >= KERNEL_CAP_SLOTS || cap_get(d,slot) || c.kind != CAP_MEM_LEND) return false;\n    d->caps[slot]=c;\n    return true;\n#endif\n}\n")
+    (native "
+const Cap *cap_get(Domain *d, uint64_t slot) {
+    if (!slot || slot >= KERNEL_CAP_SLOTS)
+        return NULL;
+#if SEXOS_KERNEL_CURRENT_PDX
+    const Cap *c = d->caps[slot];
+#else
+    const Cap *c = &d->caps[slot];
+#endif
+    return c && c->kind != CAP_NONE ? c : NULL;
+}
+
+bool cap_set(Domain *d, uint64_t slot, Cap c) {
+    if (kernel.genesis_sealed || !slot || slot >= KERNEL_CAP_SLOTS || c.kind == CAP_NONE ||
+        c.kind == CAP_MEM_LEND || cap_get(d, slot))
+        return false;
+#if SEXOS_KERNEL_CURRENT_PDX
+    if (kernel.cap_storage.count >= KERNEL_BOOT_CAPS)
+        return false;
+    Cap *stored = &kernel.cap_storage.entries[kernel.cap_storage.count++];
+    *stored = c;
+    d->caps[slot] = stored;
+#else
+    d->caps[slot] = c;
+#endif
+    return true;
+}
+
+bool cap_boot_available(uint32_t count) {
+#if SEXOS_KERNEL_CURRENT_PDX
+    return kernel.cap_storage.count <= KERNEL_BOOT_CAPS &&
+           count <= KERNEL_BOOT_CAPS - kernel.cap_storage.count;
+#else
+    (void)count;
+    return true;
+#endif
+}
+
+bool cap_install_lend(Domain *d, uint64_t slot, Cap c) {
+#if SEXOS_KERNEL_CURRENT_PDX
+    (void)d;
+    (void)slot;
+    (void)c;
+    return false;
+#else
+    if (!slot || slot >= KERNEL_CAP_SLOTS || cap_get(d, slot) || c.kind != CAP_MEM_LEND)
+        return false;
+    d->caps[slot] = c;
+    return true;
+#endif
+}
+")
 
     (fn (static void) kernel_seal_genesis (void)
       (= (. kernel genesis_sealed) true))
@@ -544,122 +964,175 @@ static bool kernel_input_pop_commit(KernelInputPopContext *c) {
       (return c))
 
     (native "
-static bool kernel_nvme_msix_enable(Domain *owner,const PciFunction *device,Cap *lease)
-{
+static bool kernel_nvme_msix_enable(Domain *owner, const PciFunction *device, Cap *lease) {
 #if !SEXOS_NVME_INTERRUPT_MODE
-    (void)owner;(void)device;(void)lease;return true;
+    (void)owner;
+    (void)device;
+    (void)lease;
+    return true;
 #else
-    if(!owner||!device||!lease||lease->kind!=CAP_PCI||
-       kernel.vector_owner[NVME_VECTOR]!=owner->id)return false;
-    uint32_t command_status=pci_read(device->bus,device->dev,device->func,4);
-    if(!(command_status&(1u<<20)))return false;
-    uint8_t offset=(uint8_t)(pci_read(device->bus,device->dev,device->func,0x34)&0xfcu);
-    NvmeMsixPlan plan={0};bool found=false;uint64_t visited=0;
-    for(uint32_t step=0;step<48u&&offset;step++){
-        if(offset<0x40u||(offset&3u))return false;
-        uint32_t bit=(uint32_t)(offset>>2);uint64_t mask=UINT64_C(1)<<(bit&63u);
-        if(visited&mask){return false;}
-        visited|=mask;
-        uint32_t capability=pci_read(device->bus,device->dev,device->func,offset);
-        if((capability&0xffu)==0x11u){
-            plan=nvme_msix_plan(offset,capability,
-                pci_read(device->bus,device->dev,device->func,(uint8_t)(offset+4u)),
-                pci_read(device->bus,device->dev,device->func,(uint8_t)(offset+8u)),
-                lease->region.grant.length,NVME_VECTOR,0);found=plan.status==NVME_MSIX_OK;break;
-        }
-        uint8_t next=(uint8_t)((capability>>8)&0xffu);
-        if(next&3u){return false;}
-        offset=next;
-    }
-    if(!found)return false;
-    MemoryRegionViewResult table_view=sexos_region_register_view(&lease->region,
-        plan.table_offset,16,REGION_QUERY|REGION_READ|REGION_WRITE);
-    MemoryRegionViewResult mask_view=sexos_region_register_view(&lease->region,
-        0x10,4,REGION_QUERY|REGION_READ|REGION_WRITE);
-    if(table_view.error||mask_view.error||!table_view.value.virtual_address||!mask_view.value.virtual_address)
+    if (!owner || !device || !lease || lease->kind != CAP_PCI ||
+        kernel.vector_owner[NVME_VECTOR] != owner->id)
         return false;
-    pci_write(device->bus,device->dev,device->func,plan.capability_offset,plan.config_masked);
-    volatile uint32_t *entry=(volatile uint32_t *)(uintptr_t)table_view.value.virtual_address;
-    if(kernel.smap)cpu_stac();
-    entry[3]=plan.vector_masked;__atomic_thread_fence(__ATOMIC_SEQ_CST);
-    entry[0]=plan.address_low;entry[1]=plan.address_high;entry[2]=plan.message_data;
+    uint32_t command_status = pci_read(device->bus, device->dev, device->func, 4);
+    if (!(command_status & (1u << 20)))
+        return false;
+    uint8_t offset = (uint8_t)(pci_read(device->bus, device->dev, device->func, 0x34) & 0xfcu);
+    NvmeMsixPlan plan = {0};
+    bool found = false;
+    uint64_t visited = 0;
+    for (uint32_t step = 0; step < 48u && offset; step++) {
+        if (offset < 0x40u || (offset & 3u))
+            return false;
+        uint32_t bit = (uint32_t)(offset >> 2);
+        uint64_t mask = UINT64_C(1) << (bit & 63u);
+        if (visited & mask) {
+            return false;
+        }
+        visited |= mask;
+        uint32_t capability = pci_read(device->bus, device->dev, device->func, offset);
+        if ((capability & 0xffu) == 0x11u) {
+            plan = nvme_msix_plan(
+                offset, capability,
+                pci_read(device->bus, device->dev, device->func, (uint8_t)(offset + 4u)),
+                pci_read(device->bus, device->dev, device->func, (uint8_t)(offset + 8u)),
+                lease->region.grant.length, NVME_VECTOR, 0);
+            found = plan.status == NVME_MSIX_OK;
+            break;
+        }
+        uint8_t next = (uint8_t)((capability >> 8) & 0xffu);
+        if (next & 3u) {
+            return false;
+        }
+        offset = next;
+    }
+    if (!found)
+        return false;
+    MemoryRegionViewResult table_view = sexos_region_register_view(
+        &lease->region, plan.table_offset, 16, REGION_QUERY | REGION_READ | REGION_WRITE);
+    MemoryRegionViewResult mask_view = sexos_region_register_view(
+        &lease->region, 0x10, 4, REGION_QUERY | REGION_READ | REGION_WRITE);
+    if (table_view.error || mask_view.error || !table_view.value.virtual_address ||
+        !mask_view.value.virtual_address)
+        return false;
+    pci_write(device->bus, device->dev, device->func, plan.capability_offset, plan.config_masked);
+    volatile uint32_t *entry = (volatile uint32_t *)(uintptr_t)table_view.value.virtual_address;
+    if (kernel.smap)
+        cpu_stac();
+    entry[3] = plan.vector_masked;
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
-    uint32_t masked_address=entry[0],masked_high=entry[1],masked_data=entry[2],masked_control=entry[3];
-    entry[3]=plan.vector_enabled;__atomic_thread_fence(__ATOMIC_SEQ_CST);
-    *(volatile uint32_t *)(uintptr_t)mask_view.value.virtual_address=1u;
-    if(kernel.smap)cpu_clac();
-    if(masked_address!=plan.address_low||masked_high!=plan.address_high||
-       masked_data!=plan.message_data||masked_control!=plan.vector_masked)return false;
-    pci_write(device->bus,device->dev,device->func,plan.capability_offset,plan.config_enabled);
-    uint32_t config=pci_read(device->bus,device->dev,device->func,plan.capability_offset);
-    if(kernel.smap)cpu_stac();
-    uint32_t address=entry[0],high=entry[1],data=entry[2],control=entry[3];
-    if(kernel.smap)cpu_clac();
-    if(!nvme_msix_observed(&plan,config,address,high,data,control))return false;
-    klog(\"[kernel.nvme.msix.ready] pd=%u vector=%u cap=%#x table=%#x entries=%u address=%#x data=%#x\\n\",
-        owner->id,(unsigned)plan.vector,(unsigned)plan.capability_offset,(unsigned)plan.table_offset,
-        (unsigned)plan.table_entries,(unsigned)plan.address_low,(unsigned)plan.message_data);
-    return true;
-#endif
-}
-
-static bool kernel_nvme_reset_bind(Domain *owner,const PciFunction *device)
-{
-#if !SEXOS_NVME_INTERRUPT_MODE
-    (void)owner;(void)device;return true;
-#else
-    if(!owner||!device||kernel.device_reset.present||kernel.vector_revision[NVME_VECTOR]!=0||
-       kernel.vector_ack_revision[NVME_VECTOR]!=0||kernel.vector_heard_revision[NVME_VECTOR]!=0)
+    entry[0] = plan.address_low;
+    entry[1] = plan.address_high;
+    entry[2] = plan.message_data;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    uint32_t masked_address = entry[0], masked_high = entry[1], masked_data = entry[2],
+             masked_control = entry[3];
+    entry[3] = plan.vector_enabled;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    *(volatile uint32_t *)(uintptr_t)mask_view.value.virtual_address = 1u;
+    if (kernel.smap)
+        cpu_clac();
+    if (masked_address != plan.address_low || masked_high != plan.address_high ||
+        masked_data != plan.message_data || masked_control != plan.vector_masked)
         return false;
-    uint32_t identity=(uint32_t)device->vendor_id|((uint32_t)device->device_id<<16);
-    uint32_t bdf=((uint32_t)device->bus<<16)|((uint32_t)device->dev<<8)|device->func;
-    kernel.device_reset=device_reset_init(owner->id,SLOT_NVME_HOST,bdf,identity,NVME_VECTOR,0);
-    if(!device_reset_state_valid(&kernel.device_reset))return false;
-    klog(\"[kernel.nvme.reset.bound] pd=%u vector=%u generation=1 acknowledged=0\\n\",
-        owner->id,(unsigned)NVME_VECTOR);
+    pci_write(device->bus, device->dev, device->func, plan.capability_offset, plan.config_enabled);
+    uint32_t config = pci_read(device->bus, device->dev, device->func, plan.capability_offset);
+    if (kernel.smap)
+        cpu_stac();
+    uint32_t address = entry[0], high = entry[1], data = entry[2], control = entry[3];
+    if (kernel.smap)
+        cpu_clac();
+    if (!nvme_msix_observed(&plan, config, address, high, data, control))
+        return false;
+    klog(
+        \"[kernel.nvme.msix.ready] pd=%u vector=%u cap=%#x table=%#x entries=%u address=%#x data=%#x\\n\",
+        owner->id, (unsigned)plan.vector, (unsigned)plan.capability_offset,
+        (unsigned)plan.table_offset, (unsigned)plan.table_entries, (unsigned)plan.address_low,
+        (unsigned)plan.message_data);
     return true;
 #endif
 }
 
-bool kernel_nvme_msix_set_mask(const Cap *lease,bool masked)
-{
+static bool kernel_nvme_reset_bind(Domain *owner, const PciFunction *device) {
 #if !SEXOS_NVME_INTERRUPT_MODE
-    (void)lease;(void)masked;return true;
+    (void)owner;
+    (void)device;
+    return true;
 #else
-    if(!lease||lease->kind!=CAP_PCI)return false;
-    uint8_t offset=(uint8_t)(pci_read(lease->bus,lease->dev,lease->func,0x34)&0xfcu);
-    NvmeMsixPlan plan={0};uint64_t visited=0;
-    for(uint32_t step=0;step<48u&&offset;step++){
-        if(offset<0x40u||(offset&3u))return false;
-        uint32_t bit=(uint32_t)(offset>>2);uint64_t mark=UINT64_C(1)<<(bit&63u);
-        if(visited&mark){return false;}
-        visited|=mark;
-        uint32_t capability=pci_read(lease->bus,lease->dev,lease->func,offset);
-        if((capability&0xffu)==0x11u){
-            plan=nvme_msix_plan(offset,capability,
-                pci_read(lease->bus,lease->dev,lease->func,(uint8_t)(offset+4u)),
-                pci_read(lease->bus,lease->dev,lease->func,(uint8_t)(offset+8u)),
-                lease->region.grant.length,NVME_VECTOR,0);break;
+    if (!owner || !device || kernel.device_reset.present ||
+        kernel.vector_revision[NVME_VECTOR] != 0 || kernel.vector_ack_revision[NVME_VECTOR] != 0 ||
+        kernel.vector_heard_revision[NVME_VECTOR] != 0)
+        return false;
+    uint32_t identity = (uint32_t)device->vendor_id | ((uint32_t)device->device_id << 16);
+    uint32_t bdf = ((uint32_t)device->bus << 16) | ((uint32_t)device->dev << 8) | device->func;
+    kernel.device_reset =
+        device_reset_init(owner->id, SLOT_NVME_HOST, bdf, identity, NVME_VECTOR, 0);
+    if (!device_reset_state_valid(&kernel.device_reset))
+        return false;
+    klog(\"[kernel.nvme.reset.bound] pd=%u vector=%u generation=1 acknowledged=0\\n\", owner->id,
+         (unsigned)NVME_VECTOR);
+    return true;
+#endif
+}
+
+bool kernel_nvme_msix_set_mask(const Cap *lease, bool masked) {
+#if !SEXOS_NVME_INTERRUPT_MODE
+    (void)lease;
+    (void)masked;
+    return true;
+#else
+    if (!lease || lease->kind != CAP_PCI)
+        return false;
+    uint8_t offset = (uint8_t)(pci_read(lease->bus, lease->dev, lease->func, 0x34) & 0xfcu);
+    NvmeMsixPlan plan = {0};
+    uint64_t visited = 0;
+    for (uint32_t step = 0; step < 48u && offset; step++) {
+        if (offset < 0x40u || (offset & 3u))
+            return false;
+        uint32_t bit = (uint32_t)(offset >> 2);
+        uint64_t mark = UINT64_C(1) << (bit & 63u);
+        if (visited & mark) {
+            return false;
         }
-        uint8_t next=(uint8_t)((capability>>8)&0xffu);
-        if(next&3u){return false;}
-        offset=next;
+        visited |= mark;
+        uint32_t capability = pci_read(lease->bus, lease->dev, lease->func, offset);
+        if ((capability & 0xffu) == 0x11u) {
+            plan = nvme_msix_plan(
+                offset, capability,
+                pci_read(lease->bus, lease->dev, lease->func, (uint8_t)(offset + 4u)),
+                pci_read(lease->bus, lease->dev, lease->func, (uint8_t)(offset + 8u)),
+                lease->region.grant.length, NVME_VECTOR, 0);
+            break;
+        }
+        uint8_t next = (uint8_t)((capability >> 8) & 0xffu);
+        if (next & 3u) {
+            return false;
+        }
+        offset = next;
     }
-    if(plan.status!=NVME_MSIX_OK)return false;
-    MemoryRegionViewResult view=sexos_region_register_view(&lease->region,
-        plan.table_offset,16,REGION_QUERY|REGION_READ|REGION_WRITE);
-    if(view.error||!view.value.virtual_address)return false;
-    volatile uint32_t *entry=(volatile uint32_t *)(uintptr_t)view.value.virtual_address;
-    if(kernel.smap){cpu_stac();}
-    entry[3]=masked?plan.vector_masked:plan.vector_enabled;
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);uint32_t address=entry[0],high=entry[1],data=entry[2],control=entry[3];
-    if(kernel.smap)cpu_clac();
-    uint32_t config=masked?plan.config_masked:plan.config_enabled;
-    pci_write(lease->bus,lease->dev,lease->func,plan.capability_offset,config);
-    uint32_t observed=pci_read(lease->bus,lease->dev,lease->func,plan.capability_offset);
-    if(masked)return observed==plan.config_masked&&address==plan.address_low&&high==plan.address_high&&
-        data==plan.message_data&&control==plan.vector_masked;
-    return nvme_msix_observed(&plan,observed,address,high,data,control);
+    if (plan.status != NVME_MSIX_OK)
+        return false;
+    MemoryRegionViewResult view = sexos_region_register_view(
+        &lease->region, plan.table_offset, 16, REGION_QUERY | REGION_READ | REGION_WRITE);
+    if (view.error || !view.value.virtual_address)
+        return false;
+    volatile uint32_t *entry = (volatile uint32_t *)(uintptr_t)view.value.virtual_address;
+    if (kernel.smap) {
+        cpu_stac();
+    }
+    entry[3] = masked ? plan.vector_masked : plan.vector_enabled;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    uint32_t address = entry[0], high = entry[1], data = entry[2], control = entry[3];
+    if (kernel.smap)
+        cpu_clac();
+    uint32_t config = masked ? plan.config_masked : plan.config_enabled;
+    pci_write(lease->bus, lease->dev, lease->func, plan.capability_offset, config);
+    uint32_t observed = pci_read(lease->bus, lease->dev, lease->func, plan.capability_offset);
+    if (masked)
+        return observed == plan.config_masked && address == plan.address_low &&
+               high == plan.address_high && data == plan.message_data &&
+               control == plan.vector_masked;
+    return nvme_msix_observed(&plan, observed, address, high, data, control);
 #endif
 }
 ")
@@ -740,7 +1213,21 @@ bool kernel_nvme_msix_set_mask(const Cap *lease,bool masked)
       (call klog "[bootgraph.cap.grant from=kernel to=%u slot=%s target=input_ring ok=1]\n" (-> holder id) label))
 
     (comment "The grant rows of the genesis table, in their order.")
-    (native "static void apply_genesis_grants(void)\n{\n#define KERNEL_RING_GRANT(holder, slot, label, target, optional) grant_ring(KERNEL_DOMAIN_KEY_##holder, slot, label, KERNEL_DOMAIN_KEY_##target, optional);\n    SEXOS_KERNEL_RING_GRANT_ROWS(KERNEL_RING_GRANT)\n#ifdef SEXOS_NETWORK_PROFILE\n    SEXOS_KERNEL_NETWORK_GRANT_ROWS(KERNEL_RING_GRANT)\n#endif\n#undef KERNEL_RING_GRANT\n#define KERNEL_INPUT_GRANT(holder, slot, label) grant_input(KERNEL_DOMAIN_KEY_##holder, slot, label);\n    SEXOS_KERNEL_INPUT_GRANT_ROWS(KERNEL_INPUT_GRANT)\n#undef KERNEL_INPUT_GRANT\n}\n")
+    (native "
+static void apply_genesis_grants(void) {
+#define KERNEL_RING_GRANT(holder, slot, label, target, optional)                                   \\
+    grant_ring(KERNEL_DOMAIN_KEY_##holder, slot, label, KERNEL_DOMAIN_KEY_##target, optional);
+    SEXOS_KERNEL_RING_GRANT_ROWS(KERNEL_RING_GRANT)
+#ifdef SEXOS_NETWORK_PROFILE
+    SEXOS_KERNEL_NETWORK_GRANT_ROWS(KERNEL_RING_GRANT)
+#endif
+#undef KERNEL_RING_GRANT
+#define KERNEL_INPUT_GRANT(holder, slot, label)                                                    \\
+    grant_input(KERNEL_DOMAIN_KEY_##holder, slot, label);
+    SEXOS_KERNEL_INPUT_GRANT_ROWS(KERNEL_INPUT_GRANT)
+#undef KERNEL_INPUT_GRANT
+}
+")
 
 
     (fn void kernel_boot_framebuffer (void)
@@ -755,6 +1242,15 @@ bool kernel_nvme_msix_set_mask(const Cap *lease,bool masked)
           (= (. kernel fb_width) (-> fb width))
           (= (. kernel fb_height) (-> fb height))
           (= (. kernel fb_pitch) (-> fb pitch))
+          (comment "The current kernel reserves Display's two private frame buffers at this geometry-known genesis; their layout also bounds the framebuffer extent.")
+          (if SEXOS_KERNEL_CURRENT_PDX
+            (block
+              (var DisplayFrameLayout layout (compound DisplayFrameLayout (= (. width) 0)))
+              (if (! (call display_frame_layout (-> fb width) (-> fb height) (-> fb pitch) (& layout)))
+                (call kernel_halt "BOOT_DISPLAY_FRAME_GEOMETRY"))
+              (if (!= (-> fb bpp) 32) (call kernel_halt "BOOT_DISPLAY_FRAME_FORMAT"))
+              (if (> address (- UINT64_MAX (+ (. layout frame_bytes) 4095))) (call kernel_halt "BOOT_DISPLAY_FRAMEBUFFER_EXTENT"))
+              (call kernel_boot_display_frames (-> display id) (& layout))))
           (if (call expose_to_user address (* (-> fb pitch) (-> fb height)) (-> display key))
             (call klog "init: FB remapped USER_ACCESSIBLE (%#llx, %llu bytes) key=%u\n" (cast (unsigned long long) address)
               (cast (unsigned long long) (* (-> fb pitch) (-> fb height))) (-> display key))

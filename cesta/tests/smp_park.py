@@ -2,6 +2,7 @@
 """Qualify the permanent-AP-park state used by the current replay profile."""
 import argparse,hashlib,json,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(argv):
     result=subprocess.run(list(map(str,argv)),cwd=HERE,capture_output=True)
@@ -31,7 +32,7 @@ def main():
       ('advance_once','next!=expected+1u','false'),
     ];caught=[]
     if a.mutations:
-        original=src.read_text()
+        original=LayoutText(src.read_text())
         for name,before,after in changes:
             assert original.count(before)>=1,(name,'anchor')
             try:

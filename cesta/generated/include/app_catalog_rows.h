@@ -24,7 +24,18 @@
     cesta_table_apply_0(UINT64_C(138)) \
     cesta_table_apply_0(UINT64_C(142)) \
     cesta_table_apply_0(UINT64_C(146)) \
-    cesta_table_apply_0(UINT64_C(150))
+    cesta_table_apply_0(UINT64_C(150)) \
+    cesta_table_apply_0(UINT64_C(154)) \
+    cesta_table_apply_0(UINT64_C(158)) \
+    cesta_table_apply_0(UINT64_C(162)) \
+    cesta_table_apply_0(UINT64_C(166)) \
+    cesta_table_apply_0(UINT64_C(170)) \
+    cesta_table_apply_0(UINT64_C(174)) \
+    cesta_table_apply_0(UINT64_C(178)) \
+    cesta_table_apply_0(UINT64_C(182)) \
+    cesta_table_apply_0(UINT64_C(186)) \
+    cesta_table_apply_0(UINT64_C(190)) \
+    cesta_table_apply_0(UINT64_C(194))
 
 
 #endif

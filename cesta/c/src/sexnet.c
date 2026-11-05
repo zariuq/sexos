@@ -58,7 +58,6 @@ typedef struct SexnetApEntry {
 }
 SexnetApEntry;
 _Static_assert(sizeof(SexnetApEntry) == 36, "repr(C) SexnetApEntry");
-
 typedef struct NetState {
   WifiState wifi;
   VpnState vpn;

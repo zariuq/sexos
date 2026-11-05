@@ -41,20 +41,29 @@
 
 #include "kernel_current.h"
 
+
 #define COUNT_CURRENT_APP(...) +1
 #define COUNT_CURRENT_DOMAIN(...) +1
 #define COUNT_CURRENT_ROUTE(...) +1
 #define COUNT_CURRENT_SOURCE(...) +1
-#define COUNT_CURRENT_ACTIVE(p_id,p_name,p_module,p_log,p_key,p_layout,p_active) +(p_active?1:0)
-#define COUNT_CURRENT_QUIL(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) +(p_logical==CURRENT_PD_quil?1:0)
-enum { KERNEL_CURRENT_APPS=0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_APP),
-       KERNEL_CURRENT_DOMAINS=0 SEXOS_CURRENT_DOMAIN_ROWS(COUNT_CURRENT_DOMAIN),
-       KERNEL_CURRENT_ACTIVE=0 SEXOS_CURRENT_DOMAIN_ROWS(COUNT_CURRENT_ACTIVE),
-       KERNEL_CURRENT_ROUTES=0 SEXOS_CURRENT_ROUTE_ROWS(COUNT_CURRENT_ROUTE),
-       KERNEL_CURRENT_SOURCE_CAPS=0 SEXOS_CURRENT_SOURCE_ROWS(COUNT_CURRENT_SOURCE),
-       KERNEL_CURRENT_QUILS=0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_QUIL),
-       KERNEL_CURRENT_DORMANT=KERNEL_CURRENT_DOMAINS-KERNEL_CURRENT_ACTIVE,
-       KERNEL_CURRENT_BACKINGS=8+KERNEL_CURRENT_QUILS };
+#define COUNT_CURRENT_ACTIVE(p_id, p_name, p_module, p_log, p_key, p_layout, p_active)             \
+    +(p_active ? 1 : 0)
+#define COUNT_CURRENT_QUIL(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,  \
+                           p_activation, p_predecessor, p_logical, p_route)                        \
+    +(p_logical == CURRENT_PD_quil ? 1 : 0)
+
+enum {
+    KERNEL_CURRENT_APPS = 0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_APP),
+    KERNEL_CURRENT_DOMAINS = 0 SEXOS_CURRENT_DOMAIN_ROWS(COUNT_CURRENT_DOMAIN),
+    KERNEL_CURRENT_ACTIVE = 0 SEXOS_CURRENT_DOMAIN_ROWS(COUNT_CURRENT_ACTIVE),
+    KERNEL_CURRENT_ROUTES = 0 SEXOS_CURRENT_ROUTE_ROWS(COUNT_CURRENT_ROUTE),
+    KERNEL_CURRENT_SOURCE_CAPS = 0 SEXOS_CURRENT_SOURCE_ROWS(COUNT_CURRENT_SOURCE),
+    KERNEL_CURRENT_QUILS = 0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_QUIL),
+    KERNEL_CURRENT_DORMANT = KERNEL_CURRENT_DOMAINS - KERNEL_CURRENT_ACTIVE,
+    /* Three DMA regions, four paired regions, the paging pool, Display's frames and one document pair per Quil. */
+    KERNEL_CURRENT_BACKINGS = 9 + KERNEL_CURRENT_QUILS
+};
+
 #undef COUNT_CURRENT_APP
 #undef COUNT_CURRENT_DOMAIN
 #undef COUNT_CURRENT_ROUTE
@@ -72,6 +81,7 @@ enum { KERNEL_CURRENT_APPS=0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_APP),
 
 #endif
 
+
 _Static_assert(SEXOS_KERNEL_CURRENT_PDX == 0 || SEXOS_KERNEL_CURRENT_PDX == 1, "PDX source cohort");
 
 
@@ -79,6 +89,7 @@ _Static_assert(SEXOS_KERNEL_CURRENT_PDX == 0 || SEXOS_KERNEL_CURRENT_PDX == 1, "
 #define SEXOS_KERNEL_CURRENT_FPU SEXOS_KERNEL_CURRENT_PDX
 
 #endif
+
 
 _Static_assert(SEXOS_KERNEL_CURRENT_FPU == 0 || SEXOS_KERNEL_CURRENT_FPU == 1, "FPU source cohort");
 
@@ -88,7 +99,9 @@ _Static_assert(SEXOS_KERNEL_CURRENT_FPU == 0 || SEXOS_KERNEL_CURRENT_FPU == 1, "
 
 #endif
 
-_Static_assert(SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 0 || SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 1, "FPU context mutation control");
+
+_Static_assert(SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 0 || SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 1,
+               "FPU context mutation control");
 
 
 #if SEXOS_KERNEL_CURRENT_PDX
@@ -96,9 +109,9 @@ _Static_assert(SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 0 || SEXOS_FPU_CONTEXT_CORRUPT
 
 #define KERNEL_CAP_SLOTS 1025u
 
-#define KERNEL_BOOT_DOMAINS 32u
+#define KERNEL_BOOT_DOMAINS 64u
 
-#define KERNEL_STACK_RECORDS 32u
+#define KERNEL_STACK_RECORDS 64u
 
 #else
 #define KERNEL_MAX_DOMAINS 16u
@@ -122,6 +135,10 @@ _Static_assert(SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 0 || SEXOS_FPU_CONTEXT_CORRUPT
 #define KERNEL_BOOT_CAPS 1024u
 
 #define KERNEL_BOOT_REGIONS 64u
+
+/*The paging pool's backing key is kernel-private: it is never published as a Region, so it stays outside the published region IDs.*/
+
+#define KERNEL_PAGING_BACKING 0x7fff0001u
 
 #define KERNEL_BOOT_REGION_ALIASES 2u
 
@@ -217,7 +234,10 @@ typedef struct TrapFrame {
 }
 TrapFrame;
 
-_Static_assert(sizeof(TrapFrame) == 176 && offsetof(TrapFrame, rax) == 112 && offsetof(TrapFrame, rip) == 136, "trap frame layout of entry_x86_64.S");
+
+_Static_assert(sizeof(TrapFrame) == 176 && offsetof(TrapFrame, rax) == 112 &&
+                   offsetof(TrapFrame, rip) == 136,
+               "trap frame layout of entry_x86_64.S");
 
 
 /*What a capability names. MESSAGE_QUEUE is the domain's own ring (listen); DOMAIN a domain's ring (call, lend); PCI a device lease; MEM_LEND a lent frame.*/
@@ -255,12 +275,20 @@ typedef struct Cap {
 }
 Cap;
 
+
 #if SEXOS_KERNEL_CURRENT_PDX
 typedef const Cap *DomainCaps[KERNEL_CAP_SLOTS];
-typedef struct { Cap entries[KERNEL_BOOT_CAPS]; uint32_t count; } CapabilityStorage;
+
+typedef struct {
+    Cap entries[KERNEL_BOOT_CAPS];
+    uint32_t count;
+} CapabilityStorage;
 #else
 typedef Cap DomainCaps[KERNEL_CAP_SLOTS];
-typedef struct { uint8_t unused; } CapabilityStorage;
+
+typedef struct {
+    uint8_t unused;
+} CapabilityStorage;
 #endif
 
 
@@ -326,7 +354,9 @@ Ring;
 
 #endif
 
-_Static_assert(KERNEL_RPC_CAPACITY > 0 && KERNEL_RPC_CAPACITY <= KERNEL_RING_CAPACITY, "RPC window capacity");
+
+_Static_assert(KERNEL_RPC_CAPACITY > 0 && KERNEL_RPC_CAPACITY <= KERNEL_RING_CAPACITY,
+               "RPC window capacity");
 
 
 typedef enum RpcState {
@@ -394,8 +424,13 @@ typedef struct Domain {
 }
 Domain;
 
+
 #if SEXOS_KERNEL_CURRENT_PDX
-typedef struct { Domain *slots[KERNEL_MAX_DOMAINS]; Domain records[KERNEL_BOOT_DOMAINS]; uint32_t count; } DomainRegistry;
+typedef struct {
+    Domain *slots[KERNEL_MAX_DOMAINS];
+    Domain records[KERNEL_BOOT_DOMAINS];
+    uint32_t count;
+} DomainRegistry;
 #else
 typedef Domain DomainRegistry[KERNEL_MAX_DOMAINS];
 #endif
@@ -545,49 +580,71 @@ typedef struct LimineRequest {
 }
 LimineRequest;
 
+
 typedef struct LimineMpInfo LimineMpInfo;
 typedef void (*LimineMpEntry)(LimineMpInfo *);
+
 struct LimineMpInfo {
-    uint32_t processor_id,lapic_id;
+    uint32_t processor_id, lapic_id;
     uint64_t reserved;
     LimineMpEntry goto_address;
     uint64_t extra_argument;
 };
+
 typedef struct LimineMpResponse {
     uint64_t revision;
-    uint32_t flags,bsp_lapic_id;
+    uint32_t flags, bsp_lapic_id;
     uint64_t cpu_count;
     LimineMpInfo **cpus;
 } LimineMpResponse;
 
 
-_Static_assert(offsetof(LimineFile, path) == 24 && offsetof(LimineFramebuffer, edid_size) == 48 && offsetof(LimineRequest, response) == 40, "Limine 7 layouts");
+
+_Static_assert(offsetof(LimineFile, path) == 24 && offsetof(LimineFramebuffer, edid_size) == 48 &&
+                   offsetof(LimineRequest, response) == 40,
+               "Limine 7 layouts");
 
 
-_Static_assert(sizeof(LimineMpInfo) == 32 && offsetof(LimineMpInfo, goto_address) == 16 && sizeof(LimineMpResponse) == 32, "Limine 7 MP layouts");
+
+_Static_assert(sizeof(LimineMpInfo) == 32 && offsetof(LimineMpInfo, goto_address) == 16 &&
+                   sizeof(LimineMpResponse) == 32,
+               "Limine 7 MP layouts");
 
 
-extern volatile LimineRequest limine_framebuffer_request, limine_memmap_request, limine_hhdm_request, limine_rsdp_request, limine_module_request;
+
+extern volatile LimineRequest limine_framebuffer_request, limine_memmap_request,
+    limine_hhdm_request, limine_rsdp_request, limine_module_request;
 #if SEXOS_KERNEL_CURRENT_SMP
 extern volatile LimineRequest limine_mp_request;
 bool kernel_smp_park_boot(void);
 bool kernel_smp_epoch_current(uint64_t expected);
-bool kernel_smp_epoch_advance(uint64_t expected,uint64_t next);
+bool kernel_smp_epoch_advance(uint64_t expected, uint64_t next);
 #endif
 
 
+
 typedef struct KernelAppPrivate {
-    uint32_t target,task,predecessor,pager,coordinator;
-    uint8_t key,acked;
-    bool captured,ready,dormant,retired,activated,kicked;
-    uint8_t hinted;uint64_t last_hint[6];
-    uint64_t surface,pool;
+    uint32_t target, task, predecessor, pager, coordinator;
+    uint8_t key, acked;
+    bool captured, ready, dormant, retired, activated, kicked;
+    uint8_t hinted;
+    uint64_t last_hint[6];
+    uint64_t surface, pool;
     AppIncarnation identity;
-    AppPrivatePages image,workspace;
+    AppPrivatePages image, workspace;
 } KernelAppPrivate;
 
 
-typedef struct { bool initialized; uint32_t pager; PgFramePool pool; PgMapping mappings[PG_CLIENTS]; uint8_t keys[PG_CLIENTS]; uint64_t physical,leaves[PG_CLIENTS][PG_PAGES],last_token; PgLedger ledger; } KernelPaging;
+
+typedef struct {
+    bool initialized;
+    uint32_t pager;
+    PgFramePool pool;
+    PgMapping mappings[PG_CLIENTS];
+    uint8_t keys[PG_CLIENTS];
+    uint64_t physical, leaves[PG_CLIENTS][PG_PAGES], last_token;
+    PgLedger ledger;
+} KernelPaging;
 
 
 /*The kernel's state.*/
@@ -806,6 +863,8 @@ void kernel_boot_framebuffer(void);
 
 void kernel_current_routes(void);
 
+void kernel_current_route_markers(void);
+
 void kernel_current_lifecycle_grants(void);
 
 bool kernel_boot_pci_region(Domain *d, uint64_t slot, const PciFunction *device, MemoryRegionCapability *out);
@@ -857,6 +916,33 @@ bool boot_region_map(uint32_t holder, const BootBacking *backing, bool writable,
 bool boot_region_dma(uint32_t holder, uint64_t slot, uint32_t id, uint64_t length);
 
 bool boot_region_pair(uint32_t first, uint32_t second, uint64_t first_slot, uint64_t second_slot, uint32_t id, uint64_t length, bool second_writable);
+
+/*Display's two BOOT frame buffers: checked packed-XRGB geometry and reservation sizes, as crates/sex-pdx/src/display_frames.rs.*/
+
+#define DISPLAY_FRAME_SLOT 98u
+
+#define DISPLAY_FRAME_REGION_ID 11u
+
+#define DISPLAY_FRAME_MAX_WIDTH 8192u
+
+#define DISPLAY_FRAME_MAX_HEIGHT 4320u
+
+typedef struct DisplayFrameLayout {
+  uint64_t width;
+  uint64_t height;
+  uint32_t pitch;
+  uint64_t frame_bytes;
+  uint64_t span_bytes;
+  uint64_t total_bytes;
+  uint64_t buddy_bytes;
+}
+DisplayFrameLayout;
+
+bool display_frame_layout(uint64_t width, uint64_t height, uint64_t pitch, DisplayFrameLayout *out);
+
+void kernel_boot_display_frames(uint32_t display, const DisplayFrameLayout *layout);
+
+MemoryRegionReply kernel_region_reply(Domain *d, uint64_t number, uint64_t slot, uint64_t a, uint64_t b, uint64_t c);
 
 bool domain_enqueue(Domain *d, RingEntry entry);
 

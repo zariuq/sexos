@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -33,7 +34,7 @@ def main():
             run([binary], env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=1"}); builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = sources["gcc"].read_text(); protocol = work / "protocol-gcc.c"
+        base = LayoutText(sources["gcc"].read_text()); protocol = work / "protocol-gcc.c"
         changes = [
             ("peer", "info.value2!=(writer?subject:11)", "false"),
             ("region", "info.value3!=id", "false"),

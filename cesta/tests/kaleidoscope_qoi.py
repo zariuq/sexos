@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -129,7 +130,7 @@ fn main(){let n:usize=std::env::args().nth(1).unwrap().parse().unwrap();let(mut 
             builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = exports["gcc"].read_text()
+        base = LayoutText(exports["gcc"].read_text())
         changes = [
             ("turn-budget", "KALEIDOSCOPE_QOI_PIXELS_PER_TURN", "(KALEIDOSCOPE_QOI_PIXELS_PER_TURN+1)"),
             ("header-change", "if(!same)return qoi_fail", "if(false)return qoi_fail"),

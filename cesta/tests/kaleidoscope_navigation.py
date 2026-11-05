@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -98,7 +99,7 @@ def main():
             builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = sources["gcc"].read_text()
+        base = LayoutText(sources["gcc"].read_text())
         changes = [
             ("absolute", "input->bytes[0]!='/'", "false"),
             ("double-slash", "input->bytes[i+1]=='/'", "false"),

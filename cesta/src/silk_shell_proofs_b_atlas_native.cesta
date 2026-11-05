@@ -1,18 +1,101 @@
 (cesta native-c/1 compact-c/2
  (unit
-  (native "#include \"silk_shell_proofs_b_atlas.h\"
+  (ownership (check-all)
+    (unchecked (proofs_b_atlas proofs_b_atlas_binding shell_proofs_b_atlas_bar_height
+                shell_proofs_b_atlas_cancel_drag shell_proofs_b_atlas_card
+                shell_proofs_b_atlas_cycle shell_proofs_b_atlas_desktop_width
+                shell_proofs_b_atlas_exit shell_proofs_b_atlas_input_hid
+                shell_proofs_b_atlas_reparent shell_proofs_b_atlas_same_scene_noop
+                shell_proofs_b_atlas_scene_at shell_proofs_b_atlas_surface_in_active_scene)
+      (obligation "Native binding between the single shell state and the checked component contexts: records carrying references without field contracts, nested LinenObject labels and the legacy address-word ABI. It relies on the single-threaded shell loop lending each context for one call and retaining no loan.")))
+  (native "
+#include \"silk_shell_proofs_b_atlas.h\"
 #include \"silk_shell_atlas.h\"
-static void proofs_b_atlas_binding(const ShellInputContext *ctx){if(ctx&&ctx->shell.chrome==&SILK_SHELL_STATE.chrome&&ctx->shell.models==&SILK_SHELL_STATE.models&&ctx->shell.apps==&SILK_SHELL_STATE.apps&&ctx->shell.input==&SILK_SHELL_STATE.input&&ctx->shell.proofs_a==&SILK_SHELL_STATE.proofs_a&&ctx->atlas==&SILK_SHELL_STATE.atlas&&ctx->surfaces==&SILK_SHELL_STATE.surfaces)return;sexos_fail();for(;;){}}
-static ShellAtlasContext proofs_b_atlas(ShellInputContext *ctx){return(ShellAtlasContext){ctx->atlas,ctx->shell.chrome,ctx->shell.models};}
-int32_t shell_proofs_b_atlas_desktop_width(ShellInputContext *ctx){proofs_b_atlas_binding(ctx);ShellAtlasContext view=proofs_b_atlas(ctx);return shell_atlas_peer_desktop_width(&view);}
-int32_t shell_proofs_b_atlas_bar_height(ShellInputContext *ctx){proofs_b_atlas_binding(ctx);return P.bar_height;}
-ShellProofsBCard shell_proofs_b_atlas_card(ShellInputContext *ctx,size_t scene,uint32_t width){proofs_b_atlas_binding(ctx);ShellAtlasContext view=proofs_b_atlas(ctx);ShellProofsBCard out={0};shell_atlas_atlas_card_pos(&view,scene,width,&out.x,&out.y,&out.w,&out.h);return out;}
-ShellProofsBScene shell_proofs_b_atlas_scene_at(ShellInputContext *ctx,int32_t x,int32_t y){proofs_b_atlas_binding(ctx);ShellAtlasContext view=proofs_b_atlas(ctx);uint8_t scene=0;bool present=shell_atlas_atlas_scene_at_point(&view,x,y,&scene);return(ShellProofsBScene){present,scene};}
-void shell_proofs_b_atlas_exit(ShellInputContext *ctx){proofs_b_atlas_binding(ctx);ShellAtlasContext view=proofs_b_atlas(ctx);shell_atlas_atlas_exit(&view);}
-bool shell_proofs_b_atlas_cycle(ShellInputContext *ctx,int32_t delta,const char *reason){proofs_b_atlas_binding(ctx);ShellAtlasContext view=proofs_b_atlas(ctx);return shell_atlas_atlas_cycle_scene(&view,delta,reason);}
-bool shell_proofs_b_atlas_same_scene_noop(ShellInputContext *ctx,uint32_t frame,uint8_t source,uint8_t target){proofs_b_atlas_binding(ctx);ShellAtlasContext view=proofs_b_atlas(ctx);return shell_atlas_atlas_same_scene_drop_noop(&view,frame,source,target);}
-bool shell_proofs_b_atlas_reparent(ShellInputContext *ctx,uint32_t frame,uint8_t target,const char *reason){proofs_b_atlas_binding(ctx);ShellAtlasContext view=proofs_b_atlas(ctx);return shell_atlas_reparent_frame_to_scene(&view,frame,target,reason);}
-bool shell_proofs_b_atlas_surface_in_active_scene(ShellInputContext *ctx,uint64_t surface){proofs_b_atlas_binding(ctx);ShellAtlasContext view=proofs_b_atlas(ctx);return shell_atlas_surface_in_active_scene(&view,surface);}
-void shell_proofs_b_atlas_input_hid(ShellInputContext *ctx,uint64_t event_class,uint64_t arg0,uint64_t arg1){proofs_b_atlas_binding(ctx);shell_input_handle_hid_event(ctx,event_class,arg0,arg1);}
-bool shell_proofs_b_atlas_cancel_drag(ShellInputContext *ctx,const char *reason){proofs_b_atlas_binding(ctx);ShellAtlasContext view=proofs_b_atlas(ctx);return shell_atlas_atlas_pointer_drag_cancel(&view,reason);}
+
+static void proofs_b_atlas_binding(const ShellInputContext *ctx) {
+    if (ctx && ctx->shell.chrome == &SILK_SHELL_STATE.chrome &&
+        ctx->shell.models == &SILK_SHELL_STATE.models &&
+        ctx->shell.apps == &SILK_SHELL_STATE.apps && ctx->shell.input == &SILK_SHELL_STATE.input &&
+        ctx->shell.proofs_a == &SILK_SHELL_STATE.proofs_a &&
+        ctx->atlas == &SILK_SHELL_STATE.atlas && ctx->surfaces == &SILK_SHELL_STATE.surfaces)
+        return;
+    sexos_fail();
+    for (;;) {
+    }
+}
+
+static ShellAtlasContext proofs_b_atlas(ShellInputContext *ctx) {
+    return (ShellAtlasContext){ctx->atlas, ctx->shell.chrome, ctx->shell.models};
+}
+
+int32_t shell_proofs_b_atlas_desktop_width(ShellInputContext *ctx) {
+    proofs_b_atlas_binding(ctx);
+    ShellAtlasContext view = proofs_b_atlas(ctx);
+    return shell_atlas_peer_desktop_width(&view);
+}
+
+int32_t shell_proofs_b_atlas_bar_height(ShellInputContext *ctx) {
+    proofs_b_atlas_binding(ctx);
+    return P.bar_height;
+}
+
+ShellProofsBCard shell_proofs_b_atlas_card(ShellInputContext *ctx, size_t scene, uint32_t width) {
+    proofs_b_atlas_binding(ctx);
+    ShellAtlasContext view = proofs_b_atlas(ctx);
+    ShellProofsBCard out = {0};
+    shell_atlas_atlas_card_pos(&view, scene, width, &out.x, &out.y, &out.w, &out.h);
+    return out;
+}
+
+ShellProofsBScene shell_proofs_b_atlas_scene_at(ShellInputContext *ctx, int32_t x, int32_t y) {
+    proofs_b_atlas_binding(ctx);
+    ShellAtlasContext view = proofs_b_atlas(ctx);
+    uint8_t scene = 0;
+    bool present = shell_atlas_atlas_scene_at_point(&view, x, y, &scene);
+    return (ShellProofsBScene){present, scene};
+}
+
+void shell_proofs_b_atlas_exit(ShellInputContext *ctx) {
+    proofs_b_atlas_binding(ctx);
+    ShellAtlasContext view = proofs_b_atlas(ctx);
+    shell_atlas_atlas_exit(&view);
+}
+
+bool shell_proofs_b_atlas_cycle(ShellInputContext *ctx, int32_t delta, const char *reason) {
+    proofs_b_atlas_binding(ctx);
+    ShellAtlasContext view = proofs_b_atlas(ctx);
+    return shell_atlas_atlas_cycle_scene(&view, delta, reason);
+}
+
+bool shell_proofs_b_atlas_same_scene_noop(ShellInputContext *ctx, uint32_t frame, uint8_t source,
+                                          uint8_t target) {
+    proofs_b_atlas_binding(ctx);
+    ShellAtlasContext view = proofs_b_atlas(ctx);
+    return shell_atlas_atlas_same_scene_drop_noop(&view, frame, source, target);
+}
+
+bool shell_proofs_b_atlas_reparent(ShellInputContext *ctx, uint32_t frame, uint8_t target,
+                                   const char *reason) {
+    proofs_b_atlas_binding(ctx);
+    ShellAtlasContext view = proofs_b_atlas(ctx);
+    return shell_atlas_reparent_frame_to_scene(&view, frame, target, reason);
+}
+
+bool shell_proofs_b_atlas_surface_in_active_scene(ShellInputContext *ctx, uint64_t surface) {
+    proofs_b_atlas_binding(ctx);
+    ShellAtlasContext view = proofs_b_atlas(ctx);
+    return shell_atlas_surface_in_active_scene(&view, surface);
+}
+
+void shell_proofs_b_atlas_input_hid(ShellInputContext *ctx, uint64_t event_class, uint64_t arg0,
+                                    uint64_t arg1) {
+    proofs_b_atlas_binding(ctx);
+    shell_input_handle_hid_event(ctx, event_class, arg0, arg1);
+}
+
+bool shell_proofs_b_atlas_cancel_drag(ShellInputContext *ctx, const char *reason) {
+    proofs_b_atlas_binding(ctx);
+    ShellAtlasContext view = proofs_b_atlas(ctx);
+    return shell_atlas_atlas_pointer_drag_cancel(&view, reason);
+}
 ")))

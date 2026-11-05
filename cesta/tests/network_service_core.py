@@ -1,6 +1,7 @@
 """Qualify server-core job dispatch and the pre-DMA live-ticket fence."""
 import argparse,hashlib,importlib,json,os,subprocess,sys
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(cmd,*,cwd=HERE,env=None):
  r=subprocess.run(list(map(str,cmd)),cwd=cwd,capture_output=True,env=env);assert r.returncode==0,(cmd,r.returncode,r.stdout[-2000:],r.stderr[-8000:]);return r.stdout
@@ -38,7 +39,7 @@ def main():
    run(cmd+['--','-Igenerated/include']);sources.append(out)
   for mode,flags in (('O0',['-O0']),('O2',['-O2']),('SAN',['-O1','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie'])):
    b=w/f'{cc}-{mode}';run([cc,'-std=c11','-Wall','-Wextra','-Wpedantic','-Werror',*flags,'-Igenerated/include',*sources,host,'-o',b]);actual=run([b],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=1:abort_on_error=1'});configs.append({'compiler':cc,'mode':mode,'sha256':hashlib.sha256(actual).hexdigest()})
- base=exports['gcc'].read_text();mutations=[('live-required','bool owned=live&&','bool owned=true&&'),('owner-required','core->jobs.owner_present&&network_job_identity_equal(core->jobs.owner,live_owner)&&','core->jobs.owner_present&&'),('ticket-required','network_job_machine_can_transmit(&core->jobs,client.value)','true'),('dns-owner-required','core->dns_jobs.owner_present&&network_job_identity_equal(core->dns_jobs.owner,live_owner)&&','core->dns_jobs.owner_present&&'),('dns-ticket-required','network_dns_job_machine_can_transmit(&core->dns_jobs,dns.value)','true'),('dns-mutual-exclusion','other_held||core->jobs.owner_present','other_held'),('shared-allowed','NETWORK_SERVICE_SHARED_FRAME,true','NETWORK_SERVICE_SHARED_FRAME,false'),('reply-defer','network_job_machine_reply_deferred(&core->jobs)','network_job_machine_reply_accepted(&core->jobs)')];caught=[];prefix=[w/f'{n}-gcc.c' for n in names[:-1]]
+ base=LayoutText(exports['gcc'].read_text());mutations=[('live-required','bool owned=live&&','bool owned=true&&'),('owner-required','core->jobs.owner_present&&network_job_identity_equal(core->jobs.owner,live_owner)&&','core->jobs.owner_present&&'),('ticket-required','network_job_machine_can_transmit(&core->jobs,client.value)','true'),('dns-owner-required','core->dns_jobs.owner_present&&network_job_identity_equal(core->dns_jobs.owner,live_owner)&&','core->dns_jobs.owner_present&&'),('dns-ticket-required','network_dns_job_machine_can_transmit(&core->dns_jobs,dns.value)','true'),('dns-mutual-exclusion','other_held||core->jobs.owner_present','other_held'),('shared-allowed','NETWORK_SERVICE_SHARED_FRAME,true','NETWORK_SERVICE_SHARED_FRAME,false'),('reply-defer','network_job_machine_reply_deferred(&core->jobs)','network_job_machine_reply_accepted(&core->jobs)')];caught=[];prefix=[w/f'{n}-gcc.c' for n in names[:-1]]
  for name,old,new in mutations:
   assert base.count(old)>=1,(name,base.count(old));m=w/f'mutant-{name}.c';m.write_text(base.replace(old,new));b=w/f'mutant-{name}';run(['gcc','-std=c11','-O2','-Igenerated/include',*prefix,m,host,'-o',b]);r=subprocess.run([b],cwd=HERE,capture_output=True);assert r.returncode!=0,('survived',name,r.stdout,r.stderr);caught.append(name)
  admission=[]

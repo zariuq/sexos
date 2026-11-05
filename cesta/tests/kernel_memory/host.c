@@ -32,10 +32,12 @@ int main(void)
     uint64_t frame = frames_alloc(0);
     assert(frame == 0x2000);
     for (size_t i = 0; i < 4096; ++i) assert(ram[frame + i] == 0);
-    uint64_t first = va_alloc(0);
-    assert(va_alloc(UINT64_MAX) == NO_ADDRESS && va_alloc(0) == first);
-    assert(va_alloc(0x700000000000ULL - first + 1) == NO_ADDRESS && va_alloc(0) == first);
-    assert(va_alloc(1) == first && va_alloc(0) == first + 4096);
+    /* A reservation names at least one page; refused requests leave the cursor. */
+    assert(va_alloc(0) == NO_ADDRESS);
+    uint64_t first = va_alloc(1);
+    assert(first != NO_ADDRESS && va_alloc(UINT64_MAX) == NO_ADDRESS && va_alloc(0) == NO_ADDRESS);
+    assert(va_alloc(0x700000000000ULL - (first + 4096) + 1) == NO_ADDRESS);
+    assert(va_alloc(4097) == first + 4096 && va_alloc(1) == first + 3 * 4096);
     uint64_t va = UINT64_C(0x400000000000), pte = 0;
     uint64_t flags = PTE_USER | PTE_WRITABLE | PTE_NO_EXECUTE;
     assert(map_page(va, frame, flags, 4));

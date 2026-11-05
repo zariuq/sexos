@@ -1,42 +1,51 @@
 (cesta native-c/1 compact-c/2
   (unit (include "sexos_history_recovery.h") (ownership (check-all))
     (native "
-bool history_valid(HistoryGrant g)
-{
-    size_t n=HISTORY_ROSTER_COUNT;
-    if(!HISTORY_ROSTER_COUNT || HISTORY_ROSTER_COUNT>64 || !g.holder || !g.logical ||
-        g.sectors!=HISTORY_SECTORS || g.base>UINT64_MAX-g.sectors)return false;
-    for(size_t i=0;i<n;++i){
-        HistoryParticipant p=g.participants[i];
-        if(!p.target || !p.task)return false;
-        for(size_t j=0;j<i;++j)
-            if(g.participants[j].target==p.target || g.participants[j].task==p.task)return false;
+bool history_valid(HistoryGrant g) {
+    size_t n = HISTORY_ROSTER_COUNT;
+    if (!HISTORY_ROSTER_COUNT || HISTORY_ROSTER_COUNT > 64 || !g.holder || !g.logical ||
+        g.sectors != HISTORY_SECTORS || g.base > UINT64_MAX - g.sectors)
+        return false;
+    for (size_t i = 0; i < n; ++i) {
+        HistoryParticipant p = g.participants[i];
+        if (!p.target || !p.task)
+            return false;
+        for (size_t j = 0; j < i; ++j)
+            if (g.participants[j].target == p.target || g.participants[j].task == p.task)
+                return false;
     }
     return true;
 }
-HistoryFound history_participant(HistoryGrant g,uint32_t target)
-{
-    size_t n=HISTORY_ROSTER_COUNT;
-    if(!history_valid(g))return (HistoryFound){0};
-    for(size_t i=0;i<n;++i)
-        if(g.participants[i].target==target)return (HistoryFound){true,g.participants[i]};
+
+HistoryFound history_participant(HistoryGrant g, uint32_t target) {
+    size_t n = HISTORY_ROSTER_COUNT;
+    if (!history_valid(g))
+        return (HistoryFound){0};
+    for (size_t i = 0; i < n; ++i)
+        if (g.participants[i].target == target)
+            return (HistoryFound){true, g.participants[i]};
     return (HistoryFound){0};
 }
-bool history_permits(HistoryGrant g,uint32_t holder,uint32_t target,uint32_t task)
-{
-    HistoryFound found=history_participant(g,target);
-    return g.holder==holder && found.present && found.value.target==target && found.value.task==task;
+
+bool history_permits(HistoryGrant g, uint32_t holder, uint32_t target, uint32_t task) {
+    HistoryFound found = history_participant(g, target);
+    return g.holder == holder && found.present && found.value.target == target &&
+           found.value.task == task;
 }
-HistoryReply history_query(HistoryGrant g,uint32_t holder,uint64_t kind)
-{
-    size_t n=HISTORY_ROSTER_COUNT;
-    if(!history_valid(g) || g.holder!=holder)return (HistoryReply){.status=3};
-    if(!kind)return (HistoryReply){0,g.logical,g.holder,HISTORY_ROSTER_COUNT,HISTORY_VERSION};
-    if(kind==1)return (HistoryReply){0,g.base,g.sectors,0,0};
-    if(kind>=2 && kind-2<n){
-        size_t i=(size_t)(kind-2);HistoryParticipant p=g.participants[i];
-        return (HistoryReply){0,p.target,p.task,i,0};
+
+HistoryReply history_query(HistoryGrant g, uint32_t holder, uint64_t kind) {
+    size_t n = HISTORY_ROSTER_COUNT;
+    if (!history_valid(g) || g.holder != holder)
+        return (HistoryReply){.status = 3};
+    if (!kind)
+        return (HistoryReply){0, g.logical, g.holder, HISTORY_ROSTER_COUNT, HISTORY_VERSION};
+    if (kind == 1)
+        return (HistoryReply){0, g.base, g.sectors, 0, 0};
+    if (kind >= 2 && kind - 2 < n) {
+        size_t i = (size_t)(kind - 2);
+        HistoryParticipant p = g.participants[i];
+        return (HistoryReply){0, p.target, p.task, i, 0};
     }
-    return (HistoryReply){.status=1};
+    return (HistoryReply){.status = 1};
 }
 ")))

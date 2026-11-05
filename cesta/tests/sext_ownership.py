@@ -2,6 +2,7 @@
 """Admit actual Sext plans and refuse native-C-valid loan/escape controls."""
 import argparse,hashlib,importlib,json,re,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 
 def run(command,accepted=True):
@@ -22,8 +23,8 @@ def main():
     files=[HERE/'src'/str(units[n]+'.cesta') for n in names]+list((HERE/'generated/include').glob('*.h'))
     frozen={p:p.read_bytes() for p in files};plans=[];controls=[];admission=[]
     for name in names:
-        stem=units[name];source=HERE/'src'/str(stem+'.cesta');authored=frozen[source].decode()
-        signatures=set(re.findall(r'(?m)^[^;{}\n]*\b(sext_\w+)\([^;\n]*\)\n\{',authored))
+        stem=units[name];source=HERE/'src'/str(stem+'.cesta');authored=LayoutText(frozen[source].decode())
+        signatures=set(re.findall(r'(?m)^(?![ \t])[^;{}\n(=]*\b(sext_\w+)\([^;{}]*\)\s*\{',authored))
         assert signatures,(name,'no authored function definitions')
         for cc in ('gcc','clang'):
             plain=work/(name+'-'+cc+'.c');plan=work/(name+'-'+cc+'.plan')
@@ -33,7 +34,7 @@ def main():
             assert signatures<=found,(name,'functions missing from plan',signatures-found)
             run([cc,'-std=c11','-Wall','-Wextra','-Wpedantic','-Werror','-fsyntax-only','-Igenerated/include',plain])
             plans.append(dict(unit=name,compiler=cc,functions=len(found),sha256=hashlib.sha256(plan.read_bytes()).hexdigest(),path=plan.name))
-        raw=(work/(name+'-gcc.c')).read_text()
+        raw=LayoutText((work/(name+'-gcc.c')).read_text())
         if name=='core':
             changes=[
                 ('allocator_parent_write','void sext_allocator_init(SextFrameAllocator *a, size_t quota)\n{',

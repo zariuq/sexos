@@ -15,7 +15,7 @@ regenerate:
 
 export:
 	$(CESTA) build --export-c c
-	$(CESTA) export-c -o c/src/silk_shell_models.c src/silk_shell_models.cesta --
+	$(CESTA) export-c --std=c11 -o c/src/silk_shell_models.c src/silk_shell_models.cesta -- -Igenerated/include
 	$(CESTA) export-c -o c/generated/include/silk_shell.h src/silk_shell_interface.cesta --
 
 plain:
@@ -122,6 +122,7 @@ check: check-services check-ownership check-sext check-kernel-transport check-me
 	python3 tests/document_client_transport.py --cesta "$(CESTA)"
 	python3 tests/sex_graphics_differential.py --cesta "$(CESTA)"
 	python3 tests/spindle_complete.py --cesta "$(CESTA)"
+	python3 tests/spindle_calc.py --cesta "$(CESTA)"
 	python3 tests/spindle_calc_current.py --cesta "$(CESTA)"
 	python3 tests/spindle_differential.py --cesta "$(CESTA)"
 	python3 tests/purple_scanout_differential.py --cesta "$(CESTA)"
@@ -175,6 +176,7 @@ qualify: qualify-ownership qualify-sext check-kernel-transport qualify-memory-re
 	python3 tests/document_client_transport.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/sex_graphics_differential.py --cesta "$(CESTA)" --seeds 12
 	python3 tests/spindle_complete.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
+	python3 tests/spindle_calc.py --cesta "$(CESTA)" --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/spindle_calc_current.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/spindle_differential.py --cesta "$(CESTA)" --all-variants --cases 18
 	python3 tests/purple_scanout_differential.py --cesta "$(CESTA)"

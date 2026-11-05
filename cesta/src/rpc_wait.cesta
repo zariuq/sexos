@@ -79,7 +79,12 @@
     (fn (static void) rpc_wait_transfer
       ((RpcWaitContext (* c)))
       (= (-> c owned) false))
-    (native "#define rpc_admit_run_CHECKED 1\n#define rpc_wait_run_CHECKED 1\n#define rpc_notify_run_CHECKED 1\n#define rpc_admit_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()\n#define rpc_wait_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()\n#define rpc_notify_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()\n")
+    (define rpc_admit_run_CHECKED "1")
+  (define rpc_wait_run_CHECKED "1")
+  (define rpc_notify_run_CHECKED "1")
+  (define (rpc_admit_run_CHECK_FAILURE ctx kind id expected) "sexos_fail()")
+  (define (rpc_wait_run_CHECK_FAILURE ctx kind id expected) "sexos_fail()")
+  (define (rpc_notify_run_CHECK_FAILURE ctx kind id expected) "sexos_fail()")
     (use-protocols "../interfaces/rpc_protocols.module" Protocols)
     (fn SexosRequestResult sexos_rpc_admit_wait
       ((uint64_t slot)

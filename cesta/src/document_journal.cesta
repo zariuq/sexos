@@ -8,94 +8,430 @@
   (foreign document_journal_io_write (obligation "Writes exactly block.len bytes to the named object and offset, retaining no reference."))
   (foreign document_journal_io_sync (obligation "Orders prior writes for the named object and retains no reference.")))
  (native "
-static uint32_t journal_block_le32(const DocumentJournalBlock *block,size_t offset)
-{uint32_t value=0;for(size_t i=0;i<4;i++)value|=(uint32_t)block->bytes[offset+i]<<(i*8);return value;}
-static uint64_t journal_block_le64(const DocumentJournalBlock *block,size_t offset)
-{uint64_t value=0;for(size_t i=0;i<8;i++)value|=(uint64_t)block->bytes[offset+i]<<(i*8);return value;}
-static void journal_block_put32(DocumentJournalBlock *block,size_t offset,uint32_t value)
-{for(size_t i=0;i<4;i++)block->bytes[offset+i]=(uint8_t)(value>>(i*8));}
-static void journal_block_put64(DocumentJournalBlock *block,size_t offset,uint64_t value)
-{for(size_t i=0;i<8;i++)block->bytes[offset+i]=(uint8_t)(value>>(i*8));}
-static uint64_t journal_hash_block(const DocumentJournalBlock *block,size_t len)
-{uint64_t hash=UINT64_C(0xcbf29ce484222325);for(size_t i=0;i<len;i++)hash=(hash^block->bytes[i])*UINT64_C(0x100000001b3);return hash;}
-static bool journal_receipt_equal(DocumentJournalReceipt a,DocumentJournalReceipt b)
-{return a.bank==b.bank&&a.generation==b.generation&&a.len==b.len&&a.hash==b.hash;}
-static DocumentJournalCandidate journal_decode(const DocumentJournalBlock *block,uint8_t object,uint32_t identity,uint8_t bank)
-{
- DocumentJournalCandidate result={0};if(block->len<512)return result;
- if(block->bytes[0]!='Q'||block->bytes[1]!='J'||block->bytes[2]!='0'||block->bytes[3]!='2'||block->bytes[4]!=object)return result;
- if(journal_block_le32(block,8)!=identity)return result;
- if(journal_hash_block(block,504)!=journal_block_le64(block,504))return result;
- DocumentJournalReceipt receipt={bank,journal_block_le64(block,16),journal_block_le32(block,24),journal_block_le64(block,32)};
- if(!receipt.generation||receipt.len>SEXOS_DOCUMENT_MAX)return result;
- result.present=true;result.receipt=receipt;return result;
+static uint32_t journal_block_le32(const DocumentJournalBlock *block, size_t offset) {
+    uint32_t value = 0;
+    for (size_t i = 0; i < 4; i++)
+        value |= (uint32_t)block->bytes[offset + i] << (i * 8);
+    return value;
 }
-static DocumentJournalBlock journal_header(uint8_t object,uint32_t identity,DocumentJournalReceipt receipt)
-{
- DocumentJournalBlock block={0};block.len=512;block.bytes[0]='Q';block.bytes[1]='J';block.bytes[2]='0';block.bytes[3]='2';block.bytes[4]=object;
- journal_block_put32(&block,8,identity);journal_block_put64(&block,16,receipt.generation);journal_block_put32(&block,24,(uint32_t)receipt.len);journal_block_put64(&block,32,receipt.hash);
- journal_block_put64(&block,504,journal_hash_block(&block,504));return block;
+
+static uint64_t journal_block_le64(const DocumentJournalBlock *block, size_t offset) {
+    uint64_t value = 0;
+    for (size_t i = 0; i < 8; i++)
+        value |= (uint64_t)block->bytes[offset + i] << (i * 8);
+    return value;
 }
-static DocumentJournalProgress journal_error(uint32_t error)
-{return(DocumentJournalProgress){DOCUMENT_JOURNAL_ERROR,false,{0},0,error?error:SEXOS_DOCUMENT_IO};}
-static DocumentJournalProgress journal_load_failed(DocumentJournalLoad *state,SexosDocumentPayload *output,uint32_t error)
-{state->phase=255;output->len=0;memset(output->bytes,0,sizeof output->bytes);return journal_error(error);}
-static DocumentJournalProgress journal_save_failed(DocumentJournalSave *state,uint32_t error)
-{state->phase=12;return journal_error(error);}
-static bool journal_read(uint8_t object,uint64_t offset,DocumentJournalBlock *block,uint32_t *error)
-{if(!document_journal_io_read(object,offset,block,error)){if(!*error)*error=SEXOS_DOCUMENT_IO;return false;}return true;}
-static bool journal_write(uint8_t object,uint64_t offset,const DocumentJournalBlock *block,uint32_t *error)
-{if(!document_journal_io_write(object,offset,block,error)){if(!*error)*error=SEXOS_DOCUMENT_IO;return false;}return true;}
-static bool journal_sync(uint8_t object,uint32_t *error)
-{if(!document_journal_io_sync(object,error)){if(!*error)*error=SEXOS_DOCUMENT_IO;return false;}return true;}
-static DocumentJournalCandidate journal_choose(DocumentJournalCandidate a,DocumentJournalCandidate b,bool *equal)
-{
- *equal=false;if(a.present&&b.present){if(a.receipt.generation==b.receipt.generation){*equal=true;return(DocumentJournalCandidate){0};}return a.receipt.generation>b.receipt.generation?a:b;}
- return a.present?a:b;
+
+static void journal_block_put32(DocumentJournalBlock *block, size_t offset, uint32_t value) {
+    for (size_t i = 0; i < 4; i++)
+        block->bytes[offset + i] = (uint8_t)(value >> (i * 8));
 }
-void document_journal_load_init(DocumentJournalLoad *state,uint8_t object,uint32_t identity,bool journal)
-{memset(state,0,sizeof *state);state->object=object;state->identity=identity;state->phase=journal?0:5;state->sum=UINT64_C(0xcbf29ce484222325);}
-DocumentJournalProgress document_journal_load_step(DocumentJournalLoad *state,SexosDocumentPayload *output)
-{
- DocumentJournalBlock block={0};uint32_t error=0;
- if(state->phase==0){block.len=512;if(!journal_read(state->object,(uint64_t)state->bank*DOCUMENT_JOURNAL_STRIDE,&block,&error))return journal_load_failed(state,output,error);state->candidate=journal_decode(&block,state->object,state->identity,state->bank);state->offset=0;state->sum=UINT64_C(0xcbf29ce484222325);state->phase=1;return(DocumentJournalProgress){0};}
- if(state->phase==1){
-  if(state->candidate.present&&state->offset<state->candidate.receipt.len){size_t count=state->candidate.receipt.len-state->offset;if(count>DOCUMENT_JOURNAL_IO_CHUNK)count=DOCUMENT_JOURNAL_IO_CHUNK;block.len=count;if(!journal_read(state->object,(uint64_t)state->bank*DOCUMENT_JOURNAL_STRIDE+DOCUMENT_JOURNAL_PAYLOAD+state->offset,&block,&error))return journal_load_failed(state,output,error);for(size_t i=0;i<count;i++)state->sum=(state->sum^block.bytes[i])*UINT64_C(0x100000001b3);state->offset+=count;return(DocumentJournalProgress){0};}
-  if(state->candidate.present&&state->sum==state->candidate.receipt.hash)state->valid[state->bank]=state->candidate;
-  if(!state->bank){state->bank=1;state->phase=0;}else state->phase=2;return(DocumentJournalProgress){0};
- }
- if(state->phase==2){bool equal=false;state->chosen=journal_choose(state->valid[0],state->valid[1],&equal);if(equal)return journal_load_failed(state,output,SEXOS_DOCUMENT_STALE);state->phase=state->chosen.present?3:5;return(DocumentJournalProgress){0};}
- if(state->phase==3){block.len=512;if(!journal_read(state->object,(uint64_t)state->chosen.receipt.bank*DOCUMENT_JOURNAL_STRIDE,&block,&error))return journal_load_failed(state,output,error);DocumentJournalCandidate check=journal_decode(&block,state->object,state->identity,state->chosen.receipt.bank);if(!check.present||!journal_receipt_equal(check.receipt,state->chosen.receipt))return journal_load_failed(state,output,SEXOS_DOCUMENT_IO);state->offset=0;state->sum=UINT64_C(0xcbf29ce484222325);state->phase=4;return(DocumentJournalProgress){0};}
- if(state->phase==4){
-  DocumentJournalReceipt receipt=state->chosen.receipt;if(state->offset<receipt.len){size_t count=receipt.len-state->offset;if(count>DOCUMENT_JOURNAL_IO_CHUNK)count=DOCUMENT_JOURNAL_IO_CHUNK;block.len=count;if(!journal_read(state->object,(uint64_t)receipt.bank*DOCUMENT_JOURNAL_STRIDE+DOCUMENT_JOURNAL_PAYLOAD+state->offset,&block,&error))return journal_load_failed(state,output,error);for(size_t i=0;i<count;i++){output->bytes[state->offset+i]=block.bytes[i];state->sum=(state->sum^block.bytes[i])*UINT64_C(0x100000001b3);}state->offset+=count;return(DocumentJournalProgress){0};}
-  if(state->sum!=receipt.hash)return journal_load_failed(state,output,SEXOS_DOCUMENT_IO);
-  output->len=receipt.len;for(size_t i=receipt.len;i<SEXOS_DOCUMENT_MAX;i++)output->bytes[i]=0;state->phase=255;return(DocumentJournalProgress){DOCUMENT_JOURNAL_DONE,true,receipt,receipt.len,0};
- }
- if(state->phase==5){block.len=8;if(!journal_read(state->object,0,&block,&error))return journal_load_failed(state,output,error);if(block.bytes[0]!='Q'||block.bytes[1]!='P'||block.bytes[2]!='0'||block.bytes[3]!='1')return journal_load_failed(state,output,SEXOS_DOCUMENT_INVALID);state->legacy_len=journal_block_le32(&block,4);if(state->legacy_len>SEXOS_DOCUMENT_MAX)return journal_load_failed(state,output,SEXOS_DOCUMENT_INVALID);state->offset=0;state->phase=6;return(DocumentJournalProgress){0};}
- if(state->phase==6){if(state->offset<state->legacy_len){size_t count=state->legacy_len-state->offset;if(count>DOCUMENT_JOURNAL_IO_CHUNK)count=DOCUMENT_JOURNAL_IO_CHUNK;block.len=count;if(!journal_read(state->object,16+state->offset,&block,&error))return journal_load_failed(state,output,error);for(size_t i=0;i<count;i++)output->bytes[state->offset+i]=block.bytes[i];state->offset+=count;return(DocumentJournalProgress){0};}output->len=state->legacy_len;for(size_t i=state->legacy_len;i<SEXOS_DOCUMENT_MAX;i++)output->bytes[i]=0;state->phase=255;return(DocumentJournalProgress){DOCUMENT_JOURNAL_DONE,false,{0},state->legacy_len,0};}
- return journal_error(SEXOS_DOCUMENT_STALE);
+
+static void journal_block_put64(DocumentJournalBlock *block, size_t offset, uint64_t value) {
+    for (size_t i = 0; i < 8; i++)
+        block->bytes[offset + i] = (uint8_t)(value >> (i * 8));
 }
-void document_journal_save_init(DocumentJournalSave *state,uint8_t object,uint32_t identity)
-{memset(state,0,sizeof *state);state->object=object;state->identity=identity;state->sum=UINT64_C(0xcbf29ce484222325);}
-DocumentJournalProgress document_journal_save_step(DocumentJournalSave *state,const SexosDocumentPayload *input)
-{
- DocumentJournalBlock block={0};uint32_t error=0;if(input->len>SEXOS_DOCUMENT_MAX)return journal_error(SEXOS_DOCUMENT_INVALID);
- if(state->phase==0){block.len=512;if(!journal_read(state->object,(uint64_t)state->bank*DOCUMENT_JOURNAL_STRIDE,&block,&error))return journal_save_failed(state,error);state->candidate=journal_decode(&block,state->object,state->identity,state->bank);state->offset=0;state->sum=UINT64_C(0xcbf29ce484222325);state->phase=1;return(DocumentJournalProgress){0};}
- if(state->phase==1){
-  if(state->candidate.present&&state->offset<state->candidate.receipt.len){size_t count=state->candidate.receipt.len-state->offset;if(count>DOCUMENT_JOURNAL_IO_CHUNK)count=DOCUMENT_JOURNAL_IO_CHUNK;block.len=count;if(!journal_read(state->object,(uint64_t)state->bank*DOCUMENT_JOURNAL_STRIDE+DOCUMENT_JOURNAL_PAYLOAD+state->offset,&block,&error))return journal_save_failed(state,error);for(size_t i=0;i<count;i++)state->sum=(state->sum^block.bytes[i])*UINT64_C(0x100000001b3);state->offset+=count;return(DocumentJournalProgress){0};}
-  if(state->candidate.present&&state->sum==state->candidate.receipt.hash)state->old[state->bank]=state->candidate;
-  if(!state->bank){state->bank=1;state->phase=0;return(DocumentJournalProgress){0};}
-  bool equal=false;DocumentJournalCandidate old=journal_choose(state->old[0],state->old[1],&equal);if(equal)return journal_save_failed(state,SEXOS_DOCUMENT_STALE);state->bank=old.present?(uint8_t)(1-old.receipt.bank):1;
-  uint64_t generation=old.present?old.receipt.generation+1:1;if(!generation)return journal_save_failed(state,SEXOS_DOCUMENT_STALE);state->next.present=true;state->next.receipt=(DocumentJournalReceipt){state->bank,generation,input->len,sexos_document_hash(input)};state->phase=2;return(DocumentJournalProgress){0};
- }
- if(state->phase==2){block.len=512;if(!journal_write(state->object,(uint64_t)state->bank*DOCUMENT_JOURNAL_STRIDE,&block,&error))return journal_save_failed(state,error);state->phase=3;return(DocumentJournalProgress){0};}
- if(state->phase==3){if(!journal_sync(state->object,&error))return journal_save_failed(state,error);state->offset=0;state->phase=4;return(DocumentJournalProgress){0};}
- if(state->phase==4){if(state->offset<input->len){size_t count=input->len-state->offset;if(count>DOCUMENT_JOURNAL_IO_CHUNK)count=DOCUMENT_JOURNAL_IO_CHUNK;size_t padded=(count+511)/512*512;block.len=padded;for(size_t i=0;i<count;i++)block.bytes[i]=input->bytes[state->offset+i];if(!journal_write(state->object,(uint64_t)state->bank*DOCUMENT_JOURNAL_STRIDE+DOCUMENT_JOURNAL_PAYLOAD+state->offset,&block,&error))return journal_save_failed(state,error);state->offset+=count;return(DocumentJournalProgress){0};}state->phase=5;return(DocumentJournalProgress){0};}
- if(state->phase==5){if(!journal_sync(state->object,&error))return journal_save_failed(state,error);state->offset=0;state->phase=6;return(DocumentJournalProgress){0};}
- if(state->phase==6||state->phase==10){if(state->offset<input->len){size_t count=input->len-state->offset;if(count>DOCUMENT_JOURNAL_IO_CHUNK)count=DOCUMENT_JOURNAL_IO_CHUNK;block.len=count;if(!journal_read(state->object,(uint64_t)state->bank*DOCUMENT_JOURNAL_STRIDE+DOCUMENT_JOURNAL_PAYLOAD+state->offset,&block,&error))return journal_save_failed(state,error);for(size_t i=0;i<count;i++)if(block.bytes[i]!=input->bytes[state->offset+i])return journal_save_failed(state,SEXOS_DOCUMENT_IO);state->offset+=count;return(DocumentJournalProgress){0};}if(state->phase==6)state->phase=7;else{state->phase=11;return(DocumentJournalProgress){DOCUMENT_JOURNAL_DONE,true,state->next.receipt,input->len,0};}return(DocumentJournalProgress){0};}
- if(state->phase==7){block=journal_header(state->object,state->identity,state->next.receipt);if(!journal_write(state->object,(uint64_t)state->bank*DOCUMENT_JOURNAL_STRIDE,&block,&error))return journal_save_failed(state,error);state->phase=8;return(DocumentJournalProgress){0};}
- if(state->phase==8){if(!journal_sync(state->object,&error))return journal_save_failed(state,error);state->phase=9;return(DocumentJournalProgress){0};}
- if(state->phase==9){block.len=512;if(!journal_read(state->object,(uint64_t)state->bank*DOCUMENT_JOURNAL_STRIDE,&block,&error))return journal_save_failed(state,error);DocumentJournalCandidate check=journal_decode(&block,state->object,state->identity,state->bank);if(!check.present||!journal_receipt_equal(check.receipt,state->next.receipt))return journal_save_failed(state,SEXOS_DOCUMENT_IO);state->offset=0;state->phase=10;return(DocumentJournalProgress){0};}
- return journal_error(SEXOS_DOCUMENT_STALE);
+
+static uint64_t journal_hash_block(const DocumentJournalBlock *block, size_t len) {
+    uint64_t hash = UINT64_C(0xcbf29ce484222325);
+    for (size_t i = 0; i < len; i++)
+        hash = (hash ^ block->bytes[i]) * UINT64_C(0x100000001b3);
+    return hash;
+}
+
+static bool journal_receipt_equal(DocumentJournalReceipt a, DocumentJournalReceipt b) {
+    return a.bank == b.bank && a.generation == b.generation && a.len == b.len && a.hash == b.hash;
+}
+
+static DocumentJournalCandidate journal_decode(const DocumentJournalBlock *block, uint8_t object,
+                                               uint32_t identity, uint8_t bank) {
+    DocumentJournalCandidate result = {0};
+    if (block->len < 512)
+        return result;
+    if (block->bytes[0] != 'Q' || block->bytes[1] != 'J' || block->bytes[2] != '0' ||
+        block->bytes[3] != '2' || block->bytes[4] != object)
+        return result;
+    if (journal_block_le32(block, 8) != identity)
+        return result;
+    if (journal_hash_block(block, 504) != journal_block_le64(block, 504))
+        return result;
+    DocumentJournalReceipt receipt = {bank, journal_block_le64(block, 16),
+                                      journal_block_le32(block, 24), journal_block_le64(block, 32)};
+    if (!receipt.generation || receipt.len > SEXOS_DOCUMENT_MAX)
+        return result;
+    result.present = true;
+    result.receipt = receipt;
+    return result;
+}
+
+static DocumentJournalBlock journal_header(uint8_t object, uint32_t identity,
+                                           DocumentJournalReceipt receipt) {
+    DocumentJournalBlock block = {0};
+    block.len = 512;
+    block.bytes[0] = 'Q';
+    block.bytes[1] = 'J';
+    block.bytes[2] = '0';
+    block.bytes[3] = '2';
+    block.bytes[4] = object;
+    journal_block_put32(&block, 8, identity);
+    journal_block_put64(&block, 16, receipt.generation);
+    journal_block_put32(&block, 24, (uint32_t)receipt.len);
+    journal_block_put64(&block, 32, receipt.hash);
+    journal_block_put64(&block, 504, journal_hash_block(&block, 504));
+    return block;
+}
+
+static DocumentJournalProgress journal_error(uint32_t error) {
+    return (DocumentJournalProgress){
+        DOCUMENT_JOURNAL_ERROR, false, {0}, 0, error ? error : SEXOS_DOCUMENT_IO};
+}
+
+static DocumentJournalProgress journal_load_failed(DocumentJournalLoad *state,
+                                                   SexosDocumentPayload *output, uint32_t error) {
+    state->phase = 255;
+    output->len = 0;
+    memset(output->bytes, 0, sizeof output->bytes);
+    return journal_error(error);
+}
+
+static DocumentJournalProgress journal_save_failed(DocumentJournalSave *state, uint32_t error) {
+    state->phase = 12;
+    return journal_error(error);
+}
+
+static bool journal_read(uint8_t object, uint64_t offset, DocumentJournalBlock *block,
+                         uint32_t *error) {
+    if (!document_journal_io_read(object, offset, block, error)) {
+        if (!*error)
+            *error = SEXOS_DOCUMENT_IO;
+        return false;
+    }
+    return true;
+}
+
+static bool journal_write(uint8_t object, uint64_t offset, const DocumentJournalBlock *block,
+                          uint32_t *error) {
+    if (!document_journal_io_write(object, offset, block, error)) {
+        if (!*error)
+            *error = SEXOS_DOCUMENT_IO;
+        return false;
+    }
+    return true;
+}
+
+static bool journal_sync(uint8_t object, uint32_t *error) {
+    if (!document_journal_io_sync(object, error)) {
+        if (!*error)
+            *error = SEXOS_DOCUMENT_IO;
+        return false;
+    }
+    return true;
+}
+
+static DocumentJournalCandidate journal_choose(DocumentJournalCandidate a,
+                                               DocumentJournalCandidate b, bool *equal) {
+    *equal = false;
+    if (a.present && b.present) {
+        if (a.receipt.generation == b.receipt.generation) {
+            *equal = true;
+            return (DocumentJournalCandidate){0};
+        }
+        return a.receipt.generation > b.receipt.generation ? a : b;
+    }
+    return a.present ? a : b;
+}
+
+void document_journal_load_init(DocumentJournalLoad *state, uint8_t object, uint32_t identity,
+                                bool journal) {
+    memset(state, 0, sizeof *state);
+    state->object = object;
+    state->identity = identity;
+    state->phase = journal ? 0 : 5;
+    state->sum = UINT64_C(0xcbf29ce484222325);
+}
+
+DocumentJournalProgress document_journal_load_step(DocumentJournalLoad *state,
+                                                   SexosDocumentPayload *output) {
+    DocumentJournalBlock block = {0};
+    uint32_t error = 0;
+    if (state->phase == 0) {
+        block.len = 512;
+        if (!journal_read(state->object, (uint64_t)state->bank * DOCUMENT_JOURNAL_STRIDE, &block,
+                          &error))
+            return journal_load_failed(state, output, error);
+        state->candidate = journal_decode(&block, state->object, state->identity, state->bank);
+        state->offset = 0;
+        state->sum = UINT64_C(0xcbf29ce484222325);
+        state->phase = 1;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 1) {
+        if (state->candidate.present && state->offset < state->candidate.receipt.len) {
+            size_t count = state->candidate.receipt.len - state->offset;
+            if (count > DOCUMENT_JOURNAL_IO_CHUNK)
+                count = DOCUMENT_JOURNAL_IO_CHUNK;
+            block.len = count;
+            if (!journal_read(state->object,
+                              (uint64_t)state->bank * DOCUMENT_JOURNAL_STRIDE +
+                                  DOCUMENT_JOURNAL_PAYLOAD + state->offset,
+                              &block, &error))
+                return journal_load_failed(state, output, error);
+            for (size_t i = 0; i < count; i++)
+                state->sum = (state->sum ^ block.bytes[i]) * UINT64_C(0x100000001b3);
+            state->offset += count;
+            return (DocumentJournalProgress){0};
+        }
+        if (state->candidate.present && state->sum == state->candidate.receipt.hash)
+            state->valid[state->bank] = state->candidate;
+        if (!state->bank) {
+            state->bank = 1;
+            state->phase = 0;
+        } else
+            state->phase = 2;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 2) {
+        bool equal = false;
+        state->chosen = journal_choose(state->valid[0], state->valid[1], &equal);
+        if (equal)
+            return journal_load_failed(state, output, SEXOS_DOCUMENT_STALE);
+        state->phase = state->chosen.present ? 3 : 5;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 3) {
+        block.len = 512;
+        if (!journal_read(state->object,
+                          (uint64_t)state->chosen.receipt.bank * DOCUMENT_JOURNAL_STRIDE, &block,
+                          &error))
+            return journal_load_failed(state, output, error);
+        DocumentJournalCandidate check =
+            journal_decode(&block, state->object, state->identity, state->chosen.receipt.bank);
+        if (!check.present || !journal_receipt_equal(check.receipt, state->chosen.receipt))
+            return journal_load_failed(state, output, SEXOS_DOCUMENT_IO);
+        state->offset = 0;
+        state->sum = UINT64_C(0xcbf29ce484222325);
+        state->phase = 4;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 4) {
+        DocumentJournalReceipt receipt = state->chosen.receipt;
+        if (state->offset < receipt.len) {
+            size_t count = receipt.len - state->offset;
+            if (count > DOCUMENT_JOURNAL_IO_CHUNK)
+                count = DOCUMENT_JOURNAL_IO_CHUNK;
+            block.len = count;
+            if (!journal_read(state->object,
+                              (uint64_t)receipt.bank * DOCUMENT_JOURNAL_STRIDE +
+                                  DOCUMENT_JOURNAL_PAYLOAD + state->offset,
+                              &block, &error))
+                return journal_load_failed(state, output, error);
+            for (size_t i = 0; i < count; i++) {
+                output->bytes[state->offset + i] = block.bytes[i];
+                state->sum = (state->sum ^ block.bytes[i]) * UINT64_C(0x100000001b3);
+            }
+            state->offset += count;
+            return (DocumentJournalProgress){0};
+        }
+        if (state->sum != receipt.hash)
+            return journal_load_failed(state, output, SEXOS_DOCUMENT_IO);
+        output->len = receipt.len;
+        for (size_t i = receipt.len; i < SEXOS_DOCUMENT_MAX; i++)
+            output->bytes[i] = 0;
+        state->phase = 255;
+        return (DocumentJournalProgress){DOCUMENT_JOURNAL_DONE, true, receipt, receipt.len, 0};
+    }
+    if (state->phase == 5) {
+        block.len = 8;
+        if (!journal_read(state->object, 0, &block, &error))
+            return journal_load_failed(state, output, error);
+        if (block.bytes[0] != 'Q' || block.bytes[1] != 'P' || block.bytes[2] != '0' ||
+            block.bytes[3] != '1')
+            return journal_load_failed(state, output, SEXOS_DOCUMENT_INVALID);
+        state->legacy_len = journal_block_le32(&block, 4);
+        if (state->legacy_len > SEXOS_DOCUMENT_MAX)
+            return journal_load_failed(state, output, SEXOS_DOCUMENT_INVALID);
+        state->offset = 0;
+        state->phase = 6;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 6) {
+        if (state->offset < state->legacy_len) {
+            size_t count = state->legacy_len - state->offset;
+            if (count > DOCUMENT_JOURNAL_IO_CHUNK)
+                count = DOCUMENT_JOURNAL_IO_CHUNK;
+            block.len = count;
+            if (!journal_read(state->object, 16 + state->offset, &block, &error))
+                return journal_load_failed(state, output, error);
+            for (size_t i = 0; i < count; i++)
+                output->bytes[state->offset + i] = block.bytes[i];
+            state->offset += count;
+            return (DocumentJournalProgress){0};
+        }
+        output->len = state->legacy_len;
+        for (size_t i = state->legacy_len; i < SEXOS_DOCUMENT_MAX; i++)
+            output->bytes[i] = 0;
+        state->phase = 255;
+        return (DocumentJournalProgress){DOCUMENT_JOURNAL_DONE, false, {0}, state->legacy_len, 0};
+    }
+    return journal_error(SEXOS_DOCUMENT_STALE);
+}
+
+void document_journal_save_init(DocumentJournalSave *state, uint8_t object, uint32_t identity) {
+    memset(state, 0, sizeof *state);
+    state->object = object;
+    state->identity = identity;
+    state->sum = UINT64_C(0xcbf29ce484222325);
+}
+
+DocumentJournalProgress document_journal_save_step(DocumentJournalSave *state,
+                                                   const SexosDocumentPayload *input) {
+    DocumentJournalBlock block = {0};
+    uint32_t error = 0;
+    if (input->len > SEXOS_DOCUMENT_MAX)
+        return journal_error(SEXOS_DOCUMENT_INVALID);
+    if (state->phase == 0) {
+        block.len = 512;
+        if (!journal_read(state->object, (uint64_t)state->bank * DOCUMENT_JOURNAL_STRIDE, &block,
+                          &error))
+            return journal_save_failed(state, error);
+        state->candidate = journal_decode(&block, state->object, state->identity, state->bank);
+        state->offset = 0;
+        state->sum = UINT64_C(0xcbf29ce484222325);
+        state->phase = 1;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 1) {
+        if (state->candidate.present && state->offset < state->candidate.receipt.len) {
+            size_t count = state->candidate.receipt.len - state->offset;
+            if (count > DOCUMENT_JOURNAL_IO_CHUNK)
+                count = DOCUMENT_JOURNAL_IO_CHUNK;
+            block.len = count;
+            if (!journal_read(state->object,
+                              (uint64_t)state->bank * DOCUMENT_JOURNAL_STRIDE +
+                                  DOCUMENT_JOURNAL_PAYLOAD + state->offset,
+                              &block, &error))
+                return journal_save_failed(state, error);
+            for (size_t i = 0; i < count; i++)
+                state->sum = (state->sum ^ block.bytes[i]) * UINT64_C(0x100000001b3);
+            state->offset += count;
+            return (DocumentJournalProgress){0};
+        }
+        if (state->candidate.present && state->sum == state->candidate.receipt.hash)
+            state->old[state->bank] = state->candidate;
+        if (!state->bank) {
+            state->bank = 1;
+            state->phase = 0;
+            return (DocumentJournalProgress){0};
+        }
+        bool equal = false;
+        DocumentJournalCandidate old = journal_choose(state->old[0], state->old[1], &equal);
+        if (equal)
+            return journal_save_failed(state, SEXOS_DOCUMENT_STALE);
+        state->bank = old.present ? (uint8_t)(1 - old.receipt.bank) : 1;
+        uint64_t generation = old.present ? old.receipt.generation + 1 : 1;
+        if (!generation)
+            return journal_save_failed(state, SEXOS_DOCUMENT_STALE);
+        state->next.present = true;
+        state->next.receipt = (DocumentJournalReceipt){state->bank, generation, input->len,
+                                                       sexos_document_hash(input)};
+        state->phase = 2;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 2) {
+        block.len = 512;
+        if (!journal_write(state->object, (uint64_t)state->bank * DOCUMENT_JOURNAL_STRIDE, &block,
+                           &error))
+            return journal_save_failed(state, error);
+        state->phase = 3;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 3) {
+        if (!journal_sync(state->object, &error))
+            return journal_save_failed(state, error);
+        state->offset = 0;
+        state->phase = 4;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 4) {
+        if (state->offset < input->len) {
+            size_t count = input->len - state->offset;
+            if (count > DOCUMENT_JOURNAL_IO_CHUNK)
+                count = DOCUMENT_JOURNAL_IO_CHUNK;
+            size_t padded = (count + 511) / 512 * 512;
+            block.len = padded;
+            for (size_t i = 0; i < count; i++)
+                block.bytes[i] = input->bytes[state->offset + i];
+            if (!journal_write(state->object,
+                               (uint64_t)state->bank * DOCUMENT_JOURNAL_STRIDE +
+                                   DOCUMENT_JOURNAL_PAYLOAD + state->offset,
+                               &block, &error))
+                return journal_save_failed(state, error);
+            state->offset += count;
+            return (DocumentJournalProgress){0};
+        }
+        state->phase = 5;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 5) {
+        if (!journal_sync(state->object, &error))
+            return journal_save_failed(state, error);
+        state->offset = 0;
+        state->phase = 6;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 6 || state->phase == 10) {
+        if (state->offset < input->len) {
+            size_t count = input->len - state->offset;
+            if (count > DOCUMENT_JOURNAL_IO_CHUNK)
+                count = DOCUMENT_JOURNAL_IO_CHUNK;
+            block.len = count;
+            if (!journal_read(state->object,
+                              (uint64_t)state->bank * DOCUMENT_JOURNAL_STRIDE +
+                                  DOCUMENT_JOURNAL_PAYLOAD + state->offset,
+                              &block, &error))
+                return journal_save_failed(state, error);
+            for (size_t i = 0; i < count; i++)
+                if (block.bytes[i] != input->bytes[state->offset + i])
+                    return journal_save_failed(state, SEXOS_DOCUMENT_IO);
+            state->offset += count;
+            return (DocumentJournalProgress){0};
+        }
+        if (state->phase == 6)
+            state->phase = 7;
+        else {
+            state->phase = 11;
+            return (DocumentJournalProgress){DOCUMENT_JOURNAL_DONE, true, state->next.receipt,
+                                             input->len, 0};
+        }
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 7) {
+        block = journal_header(state->object, state->identity, state->next.receipt);
+        if (!journal_write(state->object, (uint64_t)state->bank * DOCUMENT_JOURNAL_STRIDE, &block,
+                           &error))
+            return journal_save_failed(state, error);
+        state->phase = 8;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 8) {
+        if (!journal_sync(state->object, &error))
+            return journal_save_failed(state, error);
+        state->phase = 9;
+        return (DocumentJournalProgress){0};
+    }
+    if (state->phase == 9) {
+        block.len = 512;
+        if (!journal_read(state->object, (uint64_t)state->bank * DOCUMENT_JOURNAL_STRIDE, &block,
+                          &error))
+            return journal_save_failed(state, error);
+        DocumentJournalCandidate check =
+            journal_decode(&block, state->object, state->identity, state->bank);
+        if (!check.present || !journal_receipt_equal(check.receipt, state->next.receipt))
+            return journal_save_failed(state, SEXOS_DOCUMENT_IO);
+        state->offset = 0;
+        state->phase = 10;
+        return (DocumentJournalProgress){0};
+    }
+    return journal_error(SEXOS_DOCUMENT_STALE);
 }
 ")))

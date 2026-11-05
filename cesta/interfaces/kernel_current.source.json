@@ -1,9 +1,9 @@
 {
-  "pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "pin": "44053ea9b017fe89008413f7cc8a6b1a4d28d015",
   "sources": [
     {
       "path": "kernel/src/init.rs",
-      "sha256": "9559aa47d0c15e90620f43b18fb72ce4dc7683bfe4ba55413d4750906b159c58"
+      "sha256": "6df473422e40bfe024701edc2fcdf76871a5b3f52f324b90db9a9a3492aeef40"
     },
     {
       "path": "kernel/src/app_resource_state.rs",
@@ -11,7 +11,7 @@
     },
     {
       "path": "kernel/src/app_resources.rs",
-      "sha256": "599cefe3a0d1c8cd2ad0dd62e1a57253a2403956c07bd7e73413b1d5b7ba523b"
+      "sha256": "3fd4cdeb700c025e6551c97ea903f3a1ecde50b05a53e3bd0cec559be3c1fa6a"
     },
     {
       "path": "kernel/src/loader/elf.rs",
@@ -19,7 +19,7 @@
     },
     {
       "path": "crates/sex-pdx/src/app_catalog.rs",
-      "sha256": "16304bb05e22493f2e1f6a8c9c09aa1ee838a0641cca3ecea7e575312e12f3b1"
+      "sha256": "b64e70fd3e9d813b20edd479bab9c68edbd1485f0af382fdc0f0d9424a2c2f0c"
     },
     {
       "path": "crates/sex-pdx/src/app_lifecycle.rs",
@@ -27,7 +27,7 @@
     },
     {
       "path": "kernel/src/app_catalog_state.rs",
-      "sha256": "ce70741547c0920f75d378f1bff21ca385ccb6465f90b2700861f61fef234442"
+      "sha256": "c1c3c30261bb52a68a42a05ea872a0601c53ea07386c80dba2f8ffaf165006d5"
     }
   ],
   "expected_boot": {
@@ -60,7 +60,18 @@
       26,
       27,
       28,
-      29
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
     ],
     "apps": [
       9,
@@ -79,7 +90,18 @@
       26,
       27,
       28,
-      29
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
     ],
     "dormant": [
       16,
@@ -95,10 +117,21 @@
       26,
       27,
       28,
-      29
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40
     ],
     "initial": 15,
-    "routes": 156,
-    "backings": 16
+    "routes": 229,
+    "backings": 25
   }
 }

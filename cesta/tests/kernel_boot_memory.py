@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import sys
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -84,7 +85,7 @@ def main():
     caught = []
     if args.mutations:
         for name, unit, before, after in mutations:
-            path = work/(unit+'.c'); original = path.read_text()
+            path = work/(unit+'.c'); original = LayoutText(path.read_text())
             assert original.count(before) == 1, (name, 'mutation anchor')
             try:
                 path.write_text(original.replace(before, after))

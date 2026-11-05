@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
@@ -113,7 +114,7 @@ def main():
 
     mutations = []
     if args.mutations:
-        base = sources["gcc"].read_text()
+        base = LayoutText(sources["gcc"].read_text())
         changes = [
             ("control-bound", "byte <= 32", "byte <= 33"),
             ("delete-bound", "byte == 127", "byte == 126"),

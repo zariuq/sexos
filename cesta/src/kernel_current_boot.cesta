@@ -1,247 +1,548 @@
 (cesta native-c/1 compact-c/2
   (unit
-    (include "sexos_kernel.h")
+    (ownership (check-all)
+    (unchecked (cpu_clac cpu_cli cpu_cpuid cpu_fpu_state_init cpu_fxrstor cpu_fxsave cpu_hlt cpu_inb
+                cpu_inl cpu_invlpg cpu_irq_restore cpu_irq_save cpu_lidt cpu_ltr cpu_outb cpu_outl
+                cpu_outw cpu_pause cpu_rdmsr cpu_rdseed cpu_read_cr0 cpu_read_cr2 cpu_read_cr3
+                cpu_read_cr4 cpu_read_rsp cpu_stac cpu_sti cpu_sti_hlt cpu_write_cr0 cpu_write_cr4
+                cpu_wrmsr cpu_wrpkru cpu_xgetbv current_contains current_regions
+                domains_boot_current kernel_boot_pci_region kernel_current_boot_audit
+                kernel_current_catalog_publish kernel_current_catalog_valid
+                kernel_current_lifecycle_grants kernel_current_routes current_route_readback kernel_current_route_markers)
+      (obligation "Kernel code on the serialized BSP lane with interrupts masked and application processors parked. It reaches physical frames, page tables and device registers through integer-derived pointers, volatile accesses and the kernel runtime's inline assembly and do-while helpers, which the native ownership profile does not admit. It relies on the kernel owning each frame and device exclusively from BOOT; here the sealed boot graph before any task runs.")))
+  (include "sexos_kernel.h")
     (native "
-typedef struct {uint32_t id;const char *module,*name;uint8_t key,layout;bool active;} CurrentBootDomain;
-static const CurrentBootDomain current_domains[]={
-#define CURRENT_DOMAIN(p_id,p_name,p_module,p_log,p_key,p_layout,p_active) {p_id,p_module,p_log,p_key,p_layout,p_active},
+typedef struct {
+    uint32_t id;
+    const char *module, *name;
+    uint8_t key, layout;
+    bool active;
+} CurrentBootDomain;
+
+static const CurrentBootDomain current_domains[] = {
+#define CURRENT_DOMAIN(p_id, p_name, p_module, p_log, p_key, p_layout, p_active)                   \\
+    {p_id, p_module, p_log, p_key, p_layout, p_active},
     SEXOS_CURRENT_DOMAIN_ROWS(CURRENT_DOMAIN)
 #undef CURRENT_DOMAIN
 };
-void kernel_current_routes(void)
-{
-#define CURRENT_ROUTE(p_holder,p_slot,p_target,p_label) do { Domain *holder=domain_get(CURRENT_PD_##p_holder); Domain *target=domain_get(CURRENT_PD_##p_target); if (!holder || !target || !cap_set(holder,p_slot,(Cap){.kind=CAP_DOMAIN,.target=target->id})) kernel_halt(\"current ring grant failed\"); } while (0);
+
+void kernel_current_routes(void) {
+#define CURRENT_ROUTE(p_holder, p_slot, p_target, p_label)                                         \\
+    do {                                                                                           \\
+        Domain *holder = domain_get(CURRENT_PD_##p_holder);                                        \\
+        Domain *target = domain_get(CURRENT_PD_##p_target);                                        \\
+        if (!holder || !target ||                                                                  \\
+            !cap_set(holder, p_slot, (Cap){.kind = CAP_DOMAIN, .target = target->id}))             \\
+            kernel_halt(\"current ring grant failed\");                                              \\
+    } while (0);
     SEXOS_CURRENT_ROUTE_ROWS(CURRENT_ROUTE)
 #undef CURRENT_ROUTE
-    Domain *input=domain_get(CURRENT_PD_sexinput);
-    if (!input || !cap_set(input,3,(Cap){.kind=CAP_INPUT_RING})) kernel_halt(\"current input grant failed\");
+    Domain *input = domain_get(CURRENT_PD_sexinput);
+    if (!input || !cap_set(input, 3, (Cap){.kind = CAP_INPUT_RING}))
+        kernel_halt(\"current input grant failed\");
 }
-void kernel_current_lifecycle_grants(void)
-{
-    const uint32_t services[]={CURRENT_PD_silk_shell,CURRENT_PD_sexdisplay,CURRENT_PD_sexfiles,CURRENT_PD_sexnet,CURRENT_PD_sexbell};
-    Domain *pager=domain_get(CURRENT_PD_sext),*shell=domain_get(CURRENT_PD_silk_shell);
-    if (!pager || !shell) kernel_halt(\"app custody subjects missing\");
-#define CURRENT_APP(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) do {      KernelAppPrivate *app=kernel_app_get(CURRENT_PD_##p_target); Domain *subject=domain_get(CURRENT_PD_##p_target);      if (!app || !subject || !app->captured) kernel_halt(\"app manifest missing\");      app->pager=pager->id;app->coordinator=shell->id;      for (unsigned role=0;role<5;++role) { Domain *holder=domain_get(services[role]);          AppLifecycleGrant g={app->target,app->task,services[role],APP_PRIVATE_QUERY|APP_PRIVATE_ACK,(uint8_t)(1u<<role)};          if (!holder || !cap_set(holder,p_lifecycle,(Cap){.kind=CAP_APP_LIFECYCLE,.lifecycle=g})) kernel_halt(\"service custody grant failed\"); }      AppLifecycleGrant g={app->target,app->task,pager->id,APP_PRIVATE_QUERY|APP_PRIVATE_RETIRE,0};      if (!cap_set(pager,p_lifecycle,(Cap){.kind=CAP_APP_LIFECYCLE,.lifecycle=g})) kernel_halt(\"pager custody grant failed\");      g=(AppLifecycleGrant){app->target,app->task,app->target,APP_PRIVATE_QUERY,0};      if (!cap_set(subject,48,(Cap){.kind=CAP_APP_LIFECYCLE,.lifecycle=g})) kernel_halt(\"self catalog grant failed\");      if (p_ordinal) { KernelAppPrivate *old=kernel_app_get(p_predecessor);          if (!old) kernel_halt(\"activation predecessor missing\");          AppActivationGrant a={shell->id,p_logical,p_ordinal+1,p_predecessor,old->task,app->target,app->task};          if (!cap_set(shell,p_activation,(Cap){.kind=CAP_APP_ACTIVATION,.activation=a})) kernel_halt(\"activation grant failed\"); }      app->ready=true; } while (0);
+
+void kernel_current_lifecycle_grants(void) {
+    const uint32_t services[] = {CURRENT_PD_silk_shell, CURRENT_PD_sexdisplay, CURRENT_PD_sexfiles,
+                                 CURRENT_PD_sexnet, CURRENT_PD_sexbell};
+    Domain *pager = domain_get(CURRENT_PD_sext), *shell = domain_get(CURRENT_PD_silk_shell);
+    if (!pager || !shell)
+        kernel_halt(\"app custody subjects missing\");
+#define CURRENT_APP(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,         \\
+                    p_activation, p_predecessor, p_logical, p_route)                               \\
+    do {                                                                                           \\
+        KernelAppPrivate *app = kernel_app_get(CURRENT_PD_##p_target);                             \\
+        Domain *subject = domain_get(CURRENT_PD_##p_target);                                       \\
+        if (!app || !subject || !app->captured)                                                    \\
+            kernel_halt(\"app manifest missing\");                                                   \\
+        app->pager = pager->id;                                                                    \\
+        app->coordinator = shell->id;                                                              \\
+        for (unsigned role = 0; role < 5; ++role) {                                                \\
+            Domain *holder = domain_get(services[role]);                                           \\
+            AppLifecycleGrant g = {app->target, app->task, services[role],                         \\
+                                   APP_PRIVATE_QUERY | APP_PRIVATE_ACK, (uint8_t)(1u << role)};    \\
+            if (!holder ||                                                                         \\
+                !cap_set(holder, p_lifecycle, (Cap){.kind = CAP_APP_LIFECYCLE, .lifecycle = g}))   \\
+                kernel_halt(\"service custody grant failed\");                                       \\
+        }                                                                                          \\
+        AppLifecycleGrant g = {app->target, app->task, pager->id,                                  \\
+                               APP_PRIVATE_QUERY | APP_PRIVATE_RETIRE, 0};                         \\
+        if (!cap_set(pager, p_lifecycle, (Cap){.kind = CAP_APP_LIFECYCLE, .lifecycle = g}))        \\
+            kernel_halt(\"pager custody grant failed\");                                             \\
+        g = (AppLifecycleGrant){app->target, app->task, app->target, APP_PRIVATE_QUERY, 0};        \\
+        if (!cap_set(subject, 48, (Cap){.kind = CAP_APP_LIFECYCLE, .lifecycle = g}))               \\
+            kernel_halt(\"self catalog grant failed\");                                              \\
+        if (p_ordinal) {                                                                           \\
+            KernelAppPrivate *old = kernel_app_get(p_predecessor);                                 \\
+            if (!old)                                                                              \\
+                kernel_halt(\"activation predecessor missing\");                                     \\
+            AppActivationGrant a = {shell->id, p_logical,   p_ordinal + 1, p_predecessor,          \\
+                                    old->task, app->target, app->task};                            \\
+            if (!cap_set(shell, p_activation, (Cap){.kind = CAP_APP_ACTIVATION, .activation = a})) \\
+                kernel_halt(\"activation grant failed\");                                            \\
+        }                                                                                          \\
+        app->ready = true;                                                                         \\
+    } while (0);
     SEXOS_CURRENT_APP_ROWS(CURRENT_APP)
 #undef CURRENT_APP
-    Domain *linen=domain_get(CURRENT_PD_linen);
-#define SPINDLE_OBSERVER(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) do { if(p_logical==CURRENT_PD_spindle){ KernelAppPrivate *app=kernel_app_get(CURRENT_PD_##p_target); if(!linen || !app)kernel_halt(\"observer subject missing\"); AppLifecycleGrant g={app->target,app->task,linen->id,APP_PRIVATE_QUERY,0}; if(!cap_set(linen,p_lifecycle,(Cap){.kind=CAP_APP_LIFECYCLE,.lifecycle=g}))kernel_halt(\"observer grant failed\"); } }while(0);
+    Domain *linen = domain_get(CURRENT_PD_linen);
+#define SPINDLE_OBSERVER(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,    \\
+                         p_activation, p_predecessor, p_logical, p_route)                          \\
+    do {                                                                                           \\
+        if (p_logical == CURRENT_PD_spindle) {                                                     \\
+            KernelAppPrivate *app = kernel_app_get(CURRENT_PD_##p_target);                         \\
+            if (!linen || !app)                                                                    \\
+                kernel_halt(\"observer subject missing\");                                           \\
+            AppLifecycleGrant g = {app->target, app->task, linen->id, APP_PRIVATE_QUERY, 0};       \\
+            if (!cap_set(linen, p_lifecycle, (Cap){.kind = CAP_APP_LIFECYCLE, .lifecycle = g}))    \\
+                kernel_halt(\"observer grant failed\");                                              \\
+        }                                                                                          \\
+    } while (0);
     SEXOS_CURRENT_APP_ROWS(SPINDLE_OBSERVER)
 #undef SPINDLE_OBSERVER
 }
-static bool current_contains(const char *path,const char *name)
-{
-    for (size_t i=0;path[i];++i) {size_t j=0;while(name[j] && path[i+j]==name[j])++j;if(!name[j])return true;}
+
+static bool current_contains(const char *path, const char *name) {
+    for (size_t i = 0; path[i]; ++i) {
+        size_t j = 0;
+        while (name[j] && path[i + j] == name[j])
+            ++j;
+        if (!name[j])
+            return true;
+    }
     return !name[0];
 }
-static void current_regions(void)
-{
-    if (!boot_region_dma(CURRENT_PD_sexusb,32,1,256*1024) ||
-        !boot_region_dma(CURRENT_PD_sexnet,32,2,256*1024) ||
-        !boot_region_dma(CURRENT_PD_sexdrive,32,3,512*1024) ||
-        !boot_region_pair(CURRENT_PD_sexfiles,CURRENT_PD_sexdrive,17,17,4,4096,true) ||
-        !boot_region_pair(CURRENT_PD_sexdrive,CURRENT_PD_sexdisplay,33,33,5,3*1024*1024,false) ||
-        !boot_region_pair(CURRENT_PD_silk_shell,CURRENT_PD_sexdisplay,96,96,9,4096,false) ||
-        !boot_region_pair(CURRENT_PD_sexdisplay,CURRENT_PD_silk_shell,97,97,10,4096,false))
+
+static void current_regions(void) {
+    if (!boot_region_dma(CURRENT_PD_sexusb, 32, 1, 256 * 1024) ||
+        !boot_region_dma(CURRENT_PD_sexnet, 32, 2, 256 * 1024) ||
+        !boot_region_dma(CURRENT_PD_sexdrive, 32, 3, 512 * 1024) ||
+        !boot_region_pair(CURRENT_PD_sexfiles, CURRENT_PD_sexdrive, 17, 17, 4, 4096, true) ||
+        !boot_region_pair(CURRENT_PD_sexdrive, CURRENT_PD_sexdisplay, 33, 33, 5, 3 * 1024 * 1024,
+                          false) ||
+        !boot_region_pair(CURRENT_PD_silk_shell, CURRENT_PD_sexdisplay, 96, 96, 9, 4096, false) ||
+        !boot_region_pair(CURRENT_PD_sexdisplay, CURRENT_PD_silk_shell, 97, 97, 10, 4096, false))
         kernel_halt(\"current memory genesis failed\");
-    size_t document=0;
-#define DOCUMENT_REGION(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) do { if(p_logical==CURRENT_PD_quil) { uint32_t region=document<3?6+(uint32_t)document:0x2000+(uint32_t)(document-3); if(!boot_region_pair(CURRENT_PD_sexfiles,CURRENT_PD_##p_target,64+document,64,region,16*1024,false))kernel_halt(\"document memory genesis failed\"); ++document; } } while(0);
+    size_t document = 0;
+#define DOCUMENT_REGION(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,     \\
+                        p_activation, p_predecessor, p_logical, p_route)                           \\
+    do {                                                                                           \\
+        if (p_logical == CURRENT_PD_quil) {                                                        \\
+            uint32_t region =                                                                      \\
+                document < 3 ? 6 + (uint32_t)document : 0x2000 + (uint32_t)(document - 3);         \\
+            if (!boot_region_pair(CURRENT_PD_sexfiles, CURRENT_PD_##p_target, 64 + document, 64,   \\
+                                  region, 16 * 1024, false))                                       \\
+                kernel_halt(\"document memory genesis failed\");                                     \\
+            ++document;                                                                            \\
+        }                                                                                          \\
+    } while (0);
     SEXOS_CURRENT_APP_ROWS(DOCUMENT_REGION)
 #undef DOCUMENT_REGION
 }
-static bool decode_bar(uint32_t low,uint32_t high,uint32_t mask_low,uint32_t mask_high,uint64_t *base,uint64_t *length)
-{
-    if (low&1) return false;
-    uint32_t kind=(low>>1)&3;
-    if (!kind) {uint32_t inverted=~(mask_low&~15u);if(inverted==UINT32_MAX)return false;*base=low&~15u;*length=(uint64_t)(inverted+1u);}
-    else if (kind==2) {uint64_t mask=((uint64_t)mask_high<<32)|(mask_low&~15u);if(mask==0)return false;*base=((uint64_t)high<<32)|(low&~15u);*length=(~mask)+1;}
-    else return false;
-    return *base && !(*base%4096) && *length>=4096 && !(*length&(*length-1)) &&
-        !(*base%*length) && *base<REGION_PHYSICAL_END && *length<=REGION_PHYSICAL_END-*base;
+
+static bool decode_bar(uint32_t low, uint32_t high, uint32_t mask_low, uint32_t mask_high,
+                       uint64_t *base, uint64_t *length) {
+    if (low & 1)
+        return false;
+    uint32_t kind = (low >> 1) & 3;
+    if (!kind) {
+        uint32_t inverted = ~(mask_low & ~15u);
+        if (inverted == UINT32_MAX)
+            return false;
+        *base = low & ~15u;
+        *length = (uint64_t)(inverted + 1u);
+    } else if (kind == 2) {
+        uint64_t mask = ((uint64_t)mask_high << 32) | (mask_low & ~15u);
+        if (mask == 0)
+            return false;
+        *base = ((uint64_t)high << 32) | (low & ~15u);
+        *length = (~mask) + 1;
+    } else
+        return false;
+    return *base && !(*base % 4096) && *length >= 4096 && !(*length & (*length - 1)) &&
+           !(*base % *length) && *base < REGION_PHYSICAL_END &&
+           *length <= REGION_PHYSICAL_END - *base;
 }
-bool kernel_boot_pci_region(Domain *d,uint64_t slot,const PciFunction *f,MemoryRegionCapability *out)
-{
-    if (kernel.genesis_sealed || !d || !slot || slot>=KERNEL_CAP_SLOTS || cap_get(d,slot)) return false;
-    if (slot==19 && !(f->vendor_id==0x8086 && (f->device_id==0x100e || f->device_id==0x10d3))) return false;
-    uint32_t low=pci_read(f->bus,f->dev,f->func,0x10),kind=(low>>1)&3;
-    if ((low&1) || (kind!=0 && kind!=2)) return false;
-    bool wide=kind==2;uint32_t high=wide ? pci_read(f->bus,f->dev,f->func,0x14) : 0;
-    uint32_t command=pci_read(f->bus,f->dev,f->func,4)&0xffff;
-    pci_write(f->bus,f->dev,f->func,4,command&~7u);
-    pci_write(f->bus,f->dev,f->func,0x10,UINT32_MAX);
-    if(wide)pci_write(f->bus,f->dev,f->func,0x14,UINT32_MAX);
-    uint32_t ml=pci_read(f->bus,f->dev,f->func,0x10),mh=wide ? pci_read(f->bus,f->dev,f->func,0x14) : 0;
-    pci_write(f->bus,f->dev,f->func,0x10,low);if(wide)pci_write(f->bus,f->dev,f->func,0x14,high);
-    pci_write(f->bus,f->dev,f->func,4,command);
-    uint64_t physical=0,length=0;
-    if(!decode_bar(low,high,ml,mh,&physical,&length) || (slot==19 && length<0x5408))return false;
-    if(length>65536)length=65536;
-    uint64_t va=va_alloc(length);if(va==NO_ADDRESS)return false;
-    for(uint64_t off=0;off<length;off+=4096)
-        if(!map_page(va+off,physical+off,PTE_USER|PTE_WRITABLE|PTE_NO_EXECUTE|PTE_NO_CACHE|PTE_WRITE_THROUGH,d->key))return false;
-    MemoryRegionGrant g={.region_id=0x10000+d->id*1024+(uint32_t)slot,.virtual_base=va,.length=length,.rights=7};
-    *out=(MemoryRegionCapability){true,g};
-    return sexos_region_info(out).error==REGION_OK;
+
+bool kernel_boot_pci_region(Domain *d, uint64_t slot, const PciFunction *f,
+                            MemoryRegionCapability *out) {
+    if (kernel.genesis_sealed || !d || !slot || slot >= KERNEL_CAP_SLOTS || cap_get(d, slot))
+        return false;
+    if (slot == 19 &&
+        !(f->vendor_id == 0x8086 && (f->device_id == 0x100e || f->device_id == 0x10d3)))
+        return false;
+    uint32_t low = pci_read(f->bus, f->dev, f->func, 0x10), kind = (low >> 1) & 3;
+    if ((low & 1) || (kind != 0 && kind != 2))
+        return false;
+    bool wide = kind == 2;
+    uint32_t high = wide ? pci_read(f->bus, f->dev, f->func, 0x14) : 0;
+    uint32_t command = pci_read(f->bus, f->dev, f->func, 4) & 0xffff;
+    pci_write(f->bus, f->dev, f->func, 4, command & ~7u);
+    pci_write(f->bus, f->dev, f->func, 0x10, UINT32_MAX);
+    if (wide)
+        pci_write(f->bus, f->dev, f->func, 0x14, UINT32_MAX);
+    uint32_t ml = pci_read(f->bus, f->dev, f->func, 0x10),
+             mh = wide ? pci_read(f->bus, f->dev, f->func, 0x14) : 0;
+    pci_write(f->bus, f->dev, f->func, 0x10, low);
+    if (wide)
+        pci_write(f->bus, f->dev, f->func, 0x14, high);
+    pci_write(f->bus, f->dev, f->func, 4, command);
+    uint64_t physical = 0, length = 0;
+    if (!decode_bar(low, high, ml, mh, &physical, &length) || (slot == 19 && length < 0x5408))
+        return false;
+    if (length > 65536)
+        length = 65536;
+    uint64_t va = va_alloc(length);
+    if (va == NO_ADDRESS)
+        return false;
+    for (uint64_t off = 0; off < length; off += 4096)
+        if (!map_page(va + off, physical + off,
+                      PTE_USER | PTE_WRITABLE | PTE_NO_EXECUTE | PTE_NO_CACHE | PTE_WRITE_THROUGH,
+                      d->key))
+            return false;
+    MemoryRegionGrant g = {.region_id = 0x10000 + d->id * 1024 + (uint32_t)slot,
+                           .virtual_base = va,
+                           .length = length,
+                           .rights = 7};
+    *out = (MemoryRegionCapability){true, g};
+    return sexos_region_info(out).error == REGION_OK;
 }
-void domains_boot_current(void)
-{
-    kernel_boot_display_lease();kernel_apps_plan();
-    const LimineModuleResponse *modules=limine_module_request.response;
-    if(!modules)kernel_halt(\"current modules missing\");
-    for(size_t i=0;i<sizeof current_domains/sizeof *current_domains;++i) {
-        const CurrentBootDomain *g=&current_domains[i];const LimineFile *image=NULL;
-        for(uint64_t j=0;j<modules->module_count;++j) if(current_contains(modules->modules[j]->path,g->module)){image=modules->modules[j];break;}
-        if(!image || domain_spawn_at(g->id,g->layout,g->key,g->name,image)!=g->id)kernel_halt(\"current image construction failed\");
-        if(g->id==CURRENT_PD_sexdisplay)kernel.display_pd=g->id;
-        if(g->id==CURRENT_PD_silk_shell)kernel.shell_pd=g->id;
-        if(g->id==CURRENT_PD_sexinput)kernel.input_pd=g->id;
-        klog(\"[bootgraph.pd.spawn.ok] pd=%s id=%u pkey=%u\\n\",g->name,g->id,g->key);
+
+void domains_boot_current(void) {
+    kernel_boot_display_lease();
+    kernel_apps_plan();
+    const LimineModuleResponse *modules = limine_module_request.response;
+    if (!modules)
+        kernel_halt(\"current modules missing\");
+    for (size_t i = 0; i < sizeof current_domains / sizeof *current_domains; ++i) {
+        const CurrentBootDomain *g = &current_domains[i];
+        const LimineFile *image = NULL;
+        for (uint64_t j = 0; j < modules->module_count; ++j)
+            if (current_contains(modules->modules[j]->path, g->module)) {
+                image = modules->modules[j];
+                break;
+            }
+        if (!image || domain_spawn_at(g->id, g->layout, g->key, g->name, image) != g->id)
+            kernel_halt(\"current image construction failed\");
+        if (g->id == CURRENT_PD_sexdisplay)
+            kernel.display_pd = g->id;
+        if (g->id == CURRENT_PD_silk_shell)
+            kernel.shell_pd = g->id;
+        if (g->id == CURRENT_PD_sexinput)
+            kernel.input_pd = g->id;
+        klog(\"[bootgraph.pd.spawn.ok] pd=%s id=%u pkey=%u\\n\", g->name, g->id, g->key);
     }
-    Domain *display=domain_get(kernel.display_pd);
-    if(kernel.display_lease_ready){display->init_arg=kernel.display_lease;display->init_arg_ready=true;kernel.display_lease_ready=false;}
-    kernel_current_routes();kernel_current_lifecycle_grants();kernel_history_boot();kernel_apps_workspaces_boot();
-#define RESERVE_SUCCESSOR(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) do { if(p_ordinal && !kernel_app_reserve_successor(p_predecessor,CURRENT_PD_##p_target))kernel_halt(\"current successor reservation failed\"); } while(0);
+    Domain *display = domain_get(kernel.display_pd);
+    if (kernel.display_lease_ready) {
+        display->init_arg = kernel.display_lease;
+        display->init_arg_ready = true;
+        kernel.display_lease_ready = false;
+    }
+    kernel_current_routes();
+    kernel_current_route_markers();
+    kernel_current_lifecycle_grants();
+    kernel_history_boot();
+    kernel_apps_workspaces_boot();
+#define RESERVE_SUCCESSOR(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,   \\
+                          p_activation, p_predecessor, p_logical, p_route)                         \\
+    do {                                                                                           \\
+        if (p_ordinal && !kernel_app_reserve_successor(p_predecessor, CURRENT_PD_##p_target))      \\
+            kernel_halt(\"current successor reservation failed\");                                   \\
+    } while (0);
     SEXOS_CURRENT_APP_ROWS(RESERVE_SUCCESSOR)
 #undef RESERVE_SUCCESSOR
-    current_regions();kernel_paging_boot();kernel_sources_boot();kernel_pci_boot();kernel_boot_devices();kernel_boot_framebuffer();
+    current_regions();
+    kernel_paging_boot();
+    kernel_sources_boot();
+    kernel_pci_boot();
+    kernel_boot_devices();
+    kernel_boot_framebuffer();
     kernel_current_catalog_publish();
     /* The graph is sealed before any task becomes runnable. */
-    kernel.genesis_sealed=true;
-    klog(\"[boot.memory.authority.sealed] runtime_alloc=0 runtime_map=capability_leaf runtime_mint=0\\n\");
-    for(size_t i=0;i<sizeof current_domains/sizeof *current_domains;++i)if(current_domains[i].active)run_push(current_domains[i].id);
-    klog(\"[boot.current.constructed] domains=%u apps=%u dormant=%u admitted=%u\\n\",KERNEL_CURRENT_DOMAINS,KERNEL_CURRENT_APPS,KERNEL_CURRENT_DORMANT,kernel.run_count);
+    kernel.genesis_sealed = true;
+    klog(
+        \"[boot.memory.authority.sealed] runtime_alloc=0 runtime_map=capability_leaf runtime_mint=0\\n\");
+    for (size_t i = 0; i < sizeof current_domains / sizeof *current_domains; ++i)
+        if (current_domains[i].active)
+            run_push(current_domains[i].id);
+    klog(\"[boot.current.constructed] domains=%u apps=%u dormant=%u admitted=%u\\n\",
+         KERNEL_CURRENT_DOMAINS, KERNEL_CURRENT_APPS, KERNEL_CURRENT_DORMANT, kernel.run_count);
     klog(\"init: Ready for Scheduler.\\n\");
 }
-typedef struct {uint32_t target,ordinal;uint64_t surface,shell_surface,lifecycle,close,activation;uint32_t predecessor,logical;uint64_t route;} CurrentAppRow;
-static const CurrentAppRow current_apps[]={
-#define APP_AUDIT_ROW(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) {CURRENT_PD_##p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route},
+
+typedef struct {
+    uint32_t target, ordinal;
+    uint64_t surface, shell_surface, lifecycle, close, activation;
+    uint32_t predecessor, logical;
+    uint64_t route;
+} CurrentAppRow;
+
+static const CurrentAppRow current_apps[] = {
+#define APP_AUDIT_ROW(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,       \\
+                      p_activation, p_predecessor, p_logical, p_route)                             \\
+    {CURRENT_PD_##p_target, p_ordinal,     p_surface, p_shell_surface, p_lifecycle, p_close,       \\
+     p_activation,          p_predecessor, p_logical, p_route},
     SEXOS_CURRENT_APP_ROWS(APP_AUDIT_ROW)
 #undef APP_AUDIT_ROW
 };
-bool kernel_current_catalog_valid(void)
-{
-    if(kernel.scheduler_running || kernel.current || kernel.app_count!=KERNEL_CURRENT_APPS)return false;
-    Domain *shell=domain_get(CURRENT_PD_silk_shell);if(!shell)return false;
-    for(size_t i=0;i<KERNEL_CURRENT_APPS;++i) {
-        CurrentAppRow row=current_apps[i];KernelAppPrivate *a=kernel_app_get(row.target);Domain *d=domain_get(row.target);
-        if(!a || !d || !a->ready || !a->captured || !a->image.count || a->target!=d->id || a->task!=d->task_id ||
-            a->surface!=row.surface || a->identity.logical_app!=row.logical || a->identity.number!=row.ordinal+1 ||
-            a->predecessor!=row.predecessor || a->coordinator!=shell->id || a->dormant!=(row.ordinal!=0) || a->retired ||
-            d->task_state!=(row.ordinal?TASK_DORMANT:TASK_READY))return false;
-        uint64_t slots[]={row.lifecycle,row.close,row.route,row.activation};
-        for(size_t n=0;n<4;++n) {
-            if((n<3 || row.ordinal) && (!slots[n] || slots[n]>=KERNEL_CAP_SLOTS))return false;
-            for(size_t j=0;j<i;++j) {
-                CurrentAppRow old=current_apps[j];
-                if(slots[n] && (slots[n]==old.lifecycle || slots[n]==old.close || slots[n]==old.route || slots[n]==old.activation))return false;
+
+/* Reads back one BOOT service route and returns its holder's task; a missing
+ * or different grant stops BOOT. */
+static uint32_t current_route_readback(uint32_t target, uint64_t slot, uint32_t service) {
+    Domain *d = domain_get(target);
+    const Cap *cap = d ? cap_get(d, slot) : 0;
+    if (!d || !d->task_id || !cap || cap->kind != CAP_DOMAIN || cap->target != service)
+        kernel_halt(\"current service route readback\");
+    return d->task_id;
+}
+
+void kernel_current_route_markers(void) {
+    for (size_t i = 0; i < KERNEL_CURRENT_APPS; ++i) {
+        CurrentAppRow row = current_apps[i];
+        if (row.logical != CURRENT_PD_kaleidoscope || !row.ordinal)
+            continue;
+        const uint64_t slots[2] = {18, 12};
+        const uint32_t services[2] = {CURRENT_PD_sexnet, CURRENT_PD_sexbell};
+        for (size_t n = 0; n < 2; ++n) {
+            uint32_t task = current_route_readback(row.target, slots[n], services[n]);
+            klog(
+                \"[boot.browser.service.route] target=%u task=%u slot=%llu service=%u checked=1 readback=1 runtime_mint=0\\n\",
+                row.target, task, (unsigned long long)slots[n], services[n]);
+        }
+    }
+    for (size_t i = 0; i < KERNEL_CURRENT_APPS; ++i) {
+        CurrentAppRow row = current_apps[i];
+        if (row.logical != CURRENT_PD_spindle)
+            continue;
+        uint32_t task = current_route_readback(row.target, 18, CURRENT_PD_sexnet);
+        klog(
+            \"[boot.spindle.net.route] target=%u task=%u slot=18 service=%u fixed_peer=1 nic_metadata=0 runtime_mint=0\\n\",
+            row.target, task, CURRENT_PD_sexnet);
+    }
+}
+
+bool kernel_current_catalog_valid(void) {
+    if (kernel.scheduler_running || kernel.current || kernel.app_count != KERNEL_CURRENT_APPS)
+        return false;
+    Domain *shell = domain_get(CURRENT_PD_silk_shell);
+    if (!shell)
+        return false;
+    for (size_t i = 0; i < KERNEL_CURRENT_APPS; ++i) {
+        CurrentAppRow row = current_apps[i];
+        KernelAppPrivate *a = kernel_app_get(row.target);
+        Domain *d = domain_get(row.target);
+        if (!a || !d || !a->ready || !a->captured || !a->image.count || a->target != d->id ||
+            a->task != d->task_id || a->surface != row.surface ||
+            a->identity.logical_app != row.logical || a->identity.number != row.ordinal + 1 ||
+            a->predecessor != row.predecessor || a->coordinator != shell->id ||
+            a->dormant != (row.ordinal != 0) || a->retired ||
+            d->task_state != (row.ordinal ? TASK_DORMANT : TASK_READY))
+            return false;
+        uint64_t slots[] = {row.lifecycle, row.close, row.route, row.activation};
+        for (size_t n = 0; n < 4; ++n) {
+            if ((n < 3 || row.ordinal) && (!slots[n] || slots[n] >= KERNEL_CAP_SLOTS))
+                return false;
+            for (size_t j = 0; j < i; ++j) {
+                CurrentAppRow old = current_apps[j];
+                if (slots[n] && (slots[n] == old.lifecycle || slots[n] == old.close ||
+                                 slots[n] == old.route || slots[n] == old.activation))
+                    return false;
             }
         }
-        if(row.lifecycle==row.close || row.lifecycle==row.route ||
-            (row.activation && (row.activation==row.lifecycle || row.activation==row.close || row.activation==row.route)))return false;
-        if((row.ordinal==0)!=(row.activation==0))return false;
-        size_t earlier=0;for(size_t j=0;j<i;++j) {
-            CurrentAppRow old=current_apps[j];if(old.target==row.target || old.surface==row.surface)return false;
-            if(old.logical==row.logical)++earlier;
+        if (row.lifecycle == row.close || row.lifecycle == row.route ||
+            (row.activation && (row.activation == row.lifecycle || row.activation == row.close ||
+                                row.activation == row.route)))
+            return false;
+        if ((row.ordinal == 0) != (row.activation == 0))
+            return false;
+        size_t earlier = 0;
+        for (size_t j = 0; j < i; ++j) {
+            CurrentAppRow old = current_apps[j];
+            if (old.target == row.target || old.surface == row.surface)
+                return false;
+            if (old.logical == row.logical)
+                ++earlier;
         }
-        if(!row.target || row.target==shell->id || !row.surface || row.ordinal!=earlier)return false;
-        const Cap *life=cap_get(shell,row.lifecycle),*own=cap_get(d,48),*close=cap_get(shell,row.close),*route=cap_get(shell,row.route);
-        if(!life || life->kind!=CAP_APP_LIFECYCLE || !own || own->kind!=CAP_APP_LIFECYCLE ||
-            !close || close->kind!=CAP_DOMAIN || close->target!=row.target || !route || route->kind!=CAP_DOMAIN || route->target!=row.target)return false;
-        AppLifecycleGrant l=life->lifecycle,o=own->lifecycle;
-        if(l.target_pd!=row.target || l.task_id!=d->task_id || l.holder_pd!=shell->id || l.rights!=(APP_PRIVATE_QUERY|APP_PRIVATE_ACK) || l.ack_bit!=1 ||
-            o.target_pd!=row.target || o.task_id!=d->task_id || o.holder_pd!=d->id || o.rights!=APP_PRIVATE_QUERY || o.ack_bit)return false;
-        if(row.ordinal) {
-            const Cap *activation=cap_get(shell,row.activation);KernelAppPrivate *old=kernel_app_get(row.predecessor);
-            if(!old || !activation || activation->kind!=CAP_APP_ACTIVATION ||
-                app_activation_authorize(activation->activation,shell->id,old->target,old->task,a->target,a->task,old->identity,a->identity))return false;
-        } else if(row.predecessor || row.target!=row.logical)return false;
+        if (!row.target || row.target == shell->id || !row.surface || row.ordinal != earlier)
+            return false;
+        const Cap *life = cap_get(shell, row.lifecycle), *own = cap_get(d, 48),
+                  *close = cap_get(shell, row.close), *route = cap_get(shell, row.route);
+        if (!life || life->kind != CAP_APP_LIFECYCLE || !own || own->kind != CAP_APP_LIFECYCLE ||
+            !close || close->kind != CAP_DOMAIN || close->target != row.target || !route ||
+            route->kind != CAP_DOMAIN || route->target != row.target)
+            return false;
+        AppLifecycleGrant l = life->lifecycle, o = own->lifecycle;
+        if (l.target_pd != row.target || l.task_id != d->task_id || l.holder_pd != shell->id ||
+            l.rights != (APP_PRIVATE_QUERY | APP_PRIVATE_ACK) || l.ack_bit != 1 ||
+            o.target_pd != row.target || o.task_id != d->task_id || o.holder_pd != d->id ||
+            o.rights != APP_PRIVATE_QUERY || o.ack_bit)
+            return false;
+        if (row.ordinal) {
+            const Cap *activation = cap_get(shell, row.activation);
+            KernelAppPrivate *old = kernel_app_get(row.predecessor);
+            if (!old || !activation || activation->kind != CAP_APP_ACTIVATION ||
+                app_activation_authorize(activation->activation, shell->id, old->target, old->task,
+                                         a->target, a->task, old->identity, a->identity))
+                return false;
+        } else if (row.predecessor || row.target != row.logical)
+            return false;
     }
     return true;
 }
-void kernel_current_catalog_publish(void)
-{
-    if(kernel.genesis_sealed || kernel.scheduler_running || kernel.current || !kernel_current_catalog_valid())
+
+void kernel_current_catalog_publish(void) {
+    if (kernel.genesis_sealed || kernel.scheduler_running || kernel.current ||
+        !kernel_current_catalog_valid())
         kernel_halt(\"catalog publication outside validated BOOT\");
-    for(size_t i=0;i<KERNEL_CURRENT_APPS;++i){
-        CurrentAppRow row=current_apps[i];KernelAppPrivate *a=kernel_app_get(row.target);
-        klog(\"[boot.app.catalog] target=%u task=%u surface=%llu logical=%u incarnation=%u predecessor=%u lifecycle=%llu close=%llu route=%llu dormant=%u grants_verified=1 data_only=1\\n\",
-            a->target,a->task,(unsigned long long)a->surface,a->identity.logical_app,a->identity.number,a->predecessor,
-            (unsigned long long)row.lifecycle,(unsigned long long)row.close,(unsigned long long)row.route,(unsigned)a->dormant);
+    for (size_t i = 0; i < KERNEL_CURRENT_APPS; ++i) {
+        CurrentAppRow row = current_apps[i];
+        KernelAppPrivate *a = kernel_app_get(row.target);
+        klog(
+            \"[boot.app.catalog] target=%u task=%u surface=%llu logical=%u incarnation=%u predecessor=%u lifecycle=%llu close=%llu route=%llu dormant=%u grants_verified=1 data_only=1\\n\",
+            a->target, a->task, (unsigned long long)a->surface, a->identity.logical_app,
+            a->identity.number, a->predecessor, (unsigned long long)row.lifecycle,
+            (unsigned long long)row.close, (unsigned long long)row.route, (unsigned)a->dormant);
     }
-    klog(\"[boot.app.catalog.complete] rows=%u actual_grants=1 runtime_mint=0\\n\",KERNEL_CURRENT_APPS);
+    klog(\"[boot.app.catalog.complete] rows=%u actual_grants=1 runtime_mint=0\\n\",
+         KERNEL_CURRENT_APPS);
 }
-void kernel_current_boot_audit(void)
-{
-    if(!kernel_history_boot_valid())kernel_halt(\"actual history BOOT roster\");
-    if(!kernel_current_catalog_valid())kernel_halt(\"current catalog actual grants\");
-    uint32_t registered=0;
-    for(uint32_t id=1;id<KERNEL_MAX_DOMAINS;++id)if(domain_get(id))++registered;
+
+void kernel_current_boot_audit(void) {
+    if (!kernel_history_boot_valid())
+        kernel_halt(\"actual history BOOT roster\");
+    if (!kernel_current_catalog_valid())
+        kernel_halt(\"current catalog actual grants\");
+    uint32_t registered = 0;
+    for (uint32_t id = 1; id < KERNEL_MAX_DOMAINS; ++id)
+        if (domain_get(id))
+            ++registered;
     if (!kernel.genesis_sealed || kernel.scheduler_running || kernel.current ||
-        registered!=KERNEL_CURRENT_DOMAINS || kernel.app_count!=KERNEL_CURRENT_APPS || kernel.run_count!=KERNEL_CURRENT_ACTIVE || kernel.boot_backing_count!=KERNEL_CURRENT_BACKINGS)
+        registered != KERNEL_CURRENT_DOMAINS || kernel.app_count != KERNEL_CURRENT_APPS ||
+        kernel.run_count != KERNEL_CURRENT_ACTIVE ||
+        kernel.boot_backing_count != KERNEL_CURRENT_BACKINGS)
         kernel_halt(\"current BOOT counts or fence\");
-    for(size_t i=0;i<sizeof current_domains/sizeof *current_domains;++i) {
-        const CurrentBootDomain *g=&current_domains[i];Domain *d=domain_get(g->id);
-        if(!d || d->key!=g->key || d->layout!=g->layout || !d->task_id ||
-            (g->active && d->task_state!=TASK_READY) || (!g->active && d->task_state!=TASK_DORMANT))
+    for (size_t i = 0; i < sizeof current_domains / sizeof *current_domains; ++i) {
+        const CurrentBootDomain *g = &current_domains[i];
+        Domain *d = domain_get(g->id);
+        if (!d || d->key != g->key || d->layout != g->layout || !d->task_id ||
+            (g->active && d->task_state != TASK_READY) ||
+            (!g->active && d->task_state != TASK_DORMANT))
             kernel_halt(\"current BOOT identity or phase\");
-        if(g->active)for(size_t j=0;j<i;++j)
-            if(current_domains[j].active && current_domains[j].key==g->key)kernel_halt(\"active key alias\");
-        klog(\"[boot.audit.domain] id=%u key=%u layout=%u active=%u task=%u\\n\",g->id,g->key,g->layout,(unsigned)g->active,d->task_id);
+        if (g->active)
+            for (size_t j = 0; j < i; ++j)
+                if (current_domains[j].active && current_domains[j].key == g->key)
+                    kernel_halt(\"active key alias\");
+        klog(\"[boot.audit.domain] id=%u key=%u layout=%u active=%u task=%u\\n\", g->id, g->key,
+             g->layout, (unsigned)g->active, d->task_id);
     }
-#define AUDIT_ROUTE(p_holder,p_slot,p_target,p_label) do {const Cap *c=cap_get(domain_get(CURRENT_PD_##p_holder),p_slot); if(!c || c->kind!=CAP_DOMAIN || c->target!=CURRENT_PD_##p_target)kernel_halt(\"current route audit\");} while(0);
+#define AUDIT_ROUTE(p_holder, p_slot, p_target, p_label)                                           \\
+    do {                                                                                           \\
+        const Cap *c = cap_get(domain_get(CURRENT_PD_##p_holder), p_slot);                         \\
+        if (!c || c->kind != CAP_DOMAIN || c->target != CURRENT_PD_##p_target)                     \\
+            kernel_halt(\"current route audit\");                                                    \\
+    } while (0);
     SEXOS_CURRENT_ROUTE_ROWS(AUDIT_ROUTE)
 #undef AUDIT_ROUTE
-    size_t hidden=0,present=0;
-    for(uint32_t i=0;i<kernel.app_count;++i) {
-        KernelAppPrivate *a=&kernel.apps[i];Domain *d=domain_get(a->target);
-        if(!a->ready || !a->captured || a->task!=d->task_id || !a->image.count)kernel_halt(\"current private manifest audit\");
-        for(size_t j=0;j<a->image.count;++j) {
-            AppPrivatePage page=a->image.pages[j];uint64_t actual=app_private_leaf_read(page.leaf);
-            if(a->dormant) {if(actual)kernel_halt(\"dormant page present\");++hidden;}
-            else {if((actual&~UINT64_C(0x60))!=page.expected)kernel_halt(\"active private leaf mismatch\");++present;}
+    size_t hidden = 0, present = 0;
+    for (uint32_t i = 0; i < kernel.app_count; ++i) {
+        KernelAppPrivate *a = &kernel.apps[i];
+        Domain *d = domain_get(a->target);
+        if (!a->ready || !a->captured || a->task != d->task_id || !a->image.count)
+            kernel_halt(\"current private manifest audit\");
+        for (size_t j = 0; j < a->image.count; ++j) {
+            AppPrivatePage page = a->image.pages[j];
+            uint64_t actual = app_private_leaf_read(page.leaf);
+            if (a->dormant) {
+                if (actual)
+                    kernel_halt(\"dormant page present\");
+                ++hidden;
+            } else {
+                if ((actual & ~UINT64_C(0x60)) != page.expected)
+                    kernel_halt(\"active private leaf mismatch\");
+                ++present;
+            }
         }
-        if(!a->pool || a->workspace.count!=a->image.count)kernel_halt(\"workspace BOOT manifest audit\");
-        Domain *pager=domain_get(a->pager);if(!pager)kernel_halt(\"workspace BOOT owner audit\");
-        for(size_t j=0;j<a->workspace.count;++j){
-            AppPrivatePage w=a->workspace.pages[j];
-            uint64_t expected=(a->image.pages[j].expected&APP_PRIVATE_PHYSICAL)|PTE_PRESENT|PTE_USER|PTE_WRITABLE|PTE_NO_EXECUTE|((uint64_t)pager->key<<59);
-            if(w.va!=a->pool+j*4096 || w.leaf!=page_leaf_address(w.va) || w.expected!=expected || app_private_leaf_read(w.leaf))
+        if (!a->pool || a->workspace.count != a->image.count)
+            kernel_halt(\"workspace BOOT manifest audit\");
+        Domain *pager = domain_get(a->pager);
+        if (!pager)
+            kernel_halt(\"workspace BOOT owner audit\");
+        for (size_t j = 0; j < a->workspace.count; ++j) {
+            AppPrivatePage w = a->workspace.pages[j];
+            uint64_t expected = (a->image.pages[j].expected & APP_PRIVATE_PHYSICAL) | PTE_PRESENT |
+                                PTE_USER | PTE_WRITABLE | PTE_NO_EXECUTE |
+                                ((uint64_t)pager->key << 59);
+            if (w.va != a->pool + j * 4096 || w.leaf != page_leaf_address(w.va) ||
+                w.expected != expected || app_private_leaf_read(w.leaf))
                 kernel_halt(\"workspace published before retirement\");
         }
-        klog(\"[boot.audit.app] target=%u task=%u pages=%llu dormant=%u\\n\",a->target,a->task,(unsigned long long)a->image.count,(unsigned)a->dormant);
+        klog(\"[boot.audit.app] target=%u task=%u pages=%llu dormant=%u\\n\", a->target, a->task,
+             (unsigned long long)a->image.count, (unsigned)a->dormant);
     }
-    for(size_t i=0;i<sizeof current_domains/sizeof *current_domains;++i) {
-        Domain *d=domain_get(current_domains[i].id);
-        for(uint64_t slot=1;slot<KERNEL_CAP_SLOTS;++slot) {
-            const Cap *c=cap_get(d,slot);if(!c)continue;
-            if(c->kind==CAP_PCI){
-                if((c->command.present || (d->id==CURRENT_PD_sexnet && slot==19)) && !kernel_pci_boot_valid(d,slot))
+    for (size_t i = 0; i < sizeof current_domains / sizeof *current_domains; ++i) {
+        Domain *d = domain_get(current_domains[i].id);
+        for (uint64_t slot = 1; slot < KERNEL_CAP_SLOTS; ++slot) {
+            const Cap *c = cap_get(d, slot);
+            if (!c)
+                continue;
+            if (c->kind == CAP_PCI) {
+                if ((c->command.present || (d->id == CURRENT_PD_sexnet && slot == 19)) &&
+                    !kernel_pci_boot_valid(d, slot))
                     kernel_halt(\"actual PCI command/DMA grant audit\");
-                if(!c->region.present)continue;
-            }else if(c->kind!=CAP_REGION)continue;
-            const MemoryRegionGrant *g=&c->region.grant;
-            if(sexos_region_info(&c->region).error)kernel_halt(\"current region metadata audit\");
-            for(uint64_t off=0;off<g->length;off+=4096) {
-                uint64_t pte=0;if(!read_pte(g->virtual_base+off,&pte) || (pte&5)!=5 ||
-                    !(pte&PTE_NO_EXECUTE) || ((pte>>59)&15)!=d->key ||
-                    ((pte&PTE_WRITABLE)!=0)!=kernel_region_writer_expected_write(g->region_id,d->id,(g->rights&REGION_WRITE)!=0))
+                if (!c->region.present)
+                    continue;
+            } else if (c->kind != CAP_REGION)
+                continue;
+            const MemoryRegionGrant *g = &c->region.grant;
+            if (sexos_region_info(&c->region).error)
+                kernel_halt(\"current region metadata audit\");
+            for (uint64_t off = 0; off < g->length; off += 4096) {
+                uint64_t pte = 0;
+                if (!read_pte(g->virtual_base + off, &pte) || (pte & 5) != 5 ||
+                    !(pte & PTE_NO_EXECUTE) || ((pte >> 59) & 15) != d->key ||
+                    ((pte & PTE_WRITABLE) != 0) !=
+                        kernel_region_writer_expected_write(g->region_id, d->id,
+                                                            (g->rights & REGION_WRITE) != 0))
                     kernel_halt(\"current region PTE audit\");
             }
         }
     }
-    if(!kernel.network_config_present || kernel.network_config_owner!=CURRENT_PD_sexnet || !net_config_valid(kernel.network_config))
+    if (!kernel.network_config_present || kernel.network_config_owner != CURRENT_PD_sexnet ||
+        !net_config_valid(kernel.network_config))
         kernel_halt(\"actual network BOOT descriptor audit\");
-#define SOURCE_AUDIT(p_holder,p_slot,p_kind,p_consumer) do { Domain *h=domain_get(CURRENT_PD_##p_holder),*c=domain_get(CURRENT_PD_##p_consumer); const Cap *held=cap_get(h,p_slot); if(!held || held->kind!=CAP_##p_kind || !held->source_grant.present || held->source_grant.source!=1 || held->source_grant.holder.pd!=h->id || held->source_grant.holder.task!=h->task_id || held->source_grant.consumer.pd!=c->id || held->source_grant.consumer.task!=c->task_id)kernel_halt(\"source actual grant audit\"); } while(0);
+#define SOURCE_AUDIT(p_holder, p_slot, p_kind, p_consumer)                                         \\
+    do {                                                                                           \\
+        Domain *h = domain_get(CURRENT_PD_##p_holder), *c = domain_get(CURRENT_PD_##p_consumer);   \\
+        const Cap *held = cap_get(h, p_slot);                                                      \\
+        if (!held || held->kind != CAP_##p_kind || !held->source_grant.present ||                  \\
+            held->source_grant.source != 1 || held->source_grant.holder.pd != h->id ||             \\
+            held->source_grant.holder.task != h->task_id ||                                        \\
+            held->source_grant.consumer.pd != c->id ||                                             \\
+            held->source_grant.consumer.task != c->task_id)                                        \\
+            kernel_halt(\"source actual grant audit\");                                              \\
+    } while (0);
     SEXOS_CURRENT_SOURCE_ROWS(SOURCE_AUDIT)
 #undef SOURCE_AUDIT
-    KernelPaging *paging=&kernel.paging;
-    if(!paging->initialized || paging->pager!=CURRENT_PD_sext)kernel_halt(\"paging audit genesis\");
-    for(size_t i=0;i<PG_CLIENTS;++i)for(size_t page=0;page<PG_PAGES;++page)
-        if(!paging->leaves[i][page] || *(volatile uint64_t *)(uintptr_t)paging->leaves[i][page])kernel_halt(\"paging audit absent leaf\");
-    uint32_t before=kernel.run_count;for(size_t i=0;i<sizeof current_domains/sizeof *current_domains;++i)if(!current_domains[i].active)run_push(current_domains[i].id);
-    if(kernel.run_count!=before || !hidden || !present)kernel_halt(\"dormant admission audit\");
-    Domain *display=domain_get(CURRENT_PD_sexdisplay);
-    if(cap_set(display,1024,(Cap){.kind=CAP_DOMAIN,.target=display->id}))kernel_halt(\"sealed installation audit\");
-    klog(\"[boot.current.audit.done] domains=%u apps=%u dormant=%u routes=%u backings=%u hidden_pages=%llu active_pages=%llu user_entries=0\\n\",KERNEL_CURRENT_DOMAINS,KERNEL_CURRENT_APPS,KERNEL_CURRENT_DORMANT,KERNEL_CURRENT_ROUTES,KERNEL_CURRENT_BACKINGS,(unsigned long long)hidden,(unsigned long long)present);
+    KernelPaging *paging = &kernel.paging;
+    if (!paging->initialized || paging->pager != CURRENT_PD_sext)
+        kernel_halt(\"paging audit genesis\");
+    for (size_t i = 0; i < PG_CLIENTS; ++i)
+        for (size_t page = 0; page < PG_PAGES; ++page)
+            if (!paging->leaves[i][page] ||
+                *(volatile uint64_t *)(uintptr_t)paging->leaves[i][page])
+                kernel_halt(\"paging audit absent leaf\");
+    uint32_t before = kernel.run_count;
+    for (size_t i = 0; i < sizeof current_domains / sizeof *current_domains; ++i)
+        if (!current_domains[i].active)
+            run_push(current_domains[i].id);
+    if (kernel.run_count != before || !hidden || !present)
+        kernel_halt(\"dormant admission audit\");
+    Domain *display = domain_get(CURRENT_PD_sexdisplay);
+    if (cap_set(display, 1024, (Cap){.kind = CAP_DOMAIN, .target = display->id}))
+        kernel_halt(\"sealed installation audit\");
+    klog(
+        \"[boot.current.audit.done] domains=%u apps=%u dormant=%u routes=%u backings=%u hidden_pages=%llu active_pages=%llu user_entries=0\\n\",
+        KERNEL_CURRENT_DOMAINS, KERNEL_CURRENT_APPS, KERNEL_CURRENT_DORMANT, KERNEL_CURRENT_ROUTES,
+        KERNEL_CURRENT_BACKINGS, (unsigned long long)hidden, (unsigned long long)present);
 }
 ")))

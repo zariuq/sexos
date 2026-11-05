@@ -1,1 +1,8 @@
-(cesta native-c/1 compact-c/2 (unit (ownership (check-all) (foreign sexos_pdx_call (obligation "Sends register arguments using the actual held grant and preserves admission status."))) (native "#include \"silk_shell_diagnostics_a.h\"\nSexosReply shell_diagnostics_pdx_call(uint64_t slot,uint64_t op,uint64_t a,uint64_t b,uint64_t c){return sexos_pdx_call(slot,op,a,b,c);}\n")))
+(cesta native-c/1 compact-c/2 (unit (ownership (check-all) (foreign sexos_pdx_call (obligation "Sends register arguments using the actual held grant and preserves admission status."))) (native "
+#include \"silk_shell_diagnostics_a.h\"
+
+SexosReply shell_diagnostics_pdx_call(uint64_t slot, uint64_t op, uint64_t a, uint64_t b,
+                                      uint64_t c) {
+    return sexos_pdx_call(slot, op, a, b, c);
+}
+")))

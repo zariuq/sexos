@@ -23,6 +23,7 @@ from pathlib import Path
 import random
 import shutil
 import tempfile
+from layout_text import LayoutText
 
 from differential_support import LISTEN, first_difference, pinned_function, run
 
@@ -365,7 +366,7 @@ def main():
             compared += len(expected.splitlines())
     # Controls: each small change to the translation must change some trace of
     # the variant whose code it touches.
-    original = (HERE / "src/sexinput.cesta").read_text()
+    original = LayoutText((HERE / "src/sexinput.cesta").read_text())
     click, cursor, keyboard, autodemo = (("SEXOS_SILKBAR_CLICK_PROOF",), ("SEXOS_KEYBOARD_CURSOR",),
                                          ("SEXOS_KEYBOARD_PROOF",), ("SEXOS_CURSOR_AUTODEMO",))
     mutations = [

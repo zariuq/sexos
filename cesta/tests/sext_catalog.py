@@ -2,6 +2,7 @@
 """Compare every generated lifecycle slot and service notice match with real Rust catalog."""
 import argparse,hashlib,json,subprocess,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 
 def run(argv,data=None):
@@ -25,7 +26,7 @@ fn main(){println!("{}",catalog::COUNT);for i in catalog::INCARNATIONS{println!(
   for mode in ('O0','O2','sanitize'):
    extra=['-O1','-fsanitize=address,undefined','-fno-sanitize-recover=all'] if mode=='sanitize' else ['-'+mode]
    binary=w/(cc+'-'+mode);run([cc,*flags,*extra,'tests/sext/catalog.c',w/'sext.c','-o',binary]);out=run([binary],data);builds.append({'compiler':cc,'mode':mode,'output':out.decode().strip()})
- original=(w/'sext_service.c').read_text();bad=original.replace('i<SEXOS_APP_CATALOG_COUNT','i<6');assert bad!=original
+ original=LayoutText((w/'sext_service.c').read_text());bad=original.replace('i<SEXOS_APP_CATALOG_COUNT','i<6');assert bad!=original
  try:
   (w/'sext_service.c').write_text(bad);binary=w/'stale-six-entry-limit';run(['gcc',*flags,'-O2','tests/sext/catalog.c',w/'sext.c','-o',binary])
   p=subprocess.run([binary],input=data,capture_output=True);assert p.returncode!=0,'stale capacity mutation survived'

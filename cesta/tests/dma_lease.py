@@ -2,6 +2,7 @@
 """Qualify bounded DMA suballocation and non-reusable uncertain submissions."""
 import argparse,hashlib,json,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -51,7 +52,7 @@ def main():
         ('resume_requires_queues','!queues_ready','(queues_ready && false)'),
     ];caught=[]
     if args.mutations:
-        original=source.read_text()
+        original=LayoutText(source.read_text())
         for name,before,after in changes:
             assert original.count(before)>=1,(name,'anchor')
             try:

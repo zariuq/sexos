@@ -9,6 +9,7 @@ import random
 import re
 import subprocess
 import tempfile
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 INVENTORY=HERE/'interfaces/sext.source.json'
@@ -155,7 +156,7 @@ def compare(expected,actual,work,label):
     raise AssertionError((label,'first differing line',i+1,a[i:i+1],b[i:i+1]))
 
 def mutations(work,source,data,expected):
-    original=source.read_text()
+    original=LayoutText(source.read_text())
     changes=[
         ('quota', 'sext_allocator_reserve', '>= a->quota', '> a->quota'),
         ('unzeroed_commit', 'sext_allocator_commit', '|| !a->frames[index].zeroed', ''),
@@ -170,10 +171,10 @@ def mutations(work,source,data,expected):
     ]
     results=[]
     for name,function,before,after in changes:
-        match=re.search(r'(?m)^.*\b'+function+r'\([^;\n]*\)\n\{',original)
+        match=re.search(r'(?m)^.*\b'+function+r'\([^;{}]*\)\s*\{',original)
         assert match,(name,'function anchor')
         end=original.index('\n}',match.end())+2
-        body=original[match.start():end]
+        body=LayoutText(original[match.start():end])
         assert body.count(before)==1,(name,'mutation anchor',body.count(before))
         candidate=work/(name+'.c')
         candidate.write_text(original[:match.start()]+body.replace(before,after)+original[end:])

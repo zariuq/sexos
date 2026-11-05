@@ -2,6 +2,7 @@
 """Qualify current Sext's deterministic per-range frame partitions."""
 import argparse,hashlib,json,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(argv):
     r=subprocess.run(list(map(str,argv)),cwd=HERE,capture_output=True)
@@ -29,7 +30,7 @@ def main():
       ('partition_capacity','quota>SEXT_FRAME_COUNT/clients','false'),
     ];caught=[]
     if a.mutations:
-        original=src.read_text()
+        original=LayoutText(src.read_text())
         for name,before,after in changes:
             assert original.count(before)>=1,(name,'anchor')
             try:

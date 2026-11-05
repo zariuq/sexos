@@ -1,10 +1,22 @@
+
 #ifndef SEXOS_SPINDLE_SEXTIME_H
 #define SEXOS_SPINDLE_SEXTIME_H
 #include "sexos_client.h"
 #define SPINDLE_SEXTIME_INPUT_MAX ((size_t)19)
 #define SPINDLE_SEXTIME_LINE_MAX ((size_t)48)
-typedef struct SpindleSextimeInput {uint8_t bytes[SPINDLE_SEXTIME_INPUT_MAX];size_t len;bool too_long;} SpindleSextimeInput;
-typedef struct SpindleSextimeLines {bool ok;uint8_t rows[3][SPINDLE_SEXTIME_LINE_MAX];size_t lens[3];} SpindleSextimeLines;
-bool spindle_sextime_parse(const SpindleSextimeInput *input,int64_t *unix_seconds);
+
+typedef struct SpindleSextimeInput {
+    uint8_t bytes[SPINDLE_SEXTIME_INPUT_MAX];
+    size_t len;
+    bool too_long;
+} SpindleSextimeInput;
+
+typedef struct SpindleSextimeLines {
+    bool ok;
+    uint8_t rows[3][SPINDLE_SEXTIME_LINE_MAX];
+    size_t lens[3];
+} SpindleSextimeLines;
+
+bool spindle_sextime_parse(const SpindleSextimeInput *input, int64_t *unix_seconds);
 SpindleSextimeLines spindle_sextime_render(int64_t unix_seconds);
 #endif

@@ -1,0 +1,306 @@
+#include "sexdisplay_bitmap.h"
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
+
+static bool display_geometry_valid(KaleidoscopeBitmapGeometry g) {
+    return g.width >= 1 && g.width <= 48 && g.height >= 1 && g.height <= 48 && g.scale >= 1 &&
+           g.scale <= 4;
+}
+
+static size_t display_geometry_len(KaleidoscopeBitmapGeometry g) {
+    return (size_t)g.width * g.height;
+}
+
+static bool display_geometry_equal(KaleidoscopeBitmapGeometry a, KaleidoscopeBitmapGeometry b) {
+    return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height &&
+           a.scale == b.scale;
+}
+
+static void display_erase_staging(SexdisplayBitmapStage *stage) {
+    for (size_t i = 0; i < KALEIDOSCOPE_BITMAP_CAPACITY; i++)
+        stage->staging[i] = 0;
+    for (size_t i = 0; i < SEXDISPLAY_BITMAP_COVERAGE_WORDS; i++)
+        stage->coverage[i] = 0;
+}
+
+static void display_poison(SexdisplayBitmapStage *stage) {
+    display_erase_staging(stage);
+    stage->poisoned = true;
+}
+
+static bool display_pending(const SexdisplayBitmapStage *stage) {
+    return stage->completion_phase == SEXDISPLAY_BITMAP_COMPLETION_UNRELEASED ||
+           stage->completion_phase == SEXDISPLAY_BITMAP_COMPLETION_ELIGIBLE;
+}
+
+static uint64_t display_hash(const SexdisplayBitmapStage *stage, size_t count) {
+    uint64_t h = UINT64_C(0xcbf29ce484222325);
+    for (size_t i = 0; i < count; i++)
+        for (size_t k = 0; k < 4; k++) {
+            h ^= (uint8_t)(stage->staging[i] >> (8 * k));
+            h *= UINT64_C(0x100000001b3);
+        }
+    return h;
+}
+
+static bool display_decode(uint64_t opcode, uint64_t packed, uint64_t control,
+                           KaleidoscopeBitmapRequest *request) {
+    *request = (KaleidoscopeBitmapRequest){0};
+    if (opcode == KALEIDOSCOPE_BITMAP_BEGIN && !(packed >> 56) && !(control >> 32)) {
+        request->kind = KALEIDOSCOPE_BITMAP_REQUEST_BEGIN;
+        request->sequence = (uint32_t)packed;
+        request->geometry = (KaleidoscopeBitmapGeometry){
+            (uint16_t)control, (uint16_t)(control >> 16), (uint8_t)(packed >> 32),
+            (uint8_t)(packed >> 40), (uint8_t)(packed >> 48)};
+        return request->sequence && display_geometry_valid(request->geometry);
+    }
+    if (opcode == KALEIDOSCOPE_BITMAP_CHUNK && !(control & UINT64_C(0xff000000))) {
+        request->kind = KALEIDOSCOPE_BITMAP_REQUEST_CHUNK;
+        request->sequence = (uint32_t)(control >> 32);
+        request->offset = (uint16_t)control;
+        request->count = (uint8_t)(control >> 16);
+        request->pixels[0] = (uint32_t)packed;
+        request->pixels[1] = (uint32_t)(packed >> 32);
+        return request->sequence && request->offset < KALEIDOSCOPE_BITMAP_CAPACITY &&
+               request->offset % 2 == 0 && request->count >= 1 && request->count <= 2 &&
+               (request->count == 2 || !request->pixels[1]);
+    }
+    if (opcode == KALEIDOSCOPE_BITMAP_COMMIT && packed && packed <= UINT32_MAX) {
+        request->kind = KALEIDOSCOPE_BITMAP_REQUEST_COMMIT;
+        request->sequence = (uint32_t)packed;
+        request->hash = control;
+        return true;
+    }
+    if (opcode == KALEIDOSCOPE_BITMAP_CLEAR && packed && packed <= UINT32_MAX && !control) {
+        request->kind = KALEIDOSCOPE_BITMAP_REQUEST_CLEAR;
+        request->sequence = (uint32_t)packed;
+        return true;
+    }
+    return false;
+}
+
+void sexdisplay_bitmap_init(SexdisplayBitmapStage *stage, uint32_t target, uint32_t task,
+                            uint64_t surface) {
+    if (!stage)
+        return;
+    *stage = (SexdisplayBitmapStage){0};
+    if (target && task && surface && surface <= UINT16_MAX) {
+        stage->bound = true;
+        stage->target = target;
+        stage->task = task;
+        stage->surface = surface;
+    }
+}
+
+SexdisplayBitmapChange sexdisplay_bitmap_receive(SexdisplayBitmapStage *stage, uint32_t caller,
+                                                 uint32_t caller_task, uint64_t surface,
+                                                 uint64_t opcode, uint64_t packed,
+                                                 uint64_t control) {
+    SexdisplayBitmapChange change = {0};
+    if (!stage || !stage->bound || stage->retired || caller != stage->target ||
+        caller_task != stage->task || surface != stage->surface)
+        return change;
+    KaleidoscopeBitmapRequest request = {0};
+    if (!display_decode(opcode, packed, control, &request))
+        return change;
+    if (request.kind == KALEIDOSCOPE_BITMAP_REQUEST_BEGIN) {
+        if (!request.sequence || !display_geometry_valid(request.geometry) ||
+            request.sequence < stage->sequence)
+            return change;
+        if (request.sequence == stage->sequence) {
+            if (!stage->geometry_present ||
+                !display_geometry_equal(stage->geometry, request.geometry))
+                display_poison(stage);
+            return change;
+        }
+        if (display_pending(stage))
+            return change;
+        display_erase_staging(stage);
+        stage->sequence = request.sequence;
+        stage->geometry = request.geometry;
+        stage->geometry_present = true;
+        stage->completed = SEXDISPLAY_BITMAP_COMPLETE_NONE;
+        stage->completion_phase = SEXDISPLAY_BITMAP_COMPLETION_NONE;
+        stage->poisoned = false;
+        return change;
+    }
+    if (request.kind == KALEIDOSCOPE_BITMAP_REQUEST_CHUNK) {
+        if (request.sequence != stage->sequence || stage->poisoned ||
+            stage->completed != SEXDISPLAY_BITMAP_COMPLETE_NONE || !stage->geometry_present)
+            return change;
+        size_t length = display_geometry_len(stage->geometry);
+        if (request.offset >= length || request.offset % 2 ||
+            request.count != (length - request.offset < 2 ? length - request.offset : 2) ||
+            (request.count == 1 && request.pixels[1])) {
+            display_poison(stage);
+            return change;
+        }
+        size_t word = request.offset / 2 / 64;
+        uint64_t bit = UINT64_C(1) << (request.offset / 2 % 64);
+        if ((stage->coverage[word] & bit) &&
+            ((stage->staging[request.offset] != request.pixels[0]) ||
+             (request.count == 2 && stage->staging[request.offset + 1] != request.pixels[1]))) {
+            display_poison(stage);
+            return change;
+        }
+        for (size_t i = 0; i < request.count; i++)
+            stage->staging[request.offset + i] = request.pixels[i];
+        stage->coverage[word] |= bit;
+        return change;
+    }
+    if (request.kind == KALEIDOSCOPE_BITMAP_REQUEST_COMMIT) {
+        if (request.sequence != stage->sequence)
+            return change;
+        if (stage->completed == SEXDISPLAY_BITMAP_COMPLETE_IMAGE &&
+            stage->completed_hash == request.hash) {
+            if (stage->completion_phase == SEXDISPLAY_BITMAP_COMPLETION_ELIGIBLE ||
+                stage->completion_phase == SEXDISPLAY_BITMAP_COMPLETION_SENT)
+                stage->completion_phase = SEXDISPLAY_BITMAP_COMPLETION_ELIGIBLE;
+            return change;
+        }
+        if (stage->poisoned || stage->completed != SEXDISPLAY_BITMAP_COMPLETE_NONE ||
+            !stage->geometry_present)
+            return change;
+        size_t chunks = (display_geometry_len(stage->geometry) + 1) / 2;
+        for (size_t i = 0; i < SEXDISPLAY_BITMAP_COVERAGE_WORDS; i++) {
+            size_t remaining = chunks > i * 64 ? chunks - i * 64 : 0;
+            uint64_t required = remaining >= 64 ? UINT64_MAX
+                                : remaining     ? (UINT64_C(1) << remaining) - 1
+                                                : 0;
+            if (stage->coverage[i] != required) {
+                display_poison(stage);
+                return change;
+            }
+        }
+        if (display_hash(stage, display_geometry_len(stage->geometry)) != request.hash) {
+            display_poison(stage);
+            return change;
+        }
+        change.changed = true;
+        change.old_present = stage->published_present;
+        change.old_geometry = stage->published_geometry;
+        for (size_t i = 0; i < KALEIDOSCOPE_BITMAP_CAPACITY; i++)
+            stage->published[i] = stage->staging[i];
+        stage->published_geometry = stage->geometry;
+        stage->published_present = true;
+        change.new_present = true;
+        change.new_geometry = stage->geometry;
+        display_erase_staging(stage);
+        stage->completed = SEXDISPLAY_BITMAP_COMPLETE_IMAGE;
+        stage->completed_hash = request.hash;
+        stage->completion_phase = SEXDISPLAY_BITMAP_COMPLETION_UNRELEASED;
+        return change;
+    }
+    if (!request.sequence || request.sequence < stage->sequence)
+        return change;
+    if (request.sequence == stage->sequence) {
+        if (stage->completed == SEXDISPLAY_BITMAP_COMPLETE_CLEAR &&
+            (stage->completion_phase == SEXDISPLAY_BITMAP_COMPLETION_ELIGIBLE ||
+             stage->completion_phase == SEXDISPLAY_BITMAP_COMPLETION_SENT))
+            stage->completion_phase = SEXDISPLAY_BITMAP_COMPLETION_ELIGIBLE;
+        return change;
+    }
+    if (display_pending(stage))
+        return change;
+    change.changed = true;
+    change.old_present = stage->published_present;
+    change.old_geometry = stage->published_geometry;
+    display_erase_staging(stage);
+    for (size_t i = 0; i < KALEIDOSCOPE_BITMAP_CAPACITY; i++)
+        stage->published[i] = 0;
+    stage->sequence = request.sequence;
+    stage->geometry_present = false;
+    stage->published_present = false;
+    stage->completed = SEXDISPLAY_BITMAP_COMPLETE_CLEAR;
+    stage->completed_hash = 0;
+    stage->poisoned = false;
+    stage->completion_phase = SEXDISPLAY_BITMAP_COMPLETION_UNRELEASED;
+    return change;
+}
+
+bool sexdisplay_bitmap_sample(const SexdisplayBitmapStage *stage, uint32_t owner, uint64_t surface,
+                              int64_t x, int64_t y, uint32_t *pixel) {
+    if (!stage || !pixel || stage->retired || !stage->bound || owner != stage->target ||
+        surface != stage->surface || !stage->published_present)
+        return false;
+    KaleidoscopeBitmapGeometry g = stage->published_geometry;
+    if (x < (int64_t)g.x || y < (int64_t)g.y)
+        return false;
+    x -= (int64_t)g.x;
+    y -= (int64_t)g.y;
+    x /= g.scale;
+    y /= g.scale;
+    if (x >= g.width || y >= g.height)
+        return false;
+    *pixel = stage->published[(size_t)y * g.width + (size_t)x];
+    return true;
+}
+
+bool sexdisplay_bitmap_release_after_publication(SexdisplayBitmapStage *stage) {
+    if (!stage || stage->retired || !stage->bound ||
+        stage->completion_phase != SEXDISPLAY_BITMAP_COMPLETION_UNRELEASED)
+        return false;
+    stage->completion_phase = SEXDISPLAY_BITMAP_COMPLETION_ELIGIBLE;
+    return true;
+}
+
+SexdisplayBitmapReply sexdisplay_bitmap_reply(const SexdisplayBitmapStage *stage) {
+    if (!stage || stage->retired || !stage->bound ||
+        stage->completion_phase != SEXDISPLAY_BITMAP_COMPLETION_ELIGIBLE)
+        return (SexdisplayBitmapReply){0};
+    return (SexdisplayBitmapReply){true, stage->target,
+                                   UINT64_C(0x57) | (stage->surface << 8) |
+                                       ((uint64_t)stage->sequence << 24)};
+}
+
+void sexdisplay_bitmap_reply_resolve(SexdisplayBitmapStage *stage, uint64_t status) {
+    if (stage && stage->completion_phase == SEXDISPLAY_BITMAP_COMPLETION_ELIGIBLE && !status)
+        stage->completion_phase = SEXDISPLAY_BITMAP_COMPLETION_SENT;
+}
+
+void sexdisplay_bitmap_reset_surface(SexdisplayBitmapStage *stage, uint32_t owner,
+                                     uint64_t surface) {
+    if (!stage || !stage->bound || owner != stage->target || surface != stage->surface)
+        return;
+    display_erase_staging(stage);
+    for (size_t i = 0; i < KALEIDOSCOPE_BITMAP_CAPACITY; i++)
+        stage->published[i] = 0;
+    stage->geometry_present = false;
+    stage->published_present = false;
+    stage->poisoned = true;
+}
+
+void sexdisplay_bitmap_retire(SexdisplayBitmapStage *stage, uint32_t owner, uint32_t task) {
+    if (!stage || stage->retired || !stage->bound || owner != stage->target || task != stage->task)
+        return;
+    sexdisplay_bitmap_reset_surface(stage, owner, stage->surface);
+    stage->completed = SEXDISPLAY_BITMAP_COMPLETE_NONE;
+    stage->completion_phase = SEXDISPLAY_BITMAP_COMPLETION_NONE;
+    stage->retired = true;
+}
+
+uint32_t sexdisplay_bitmap_blend(uint32_t rgba, uint32_t base) {
+    uint32_t alpha = rgba >> 24;
+    if (!alpha)
+        return base;
+    if (alpha == 255)
+        return rgba;
+    uint32_t out = UINT32_C(0xff000000);
+    for (size_t shift = 0; shift <= 16; shift += 8) {
+        uint32_t foreground = (rgba >> shift) & 255, background = (base >> shift) & 255;
+        out |= ((foreground * alpha + background * (255 - alpha) + 127) / 255) << shift;
+    }
+    return out;
+}
+
+

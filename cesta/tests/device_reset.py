@@ -2,6 +2,7 @@
 """Qualify kernel-visible device reset generation policy."""
 import argparse,hashlib,json,subprocess,sys,tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 def run(argv):
@@ -43,7 +44,7 @@ def main():
       ('owner_death_orphans','state->phase=DEVICE_RESET_ORPHANED','state->phase=DEVICE_RESET_ACTIVE'),
     ];caught=[]
     if a.mutations:
-        original=src.read_text()
+        original=LayoutText(src.read_text())
         for name,before,after in changes:
             assert original.count(before)>=1,(name,'anchor')
             try:

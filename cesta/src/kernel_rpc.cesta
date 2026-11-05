@@ -1,6 +1,17 @@
 (cesta native-c/1 compact-c/2
   (unit
-    (include "sexos_kernel.h")
+    (ownership (check-all)
+    (unchecked (cpu_clac cpu_cli cpu_cpuid cpu_fpu_state_init cpu_fxrstor cpu_fxsave cpu_hlt cpu_inb
+                cpu_inl cpu_invlpg cpu_irq_restore cpu_irq_save cpu_lidt cpu_ltr cpu_outb cpu_outl
+                cpu_outw cpu_pause cpu_rdmsr cpu_rdseed cpu_read_cr0 cpu_read_cr2 cpu_read_cr3
+                cpu_read_cr4 cpu_read_rsp cpu_stac cpu_sti cpu_sti_hlt cpu_write_cr0 cpu_write_cr4
+                cpu_wrmsr cpu_wrpkru cpu_xgetbv kernel_poll_consume kernel_poll_inspect
+                kernel_poll_is_ready kernel_poll_publish kernel_poll_run kernel_reply_complete
+                kernel_reply_inspect kernel_reply_is_heard kernel_reply_is_ready
+                kernel_reply_publish kernel_reply_run kernel_rpc_claim kernel_rpc_syscall rpc_call
+                rpc_find rpc_poll rpc_reply)
+      (obligation "Kernel code on the serialized BSP lane with interrupts masked and application processors parked. It reaches physical frames, page tables and device registers through integer-derived pointers, volatile accesses and the kernel runtime's inline assembly and do-while helpers, which the native ownership profile does not admit. It relies on the kernel owning each frame and device exclusively from BOOT; here correlated request slots.")))
+  (include "sexos_kernel.h")
 
     (comment "Correlated calls are separate from the legacy reply slot. Each caller owns a bounded set of outstanding requests. Only the peer that received a request may complete it; polling or cancellation consumes its identity.")
 
@@ -53,7 +64,101 @@
       (return true))
 
     (comment "A heard request is a certificate invalidated by completion. Polling copies the value before consuming the ready slot; publication uses that copy rather than a stale slot reference.")
-    (native "\ntypedef struct KernelReplyContext {\n    Domain *peer, *caller;\n    TrapFrame *frame;\n    RpcSlot *request;\n    uint64_t id;\n} KernelReplyContext;\nstatic bool kernel_reply_is_heard(KernelReplyContext *c) {\n    return c->request && c->request->id == c->id &&\n        c->request->peer == c->peer->id && c->request->state == RPC_HEARD;\n}\nstatic bool kernel_reply_is_ready(KernelReplyContext *c) {\n    return c->request && c->request->id == c->id &&\n        c->request->peer == c->peer->id && c->request->state == RPC_READY;\n}\nstatic bool kernel_reply_inspect(KernelReplyContext *c) {\n    if (c->frame->rdi >= KERNEL_MAX_DOMAINS) return false;\n    c->caller = domain_get((uint32_t)c->frame->rdi);\n    if (!c->caller) return false;\n    c->id = c->frame->rsi;\n    c->request = rpc_find(c->caller, c->id);\n    return kernel_reply_is_heard(c);\n}\nstatic bool kernel_reply_complete(KernelReplyContext *c) {\n    if (!kernel_reply_is_heard(c)) return false;\n    c->request->value = c->frame->rdx;\n    c->request->state = RPC_READY;\n    if (SEXOS_KERNEL_CURRENT_PDX) kernel_task_wake(c->caller);\n    return true;\n}\nstatic bool kernel_reply_publish(KernelReplyContext *c) {\n    if (!kernel_reply_is_ready(c)) return false;\n    c->frame->rax = 0;\n    return true;\n}\ntypedef struct KernelPollContext {\n    Domain *caller;\n    TrapFrame *frame;\n    RpcSlot *request;\n    uint64_t id, value;\n    bool copied;\n} KernelPollContext;\nstatic bool kernel_poll_is_ready(KernelPollContext *c) {\n    return c->request && c->request->id == c->id && c->request->state == RPC_READY;\n}\nstatic bool kernel_poll_is_copied(KernelPollContext *c) { return c->copied; }\nstatic bool kernel_poll_inspect(KernelPollContext *c) {\n    c->id = c->frame->rdi;\n    c->request = rpc_find(c->caller, c->id);\n    if (!c->request) return false;\n    c->frame->rax = ERR_SERVICE_NOT_READY;\n    return kernel_poll_is_ready(c);\n}\nstatic bool kernel_poll_consume(KernelPollContext *c) {\n    if (!kernel_poll_is_ready(c)) return false;\n    c->value = c->request->value;\n    *c->request = (RpcSlot){ .state = RPC_FREE };\n    c->copied = true;\n    return true;\n}\nstatic bool kernel_poll_publish(KernelPollContext *c) {\n    if (!c->copied) return false;\n    c->frame->rsi = c->value;\n    c->frame->rax = 0;\n    return true;\n}\n#define kernel_reply_run_CHECKED 1\n#define kernel_poll_run_CHECKED 1\n#define kernel_reply_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt(\"reply protocol invariant\")\n#define kernel_poll_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt(\"poll protocol invariant\")\n")
+    (native "
+typedef struct KernelReplyContext {
+    Domain *peer, *caller;
+    TrapFrame *frame;
+    RpcSlot *request;
+    uint64_t id;
+} KernelReplyContext;
+
+static bool kernel_reply_is_heard(KernelReplyContext *c) {
+    return c->request && c->request->id == c->id && c->request->peer == c->peer->id &&
+           c->request->state == RPC_HEARD;
+}
+
+static bool kernel_reply_is_ready(KernelReplyContext *c) {
+    return c->request && c->request->id == c->id && c->request->peer == c->peer->id &&
+           c->request->state == RPC_READY;
+}
+
+static bool kernel_reply_inspect(KernelReplyContext *c) {
+    if (c->frame->rdi >= KERNEL_MAX_DOMAINS)
+        return false;
+    c->caller = domain_get((uint32_t)c->frame->rdi);
+    if (!c->caller)
+        return false;
+    c->id = c->frame->rsi;
+    c->request = rpc_find(c->caller, c->id);
+    return kernel_reply_is_heard(c);
+}
+
+static bool kernel_reply_complete(KernelReplyContext *c) {
+    if (!kernel_reply_is_heard(c))
+        return false;
+    c->request->value = c->frame->rdx;
+    c->request->state = RPC_READY;
+    if (SEXOS_KERNEL_CURRENT_PDX)
+        kernel_task_wake(c->caller);
+    return true;
+}
+
+static bool kernel_reply_publish(KernelReplyContext *c) {
+    if (!kernel_reply_is_ready(c))
+        return false;
+    c->frame->rax = 0;
+    return true;
+}
+
+typedef struct KernelPollContext {
+    Domain *caller;
+    TrapFrame *frame;
+    RpcSlot *request;
+    uint64_t id, value;
+    bool copied;
+} KernelPollContext;
+
+static bool kernel_poll_is_ready(KernelPollContext *c) {
+    return c->request && c->request->id == c->id && c->request->state == RPC_READY;
+}
+
+static bool kernel_poll_is_copied(KernelPollContext *c) {
+    return c->copied;
+}
+
+static bool kernel_poll_inspect(KernelPollContext *c) {
+    c->id = c->frame->rdi;
+    c->request = rpc_find(c->caller, c->id);
+    if (!c->request)
+        return false;
+    c->frame->rax = ERR_SERVICE_NOT_READY;
+    return kernel_poll_is_ready(c);
+}
+
+static bool kernel_poll_consume(KernelPollContext *c) {
+    if (!kernel_poll_is_ready(c))
+        return false;
+    c->value = c->request->value;
+    *c->request = (RpcSlot){.state = RPC_FREE};
+    c->copied = true;
+    return true;
+}
+
+static bool kernel_poll_publish(KernelPollContext *c) {
+    if (!c->copied)
+        return false;
+    c->frame->rsi = c->value;
+    c->frame->rax = 0;
+    return true;
+}
+
+#define kernel_reply_run_CHECKED 1
+#define kernel_poll_run_CHECKED 1
+#define kernel_reply_run_CHECK_FAILURE(ctx, kind, id, expected)                                    \\
+    kernel_halt(\"reply protocol invariant\")
+#define kernel_poll_run_CHECK_FAILURE(ctx, kind, id, expected)                                     \\
+    kernel_halt(\"poll protocol invariant\")
+")
     (use-protocols "../interfaces/kernel_reply_protocol.module" Protocols)
     (use-protocols "../interfaces/kernel_poll_protocol.module" Protocols)
     (fn (static void) rpc_poll ((Domain (* caller)) (TrapFrame (* f)))

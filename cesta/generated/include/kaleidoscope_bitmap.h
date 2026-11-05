@@ -1,3 +1,4 @@
+
 #ifndef KALEIDOSCOPE_BITMAP_H
 #define KALEIDOSCOPE_BITMAP_H
 #include <stdbool.h>
@@ -6,42 +7,139 @@
 #include "kaleidoscope_qoi.h"
 #define KALEIDOSCOPE_BITMAP_CAPACITY KALEIDOSCOPE_QOI_MAX_PIXELS
 #define KALEIDOSCOPE_BITMAP_SENDS_PER_TURN ((size_t)4)
-enum {KALEIDOSCOPE_BITMAP_BEGIN=UINT64_C(0x27A),KALEIDOSCOPE_BITMAP_CHUNK=UINT64_C(0x27B),
- KALEIDOSCOPE_BITMAP_COMMIT=UINT64_C(0x27C),KALEIDOSCOPE_BITMAP_CLEAR=UINT64_C(0x27D)};
-enum {KALEIDOSCOPE_BITMAP_QUEUE_OK=0,KALEIDOSCOPE_BITMAP_QUEUE_CLOSED=1,
- KALEIDOSCOPE_BITMAP_QUEUE_INVALID_GEOMETRY=2,KALEIDOSCOPE_BITMAP_QUEUE_INVALID_PIXELS=3,
- KALEIDOSCOPE_BITMAP_QUEUE_CLEAR_PENDING=4,KALEIDOSCOPE_BITMAP_QUEUE_SEQUENCE_EXHAUSTED=5};
-enum {KALEIDOSCOPE_BITMAP_POLL_IDLE=0,KALEIDOSCOPE_BITMAP_POLL_PENDING=1,
- KALEIDOSCOPE_BITMAP_POLL_DEFERRED=2,KALEIDOSCOPE_BITMAP_POLL_REJECTED=3,
- KALEIDOSCOPE_BITMAP_POLL_INVALID_PIXELS=4,KALEIDOSCOPE_BITMAP_POLL_CLOSED=5,
- KALEIDOSCOPE_BITMAP_POLL_SEND=6};
-enum {KALEIDOSCOPE_BITMAP_ADMIT_ACCEPTED=0,KALEIDOSCOPE_BITMAP_ADMIT_FULL=1,
- KALEIDOSCOPE_BITMAP_ADMIT_REJECTED=2};
-enum {KALEIDOSCOPE_BITMAP_PHASE_BEGIN=1,KALEIDOSCOPE_BITMAP_PHASE_CHUNK=2,
- KALEIDOSCOPE_BITMAP_PHASE_COMMIT=3,KALEIDOSCOPE_BITMAP_PHASE_CLEAR=4,
- KALEIDOSCOPE_BITMAP_PHASE_AWAITING=5};
-enum {KALEIDOSCOPE_BITMAP_REQUEST_BEGIN=1,KALEIDOSCOPE_BITMAP_REQUEST_CHUNK=2,
- KALEIDOSCOPE_BITMAP_REQUEST_COMMIT=3,KALEIDOSCOPE_BITMAP_REQUEST_CLEAR=4};
-typedef struct KaleidoscopeBitmapIdentity {uint32_t target,task;uint64_t surface;uint8_t ordinal;} KaleidoscopeBitmapIdentity;
-typedef struct KaleidoscopeBitmapGeometry {uint16_t x,y;uint8_t width,height,scale;} KaleidoscopeBitmapGeometry;
-typedef struct KaleidoscopeBitmapMetadata {uint64_t viewport,source;} KaleidoscopeBitmapMetadata;
-typedef struct KaleidoscopeBitmapReceipt {uint32_t sequence;bool geometry_present;KaleidoscopeBitmapGeometry geometry;uint64_t hash;KaleidoscopeBitmapMetadata metadata;} KaleidoscopeBitmapReceipt;
-typedef struct KaleidoscopeBitmapOperation {uint64_t opcode,surface,packed,control;} KaleidoscopeBitmapOperation;
-typedef struct KaleidoscopeBitmapAdmission {uint8_t kind;uint64_t error;} KaleidoscopeBitmapAdmission;
-typedef struct KaleidoscopeBitmapRequest {uint8_t kind;uint32_t sequence;KaleidoscopeBitmapGeometry geometry;size_t offset,count;uint32_t pixels[2];uint64_t hash;} KaleidoscopeBitmapRequest;
-typedef struct KaleidoscopeBitmapBatch {KaleidoscopeBitmapReceipt receipt;uint8_t phase;size_t offset;bool unsent_present;KaleidoscopeBitmapRequest unsent;} KaleidoscopeBitmapBatch;
-typedef struct KaleidoscopeBitmapOutbox {KaleidoscopeBitmapIdentity identity;bool active_present,desired_present,closed;KaleidoscopeBitmapBatch active,desired;uint32_t sequence;} KaleidoscopeBitmapOutbox;
-typedef struct KaleidoscopeBitmapQueueResult {uint8_t error;uint32_t sequence;} KaleidoscopeBitmapQueueResult;
-typedef struct KaleidoscopeBitmapPollResult {uint8_t state;uint64_t error;bool operation_present;KaleidoscopeBitmapOperation operation;} KaleidoscopeBitmapPollResult;
-void kaleidoscope_bitmap_init(KaleidoscopeBitmapOutbox *outbox,KaleidoscopeBitmapIdentity identity,uint32_t sequence_floor);
-uint64_t kaleidoscope_bitmap_hash(const KaleidoscopeQoiPixels *pixels,size_t count);
-KaleidoscopeBitmapQueueResult kaleidoscope_bitmap_queue(KaleidoscopeBitmapOutbox *outbox,const KaleidoscopeQoiPixels *pixels,size_t count,KaleidoscopeBitmapGeometry geometry,KaleidoscopeBitmapMetadata metadata);
-KaleidoscopeBitmapQueueResult kaleidoscope_bitmap_clear(KaleidoscopeBitmapOutbox *outbox,KaleidoscopeBitmapMetadata metadata);
-KaleidoscopeBitmapPollResult kaleidoscope_bitmap_prepare(KaleidoscopeBitmapOutbox *outbox,const KaleidoscopeQoiPixels *pixels,size_t count);
-KaleidoscopeBitmapPollResult kaleidoscope_bitmap_resolve(KaleidoscopeBitmapOutbox *outbox,KaleidoscopeBitmapAdmission admission);
-bool kaleidoscope_bitmap_receive(KaleidoscopeBitmapOutbox *outbox,uint32_t caller,uint64_t word,KaleidoscopeBitmapReceipt *receipt);
+
+enum {
+    KALEIDOSCOPE_BITMAP_BEGIN = UINT64_C(0x27A),
+    KALEIDOSCOPE_BITMAP_CHUNK = UINT64_C(0x27B),
+    KALEIDOSCOPE_BITMAP_COMMIT = UINT64_C(0x27C),
+    KALEIDOSCOPE_BITMAP_CLEAR = UINT64_C(0x27D)
+};
+
+enum {
+    KALEIDOSCOPE_BITMAP_QUEUE_OK = 0,
+    KALEIDOSCOPE_BITMAP_QUEUE_CLOSED = 1,
+    KALEIDOSCOPE_BITMAP_QUEUE_INVALID_GEOMETRY = 2,
+    KALEIDOSCOPE_BITMAP_QUEUE_INVALID_PIXELS = 3,
+    KALEIDOSCOPE_BITMAP_QUEUE_CLEAR_PENDING = 4,
+    KALEIDOSCOPE_BITMAP_QUEUE_SEQUENCE_EXHAUSTED = 5
+};
+
+enum {
+    KALEIDOSCOPE_BITMAP_POLL_IDLE = 0,
+    KALEIDOSCOPE_BITMAP_POLL_PENDING = 1,
+    KALEIDOSCOPE_BITMAP_POLL_DEFERRED = 2,
+    KALEIDOSCOPE_BITMAP_POLL_REJECTED = 3,
+    KALEIDOSCOPE_BITMAP_POLL_INVALID_PIXELS = 4,
+    KALEIDOSCOPE_BITMAP_POLL_CLOSED = 5,
+    KALEIDOSCOPE_BITMAP_POLL_SEND = 6
+};
+
+enum {
+    KALEIDOSCOPE_BITMAP_ADMIT_ACCEPTED = 0,
+    KALEIDOSCOPE_BITMAP_ADMIT_FULL = 1,
+    KALEIDOSCOPE_BITMAP_ADMIT_REJECTED = 2
+};
+
+enum {
+    KALEIDOSCOPE_BITMAP_PHASE_BEGIN = 1,
+    KALEIDOSCOPE_BITMAP_PHASE_CHUNK = 2,
+    KALEIDOSCOPE_BITMAP_PHASE_COMMIT = 3,
+    KALEIDOSCOPE_BITMAP_PHASE_CLEAR = 4,
+    KALEIDOSCOPE_BITMAP_PHASE_AWAITING = 5
+};
+
+enum {
+    KALEIDOSCOPE_BITMAP_REQUEST_BEGIN = 1,
+    KALEIDOSCOPE_BITMAP_REQUEST_CHUNK = 2,
+    KALEIDOSCOPE_BITMAP_REQUEST_COMMIT = 3,
+    KALEIDOSCOPE_BITMAP_REQUEST_CLEAR = 4
+};
+
+typedef struct KaleidoscopeBitmapIdentity {
+    uint32_t target, task;
+    uint64_t surface;
+    uint8_t ordinal;
+} KaleidoscopeBitmapIdentity;
+
+typedef struct KaleidoscopeBitmapGeometry {
+    uint16_t x, y;
+    uint8_t width, height, scale;
+} KaleidoscopeBitmapGeometry;
+
+typedef struct KaleidoscopeBitmapMetadata {
+    uint64_t viewport, source;
+} KaleidoscopeBitmapMetadata;
+
+typedef struct KaleidoscopeBitmapReceipt {
+    uint32_t sequence;
+    bool geometry_present;
+    KaleidoscopeBitmapGeometry geometry;
+    uint64_t hash;
+    KaleidoscopeBitmapMetadata metadata;
+} KaleidoscopeBitmapReceipt;
+
+typedef struct KaleidoscopeBitmapOperation {
+    uint64_t opcode, surface, packed, control;
+} KaleidoscopeBitmapOperation;
+
+typedef struct KaleidoscopeBitmapAdmission {
+    uint8_t kind;
+    uint64_t error;
+} KaleidoscopeBitmapAdmission;
+
+typedef struct KaleidoscopeBitmapRequest {
+    uint8_t kind;
+    uint32_t sequence;
+    KaleidoscopeBitmapGeometry geometry;
+    size_t offset, count;
+    uint32_t pixels[2];
+    uint64_t hash;
+} KaleidoscopeBitmapRequest;
+
+typedef struct KaleidoscopeBitmapBatch {
+    KaleidoscopeBitmapReceipt receipt;
+    uint8_t phase;
+    size_t offset;
+    bool unsent_present;
+    KaleidoscopeBitmapRequest unsent;
+} KaleidoscopeBitmapBatch;
+
+typedef struct KaleidoscopeBitmapOutbox {
+    KaleidoscopeBitmapIdentity identity;
+    bool active_present, desired_present, closed;
+    KaleidoscopeBitmapBatch active, desired;
+    uint32_t sequence;
+} KaleidoscopeBitmapOutbox;
+
+typedef struct KaleidoscopeBitmapQueueResult {
+    uint8_t error;
+    uint32_t sequence;
+} KaleidoscopeBitmapQueueResult;
+
+typedef struct KaleidoscopeBitmapPollResult {
+    uint8_t state;
+    uint64_t error;
+    bool operation_present;
+    KaleidoscopeBitmapOperation operation;
+} KaleidoscopeBitmapPollResult;
+
+void kaleidoscope_bitmap_init(KaleidoscopeBitmapOutbox *outbox, KaleidoscopeBitmapIdentity identity,
+                              uint32_t sequence_floor);
+uint64_t kaleidoscope_bitmap_hash(const KaleidoscopeQoiPixels *pixels, size_t count);
+KaleidoscopeBitmapQueueResult kaleidoscope_bitmap_queue(KaleidoscopeBitmapOutbox *outbox,
+                                                        const KaleidoscopeQoiPixels *pixels,
+                                                        size_t count,
+                                                        KaleidoscopeBitmapGeometry geometry,
+                                                        KaleidoscopeBitmapMetadata metadata);
+KaleidoscopeBitmapQueueResult kaleidoscope_bitmap_clear(KaleidoscopeBitmapOutbox *outbox,
+                                                        KaleidoscopeBitmapMetadata metadata);
+KaleidoscopeBitmapPollResult kaleidoscope_bitmap_prepare(KaleidoscopeBitmapOutbox *outbox,
+                                                         const KaleidoscopeQoiPixels *pixels,
+                                                         size_t count);
+KaleidoscopeBitmapPollResult kaleidoscope_bitmap_resolve(KaleidoscopeBitmapOutbox *outbox,
+                                                         KaleidoscopeBitmapAdmission admission);
+bool kaleidoscope_bitmap_receive(KaleidoscopeBitmapOutbox *outbox, uint32_t caller, uint64_t word,
+                                 KaleidoscopeBitmapReceipt *receipt);
 bool kaleidoscope_bitmap_pending(const KaleidoscopeBitmapOutbox *outbox);
 void kaleidoscope_bitmap_close(KaleidoscopeBitmapOutbox *outbox);
 #endif
-
-

@@ -305,7 +305,9 @@ typedef struct SilkBarUpdateQueue {
 }
 SilkBarUpdateQueue;
 
+
 _Static_assert(sizeof(SilkBarUpdate) == 16 && offsetof(SilkBarUpdate, a) == 8, "SilkBarUpdate ABI");
+
 
 
 _Static_assert(sizeof(SilkBarUpdateQueue) == 520, "SilkBarUpdateQueue ABI");

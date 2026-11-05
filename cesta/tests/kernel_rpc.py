@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -60,7 +61,7 @@ def main():
     ]
     for name, unit, before, after in selector_mutations:
         source = work/(unit+'.c')
-        original = source.read_text()
+        original = LayoutText(source.read_text())
         assert original.count(before) == 1, (name, 'mutation anchor changed')
         try:
             source.write_text(original.replace(before, after))

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 PIN = "44053ea9b017fe89008413f7cc8a6b1a4d28d015"
@@ -67,7 +68,7 @@ def main():
 
     mutations = []
     if args.mutations:
-        base = sources["gcc"].read_text()
+        base = LayoutText(sources["gcc"].read_text())
         changes = [
             ("load-range", "object<2||object>=15", "object<2&&object>=15"),
             ("known-delete", "||!state->known_valid[object]", ""),

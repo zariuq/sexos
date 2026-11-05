@@ -1,0 +1,7 @@
+{
+  "branch": "sexcos",
+  "base": "44053ea9b017fe89008413f7cc8a6b1a4d28d015",
+  "path": "apps/spindle/src/calc_command.rs",
+  "blob": "acd9474d3a46cf66ea76247baeda26901fb0436b",
+  "sha256": "c73784a562275b4980cef00af0ae6f21d0c00c70efcce253f14cc78578314056"
+}

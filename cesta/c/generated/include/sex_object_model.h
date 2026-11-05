@@ -70,7 +70,11 @@ typedef struct SexObjectHeader {
 }
 SexObjectHeader;
 
-_Static_assert(sizeof(SexObjectHeader) == 80 && offsetof(SexObjectHeader, owner_pd) == 48 && offsetof(SexObjectHeader, reserved0) == 64, "SexObjectHeader must be exactly 80 bytes");
+
+_Static_assert(sizeof(SexObjectHeader) == 80 && offsetof(SexObjectHeader, owner_pd) == 48 &&
+                   offsetof(SexObjectHeader, reserved0) == 64,
+               "SexObjectHeader must be exactly 80 bytes");
+
 
 
 _Static_assert(sizeof(SexObjectRef) == 16, "SexObjectRef must be exactly 16 bytes");

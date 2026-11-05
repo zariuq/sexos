@@ -1,6 +1,12 @@
 (cesta native-c/1 compact-c/2
   (unit
-    (cpp-if "!defined(SEXOS_CESTA_MMIO_H)"
+    (ownership (check-all)
+    (unchecked (sexos_volatile_read8 sexos_volatile_read16 sexos_volatile_read32
+                sexos_volatile_read64 sexos_volatile_write8 sexos_volatile_write16
+                sexos_volatile_write32 sexos_volatile_write64 sexos_compiler_fence_seq_cst
+                sexos_sfence)
+      (obligation "Typed volatile MMIO and DMA accessors and device syscalls in inline assembly. They rely on the kernel's device leases and DMA quarantine.")))
+  (cpp-if "!defined(SEXOS_CESTA_MMIO_H)"
       (then
         (define SEXOS_CESTA_MMIO_H "1")
         (include "sexos_server.h")
@@ -55,5 +61,13 @@
               (= (* (cast ((volatile uint32_t) *) addr)) value))
             (fn (static inline void) sexos_volatile_write64 ((uint64_t (* addr)) (uint64_t value))
               (= (* (cast ((volatile uint64_t) *) addr)) value))
-            (native "static inline void sexos_compiler_fence_seq_cst(void) { __asm__ volatile (\"\" : : : \"memory\"); }\nstatic inline void sexos_sfence(void) { __asm__ volatile (\"sfence\" : : : \"memory\"); }\n"))))
+            (native "
+static inline void sexos_compiler_fence_seq_cst(void) {
+    __asm__ volatile(\"\" : : : \"memory\");
+}
+
+static inline void sexos_sfence(void) {
+    __asm__ volatile(\"sfence\" : : : \"memory\");
+}
+"))))
   )))

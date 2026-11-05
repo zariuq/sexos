@@ -1,4 +1,6 @@
 #include "sexos_memory_regions.h"
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
 #if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
 _Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
 #else
@@ -8,67 +10,80 @@ _Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI p
 _Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
 #endif
 _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 
-bool sexos_region_valid(const MemoryRegionGrant *g)
-{
-    if (!g->region_id || !g->virtual_base || !g->length ||
-        g->virtual_base % REGION_PAGE_BYTES || g->length % REGION_PAGE_BYTES ||
-        g->virtual_base >= REGION_USER_END || g->length > REGION_USER_END - g->virtual_base ||
-        !g->rights || (g->rights & ~REGION_KNOWN) ||
-        ((g->rights & REGION_WRITE) && !(g->rights & REGION_READ)) ||
-        (g->has_peer && !g->peer_pd)) return false;
-    if (g->has_dma) return (g->rights & REGION_DMA) && g->dma_base &&
-        !(g->dma_base % REGION_PAGE_BYTES) && g->dma_base < REGION_PHYSICAL_END &&
-        g->length <= REGION_PHYSICAL_END - g->dma_base;
+bool sexos_region_valid(const MemoryRegionGrant *g) {
+    if (!g->region_id || !g->virtual_base || !g->length || g->virtual_base % REGION_PAGE_BYTES ||
+        g->length % REGION_PAGE_BYTES || g->virtual_base >= REGION_USER_END ||
+        g->length > REGION_USER_END - g->virtual_base || !g->rights ||
+        (g->rights & ~REGION_KNOWN) || ((g->rights & REGION_WRITE) && !(g->rights & REGION_READ)) ||
+        (g->has_peer && !g->peer_pd))
+        return false;
+    if (g->has_dma)
+        return (g->rights & REGION_DMA) && g->dma_base && !(g->dma_base % REGION_PAGE_BYTES) &&
+               g->dma_base < REGION_PHYSICAL_END && g->length <= REGION_PHYSICAL_END - g->dma_base;
     return !(g->rights & REGION_DMA);
 }
-MemoryRegionViewResult sexos_region_view(const MemoryRegionCapability *c, MemoryRegionRequest q)
-{
+
+MemoryRegionViewResult sexos_region_view(const MemoryRegionCapability *c, MemoryRegionRequest q) {
     if (!c->present || !sexos_region_valid(&c->grant))
-        return (MemoryRegionViewResult){.error=REGION_INVALID_CAPABILITY};
+        return (MemoryRegionViewResult){.error = REGION_INVALID_CAPABILITY};
     if (!q.length || !(q.rights & REGION_QUERY) || (q.rights & ~REGION_KNOWN))
-        return (MemoryRegionViewResult){.error=REGION_INVALID_REQUEST};
+        return (MemoryRegionViewResult){.error = REGION_INVALID_REQUEST};
     if (q.rights & ~c->grant.rights)
-        return (MemoryRegionViewResult){.error=REGION_PERMISSION_DENIED};
+        return (MemoryRegionViewResult){.error = REGION_PERMISSION_DENIED};
     if (q.offset > c->grant.length || q.length > c->grant.length - q.offset)
-        return (MemoryRegionViewResult){.error=REGION_OUT_OF_RANGE};
+        return (MemoryRegionViewResult){.error = REGION_OUT_OF_RANGE};
     bool dma = (q.rights & REGION_DMA) != 0;
-    return (MemoryRegionViewResult){.value={c->grant.region_id,
-        c->grant.virtual_base+q.offset, q.length, dma, dma ? c->grant.dma_base+q.offset : 0}};
+    return (MemoryRegionViewResult){.value = {c->grant.region_id, c->grant.virtual_base + q.offset,
+                                              q.length, dma,
+                                              dma ? c->grant.dma_base + q.offset : 0}};
 }
-MemoryRegionViewResult sexos_region_register_view(const MemoryRegionCapability *c, uint64_t offset, uint64_t length, uint64_t rights)
-{
-    if (rights > UINT8_MAX) return (MemoryRegionViewResult){.error=REGION_INVALID_REQUEST};
-    return sexos_region_view(c, (MemoryRegionRequest){offset,length,(uint8_t)rights});
+
+MemoryRegionViewResult sexos_region_register_view(const MemoryRegionCapability *c, uint64_t offset,
+                                                  uint64_t length, uint64_t rights) {
+    if (rights > UINT8_MAX)
+        return (MemoryRegionViewResult){.error = REGION_INVALID_REQUEST};
+    return sexos_region_view(c, (MemoryRegionRequest){offset, length, (uint8_t)rights});
 }
-MemoryRegionInfoResult sexos_region_info(const MemoryRegionCapability *c)
-{
-    MemoryRegionViewResult view=sexos_region_view(c,(MemoryRegionRequest){0,c->grant.length,REGION_QUERY});
-    if (view.error) return (MemoryRegionInfoResult){.error=view.error};
-    return (MemoryRegionInfoResult){.value={c->grant.region_id,c->grant.length,
-        c->grant.rights,c->grant.has_peer,c->grant.has_peer ? c->grant.peer_pd : 0}};
+
+MemoryRegionInfoResult sexos_region_info(const MemoryRegionCapability *c) {
+    MemoryRegionViewResult view =
+        sexos_region_view(c, (MemoryRegionRequest){0, c->grant.length, REGION_QUERY});
+    if (view.error)
+        return (MemoryRegionInfoResult){.error = view.error};
+    return (MemoryRegionInfoResult){.value = {c->grant.region_id, c->grant.length, c->grant.rights,
+                                              c->grant.has_peer,
+                                              c->grant.has_peer ? c->grant.peer_pd : 0}};
 }
-MemoryRegionViewResult sexos_region_peer_view(const MemoryRegionCapability *c, uint32_t caller, MemoryRegionRequest q)
-{
-    MemoryRegionViewResult view=sexos_region_view(c,q);
-    if (view.error) return view;
+
+MemoryRegionViewResult sexos_region_peer_view(const MemoryRegionCapability *c, uint32_t caller,
+                                              MemoryRegionRequest q) {
+    MemoryRegionViewResult view = sexos_region_view(c, q);
+    if (view.error)
+        return view;
     if (!caller || !c->grant.has_peer || c->grant.peer_pd != caller)
-        return (MemoryRegionViewResult){.error=REGION_WRONG_PEER};
+        return (MemoryRegionViewResult){.error = REGION_WRONG_PEER};
     return view;
 }
-MemoryRegionReply sexos_region_query(const MemoryRegionCapability *c, uint64_t number, uint64_t offset, uint64_t length, uint64_t rights)
-{
+
+MemoryRegionReply sexos_region_query(const MemoryRegionCapability *c, uint64_t number,
+                                     uint64_t offset, uint64_t length, uint64_t rights) {
     if (number == 54) {
-        MemoryRegionViewResult result=sexos_region_register_view(c,offset,length,rights);
-        if (!result.error) return (MemoryRegionReply){0,result.value.virtual_address,
-            result.value.length,result.value.has_dma ? result.value.dma_address : 0,result.value.region_id};
+        MemoryRegionViewResult result = sexos_region_register_view(c, offset, length, rights);
+        if (!result.error)
+            return (MemoryRegionReply){0, result.value.virtual_address, result.value.length,
+                                       result.value.has_dma ? result.value.dma_address : 0,
+                                       result.value.region_id};
     }
     if (number == 55) {
-        MemoryRegionInfoResult result=sexos_region_info(c);
-        if (!result.error) return (MemoryRegionReply){0,result.value.length,result.value.rights,
-            result.value.has_peer ? result.value.peer_pd : 0,result.value.region_id};
+        MemoryRegionInfoResult result = sexos_region_info(c);
+        if (!result.error)
+            return (MemoryRegionReply){0, result.value.length, result.value.rights,
+                                       result.value.has_peer ? result.value.peer_pd : 0,
+                                       result.value.region_id};
     }
-    return (MemoryRegionReply){.status=UINT64_MAX};
+    return (MemoryRegionReply){.status = UINT64_MAX};
 }
 
 

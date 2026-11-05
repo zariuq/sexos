@@ -73,10 +73,9 @@ static void rpc_wait_transfer(RpcWaitContext *c) {
 #define rpc_admit_run_CHECKED 1
 #define rpc_wait_run_CHECKED 1
 #define rpc_notify_run_CHECKED 1
-#define rpc_admit_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()
-#define rpc_wait_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()
-#define rpc_notify_run_CHECK_FAILURE(ctx, kind, id, expected) sexos_fail()
-
+#define rpc_admit_run_CHECK_FAILURE(ctx,kind,id,expected) sexos_fail()
+#define rpc_wait_run_CHECK_FAILURE(ctx,kind,id,expected) sexos_fail()
+#define rpc_notify_run_CHECK_FAILURE(ctx,kind,id,expected) sexos_fail()
 /* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
 
 #ifdef CESTA_PROTOCOL_rpc_admit_run_DEFINED

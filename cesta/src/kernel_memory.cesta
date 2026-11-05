@@ -1,6 +1,16 @@
 (cesta native-c/1 compact-c/2
   (unit
-    (include "sexos_kernel.h")
+    (ownership (check-all)
+    (unchecked (copy_from_user copy_to_user cpu_clac cpu_cli cpu_cpuid cpu_fpu_state_init
+                cpu_fxrstor cpu_fxsave cpu_hlt cpu_inb cpu_inl cpu_invlpg cpu_irq_restore
+                cpu_irq_save cpu_lidt cpu_ltr cpu_outb cpu_outl cpu_outw cpu_pause cpu_rdmsr
+                cpu_rdseed cpu_read_cr0 cpu_read_cr2 cpu_read_cr3 cpu_read_cr4 cpu_read_rsp cpu_stac
+                cpu_sti cpu_sti_hlt cpu_write_cr0 cpu_write_cr4 cpu_wrmsr cpu_wrpkru cpu_xgetbv
+                expose_to_user frames_alloc kmemcpy kmemset map_page memcmp memcpy memmove
+                memory_init memset next_table page_leaf_address phys_to_virt read_pte root_table
+                split_entry table_at va_alloc)
+      (obligation "Kernel code on the serialized BSP lane with interrupts masked and application processors parked. It reaches physical frames, page tables and device registers through integer-derived pointers, volatile accesses and the kernel runtime's inline assembly and do-while helpers, which the native ownership profile does not admit. It relies on the kernel owning each frame and device exclusively from BOOT; here frames, the single page table and checked user-memory copies.")))
+  (include "sexos_kernel.h")
     (comment "Physical frames, the one page table of the single address space, the user virtual-address cursor, and checked access to user memory. Translated from the files of kernel/src/memory and the page walks of pku.rs and syscalls/mod.rs. The reference maps a 256 MiB kernel heap page by page and runs a lock-free buddy allocator beside it; this kernel needs no heap, so frames come from one cursor over the usable regions, aligned to their block size as the buddy allocator aligns them, and are zeroed before use.")
 
     (define FRAME_REGIONS "64u")
@@ -97,7 +107,9 @@
 
     (comment "allocate_va of the reference: page-aligned addresses from one ascending cursor.")
     (fn uint64_t va_alloc ((uint64_t size))
-      (if (> size (- UINT64_MAX (- KERNEL_PAGE_SIZE 1))) (return NO_ADDRESS))
+      (comment "A reservation names at least one page and never wraps; a misaligned cursor reserves nothing.")
+      (if (|| (== size 0) (> size (- UINT64_MAX (- KERNEL_PAGE_SIZE 1)))) (return NO_ADDRESS))
+      (if (!= (% (. frames va_next) KERNEL_PAGE_SIZE) 0) (return NO_ADDRESS))
       (var uint64_t rounded (call align_up size KERNEL_PAGE_SIZE))
       (comment "The heap cursor stays below the domain stacks and never wraps.")
       (var uint64_t limit 0x700000000000ULL)
@@ -143,7 +155,18 @@
       (call cpu_invlpg va)
       (return true))
 
-    (native "uint64_t page_leaf_address(uint64_t va)\n{\n    uint64_t *table=root_table();\n    for (unsigned level=3;level>0;--level) {\n        uint64_t entry=table[table_index(va,level)];\n        if (!(entry&PTE_PRESENT) || (entry&PTE_HUGE)) return 0;\n        table=table_at(entry);\n    }\n    return (uint64_t)(uintptr_t)&table[table_index(va,0)];\n}\n")
+    (native "
+uint64_t page_leaf_address(uint64_t va) {
+    uint64_t *table = root_table();
+    for (unsigned level = 3; level > 0; --level) {
+        uint64_t entry = table[table_index(va, level)];
+        if (!(entry & PTE_PRESENT) || (entry & PTE_HUGE))
+            return 0;
+        table = table_at(entry);
+    }
+    return (uint64_t)(uintptr_t)&table[table_index(va, 0)];
+}
+")
 
     (comment "The entry that maps va, a large page's entry included.")
     (fn bool read_pte ((uint64_t va) (uint64_t (* pte)))

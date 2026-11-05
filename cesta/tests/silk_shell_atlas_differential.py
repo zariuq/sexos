@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from layout_text import LayoutText
 
 from silk_shell_input_differential import declarations, identifiers, item_end
 
@@ -245,10 +246,10 @@ def mutations(original):
         ("invalid_scene_visible", changed("return FRAMES[i].scene_id==ACTIVE_SCENE_IDX;", "return FRAMES[i].scene_id!=ACTIVE_SCENE_IDX;")),
         ("stale_generation_visible", changed("if(make_focus_ref(sid,&ref) && !focus_ref_is_current(&ref))", "if(make_focus_ref(sid,&ref) && focus_ref_is_current(&ref))")),
     ]
-    match = re.search(r"bool shell_atlas_snap_validate\([^\n]+\)\n\{", original)
+    match = re.search(r"bool shell_atlas_snap_validate\([^;{}]*\)\s*\{", original)
     assert match
     end = item_end(original, match.start())
-    body = original[match.start():end]
+    body = LayoutText(original[match.start():end])
     before, after = original[:match.start()], original[end:]
     for name, old, new in (
         ("missing_occupied_count", "count==snap->frame_count", "count<=MAX_FRAMES"),
@@ -260,7 +261,7 @@ def mutations(original):
     partial = body.replace("i<MAX_FRAMES", "i<snap->frame_count").replace("count==snap->frame_count", "count<=MAX_FRAMES")
     result.append(("original_sparse_prefix_bug", before + partial + after))
     result.append(("failed_restore_publishes", changed("if(!restored){", "for(size_t i=0;i<MAX_FRAMES;++i)FRAMES[i]=pending[i];\n    if(!restored){")))
-    match = re.search(r"uint8_t shell_atlas_snap_compute_checksum\([^\n]+\)\n\{", original)
+    match = re.search(r"uint8_t shell_atlas_snap_compute_checksum\([^;{}]*\)\s*\{", original)
     assert match
     end = item_end(original, match.start())
     raw = """uint8_t shell_atlas_snap_compute_checksum(ShellAtlasContext *ctx,const SceneLayoutSnapshot *snap)
@@ -322,7 +323,7 @@ def main():
             print(cc, mode, len(rows), "commands/effects/states match", flush=True)
     caught = []
     if args.mutations:
-        original = source.read_text()
+        original = LayoutText(source.read_text())
         try:
             for name, mutant in mutations(original):
                 source.write_text(mutant)

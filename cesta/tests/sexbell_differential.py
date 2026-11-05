@@ -26,6 +26,7 @@ import os
 from pathlib import Path
 import random
 import shutil
+from layout_text import LayoutText
 
 from differential_support import LISTEN, first_difference, pinned_function, run
 
@@ -291,7 +292,7 @@ def main():
     assert any(b"reason=mute_list_full" in r for r in references.values()), "no scenario filled the mute list"
     # Controls, including the tie rule: keeping the oldest of equal lanes, as the
     # Rust's comment says, must differ from what its code does.
-    original = (HERE / "src/sexbell.cesta").read_text()
+    original = LayoutText((HERE / "src/sexbell.cesta").read_text())
     mutations = [
         ("(&& (== (-> entry final_lane) lowest_lane) (|| (! found) (> (cast uint16_t i) lowest_dist))))",
          "(&& (== (-> entry final_lane) lowest_lane) (! found)))"),

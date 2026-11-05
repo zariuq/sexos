@@ -1,5 +1,5 @@
 {
-  "pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "pin": "44053ea9b017fe89008413f7cc8a6b1a4d28d015",
   "sources": [
     {
       "path": "crates/sex-pdx/src/history_recovery.rs",
@@ -7,7 +7,7 @@
     },
     {
       "path": "crates/sex-pdx/src/app_catalog.rs",
-      "sha256": "16304bb05e22493f2e1f6a8c9c09aa1ee838a0641cca3ecea7e575312e12f3b1"
+      "sha256": "b64e70fd3e9d813b20edd479bab9c68edbd1485f0af382fdc0f0d9424a2c2f0c"
     },
     {
       "path": "kernel/src/history_recovery.rs",
@@ -15,7 +15,7 @@
     },
     {
       "path": "kernel/src/init.rs",
-      "sha256": "9559aa47d0c15e90620f43b18fb72ce4dc7683bfe4ba55413d4750906b159c58"
+      "sha256": "6df473422e40bfe024701edc2fcdf76871a5b3f52f324b90db9a9a3492aeef40"
     }
   ]
 }

@@ -1,6 +1,7 @@
 """Current upstream Sexnet job wire algebra against Cesta."""
 import argparse,hashlib,importlib,itertools,json,os,random,subprocess,sys
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(cmd,data=None,env=None,cwd=HERE):
  r=subprocess.run(list(map(str,cmd)),cwd=cwd,input=data,capture_output=True,env=env)
@@ -30,7 +31,7 @@ def main():
   c=w/f'abi-{cc}.c';p=w/f'abi-{cc}.plan';run([a.cesta,'export-c','src/network_job_abi.cesta','--cc',cc,'--std=c11','-o',c,'--plan',p,'--','-Igenerated/include']);exports[cc]=c;plans[hashlib.sha256(p.read_bytes()).hexdigest()]=p
   for mode,opt in(('O0',['-O0']),('O2',['-O2']),('SAN',['-O1','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie'])):
    b=w/f'{cc}-{mode}';run([cc,'-std=c11','-Wall','-Wextra','-Wpedantic','-Werror',*opt,'-Igenerated/include',c,w/'host.c','-o',b]);actual=run([b],data,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=1:abort_on_error=1'});assert actual==expected,(cc,mode);rows.append(dict(compiler=cc,mode=mode,sha256=hashlib.sha256(actual).hexdigest()))
- base=exports['gcc'].read_text();changes=[('seq-mask','words.words[0]&NETWORK_JOB_MAX_SEQ','words.words[0]&(NETWORK_JOB_MAX_SEQ-1)'),('write-max','r.length<=8','r.length<=7'),('read-max','r.length<=4','r.length<=3'),('reply-tag','UINT64_C(0x78)<<56','UINT64_C(0x77)<<56'),('error-tag','UINT64_C(0xE8)<<56','UINT64_C(0xE7)<<56'),('state-bound','value>NETWORK_JOB_CANCELLED','value>=NETWORK_JOB_CANCELLED')];caught=[]
+ base=LayoutText(exports['gcc'].read_text());changes=[('seq-mask','words.words[0]&NETWORK_JOB_MAX_SEQ','words.words[0]&(NETWORK_JOB_MAX_SEQ-1)'),('write-max','r.length<=8','r.length<=7'),('read-max','r.length<=4','r.length<=3'),('reply-tag','UINT64_C(0x78)<<56','UINT64_C(0x77)<<56'),('error-tag','UINT64_C(0xE8)<<56','UINT64_C(0xE7)<<56'),('state-bound','value>NETWORK_JOB_CANCELLED','value>=NETWORK_JOB_CANCELLED')];caught=[]
  for name,old,new in changes:
   assert base.count(old)==1,(name,base.count(old));m=w/f'mutant-{name}.c';m.write_text(base.replace(old,new));b=w/f'mutant-{name}';run(['gcc','-std=c11','-O2','-Igenerated/include',m,w/'host.c','-o',b]);assert run([b],data)!=expected,('survived',name);caught.append(name)
  admission=[]

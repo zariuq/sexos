@@ -1,6 +1,11 @@
 (cesta native-c/1 compact-c/2
   (unit
-    (include "sexos_arm64_boot.h")
+    (ownership (check-all)
+    (unchecked (arm64_boot_ap arm64_enable_shared_mmu arm64_gic_init arm64_phase4_entry
+                arm64_timer_init arm64_timer_reload build_frame gic32 phase4_fatal scheduler_init
+                sex_arm_ap_main sex_arm_kill_warden sex_arm_tick task_a task_b)
+      (obligation "AArch64 bring-up on one core during boot: system registers, translation tables, GIC, timer and PL011 MMIO through inline assembly, volatile access and integer-derived pointers. It relies on exclusive boot-time ownership of the device map; here GIC, timer and scheduler.")))
+  (include "sexos_arm64_boot.h")
     (include <stdatomic.h>)
     (native "
 #define P4_HHDM UINT64_C(0xffff800000000000)
@@ -9,9 +14,9 @@
 #define P4_GICR_SGI UINT64_C(0x10000)
 #define P4_GICD_CTLR UINT64_C(0x000)
 #define P4_GICR_WAKER UINT64_C(0x014)
-#define P4_GICR_IGROUPR0 (P4_GICR_SGI+UINT64_C(0x080))
-#define P4_GICR_ISENABLER0 (P4_GICR_SGI+UINT64_C(0x100))
-#define P4_GICR_IPRIORITYR (P4_GICR_SGI+UINT64_C(0x400))
+#define P4_GICR_IGROUPR0 (P4_GICR_SGI + UINT64_C(0x080))
+#define P4_GICR_ISENABLER0 (P4_GICR_SGI + UINT64_C(0x100))
+#define P4_GICR_IPRIORITYR (P4_GICR_SGI + UINT64_C(0x400))
 #define P4_FRAME_SIZE UINT64_C(272)
 #define P4_STACK_SIZE UINT64_C(16384)
 #define P4_SCTLR UINT64_C(0x30d8180d)
@@ -23,159 +28,230 @@ static uint8_t arm64_stack_a[16384] __attribute__((aligned(16)));
 static uint8_t arm64_stack_b[16384] __attribute__((aligned(16)));
 uint8_t arm64_ap_stack[16384] __attribute__((aligned(16)));
 static _Atomic uint64_t arm64_ap_done;
-extern uint8_t __kernel_start,__kernel_end;
+extern uint8_t __kernel_start, __kernel_end;
 extern _Noreturn void sex_arm_first(uint64_t frame);
 extern _Noreturn void sex_arm_ap_entry(void);
-static volatile uint32_t *gic32(uint64_t address)
-{
-    return(volatile uint32_t *)(uintptr_t)(P4_HHDM+address);
+
+static volatile uint32_t *gic32(uint64_t address) {
+    return (volatile uint32_t *)(uintptr_t)(P4_HHDM + address);
 }
-static void phase4_fatal(const char *text)
-{
-    arm64_write_str(text);arm64_stop();
+
+static void phase4_fatal(const char *text) {
+    arm64_write_str(text);
+    arm64_stop();
 }
-static uint64_t build_frame(uint8_t *stack,void(*entry)(void))
-{
-    uint64_t frame=(uint64_t)(uintptr_t)(stack+P4_STACK_SIZE-P4_FRAME_SIZE);
-    volatile uint64_t *words=(volatile uint64_t *)(uintptr_t)frame;
-    for(size_t i=0;i<P4_FRAME_SIZE/8u;i++)words[i]=0;
-    words[31]=(uint64_t)(uintptr_t)entry;words[32]=UINT64_C(0x345);return frame;
+
+static uint64_t build_frame(uint8_t *stack, void (*entry)(void)) {
+    uint64_t frame = (uint64_t)(uintptr_t)(stack + P4_STACK_SIZE - P4_FRAME_SIZE);
+    volatile uint64_t *words = (volatile uint64_t *)(uintptr_t)frame;
+    for (size_t i = 0; i < P4_FRAME_SIZE / 8u; i++)
+        words[i] = 0;
+    words[31] = (uint64_t)(uintptr_t)entry;
+    words[32] = UINT64_C(0x345);
+    return frame;
 }
-static void arm64_timer_reload(void)
-{
+
+static void arm64_timer_reload(void) {
     uint64_t interval;
-    if(!arm64_phase4_timer_interval(arm64_timer_frequency,&interval))
+    if (!arm64_phase4_timer_interval(arm64_timer_frequency, &interval))
         phase4_fatal(\"[sex.arm.timer] FATAL interval\\n\");
-    __asm__ volatile(\"msr CNTP_TVAL_EL0, %0\"::\"r\"(interval):\"memory\");
+    __asm__ volatile(\"msr CNTP_TVAL_EL0, %0\" ::\"r\"(interval) : \"memory\");
 }
-static void arm64_timer_init(void)
-{
-    __asm__ volatile(\"mrs %0, CNTFRQ_EL0\":\"=r\"(arm64_timer_frequency));
-    uint64_t interval;if(!arm64_phase4_timer_interval(arm64_timer_frequency,&interval))
+
+static void arm64_timer_init(void) {
+    __asm__ volatile(\"mrs %0, CNTFRQ_EL0\" : \"=r\"(arm64_timer_frequency));
+    uint64_t interval;
+    if (!arm64_phase4_timer_interval(arm64_timer_frequency, &interval))
         phase4_fatal(\"[sex.arm.timer] FATAL freq=0\\n\");
-    arm64_write_str(\"[sex.arm.timer] freq=\");arm64_write_dec(arm64_timer_frequency);
-    arm64_write_str(\" hz=100\\n\");arm64_timer_reload();
-    __asm__ volatile(\"msr CNTP_CTL_EL0, %0\"::\"r\"(UINT64_C(1)):\"memory\");
+    arm64_write_str(\"[sex.arm.timer] freq=\");
+    arm64_write_dec(arm64_timer_frequency);
+    arm64_write_str(\" hz=100\\n\");
+    arm64_timer_reload();
+    __asm__ volatile(\"msr CNTP_CTL_EL0, %0\" ::\"r\"(UINT64_C(1)) : \"memory\");
 }
-static void arm64_gic_init(void)
-{
-    *gic32(P4_GICD+P4_GICD_CTLR)=(1u<<4)|(1u<<1);__asm__ volatile(\"dsb sy\"::: \"memory\");
-    uint32_t distributor=*gic32(P4_GICD+P4_GICD_CTLR);
-    if((distributor&(1u<<1))==0)phase4_fatal(\"[sex.arm.gic] FATAL gicd_grp1ns_clear\\n\");
+
+static void arm64_gic_init(void) {
+    *gic32(P4_GICD + P4_GICD_CTLR) = (1u << 4) | (1u << 1);
+    __asm__ volatile(\"dsb sy\" ::: \"memory\");
+    uint32_t distributor = *gic32(P4_GICD + P4_GICD_CTLR);
+    if ((distributor & (1u << 1)) == 0)
+        phase4_fatal(\"[sex.arm.gic] FATAL gicd_grp1ns_clear\\n\");
     arm64_write_str(\"[sex.arm.gic] gicd=ok\\n\");
-    *gic32(P4_GICR+P4_GICR_WAKER)=0;__asm__ volatile(\"dsb sy\"::: \"memory\");
-    uint32_t spins=0;while((*gic32(P4_GICR+P4_GICR_WAKER)&(1u<<2))!=0)
-        if(++spins>UINT32_C(1000000))phase4_fatal(\"[sex.arm.gic] FATAL gicr_asleep\\n\");
+    *gic32(P4_GICR + P4_GICR_WAKER) = 0;
+    __asm__ volatile(\"dsb sy\" ::: \"memory\");
+    uint32_t spins = 0;
+    while ((*gic32(P4_GICR + P4_GICR_WAKER) & (1u << 2)) != 0)
+        if (++spins > UINT32_C(1000000))
+            phase4_fatal(\"[sex.arm.gic] FATAL gicr_asleep\\n\");
     arm64_write_str(\"[sex.arm.gic] gicr=ok\\n\");
-    uint64_t sre;__asm__ volatile(\"mrs %0, ICC_SRE_EL1\":\"=r\"(sre));sre|=1u;
-    __asm__ volatile(\"msr ICC_SRE_EL1, %0\\nisb\"::\"r\"(sre):\"memory\");
-    __asm__ volatile(\"msr ICC_PMR_EL1, %0\"::\"r\"(UINT64_C(0xff)):\"memory\");
-    __asm__ volatile(\"msr ICC_IGRPEN1_EL1, %0\\nisb\"::\"r\"(UINT64_C(1)):\"memory\");
+    uint64_t sre;
+    __asm__ volatile(\"mrs %0, ICC_SRE_EL1\" : \"=r\"(sre));
+    sre |= 1u;
+    __asm__ volatile(\"msr ICC_SRE_EL1, %0\\nisb\" ::\"r\"(sre) : \"memory\");
+    __asm__ volatile(\"msr ICC_PMR_EL1, %0\" ::\"r\"(UINT64_C(0xff)) : \"memory\");
+    __asm__ volatile(\"msr ICC_IGRPEN1_EL1, %0\\nisb\" ::\"r\"(UINT64_C(1)) : \"memory\");
     arm64_write_str(\"[sex.arm.gic] cpuif=ok\\n\");
-    *gic32(P4_GICR+P4_GICR_IGROUPR0)=1u<<30;
-    *(volatile uint8_t *)(uintptr_t)(P4_HHDM+P4_GICR+P4_GICR_IPRIORITYR+30u)=UINT8_C(0x80);
-    *gic32(P4_GICR+P4_GICR_ISENABLER0)=1u<<30;__asm__ volatile(\"dsb sy\"::: \"memory\");
-    uint64_t read_sre,read_pmr,read_group;
-    __asm__ volatile(\"mrs %0, ICC_SRE_EL1\":\"=r\"(read_sre));
-    __asm__ volatile(\"mrs %0, ICC_PMR_EL1\":\"=r\"(read_pmr));
-    __asm__ volatile(\"mrs %0, ICC_IGRPEN1_EL1\":\"=r\"(read_group));
-    Arm64GicObservation observation={distributor,*gic32(P4_GICR+P4_GICR_WAKER),read_sre,read_pmr,read_group,
-        *gic32(P4_GICR+P4_GICR_IGROUPR0),*gic32(P4_GICR+P4_GICR_ISENABLER0)};
+    *gic32(P4_GICR + P4_GICR_IGROUPR0) = 1u << 30;
+    *(volatile uint8_t *)(uintptr_t)(P4_HHDM + P4_GICR + P4_GICR_IPRIORITYR + 30u) = UINT8_C(0x80);
+    *gic32(P4_GICR + P4_GICR_ISENABLER0) = 1u << 30;
+    __asm__ volatile(\"dsb sy\" ::: \"memory\");
+    uint64_t read_sre, read_pmr, read_group;
+    __asm__ volatile(\"mrs %0, ICC_SRE_EL1\" : \"=r\"(read_sre));
+    __asm__ volatile(\"mrs %0, ICC_PMR_EL1\" : \"=r\"(read_pmr));
+    __asm__ volatile(\"mrs %0, ICC_IGRPEN1_EL1\" : \"=r\"(read_group));
+    Arm64GicObservation observation = {distributor,
+                                       *gic32(P4_GICR + P4_GICR_WAKER),
+                                       read_sre,
+                                       read_pmr,
+                                       read_group,
+                                       *gic32(P4_GICR + P4_GICR_IGROUPR0),
+                                       *gic32(P4_GICR + P4_GICR_ISENABLER0)};
     arm64_write_str(\"[sex.arm.gic] observation=\");
-    arm64_write_hex(observation.distributor_control);arm64_write_byte('/');
-    arm64_write_hex(observation.redistributor_waker);arm64_write_byte('/');
-    arm64_write_hex(observation.sre);arm64_write_byte('/');
-    arm64_write_hex(observation.pmr);arm64_write_byte('/');
-    arm64_write_hex(observation.group_enable);arm64_write_byte('/');
-    arm64_write_hex(observation.timer_group);arm64_write_byte('/');
-    arm64_write_hex(observation.timer_enable);arm64_write_byte('\\n');
-    if(!arm64_phase4_gic_valid(observation))phase4_fatal(\"[sex.arm.gic] FATAL observation\\n\");
+    arm64_write_hex(observation.distributor_control);
+    arm64_write_byte('/');
+    arm64_write_hex(observation.redistributor_waker);
+    arm64_write_byte('/');
+    arm64_write_hex(observation.sre);
+    arm64_write_byte('/');
+    arm64_write_hex(observation.pmr);
+    arm64_write_byte('/');
+    arm64_write_hex(observation.group_enable);
+    arm64_write_byte('/');
+    arm64_write_hex(observation.timer_group);
+    arm64_write_byte('/');
+    arm64_write_hex(observation.timer_enable);
+    arm64_write_byte('\\n');
+    if (!arm64_phase4_gic_valid(observation))
+        phase4_fatal(\"[sex.arm.gic] FATAL observation\\n\");
     arm64_write_str(\"[sex.arm.gic] ppi30=on\\n\");
 }
-static void arm64_enable_shared_mmu(void)
-{
-    uint64_t t0=arm64_phase3_ttbr0(),t1=arm64_phase3_ttbr1();
-    __asm__ volatile(\"dsb sy\"::: \"memory\");
-    __asm__ volatile(\"msr MAIR_EL1, %0\"::\"r\"(P4_MAIR):\"memory\");
-    __asm__ volatile(\"msr TCR_EL1, %0\"::\"r\"(P4_TCR):\"memory\");
-    __asm__ volatile(\"msr TTBR0_EL1, %0\"::\"r\"(t0):\"memory\");
-    __asm__ volatile(\"msr TTBR1_EL1, %0\\nisb\"::\"r\"(t1):\"memory\");
-    __asm__ volatile(\"msr SCTLR_EL1, %0\\nisb\"::\"r\"(P4_SCTLR):\"memory\");
+
+static void arm64_enable_shared_mmu(void) {
+    uint64_t t0 = arm64_phase3_ttbr0(), t1 = arm64_phase3_ttbr1();
+    __asm__ volatile(\"dsb sy\" ::: \"memory\");
+    __asm__ volatile(\"msr MAIR_EL1, %0\" ::\"r\"(P4_MAIR) : \"memory\");
+    __asm__ volatile(\"msr TCR_EL1, %0\" ::\"r\"(P4_TCR) : \"memory\");
+    __asm__ volatile(\"msr TTBR0_EL1, %0\" ::\"r\"(t0) : \"memory\");
+    __asm__ volatile(\"msr TTBR1_EL1, %0\\nisb\" ::\"r\"(t1) : \"memory\");
+    __asm__ volatile(\"msr SCTLR_EL1, %0\\nisb\" ::\"r\"(P4_SCTLR) : \"memory\");
 }
-_Noreturn void sex_arm_ap_main(void)
-{
-    arm64_enable_shared_mmu();arm64_phase3_install_vectors();
-    __asm__ volatile(\"msr TPIDR_EL1, %0\"::\"r\"(UINT64_C(1)):\"memory\");
-    arm64_write_str(\"SEX_ARM_AP_OK\\n\");atomic_store_explicit(&arm64_ap_done,1,memory_order_release);arm64_stop();
+
+_Noreturn void sex_arm_ap_main(void) {
+    arm64_enable_shared_mmu();
+    arm64_phase3_install_vectors();
+    __asm__ volatile(\"msr TPIDR_EL1, %0\" ::\"r\"(UINT64_C(1)) : \"memory\");
+    arm64_write_str(\"SEX_ARM_AP_OK\\n\");
+    atomic_store_explicit(&arm64_ap_done, 1, memory_order_release);
+    arm64_stop();
 }
-static void arm64_boot_ap(void)
-{
-    uint64_t start=(uint64_t)(uintptr_t)&__kernel_start,end=(uint64_t)(uintptr_t)&__kernel_end;
-    for(uint64_t p=start&~UINT64_C(63);p<end;p+=64u)__asm__ volatile(\"dc cvac, %0\"::\"r\"(p):\"memory\");
-    __asm__ volatile(\"dsb sy\\nic iallu\\ndsb sy\"::: \"memory\");
-    int64_t result;uint64_t entry=(uint64_t)(uintptr_t)&sex_arm_ap_entry;
-    register uint64_t x0 __asm__(\"x0\")=UINT64_C(0xc4000003);
-    register uint64_t x1 __asm__(\"x1\")=1;
-    register uint64_t x2 __asm__(\"x2\")=entry;
-    register uint64_t x3 __asm__(\"x3\")=0;
-    __asm__ volatile(\"smc #0\":\"+r\"(x0):\"r\"(x1),\"r\"(x2),\"r\"(x3):\"memory\");result=(int64_t)x0;
-    if(result!=0)phase4_fatal(\"[sex.arm.smp] FATAL psci_ret\\nSEX_ARM_PHASE4_FAIL\\n\");
+
+static void arm64_boot_ap(void) {
+    uint64_t start = (uint64_t)(uintptr_t)&__kernel_start, end = (uint64_t)(uintptr_t)&__kernel_end;
+    for (uint64_t p = start & ~UINT64_C(63); p < end; p += 64u)
+        __asm__ volatile(\"dc cvac, %0\" ::\"r\"(p) : \"memory\");
+    __asm__ volatile(\"dsb sy\\nic iallu\\ndsb sy\" ::: \"memory\");
+    int64_t result;
+    uint64_t entry = (uint64_t)(uintptr_t)&sex_arm_ap_entry;
+    register uint64_t x0 __asm__(\"x0\") = UINT64_C(0xc4000003);
+    register uint64_t x1 __asm__(\"x1\") = 1;
+    register uint64_t x2 __asm__(\"x2\") = entry;
+    register uint64_t x3 __asm__(\"x3\") = 0;
+    __asm__ volatile(\"smc #0\" : \"+r\"(x0) : \"r\"(x1), \"r\"(x2), \"r\"(x3) : \"memory\");
+    result = (int64_t)x0;
+    if (result != 0)
+        phase4_fatal(\"[sex.arm.smp] FATAL psci_ret\\nSEX_ARM_PHASE4_FAIL\\n\");
     arm64_write_str(\"[sex.arm.smp] ap_boot=1\\n\");
-    uint64_t spins=0;while(atomic_load_explicit(&arm64_ap_done,memory_order_acquire)==0)
-        if(++spins>UINT64_C(100000000))phase4_fatal(\"[sex.arm.smp] FATAL ap_timeout\\nSEX_ARM_PHASE4_FAIL\\n\");
-    Arm64ApObservation observation={result,arm64_phase3_ttbr0(),arm64_phase3_ttbr1(),true};
-    if(!arm64_phase4_ap_valid(observation))phase4_fatal(\"[sex.arm.smp] FATAL observation\\nSEX_ARM_PHASE4_FAIL\\n\");
+    uint64_t spins = 0;
+    while (atomic_load_explicit(&arm64_ap_done, memory_order_acquire) == 0)
+        if (++spins > UINT64_C(100000000))
+            phase4_fatal(\"[sex.arm.smp] FATAL ap_timeout\\nSEX_ARM_PHASE4_FAIL\\n\");
+    Arm64ApObservation observation = {result, arm64_phase3_ttbr0(), arm64_phase3_ttbr1(), true};
+    if (!arm64_phase4_ap_valid(observation))
+        phase4_fatal(\"[sex.arm.smp] FATAL observation\\nSEX_ARM_PHASE4_FAIL\\n\");
     arm64_write_str(\"[sex.arm.smp] ap_ack=1\\n\");
 }
+
 static _Noreturn void task_a(void);
 static _Noreturn void task_b(void);
-static void scheduler_init(void)
-{
-    uint64_t a=build_frame(arm64_stack_a,task_a),b=build_frame(arm64_stack_b,task_b);
-    if(arm64_phase4_state_init(&arm64_scheduler,a,b)!=ARM64_PHASE4_OK)
+
+static void scheduler_init(void) {
+    uint64_t a = build_frame(arm64_stack_a, task_a), b = build_frame(arm64_stack_b, task_b);
+    if (arm64_phase4_state_init(&arm64_scheduler, a, b) != ARM64_PHASE4_OK)
         phase4_fatal(\"[sex.arm.sched] FATAL init\\n\");
 }
-uint64_t sex_arm_tick(uint64_t frame,uint64_t intid)
-{
-    arm64_timer_reload();uint64_t next;
-    if(arm64_phase4_tick(&arm64_scheduler,frame,(uint32_t)intid,&next)!=ARM64_PHASE4_OK)
+
+uint64_t sex_arm_tick(uint64_t frame, uint64_t intid) {
+    arm64_timer_reload();
+    uint64_t next;
+    if (arm64_phase4_tick(&arm64_scheduler, frame, (uint32_t)intid, &next) != ARM64_PHASE4_OK)
         phase4_fatal(\"[sex.arm.sched] FATAL stray_irq\\n\");
     return next;
 }
-uint64_t sex_arm_kill_warden(uint64_t esr,uint64_t far,uint64_t elr,uint64_t frame)
-{
-    uint64_t next;Arm64Phase4Status status=arm64_phase4_kill(&arm64_scheduler,frame,&next);
-    if(status==ARM64_PHASE4_OK){arm64_write_str(\"[sex.arm.neg] kill_task=contained far=0x\");
-        arm64_write_hex(far);arm64_write_byte('\\n');return next;}
-    arm64_write_str(status==ARM64_PHASE4_BOOT_FAULT?\"[sex.arm.panic] el1_sync_boot esr=0x\":
-        \"[sex.arm.panic] kill_survivor esr=0x\");arm64_write_hex(esr);
-    arm64_write_str(\" far=0x\");arm64_write_hex(far);arm64_write_str(\" elr=0x\");arm64_write_hex(elr);
-    arm64_write_str(\"\\nSEX_ARM_PHASE4_FAIL\\n\");return 0;
+
+uint64_t sex_arm_kill_warden(uint64_t esr, uint64_t far, uint64_t elr, uint64_t frame) {
+    uint64_t next;
+    Arm64Phase4Status status = arm64_phase4_kill(&arm64_scheduler, frame, &next);
+    if (status == ARM64_PHASE4_OK) {
+        arm64_write_str(\"[sex.arm.neg] kill_task=contained far=0x\");
+        arm64_write_hex(far);
+        arm64_write_byte('\\n');
+        return next;
+    }
+    arm64_write_str(status == ARM64_PHASE4_BOOT_FAULT ? \"[sex.arm.panic] el1_sync_boot esr=0x\"
+                                                      : \"[sex.arm.panic] kill_survivor esr=0x\");
+    arm64_write_hex(esr);
+    arm64_write_str(\" far=0x\");
+    arm64_write_hex(far);
+    arm64_write_str(\" elr=0x\");
+    arm64_write_hex(elr);
+    arm64_write_str(\"\\nSEX_ARM_PHASE4_FAIL\\n\");
+    return 0;
 }
-static _Noreturn void task_a(void)
-{
-    uint64_t run=0,after=0;for(;;){if(arm64_scheduler.b_dead){if(++after==10u){
-        arm64_write_str(\"[sex.arm.sched] a_after_dead=10\\nSEX_ARM_PHASE4_OK\\n\");
+
+static _Noreturn void task_a(void) {
+    uint64_t run = 0, after = 0;
+    for (;;) {
+        if (arm64_scheduler.b_dead) {
+            if (++after == 10u) {
+                arm64_write_str(\"[sex.arm.sched] a_after_dead=10\\nSEX_ARM_PHASE4_OK\\n\");
 #if defined(ARM64_PHASE5) && ARM64_PHASE5
-        arm64_phase5_entry();
+                arm64_phase5_entry();
 #else
-        arm64_stop();
+                arm64_stop();
 #endif
-        }}
-        else if(++run<=3u){arm64_write_str(\"[sex.arm.sched] a_run=\");arm64_write_dec(run);arm64_write_byte('\\n');}
-        __asm__ volatile(\"wfe\"::: \"memory\");}
+            }
+        } else if (++run <= 3u) {
+            arm64_write_str(\"[sex.arm.sched] a_run=\");
+            arm64_write_dec(run);
+            arm64_write_byte('\\n');
+        }
+        __asm__ volatile(\"wfe\" ::: \"memory\");
+    }
 }
-static _Noreturn void task_b(void)
-{
-    uint64_t run=0;for(;;){run++;if(run<=3u){arm64_write_str(\"[sex.arm.sched] b_run=\");
-        arm64_write_dec(run);arm64_write_byte('\\n');}if(run==3u)*(volatile uint64_t *)(uintptr_t)0=0;
-        __asm__ volatile(\"wfe\"::: \"memory\");}
+
+static _Noreturn void task_b(void) {
+    uint64_t run = 0;
+    for (;;) {
+        run++;
+        if (run <= 3u) {
+            arm64_write_str(\"[sex.arm.sched] b_run=\");
+            arm64_write_dec(run);
+            arm64_write_byte('\\n');
+        }
+        if (run == 3u)
+            *(volatile uint64_t *)(uintptr_t)0 = 0;
+        __asm__ volatile(\"wfe\" ::: \"memory\");
+    }
 }
-_Noreturn void arm64_phase4_entry(void)
-{
+
+_Noreturn void arm64_phase4_entry(void) {
     arm64_write_str(\"[sex.arm.p4] entry=1\\n\");
-    __asm__ volatile(\"msr TPIDR_EL1, %0\"::\"r\"(UINT64_C(0)):\"memory\");
-    arm64_gic_init();scheduler_init();arm64_boot_ap();arm64_timer_init();
-    arm64_write_str(\"[sex.arm.sched] start=1\\n\");sex_arm_first(arm64_scheduler.frame_a);
+    __asm__ volatile(\"msr TPIDR_EL1, %0\" ::\"r\"(UINT64_C(0)) : \"memory\");
+    arm64_gic_init();
+    scheduler_init();
+    arm64_boot_ap();
+    arm64_timer_init();
+    arm64_write_str(\"[sex.arm.sched] start=1\\n\");
+    sex_arm_first(arm64_scheduler.frame_a);
 }
 ")))

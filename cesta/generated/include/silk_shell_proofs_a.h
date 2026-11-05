@@ -1,3 +1,4 @@
+
 #ifndef SEXOS_SHELL_PROOFS_A_H
 #define SEXOS_SHELL_PROOFS_A_H
 #include "silk_shell_diagnostics_a.h"
@@ -42,7 +43,8 @@ void shell_proofs_a_maybe_run_browser_html_proof(SilkShellProofsAState *state);
 void shell_proofs_a_maybe_run_browser_html_link_proof(SilkShellProofsAState *state);
 void shell_proofs_a_maybe_run_browser_html_history_proof(SilkShellProofsAState *state);
 void shell_proofs_a_maybe_run_browser_url_intent_proof(SilkShellProofsAState *state);
-void shell_proofs_a_maybe_run_browser_placeholder_surface_visual_proof(SilkShellProofsAState *state);
+void shell_proofs_a_maybe_run_browser_placeholder_surface_visual_proof(
+    SilkShellProofsAState *state);
 void shell_proofs_a_maybe_run_frame_chrome_model_proof(SilkShellProofsAState *state);
 void shell_proofs_a_maybe_run_frame_rim_markers_proof(SilkShellProofsAState *state);
 void shell_proofs_a_maybe_run_bell_launch_outcome_proof(SilkShellProofsAState *state);

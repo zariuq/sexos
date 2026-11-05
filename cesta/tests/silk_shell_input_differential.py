@@ -9,6 +9,7 @@ import re
 import random
 import subprocess
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 INVENTORY = HERE / 'interfaces/silk_shell_input.source.json'
@@ -115,7 +116,7 @@ def rust_prelude():
         assert name in catalog, name
         selected[name] = catalog[name]
         pending.extend(sorted((identifiers(catalog[name]) & catalog.keys()) - selected.keys()))
-    header = (HERE/'generated/include/silk_shell_input.h').read_text()
+    header = LayoutText((HERE/'generated/include/silk_shell_input.h').read_text())
     names = re.findall(r'\bshell_input_peer_(\w+)\(', header)
     signatures = {}
     for name in names:
@@ -160,7 +161,7 @@ def prepare(work):
 
 
 def provider_sources(signatures, prelude):
-    header = (HERE/'generated/include/silk_shell_input.h').read_text()
+    header = LayoutText((HERE/'generated/include/silk_shell_input.h').read_text())
     inventory = json.loads(INVENTORY.read_text())
     _, original, _, _ = pinned_sources()
     catalog = declarations(original)
@@ -201,7 +202,7 @@ def provider_sources(signatures, prelude):
                           'hit_tag('+arg+') as u64' if typ == 'HitTarget' else arg+' as u64')
         rbody = ['println!("peer '+name+(' '+' '.join(formats) if formats else '')+'"'+(' ,'+','.join(values) if values else '')+');']
         rbody.append('let accepted = peer_allowed('+str(index)+');')
-        prototype = re.search(r'(?m)^([^\n]*\bshell_input_peer_'+name+r'\(([^\n]*)\));$', header)[1]
+        prototype = ' '.join(re.search(r'(?m)^([^\n;{}]*\bshell_input_peer_'+name+r'\(([^;{}]*)\));', header)[1].split())
         cargparts = [x.strip() for x in prototype[prototype.index('(')+1:-1].split(',')]
         cargs = [re.search(r'(\w+)\s*$', x)[1] for x in cargparts]
         cbody = ['(void)ctx;', 'bool accepted=peer_allowed('+str(index)+');', '(void)accepted;']
@@ -532,7 +533,7 @@ def abi_provider(provider):
         name=match[2]
         if name in checked:
             continue  # These boundaries have their own real checked-bridge runtime gate.
-        original=re.findall(r'(?m)^([^\n]*\b'+name+r'\([^\n]*\));$',public)
+        original=[' '.join(x.split()) for x in re.findall(r'(?m)^([^\n;{}]*\b'+name+r'\([^;{}]*\));',public)]
         assert len(original)==1,name
         end=item_end(text,match.end()-1)
         body=text[match.end():end-1]
@@ -619,7 +620,7 @@ def independent(binary, scalars):
     assert 'result 1\n'in text
     _,text=observe([(0,1,0,0,3),(1,1,0x1c,1)])
     assert 'peer palette_execute_selected'in text and 'peer toggle_command_palette'not in text,text[-1500:]
-    header=(HERE/'generated/include/silk_shell_input.h').read_text()
+    header=LayoutText((HERE/'generated/include/silk_shell_input.h').read_text())
     peers=re.findall(r'\bshell_input_peer_(\w+)\(',header)
     spindle_text=1<<(peers.index('is_spindle_text_key')%61)
     _,text=observe([(0,spindle_text,0x99,0,3),(1,1,0x2a,1),(1,1,0x12,1),
@@ -639,7 +640,7 @@ def independent(binary, scalars):
 
 
 def mutations(work, provider, exported, data, expected, native):
-    original=exported.read_text()
+    original=LayoutText(exported.read_text())
     changes=[
         ('relative_gain', ' : 18;\n    return raw < 0', ' : 17;\n    return raw < 0'),
         ('absolute_edge', 'if (raw >= TABLET_RAW_MAX) return input_wrap_sub(screen_dim,1);', 'if (raw >= TABLET_RAW_MAX) return input_wrap_sub(screen_dim,2);'),
@@ -664,8 +665,8 @@ def mutations(work, provider, exported, data, expected, native):
         ('shortcut_bypassed', 'if(event_class==EV_KEY && shell_input_peer_desktop_shortcut(ctx,code,value))return;', 'if(false && shell_input_peer_desktop_shortcut(ctx,code,value))return;'),
         ('quil_successor_lost', 'shell_input_peer_quil_has_focus(ctx)', '(FOCUSED_SURFACE_ID==SURFACE_ID_QUIL)'),
         ('spindle_successor_lost', 'shell_input_peer_spindle_has_focus(ctx)', '(FOCUSED_SURFACE_ID==SURFACE_ID_SPINDLE)'),
-        ('spindle_shift_bit', 'ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT) << 8',
-         'ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT) << 7'),
+        ('spindle_shift_bit', 'ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT) << 8, value, EV_KEY)',
+         'ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT) << 7, value, EV_KEY)'),
         ('spindle_left_shift_lost', 'if(code==0x2a)ctx->shell.input->APP_MODIFIER_LEFT_SHIFT=held;',
          'if(code==0x2a)ctx->shell.input->APP_MODIFIER_LEFT_SHIFT=false;'),
         ('invalid_clamp_accepted','if(low>high){sexos_fail();for(;;){}}',''),
@@ -703,7 +704,7 @@ def mutations(work, provider, exported, data, expected, native):
     results.append('signed_dimension_overflow')
     app_source=native[-1]
     assert app_source.name=='silk_shell_input_apps.c'
-    apps=app_source.read_text()
+    apps=LayoutText(app_source.read_text())
     for name,mutated in (
         ('focus_before_query',apps.replace('if(ctx->shell.chrome->FOCUSED_SURFACE_ID==','uint64_t cached=ctx->shell.chrome->FOCUSED_SURFACE_ID;\n    if(ctx->shell.chrome->FOCUSED_SURFACE_ID==').replace('uint64_t focused=ctx->shell.chrome->FOCUSED_SURFACE_ID;','uint64_t focused=cached;')),
         ('activation_error_ignored',apps.replace('if(result.status || result.info.state!=2)return false;','if(result.info.state!=2)return false;')),

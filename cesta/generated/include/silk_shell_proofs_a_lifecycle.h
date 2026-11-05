@@ -1,22 +1,24 @@
+
 #ifndef SEXOS_SHELL_PROOFS_A_LIFECYCLE_H
 #define SEXOS_SHELL_PROOFS_A_LIFECYCLE_H
 #include "silk_shell_proofs_a_routes.h"
 #include "shell_proof_lifecycle_fixture.h"
 ShellProofFixtureRect shell_proofs_a_lifecycle_boot_rect(uint64_t surface);
-bool shell_proofs_a_lifecycle_display_create(ShellInputContext *ctx,uint64_t surface,ShellProofFixtureRect rect);
-void shell_proofs_a_lifecycle_send_tab_info(ShellInputContext *ctx,uint32_t frame);
-bool shell_proofs_a_lifecycle_focus(ShellInputContext *ctx,uint64_t surface);
-bool shell_proofs_a_lifecycle_close(ShellInputContext *ctx,uint64_t surface);
-bool shell_proofs_a_lifecycle_minimize(ShellInputContext *ctx,uint32_t frame);
-bool shell_proofs_a_lifecycle_restore(ShellInputContext *ctx,uint32_t frame);
-bool shell_proofs_a_lifecycle_zoom(ShellInputContext *ctx,uint32_t frame,bool enabled);
-bool shell_proofs_a_lifecycle_frame_minimized(ShellInputContext *ctx,uint32_t frame);
-bool shell_proofs_a_lifecycle_frame_zoomed(ShellInputContext *ctx,uint32_t frame);
-bool shell_proofs_a_lifecycle_first_minimized(ShellInputContext *ctx,uint32_t *frame);
-void shell_proofs_a_lifecycle_pointer_click(ShellInputContext *ctx,int32_t x,int32_t y);
+bool shell_proofs_a_lifecycle_display_create(ShellInputContext *ctx, uint64_t surface,
+                                             ShellProofFixtureRect rect);
+void shell_proofs_a_lifecycle_send_tab_info(ShellInputContext *ctx, uint32_t frame);
+bool shell_proofs_a_lifecycle_focus(ShellInputContext *ctx, uint64_t surface);
+bool shell_proofs_a_lifecycle_close(ShellInputContext *ctx, uint64_t surface);
+bool shell_proofs_a_lifecycle_minimize(ShellInputContext *ctx, uint32_t frame);
+bool shell_proofs_a_lifecycle_restore(ShellInputContext *ctx, uint32_t frame);
+bool shell_proofs_a_lifecycle_zoom(ShellInputContext *ctx, uint32_t frame, bool enabled);
+bool shell_proofs_a_lifecycle_frame_minimized(ShellInputContext *ctx, uint32_t frame);
+bool shell_proofs_a_lifecycle_frame_zoomed(ShellInputContext *ctx, uint32_t frame);
+bool shell_proofs_a_lifecycle_first_minimized(ShellInputContext *ctx, uint32_t *frame);
+void shell_proofs_a_lifecycle_pointer_click(ShellInputContext *ctx, int32_t x, int32_t y);
 void shell_proofs_a_lifecycle_clear_focus_dead(ShellInputContext *ctx);
-bool shell_proofs_a_lifecycle_surface_alive(ShellInputContext *ctx,uint64_t surface);
-void shell_proofs_a_lifecycle_deactivate(ShellInputContext *ctx,uint64_t surface);
+bool shell_proofs_a_lifecycle_surface_alive(ShellInputContext *ctx, uint64_t surface);
+void shell_proofs_a_lifecycle_deactivate(ShellInputContext *ctx, uint64_t surface);
 void shell_proofs_a_maybe_run_frame_lights_pointer_proof(ShellInputContext *ctx);
 void shell_proofs_a_maybe_run_lifecycle_multitab_proof(ShellInputContext *ctx);
 void shell_proofs_a_maybe_run_atlas_visible_restore_proof(ShellInputContext *ctx);

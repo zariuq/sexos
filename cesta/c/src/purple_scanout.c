@@ -9,8 +9,7 @@ typedef struct SexWindowCreateParams {
   uint64_t pfn_base;
 }
 SexWindowCreateParams;
-_Static_assert(sizeof(SexWindowCreateParams) == 24 && offsetof(SexWindowCreateParams, pfn_base) == 16, "repr(C) SexWindowCreateParams");
-
+_Static_assert(sizeof(SexWindowCreateParams) == 24 && __builtin_offsetof(SexWindowCreateParams, pfn_base) == 16, "repr(C) SexWindowCreateParams");
 typedef struct PurpleScanout {
   uint32_t fb_page[1024];
   uint64_t pfn_list[1];

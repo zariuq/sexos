@@ -8,6 +8,7 @@ from pathlib import Path
 import random
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 ID = 0x7942
@@ -158,7 +159,7 @@ def main():
             binary = output / f"{compiler}-{mode}"; run([compiler, "-std=c11", "-Wall", "-Wextra", "-Wpedantic", "-Werror", *flags, "-Igenerated/include", exported, host, "-o", binary])
             actual = run([binary], commands, env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=1"}); assert actual == expected, (compiler, mode)
             configurations.append({"compiler": compiler, "mode": mode, "sha256": hashlib.sha256(actual).hexdigest()})
-    base = exports["gcc"].read_text(); mutations = [
+    base = LayoutText(exports["gcc"].read_text()); mutations = [
         ("zero-query-id", "if(id==0)return(NetworkDnsQueryResult)", "if(false)return(NetworkDnsQueryResult)"),
         ("zero-response-id", "if(id==0)return dns_error", "if(false)return dns_error"),
         ("oversize", "response->len>NETWORK_DNS_MAX_BYTES", "response->len>NETWORK_DNS_MAX_BYTES+1"),

@@ -9,108 +9,395 @@
    (foreign network_engine_tcp_decode (obligation "Separately admitted TCP decoder."))
    (foreign network_engine_tcp_build (obligation "Separately admitted TCP constructor.")))
   (native "
-static bool tcp_client_mac_valid(NetworkEngineMac mac)
-{bool nonzero=false;for(size_t i=0;i<6;i++)if(mac.bytes[i])nonzero=true;return nonzero&&(mac.bytes[0]&1)==0;}
-static void tcp_client_frame_clear(NetworkEngineFrame *frame)
-{for(size_t i=0;i<NETWORK_ENGINE_MAX_FRAME;i++)frame->bytes[i]=0;frame->length=0;}
-void network_tcp_client_init(NetworkTcpClient *client){*client=(NetworkTcpClient){0};client->state=NETWORK_TCP_CLOSED;}
-static NetworkEnginePayload tcp_client_payload(const NetworkTcpClient *client,size_t count)
-{NetworkEnginePayload out={0};out.len=count;for(size_t i=0;i<count;i++)out.bytes[i]=client->send[i];return out;}
-static NetworkTcpClientOutput tcp_client_build(const NetworkTcpClient *client,uint32_t sequence,uint8_t flags,const NetworkEnginePayload *payload)
-{NetworkEngineFrame frame={0};if(!network_engine_tcp_build(&frame,client->peer_mac,client->local_mac,client->local_ip,client->remote_ip,client->local_port,client->remote_port,sequence,client->rcv_nxt,flags,8192,payload))return(NetworkTcpClientOutput){0};return(NetworkTcpClientOutput){true,frame};}
-static void tcp_client_fail(NetworkTcpClient *client,NetworkTcpClientError error)
-{
- client->state=NETWORK_TCP_FAILED;client->error=error;client->pending_present=false;client->pending_sent=false;client->pending_fin=false;client->immediate_present=false;client->finish_requested=false;client->peer_fin=false;client->send_len=0;client->receive_len=0;client->retries=0;client->retransmit_at=0;
- for(size_t i=0;i<NETWORK_TCP_BUFFER_BYTES;i++){client->send[i]=0;client->receive[i]=0;}tcp_client_frame_clear(&client->pending);tcp_client_frame_clear(&client->immediate);
+static bool tcp_client_mac_valid(NetworkEngineMac mac) {
+    bool nonzero = false;
+    for (size_t i = 0; i < 6; i++)
+        if (mac.bytes[i])
+            nonzero = true;
+    return nonzero && (mac.bytes[0] & 1) == 0;
 }
-static bool tcp_client_pending(NetworkTcpClient *client,uint8_t flags,size_t payload_count,bool fin)
-{
- NetworkEnginePayload payload=tcp_client_payload(client,payload_count);uint32_t sequence=client->snd_nxt;NetworkTcpClientOutput built=tcp_client_build(client,sequence,flags,&payload);
- if(!built.present)return false;
- client->pending=built.frame;
- client->pending_present=true;client->pending_sent=false;client->pending_fin=fin;client->pending_payload=payload_count;client->retries=0;client->retransmit_at=client->last;
- client->snd_nxt+=payload_count+(fin?1u:0u)+(flags&NETWORK_TCP_SYN?1u:0u);client->pending_end=client->snd_nxt;return true;
+
+static void tcp_client_frame_clear(NetworkEngineFrame *frame) {
+    for (size_t i = 0; i < NETWORK_ENGINE_MAX_FRAME; i++)
+        frame->bytes[i] = 0;
+    frame->length = 0;
 }
-static bool tcp_client_ack(NetworkTcpClient *client)
-{NetworkEnginePayload empty={0};NetworkTcpClientOutput built=tcp_client_build(client,client->snd_nxt,NETWORK_TCP_ACK,&empty);if(!built.present)return false;client->immediate=built.frame;client->immediate_present=true;return true;}
-NetworkTcpClientError network_tcp_client_begin(NetworkTcpClient *client,NetConfig config,NetworkEngineMac local_mac,NetworkEngineMac peer_mac,uint32_t ticket,bool tls,uint64_t seed,uint64_t now)
-{
- if(!net_config_valid(config))return NETWORK_TCP_CLIENT_CONFIG;
- if(!tcp_client_mac_valid(local_mac)||!tcp_client_mac_valid(peer_mac))return NETWORK_TCP_CLIENT_MAC;
- if(!ticket||ticket>NET_CONFIG_MAX_TICKET)return NETWORK_TCP_CLIENT_TICKET;
- if(now>(uint64_t)INT64_MAX)return NETWORK_TCP_CLIENT_CLOCK;
- uint32_t port=(uint32_t)config.source_base+ticket;if(port>UINT16_MAX)return NETWORK_TCP_CLIENT_TICKET;uint32_t remote=config.http;uint16_t remote_port=config.http_port;
- if(tls){NetConfigEndpoint endpoint=net_config_tls_endpoint(config);if(!endpoint.present)return NETWORK_TCP_CLIENT_CONFIG;remote=endpoint.address;remote_port=endpoint.port;}
- NetworkTcpClient next={0};next.state=NETWORK_TCP_SYN_SENT;next.config=config;next.local_mac=local_mac;next.peer_mac=peer_mac;next.ticket=ticket;next.local_ip=config.local;next.remote_ip=remote;next.local_port=(uint16_t)port;next.remote_port=remote_port;next.last=now;
- uint32_t initial=(uint32_t)(seed^(seed>>32)^((uint64_t)ticket*UINT64_C(0x9e3779b9)));if(!initial)initial=1;next.snd_una=initial;next.snd_nxt=initial;
- if(!tcp_client_pending(&next,NETWORK_TCP_SYN,0,false))return NETWORK_TCP_CLIENT_PROTOCOL;
- *client=next;return NETWORK_TCP_CLIENT_OK;
+
+void network_tcp_client_init(NetworkTcpClient *client) {
+    *client = (NetworkTcpClient){0};
+    client->state = NETWORK_TCP_CLOSED;
 }
-size_t network_tcp_client_queued(const NetworkTcpClient *client){return client->send_len;}
-NetworkTcpClientCount network_tcp_client_send(NetworkTcpClient *client,const NetworkEnginePayload *payload)
-{
- if(client->state!=NETWORK_TCP_ESTABLISHED||client->finish_requested)return(NetworkTcpClientCount){false,0,NETWORK_TCP_CLIENT_STATE};
- if(payload->len>NETWORK_TCP_TURN_BYTES||payload->len>NETWORK_TCP_BUFFER_BYTES-client->send_len)return(NetworkTcpClientCount){false,0,NETWORK_TCP_CLIENT_CAPACITY};
- for(size_t i=0;i<payload->len;i++){client->send[client->send_len+i]=payload->bytes[i];}
- client->send_len+=payload->len;return(NetworkTcpClientCount){true,payload->len,NETWORK_TCP_CLIENT_OK};
+
+static NetworkEnginePayload tcp_client_payload(const NetworkTcpClient *client, size_t count) {
+    NetworkEnginePayload out = {0};
+    out.len = count;
+    for (size_t i = 0; i < count; i++)
+        out.bytes[i] = client->send[i];
+    return out;
 }
-NetworkTcpClientReceive network_tcp_client_receive(NetworkTcpClient *client,size_t maximum)
-{
- if(maximum>NETWORK_TCP_TURN_BYTES)return(NetworkTcpClientReceive){false,0,NETWORK_TCP_CLIENT_CAPACITY,{0}};
- size_t count=client->receive_len<maximum?client->receive_len:maximum;NetworkTcpClientReceive result={true,count,NETWORK_TCP_CLIENT_OK,{0}};
- for(size_t i=0;i<count;i++){result.bytes[i]=client->receive[i];}
- for(size_t i=count;i<client->receive_len;i++){client->receive[i-count]=client->receive[i];}
- for(size_t i=client->receive_len-count;i<client->receive_len;i++){client->receive[i]=0;}
- client->receive_len-=count;return result;
+
+static NetworkTcpClientOutput tcp_client_build(const NetworkTcpClient *client, uint32_t sequence,
+                                               uint8_t flags, const NetworkEnginePayload *payload) {
+    NetworkEngineFrame frame = {0};
+    if (!network_engine_tcp_build(&frame, client->peer_mac, client->local_mac, client->local_ip,
+                                  client->remote_ip, client->local_port, client->remote_port,
+                                  sequence, client->rcv_nxt, flags, 8192, payload))
+        return (NetworkTcpClientOutput){0};
+    return (NetworkTcpClientOutput){true, frame};
 }
-bool network_tcp_client_finish(NetworkTcpClient *client)
-{if(client->state!=NETWORK_TCP_ESTABLISHED&&client->state!=NETWORK_TCP_CLOSE_WAIT)return false;client->finish_requested=true;return true;}
-void network_tcp_client_abort(NetworkTcpClient *client)
-{
- bool active=client->state!=NETWORK_TCP_CLOSED&&client->state!=NETWORK_TCP_FAILED;NetworkEngineFrame reset={0};if(active){NetworkEnginePayload empty={0};NetworkTcpClientOutput built=tcp_client_build(client,client->snd_nxt,NETWORK_TCP_RST|NETWORK_TCP_ACK,&empty);if(built.present)reset=built.frame;}
- for(size_t i=0;i<NETWORK_TCP_BUFFER_BYTES;i++){client->send[i]=0;client->receive[i]=0;}tcp_client_frame_clear(&client->pending);client->send_len=0;client->receive_len=0;client->pending_present=false;client->pending_sent=false;client->pending_fin=false;client->finish_requested=false;client->peer_fin=false;client->retries=0;client->retransmit_at=0;client->state=NETWORK_TCP_CLOSED;client->error=NETWORK_TCP_CLIENT_OK;
- if(active&&reset.length){client->immediate=reset;client->immediate_present=true;}else{tcp_client_frame_clear(&client->immediate);client->immediate_present=false;}
+
+static void tcp_client_fail(NetworkTcpClient *client, NetworkTcpClientError error) {
+    client->state = NETWORK_TCP_FAILED;
+    client->error = error;
+    client->pending_present = false;
+    client->pending_sent = false;
+    client->pending_fin = false;
+    client->immediate_present = false;
+    client->finish_requested = false;
+    client->peer_fin = false;
+    client->send_len = 0;
+    client->receive_len = 0;
+    client->retries = 0;
+    client->retransmit_at = 0;
+    for (size_t i = 0; i < NETWORK_TCP_BUFFER_BYTES; i++) {
+        client->send[i] = 0;
+        client->receive[i] = 0;
+    }
+    tcp_client_frame_clear(&client->pending);
+    tcp_client_frame_clear(&client->immediate);
 }
-static void tcp_client_shift_send(NetworkTcpClient *client,size_t count)
-{for(size_t i=count;i<client->send_len;i++)client->send[i-count]=client->send[i];for(size_t i=client->send_len-count;i<client->send_len;i++)client->send[i]=0;client->send_len-=count;}
-static bool tcp_client_tuple(const NetworkTcpClient *client,NetworkIpv4Packet ip,NetworkTcpPacket tcp)
-{return ip.source==client->remote_ip&&ip.destination==client->local_ip&&tcp.source_port==client->remote_port&&tcp.destination_port==client->local_port;}
-bool network_tcp_client_ingest(NetworkTcpClient *client,const NetworkEngineFrame *frame,uint64_t now)
-{
- if(now<client->last||now>(uint64_t)INT64_MAX){tcp_client_fail(client,NETWORK_TCP_CLIENT_CLOCK);return false;}client->last=now;
- NetworkIpv4Packet ip=network_engine_ipv4_decode(frame);NetworkTcpPacket tcp=network_engine_tcp_decode(frame);if(!ip.valid||!tcp.valid||!tcp_client_tuple(client,ip,tcp))return false;
- if(tcp.flags&NETWORK_TCP_RST){tcp_client_fail(client,NETWORK_TCP_CLIENT_PROTOCOL);return true;}
- if(client->state==NETWORK_TCP_SYN_SENT){
-  if((tcp.flags&(NETWORK_TCP_SYN|NETWORK_TCP_ACK))!=(NETWORK_TCP_SYN|NETWORK_TCP_ACK)||tcp.acknowledgment!=client->snd_nxt)return false;
-  client->pending_present=false;client->pending_sent=false;client->snd_una=tcp.acknowledgment;client->rcv_nxt=tcp.sequence+1;client->state=NETWORK_TCP_ESTABLISHED;client->retries=0;if(!tcp_client_ack(client)){tcp_client_fail(client,NETWORK_TCP_CLIENT_PROTOCOL);return false;}return true;
- }
- if(client->state==NETWORK_TCP_CLOSED||client->state==NETWORK_TCP_FAILED)return false;
- if((tcp.flags&NETWORK_TCP_ACK)&&tcp.acknowledgment==client->pending_end&&client->pending_present){
-  bool fin=client->pending_fin;size_t payload=client->pending_payload;client->snd_una=tcp.acknowledgment;client->pending_present=false;client->pending_sent=false;client->pending_fin=false;client->pending_payload=0;client->retries=0;tcp_client_frame_clear(&client->pending);if(payload)tcp_client_shift_send(client,payload);
-  if(fin&&client->state==NETWORK_TCP_FIN_WAIT1)client->state=NETWORK_TCP_FIN_WAIT2;else if(fin&&client->state==NETWORK_TCP_LAST_ACK)client->state=NETWORK_TCP_CLOSED;
- }
- uint32_t expected=tcp.sequence;if(tcp.payload_length){
-  if(expected==client->rcv_nxt){if(tcp.payload_length>NETWORK_TCP_BUFFER_BYTES-client->receive_len){tcp_client_fail(client,NETWORK_TCP_CLIENT_CAPACITY);return false;}for(size_t i=0;i<tcp.payload_length;i++)client->receive[client->receive_len+i]=frame->bytes[tcp.payload_offset+i];client->receive_len+=tcp.payload_length;client->rcv_nxt+=tcp.payload_length;}
-  if(!tcp_client_ack(client)){tcp_client_fail(client,NETWORK_TCP_CLIENT_PROTOCOL);return false;}
- }
- if(tcp.flags&NETWORK_TCP_FIN){uint32_t fin_at=tcp.sequence+(uint32_t)tcp.payload_length;if(fin_at==client->rcv_nxt){client->rcv_nxt++;client->peer_fin=true;if(client->state==NETWORK_TCP_ESTABLISHED)client->state=NETWORK_TCP_CLOSE_WAIT;else if(client->state==NETWORK_TCP_FIN_WAIT1)client->state=NETWORK_TCP_CLOSING;else if(client->state==NETWORK_TCP_FIN_WAIT2)client->state=NETWORK_TCP_TIME_WAIT;}if(!tcp_client_ack(client)){tcp_client_fail(client,NETWORK_TCP_CLIENT_PROTOCOL);return false;}}
- return true;
+
+static bool tcp_client_pending(NetworkTcpClient *client, uint8_t flags, size_t payload_count,
+                               bool fin) {
+    NetworkEnginePayload payload = tcp_client_payload(client, payload_count);
+    uint32_t sequence = client->snd_nxt;
+    NetworkTcpClientOutput built = tcp_client_build(client, sequence, flags, &payload);
+    if (!built.present)
+        return false;
+    client->pending = built.frame;
+    client->pending_present = true;
+    client->pending_sent = false;
+    client->pending_fin = fin;
+    client->pending_payload = payload_count;
+    client->retries = 0;
+    client->retransmit_at = client->last;
+    client->snd_nxt += payload_count + (fin ? 1u : 0u) + (flags & NETWORK_TCP_SYN ? 1u : 0u);
+    client->pending_end = client->snd_nxt;
+    return true;
 }
-static NetworkTcpClientOutput tcp_client_emit(NetworkEngineFrame frame){return(NetworkTcpClientOutput){true,frame};}
-NetworkTcpClientOutput network_tcp_client_advance(NetworkTcpClient *client,uint64_t now)
-{
- if(client->state==NETWORK_TCP_FAILED)return(NetworkTcpClientOutput){0};
- if(now<client->last||now>(uint64_t)INT64_MAX){tcp_client_fail(client,NETWORK_TCP_CLIENT_CLOCK);return(NetworkTcpClientOutput){0};}
- client->last=now;
- if(client->immediate_present){NetworkEngineFrame frame=client->immediate;client->immediate_present=false;tcp_client_frame_clear(&client->immediate);return tcp_client_emit(frame);}
- if(client->pending_present){
-  if(!client->pending_sent||now>=client->retransmit_at){if(client->pending_sent&&client->retries>=NETWORK_TCP_RETRY_LIMIT){tcp_client_fail(client,NETWORK_TCP_CLIENT_TIMEOUT);return(NetworkTcpClientOutput){0};}if(UINT64_MAX-now<NETWORK_TCP_RETRY_TICKS){tcp_client_fail(client,NETWORK_TCP_CLIENT_CLOCK);return(NetworkTcpClientOutput){0};}client->pending_sent=true;client->retries++;client->retransmit_at=now+NETWORK_TCP_RETRY_TICKS;return tcp_client_emit(client->pending);}
-  return(NetworkTcpClientOutput){0};
- }
- if((client->state==NETWORK_TCP_ESTABLISHED||client->state==NETWORK_TCP_CLOSE_WAIT)&&client->send_len){size_t count=client->send_len<NETWORK_TCP_TURN_BYTES?client->send_len:NETWORK_TCP_TURN_BYTES;if(!tcp_client_pending(client,NETWORK_TCP_PSH|NETWORK_TCP_ACK,count,false)){tcp_client_fail(client,NETWORK_TCP_CLIENT_PROTOCOL);return(NetworkTcpClientOutput){0};}return network_tcp_client_advance(client,now);}
- if(client->finish_requested&&(client->state==NETWORK_TCP_ESTABLISHED||client->state==NETWORK_TCP_CLOSE_WAIT)){NetworkTcpClientState next=client->state==NETWORK_TCP_ESTABLISHED?NETWORK_TCP_FIN_WAIT1:NETWORK_TCP_LAST_ACK;if(!tcp_client_pending(client,NETWORK_TCP_FIN|NETWORK_TCP_ACK,0,true)){tcp_client_fail(client,NETWORK_TCP_CLIENT_PROTOCOL);return(NetworkTcpClientOutput){0};}client->state=next;return network_tcp_client_advance(client,now);}
- return(NetworkTcpClientOutput){0};
+
+static bool tcp_client_ack(NetworkTcpClient *client) {
+    NetworkEnginePayload empty = {0};
+    NetworkTcpClientOutput built =
+        tcp_client_build(client, client->snd_nxt, NETWORK_TCP_ACK, &empty);
+    if (!built.present)
+        return false;
+    client->immediate = built.frame;
+    client->immediate_present = true;
+    return true;
 }
-NetworkTcpClientSnapshot network_tcp_client_snapshot(const NetworkTcpClient *client)
-{return(NetworkTcpClientSnapshot){client->state,client->error,client->ticket,client->snd_una,client->snd_nxt,client->rcv_nxt,client->send_len,client->receive_len,client->finish_requested,client->peer_fin,client->pending_present,client->immediate_present,client->retries,client->last,client->retransmit_at};}
+
+NetworkTcpClientError network_tcp_client_begin(NetworkTcpClient *client, NetConfig config,
+                                               NetworkEngineMac local_mac,
+                                               NetworkEngineMac peer_mac, uint32_t ticket, bool tls,
+                                               uint64_t seed, uint64_t now) {
+    if (!net_config_valid(config))
+        return NETWORK_TCP_CLIENT_CONFIG;
+    if (!tcp_client_mac_valid(local_mac) || !tcp_client_mac_valid(peer_mac))
+        return NETWORK_TCP_CLIENT_MAC;
+    if (!ticket || ticket > NET_CONFIG_MAX_TICKET)
+        return NETWORK_TCP_CLIENT_TICKET;
+    if (now > (uint64_t)INT64_MAX)
+        return NETWORK_TCP_CLIENT_CLOCK;
+    uint32_t port = (uint32_t)config.source_base + ticket;
+    if (port > UINT16_MAX)
+        return NETWORK_TCP_CLIENT_TICKET;
+    uint32_t remote = config.http;
+    uint16_t remote_port = config.http_port;
+    if (tls) {
+        NetConfigEndpoint endpoint = net_config_tls_endpoint(config);
+        if (!endpoint.present)
+            return NETWORK_TCP_CLIENT_CONFIG;
+        remote = endpoint.address;
+        remote_port = endpoint.port;
+    }
+    NetworkTcpClient next = {0};
+    next.state = NETWORK_TCP_SYN_SENT;
+    next.config = config;
+    next.local_mac = local_mac;
+    next.peer_mac = peer_mac;
+    next.ticket = ticket;
+    next.local_ip = config.local;
+    next.remote_ip = remote;
+    next.local_port = (uint16_t)port;
+    next.remote_port = remote_port;
+    next.last = now;
+    uint32_t initial = (uint32_t)(seed ^ (seed >> 32) ^ ((uint64_t)ticket * UINT64_C(0x9e3779b9)));
+    if (!initial)
+        initial = 1;
+    next.snd_una = initial;
+    next.snd_nxt = initial;
+    if (!tcp_client_pending(&next, NETWORK_TCP_SYN, 0, false))
+        return NETWORK_TCP_CLIENT_PROTOCOL;
+    *client = next;
+    return NETWORK_TCP_CLIENT_OK;
+}
+
+size_t network_tcp_client_queued(const NetworkTcpClient *client) {
+    return client->send_len;
+}
+
+NetworkTcpClientCount network_tcp_client_send(NetworkTcpClient *client,
+                                              const NetworkEnginePayload *payload) {
+    if (client->state != NETWORK_TCP_ESTABLISHED || client->finish_requested)
+        return (NetworkTcpClientCount){false, 0, NETWORK_TCP_CLIENT_STATE};
+    if (payload->len > NETWORK_TCP_TURN_BYTES ||
+        payload->len > NETWORK_TCP_BUFFER_BYTES - client->send_len)
+        return (NetworkTcpClientCount){false, 0, NETWORK_TCP_CLIENT_CAPACITY};
+    for (size_t i = 0; i < payload->len; i++) {
+        client->send[client->send_len + i] = payload->bytes[i];
+    }
+    client->send_len += payload->len;
+    return (NetworkTcpClientCount){true, payload->len, NETWORK_TCP_CLIENT_OK};
+}
+
+NetworkTcpClientReceive network_tcp_client_receive(NetworkTcpClient *client, size_t maximum) {
+    if (maximum > NETWORK_TCP_TURN_BYTES)
+        return (NetworkTcpClientReceive){false, 0, NETWORK_TCP_CLIENT_CAPACITY, {0}};
+    size_t count = client->receive_len < maximum ? client->receive_len : maximum;
+    NetworkTcpClientReceive result = {true, count, NETWORK_TCP_CLIENT_OK, {0}};
+    for (size_t i = 0; i < count; i++) {
+        result.bytes[i] = client->receive[i];
+    }
+    for (size_t i = count; i < client->receive_len; i++) {
+        client->receive[i - count] = client->receive[i];
+    }
+    for (size_t i = client->receive_len - count; i < client->receive_len; i++) {
+        client->receive[i] = 0;
+    }
+    client->receive_len -= count;
+    return result;
+}
+
+bool network_tcp_client_finish(NetworkTcpClient *client) {
+    if (client->state != NETWORK_TCP_ESTABLISHED && client->state != NETWORK_TCP_CLOSE_WAIT)
+        return false;
+    client->finish_requested = true;
+    return true;
+}
+
+void network_tcp_client_abort(NetworkTcpClient *client) {
+    bool active = client->state != NETWORK_TCP_CLOSED && client->state != NETWORK_TCP_FAILED;
+    NetworkEngineFrame reset = {0};
+    if (active) {
+        NetworkEnginePayload empty = {0};
+        NetworkTcpClientOutput built =
+            tcp_client_build(client, client->snd_nxt, NETWORK_TCP_RST | NETWORK_TCP_ACK, &empty);
+        if (built.present)
+            reset = built.frame;
+    }
+    for (size_t i = 0; i < NETWORK_TCP_BUFFER_BYTES; i++) {
+        client->send[i] = 0;
+        client->receive[i] = 0;
+    }
+    tcp_client_frame_clear(&client->pending);
+    client->send_len = 0;
+    client->receive_len = 0;
+    client->pending_present = false;
+    client->pending_sent = false;
+    client->pending_fin = false;
+    client->finish_requested = false;
+    client->peer_fin = false;
+    client->retries = 0;
+    client->retransmit_at = 0;
+    client->state = NETWORK_TCP_CLOSED;
+    client->error = NETWORK_TCP_CLIENT_OK;
+    if (active && reset.length) {
+        client->immediate = reset;
+        client->immediate_present = true;
+    } else {
+        tcp_client_frame_clear(&client->immediate);
+        client->immediate_present = false;
+    }
+}
+
+static void tcp_client_shift_send(NetworkTcpClient *client, size_t count) {
+    for (size_t i = count; i < client->send_len; i++)
+        client->send[i - count] = client->send[i];
+    for (size_t i = client->send_len - count; i < client->send_len; i++)
+        client->send[i] = 0;
+    client->send_len -= count;
+}
+
+static bool tcp_client_tuple(const NetworkTcpClient *client, NetworkIpv4Packet ip,
+                             NetworkTcpPacket tcp) {
+    return ip.source == client->remote_ip && ip.destination == client->local_ip &&
+           tcp.source_port == client->remote_port && tcp.destination_port == client->local_port;
+}
+
+bool network_tcp_client_ingest(NetworkTcpClient *client, const NetworkEngineFrame *frame,
+                               uint64_t now) {
+    if (now < client->last || now > (uint64_t)INT64_MAX) {
+        tcp_client_fail(client, NETWORK_TCP_CLIENT_CLOCK);
+        return false;
+    }
+    client->last = now;
+    NetworkIpv4Packet ip = network_engine_ipv4_decode(frame);
+    NetworkTcpPacket tcp = network_engine_tcp_decode(frame);
+    if (!ip.valid || !tcp.valid || !tcp_client_tuple(client, ip, tcp))
+        return false;
+    if (tcp.flags & NETWORK_TCP_RST) {
+        tcp_client_fail(client, NETWORK_TCP_CLIENT_PROTOCOL);
+        return true;
+    }
+    if (client->state == NETWORK_TCP_SYN_SENT) {
+        if ((tcp.flags & (NETWORK_TCP_SYN | NETWORK_TCP_ACK)) !=
+                (NETWORK_TCP_SYN | NETWORK_TCP_ACK) ||
+            tcp.acknowledgment != client->snd_nxt)
+            return false;
+        client->pending_present = false;
+        client->pending_sent = false;
+        client->snd_una = tcp.acknowledgment;
+        client->rcv_nxt = tcp.sequence + 1;
+        client->state = NETWORK_TCP_ESTABLISHED;
+        client->retries = 0;
+        if (!tcp_client_ack(client)) {
+            tcp_client_fail(client, NETWORK_TCP_CLIENT_PROTOCOL);
+            return false;
+        }
+        return true;
+    }
+    if (client->state == NETWORK_TCP_CLOSED || client->state == NETWORK_TCP_FAILED)
+        return false;
+    if ((tcp.flags & NETWORK_TCP_ACK) && tcp.acknowledgment == client->pending_end &&
+        client->pending_present) {
+        bool fin = client->pending_fin;
+        size_t payload = client->pending_payload;
+        client->snd_una = tcp.acknowledgment;
+        client->pending_present = false;
+        client->pending_sent = false;
+        client->pending_fin = false;
+        client->pending_payload = 0;
+        client->retries = 0;
+        tcp_client_frame_clear(&client->pending);
+        if (payload)
+            tcp_client_shift_send(client, payload);
+        if (fin && client->state == NETWORK_TCP_FIN_WAIT1)
+            client->state = NETWORK_TCP_FIN_WAIT2;
+        else if (fin && client->state == NETWORK_TCP_LAST_ACK)
+            client->state = NETWORK_TCP_CLOSED;
+    }
+    uint32_t expected = tcp.sequence;
+    if (tcp.payload_length) {
+        if (expected == client->rcv_nxt) {
+            if (tcp.payload_length > NETWORK_TCP_BUFFER_BYTES - client->receive_len) {
+                tcp_client_fail(client, NETWORK_TCP_CLIENT_CAPACITY);
+                return false;
+            }
+            for (size_t i = 0; i < tcp.payload_length; i++)
+                client->receive[client->receive_len + i] = frame->bytes[tcp.payload_offset + i];
+            client->receive_len += tcp.payload_length;
+            client->rcv_nxt += tcp.payload_length;
+        }
+        if (!tcp_client_ack(client)) {
+            tcp_client_fail(client, NETWORK_TCP_CLIENT_PROTOCOL);
+            return false;
+        }
+    }
+    if (tcp.flags & NETWORK_TCP_FIN) {
+        uint32_t fin_at = tcp.sequence + (uint32_t)tcp.payload_length;
+        if (fin_at == client->rcv_nxt) {
+            client->rcv_nxt++;
+            client->peer_fin = true;
+            if (client->state == NETWORK_TCP_ESTABLISHED)
+                client->state = NETWORK_TCP_CLOSE_WAIT;
+            else if (client->state == NETWORK_TCP_FIN_WAIT1)
+                client->state = NETWORK_TCP_CLOSING;
+            else if (client->state == NETWORK_TCP_FIN_WAIT2)
+                client->state = NETWORK_TCP_TIME_WAIT;
+        }
+        if (!tcp_client_ack(client)) {
+            tcp_client_fail(client, NETWORK_TCP_CLIENT_PROTOCOL);
+            return false;
+        }
+    }
+    return true;
+}
+
+static NetworkTcpClientOutput tcp_client_emit(NetworkEngineFrame frame) {
+    return (NetworkTcpClientOutput){true, frame};
+}
+
+NetworkTcpClientOutput network_tcp_client_advance(NetworkTcpClient *client, uint64_t now) {
+    if (client->state == NETWORK_TCP_FAILED)
+        return (NetworkTcpClientOutput){0};
+    if (now < client->last || now > (uint64_t)INT64_MAX) {
+        tcp_client_fail(client, NETWORK_TCP_CLIENT_CLOCK);
+        return (NetworkTcpClientOutput){0};
+    }
+    client->last = now;
+    if (client->immediate_present) {
+        NetworkEngineFrame frame = client->immediate;
+        client->immediate_present = false;
+        tcp_client_frame_clear(&client->immediate);
+        return tcp_client_emit(frame);
+    }
+    if (client->pending_present) {
+        if (!client->pending_sent || now >= client->retransmit_at) {
+            if (client->pending_sent && client->retries >= NETWORK_TCP_RETRY_LIMIT) {
+                tcp_client_fail(client, NETWORK_TCP_CLIENT_TIMEOUT);
+                return (NetworkTcpClientOutput){0};
+            }
+            if (UINT64_MAX - now < NETWORK_TCP_RETRY_TICKS) {
+                tcp_client_fail(client, NETWORK_TCP_CLIENT_CLOCK);
+                return (NetworkTcpClientOutput){0};
+            }
+            client->pending_sent = true;
+            client->retries++;
+            client->retransmit_at = now + NETWORK_TCP_RETRY_TICKS;
+            return tcp_client_emit(client->pending);
+        }
+        return (NetworkTcpClientOutput){0};
+    }
+    if ((client->state == NETWORK_TCP_ESTABLISHED || client->state == NETWORK_TCP_CLOSE_WAIT) &&
+        client->send_len) {
+        size_t count =
+            client->send_len < NETWORK_TCP_TURN_BYTES ? client->send_len : NETWORK_TCP_TURN_BYTES;
+        if (!tcp_client_pending(client, NETWORK_TCP_PSH | NETWORK_TCP_ACK, count, false)) {
+            tcp_client_fail(client, NETWORK_TCP_CLIENT_PROTOCOL);
+            return (NetworkTcpClientOutput){0};
+        }
+        return network_tcp_client_advance(client, now);
+    }
+    if (client->finish_requested &&
+        (client->state == NETWORK_TCP_ESTABLISHED || client->state == NETWORK_TCP_CLOSE_WAIT)) {
+        NetworkTcpClientState next =
+            client->state == NETWORK_TCP_ESTABLISHED ? NETWORK_TCP_FIN_WAIT1 : NETWORK_TCP_LAST_ACK;
+        if (!tcp_client_pending(client, NETWORK_TCP_FIN | NETWORK_TCP_ACK, 0, true)) {
+            tcp_client_fail(client, NETWORK_TCP_CLIENT_PROTOCOL);
+            return (NetworkTcpClientOutput){0};
+        }
+        client->state = next;
+        return network_tcp_client_advance(client, now);
+    }
+    return (NetworkTcpClientOutput){0};
+}
+
+NetworkTcpClientSnapshot network_tcp_client_snapshot(const NetworkTcpClient *client) {
+    return (NetworkTcpClientSnapshot){client->state,
+                                      client->error,
+                                      client->ticket,
+                                      client->snd_una,
+                                      client->snd_nxt,
+                                      client->rcv_nxt,
+                                      client->send_len,
+                                      client->receive_len,
+                                      client->finish_requested,
+                                      client->peer_fin,
+                                      client->pending_present,
+                                      client->immediate_present,
+                                      client->retries,
+                                      client->last,
+                                      client->retransmit_at};
+}
 ")))

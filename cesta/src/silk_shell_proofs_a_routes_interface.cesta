@@ -1,48 +1,78 @@
 (cesta native-c/1 compact-c/2
  (unit
-  (native "#ifndef SEXOS_SHELL_PROOFS_A_ROUTES_H
+  (native "
+#ifndef SEXOS_SHELL_PROOFS_A_ROUTES_H
 #define SEXOS_SHELL_PROOFS_A_ROUTES_H
 #include \"silk_shell_input.h\"
 #include \"silk_shell_diagnostics_a.h\"
 #include \"silk_shell_models_bell.h\"
 #include \"silkbar_model.h\"
-typedef struct ShellProofDragTarget {bool present;uint32_t frame;uint64_t sid;int32_t x,y;uint32_t w,h;int32_t px,py;} ShellProofDragTarget;
-typedef struct ShellProofBounds {bool present;int32_t x,y;uint32_t w,h;} ShellProofBounds;
-typedef struct ShellProofId {bool present;uint64_t id;} ShellProofId;
-typedef struct ShellProofLinenFirst {size_t count;bool present;uint64_t id;} ShellProofLinenFirst;
-bool shell_proofs_a_route_try_set_focus(ShellInputContext *ctx,uint64_t surface);
+
+typedef struct ShellProofDragTarget {
+    bool present;
+    uint32_t frame;
+    uint64_t sid;
+    int32_t x, y;
+    uint32_t w, h;
+    int32_t px, py;
+} ShellProofDragTarget;
+
+typedef struct ShellProofBounds {
+    bool present;
+    int32_t x, y;
+    uint32_t w, h;
+} ShellProofBounds;
+
+typedef struct ShellProofId {
+    bool present;
+    uint64_t id;
+} ShellProofId;
+
+typedef struct ShellProofLinenFirst {
+    size_t count;
+    bool present;
+    uint64_t id;
+} ShellProofLinenFirst;
+
+bool shell_proofs_a_route_try_set_focus(ShellInputContext *ctx, uint64_t surface);
 bool shell_proofs_a_route_focus_or_open_quil(ShellInputContext *ctx);
-SexosReply shell_proofs_a_route_pdx_call(ShellInputContext *ctx,uint64_t slot,uint64_t op,uint64_t a,uint64_t b,uint64_t c);
-void shell_proofs_a_route_bell_event(ShellInputContext *ctx,const ShellDiagnosticLabel *source,uint64_t event);
+SexosReply shell_proofs_a_route_pdx_call(ShellInputContext *ctx, uint64_t slot, uint64_t op,
+                                         uint64_t a, uint64_t b, uint64_t c);
+void shell_proofs_a_route_bell_event(ShellInputContext *ctx, const ShellDiagnosticLabel *source,
+                                     uint64_t event);
 bool shell_proofs_a_route_focus_or_open_bell(ShellInputContext *ctx);
 void shell_proofs_a_route_bell_select_next(ShellInputContext *ctx);
 void shell_proofs_a_route_bell_select_previous(ShellInputContext *ctx);
 void shell_proofs_a_route_bell_emit_detail(ShellInputContext *ctx);
 void shell_proofs_a_route_bell_close_detail(ShellInputContext *ctx);
 bool shell_proofs_a_route_bell_cycle_lane(ShellInputContext *ctx);
-void shell_proofs_a_route_bell_record_event(ShellInputContext *ctx,uint64_t object_id,uint64_t buffer_id);
+void shell_proofs_a_route_bell_record_event(ShellInputContext *ctx, uint64_t object_id,
+                                            uint64_t buffer_id);
 size_t shell_proofs_a_route_bell_count(ShellInputContext *ctx);
-bool shell_proofs_a_route_bell_selected(ShellInputContext *ctx,BellEvent *event);
+bool shell_proofs_a_route_bell_selected(ShellInputContext *ctx, BellEvent *event);
 void shell_proofs_a_route_atlas_toggle(ShellInputContext *ctx);
-bool shell_proofs_a_route_atlas_keyboard(ShellInputContext *ctx,uint8_t scancode);
-const char *shell_proofs_a_route_preset_name(ShellInputContext *ctx,uint8_t preset);
+bool shell_proofs_a_route_atlas_keyboard(ShellInputContext *ctx, uint8_t scancode);
+const char *shell_proofs_a_route_preset_name(ShellInputContext *ctx, uint8_t preset);
 bool shell_proofs_a_route_open_spindle(ShellInputContext *ctx);
 bool shell_proofs_a_route_focus_or_open_mesh(ShellInputContext *ctx);
 bool shell_proofs_a_route_focus_or_open_linen(ShellInputContext *ctx);
 bool shell_proofs_a_route_toggle_palette(ShellInputContext *ctx);
 size_t shell_proofs_a_route_command_count(ShellInputContext *ctx);
-bool shell_proofs_a_route_palette_available(ShellInputContext *ctx,size_t index);
-bool shell_proofs_a_route_silkbar_update(ShellInputContext *ctx,uint32_t kind,uint64_t a,uint64_t b);
-bool shell_proofs_a_route_frame_close_allowed(ShellInputContext *ctx,uint32_t frame);
-bool shell_proofs_a_route_lifecycle_present(ShellInputContext *ctx,uint64_t surface);
-bool shell_proofs_a_route_is_closeable_surface(ShellInputContext *ctx,uint64_t surface);
-bool shell_proofs_a_route_close_surface(ShellInputContext *ctx,uint64_t surface);
-void shell_proofs_a_route_handle_hid(ShellInputContext *ctx,uint64_t event_class,uint64_t arg0,uint64_t arg1);
-uint64_t shell_proofs_a_route_abs_screen_to_raw(ShellInputContext *ctx,int32_t screen,int32_t dimension);
+bool shell_proofs_a_route_palette_available(ShellInputContext *ctx, size_t index);
+bool shell_proofs_a_route_silkbar_update(ShellInputContext *ctx, uint32_t kind, uint64_t a,
+                                         uint64_t b);
+bool shell_proofs_a_route_frame_close_allowed(ShellInputContext *ctx, uint32_t frame);
+bool shell_proofs_a_route_lifecycle_present(ShellInputContext *ctx, uint64_t surface);
+bool shell_proofs_a_route_is_closeable_surface(ShellInputContext *ctx, uint64_t surface);
+bool shell_proofs_a_route_close_surface(ShellInputContext *ctx, uint64_t surface);
+void shell_proofs_a_route_handle_hid(ShellInputContext *ctx, uint64_t event_class, uint64_t arg0,
+                                     uint64_t arg1);
+uint64_t shell_proofs_a_route_abs_screen_to_raw(ShellInputContext *ctx, int32_t screen,
+                                                int32_t dimension);
 int32_t shell_proofs_a_route_desktop_width(ShellInputContext *ctx);
 int32_t shell_proofs_a_route_desktop_height(ShellInputContext *ctx);
 ShellProofDragTarget shell_proofs_a_route_synthetic_drag_target(ShellInputContext *ctx);
-ShellProofBounds shell_proofs_a_route_surface_bounds(ShellInputContext *ctx,uint64_t surface);
+ShellProofBounds shell_proofs_a_route_surface_bounds(ShellInputContext *ctx, uint64_t surface);
 void shell_proofs_a_route_linen_select_next(ShellInputContext *ctx);
 void shell_proofs_a_route_linen_select_previous(ShellInputContext *ctx);
 uint64_t shell_proofs_a_route_linen_selected_id(ShellInputContext *ctx);
@@ -50,8 +80,8 @@ void shell_proofs_a_route_linen_detail_open(ShellInputContext *ctx);
 void shell_proofs_a_route_linen_detail_close(ShellInputContext *ctx);
 bool shell_proofs_a_route_open_linen(ShellInputContext *ctx);
 ShellProofLinenFirst shell_proofs_a_route_linen_first_object(ShellInputContext *ctx);
-void shell_proofs_a_route_linen_queue_open(ShellInputContext *ctx,uint64_t object);
-bool shell_proofs_a_route_linen_open_in_quil(ShellInputContext *ctx,uint64_t object);
+void shell_proofs_a_route_linen_queue_open(ShellInputContext *ctx, uint64_t object);
+bool shell_proofs_a_route_linen_open_in_quil(ShellInputContext *ctx, uint64_t object);
 bool shell_proofs_a_route_focus_or_open_collar(ShellInputContext *ctx);
 void shell_proofs_a_route_collar_select_next(ShellInputContext *ctx);
 void shell_proofs_a_route_collar_select_previous(ShellInputContext *ctx);

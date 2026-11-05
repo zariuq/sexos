@@ -1,4 +1,6 @@
 #include "network_engine_packet.h"
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
 #if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
 _Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
 #else
@@ -8,74 +10,192 @@ _Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI p
 _Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
 #endif
 _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 
-static uint16_t packet_be16(const NetworkEngineFrame *frame,size_t offset)
-{return(uint16_t)((uint16_t)frame->bytes[offset]<<8|frame->bytes[offset+1]);}
-static uint32_t packet_be32(const NetworkEngineFrame *frame,size_t offset)
-{return(uint32_t)frame->bytes[offset]<<24|(uint32_t)frame->bytes[offset+1]<<16|(uint32_t)frame->bytes[offset+2]<<8|frame->bytes[offset+3];}
-static void packet_put16(NetworkEngineFrame *frame,size_t offset,uint16_t value)
-{frame->bytes[offset]=(uint8_t)(value>>8);frame->bytes[offset+1]=(uint8_t)value;}
-static void packet_put32(NetworkEngineFrame *frame,size_t offset,uint32_t value)
-{frame->bytes[offset]=(uint8_t)(value>>24);frame->bytes[offset+1]=(uint8_t)(value>>16);frame->bytes[offset+2]=(uint8_t)(value>>8);frame->bytes[offset+3]=(uint8_t)value;}
-static uint16_t packet_checksum(const NetworkEngineFrame *frame,size_t offset,size_t length,uint32_t sum)
-{
- for(size_t i=0;i<length;i+=2){uint16_t word=(uint16_t)frame->bytes[offset+i]<<8;if(i+1<length)word|=frame->bytes[offset+i+1];sum+=word;}
- while(sum>>16){sum=(sum&UINT32_C(0xffff))+(sum>>16);}
- return(uint16_t)~sum;
+static uint16_t packet_be16(const NetworkEngineFrame *frame, size_t offset) {
+    return (uint16_t)((uint16_t)frame->bytes[offset] << 8 | frame->bytes[offset + 1]);
 }
-static uint32_t packet_pseudo(uint32_t source,uint32_t destination,uint8_t protocol,uint16_t length)
-{return(source>>16)+(source&0xffff)+(destination>>16)+(destination&0xffff)+protocol+length;}
-static void packet_clear(NetworkEngineFrame *frame)
-{for(size_t i=0;i<NETWORK_ENGINE_MAX_FRAME;i++)frame->bytes[i]=0;frame->length=0;}
-NetworkArpPacket network_engine_arp_decode(const NetworkEngineFrame *frame)
-{
- NetworkArpPacket out={0};if(frame->length>NETWORK_ENGINE_MAX_FRAME||frame->length<42)return out;
- if(packet_be16(frame,12)!=0x0806||packet_be16(frame,14)!=1||packet_be16(frame,16)!=0x0800||frame->bytes[18]!=6||frame->bytes[19]!=4)return out;
- uint16_t operation=packet_be16(frame,20);if(operation!=1&&operation!=2)return out;
- out.valid=true;out.operation=operation;for(size_t i=0;i<6;i++){out.sender_mac.bytes[i]=frame->bytes[22+i];out.target_mac.bytes[i]=frame->bytes[32+i];}
- out.sender_ip=packet_be32(frame,28);out.target_ip=packet_be32(frame,38);return out;
+
+static uint32_t packet_be32(const NetworkEngineFrame *frame, size_t offset) {
+    return (uint32_t)frame->bytes[offset] << 24 | (uint32_t)frame->bytes[offset + 1] << 16 |
+           (uint32_t)frame->bytes[offset + 2] << 8 | frame->bytes[offset + 3];
 }
-static bool arp_build(NetworkEngineFrame *frame,NetConfig config,NetworkEngineMac mac,NetworkEngineMac peer_mac,uint32_t peer_ip,bool reply)
-{
- if(!net_config_valid(config)||!frame||!peer_ip)return false;
- packet_clear(frame);
- for(size_t i=0;i<6;i++){frame->bytes[i]=reply?peer_mac.bytes[i]:255;frame->bytes[6+i]=mac.bytes[i];frame->bytes[22+i]=mac.bytes[i];frame->bytes[32+i]=reply?peer_mac.bytes[i]:255;}
- packet_put16(frame,12,0x0806);packet_put16(frame,14,1);packet_put16(frame,16,0x0800);frame->bytes[18]=6;frame->bytes[19]=4;packet_put16(frame,20,reply?2:1);
- packet_put32(frame,28,config.local);packet_put32(frame,38,peer_ip);frame->length=42;return true;
+
+static void packet_put16(NetworkEngineFrame *frame, size_t offset, uint16_t value) {
+    frame->bytes[offset] = (uint8_t)(value >> 8);
+    frame->bytes[offset + 1] = (uint8_t)value;
 }
-bool network_engine_arp_request(NetworkEngineFrame *frame,NetConfig config,NetworkEngineMac mac,uint32_t target)
-{NetworkEngineMac zero={{0}};return arp_build(frame,config,mac,zero,target,false);}
-bool network_engine_arp_reply(NetworkEngineFrame *frame,NetConfig config,NetworkEngineMac mac,NetworkEngineMac peer_mac,uint32_t peer_ip)
-{return arp_build(frame,config,mac,peer_mac,peer_ip,true);}
-NetworkIpv4Packet network_engine_ipv4_decode(const NetworkEngineFrame *frame)
-{
- NetworkIpv4Packet out={0};if(frame->length>NETWORK_ENGINE_MAX_FRAME||frame->length<34||packet_be16(frame,12)!=0x0800)return out;
- if(frame->bytes[14]>>4!=4)return out;
- size_t header=(size_t)(frame->bytes[14]&15)*4;if(header<20||frame->length<14+header)return out;
- size_t total=packet_be16(frame,16);if(total<header||total>frame->length-14||packet_be16(frame,20)&0x3fff)return out;
- if(packet_checksum(frame,14,header,0)!=0)return out;
- out.valid=true;out.protocol=frame->bytes[23];out.source=packet_be32(frame,26);out.destination=packet_be32(frame,30);
- out.header_length=header;out.transport_offset=14+header;out.transport_length=total-header;return out;
+
+static void packet_put32(NetworkEngineFrame *frame, size_t offset, uint32_t value) {
+    frame->bytes[offset] = (uint8_t)(value >> 24);
+    frame->bytes[offset + 1] = (uint8_t)(value >> 16);
+    frame->bytes[offset + 2] = (uint8_t)(value >> 8);
+    frame->bytes[offset + 3] = (uint8_t)value;
 }
-NetworkUdpPacket network_engine_udp_decode(const NetworkEngineFrame *frame)
-{
- NetworkUdpPacket out={0};NetworkIpv4Packet ip=network_engine_ipv4_decode(frame);if(!ip.valid||ip.protocol!=17||ip.transport_length<8)return out;
- size_t offset=ip.transport_offset;size_t length=packet_be16(frame,offset+4);if(length!=ip.transport_length||length<8)return out;
- uint16_t checksum=packet_be16(frame,offset+6);if(checksum&&packet_checksum(frame,offset,length,packet_pseudo(ip.source,ip.destination,17,(uint16_t)length))!=0)return out;
- out.valid=true;out.source_port=packet_be16(frame,offset);out.destination_port=packet_be16(frame,offset+2);out.payload_offset=offset+8;out.payload_length=length-8;return out;
+
+static uint16_t packet_checksum(const NetworkEngineFrame *frame, size_t offset, size_t length,
+                                uint32_t sum) {
+    for (size_t i = 0; i < length; i += 2) {
+        uint16_t word = (uint16_t)frame->bytes[offset + i] << 8;
+        if (i + 1 < length)
+            word |= frame->bytes[offset + i + 1];
+        sum += word;
+    }
+    while (sum >> 16) {
+        sum = (sum & UINT32_C(0xffff)) + (sum >> 16);
+    }
+    return (uint16_t)~sum;
 }
-bool network_engine_udp_build(NetworkEngineFrame *frame,NetworkEngineMac destination_mac,NetworkEngineMac source_mac,uint32_t source_ip,uint32_t destination_ip,
- uint16_t source_port,uint16_t destination_port,const NetworkEnginePayload *payload)
-{
- if(!frame||!payload||payload->len>NETWORK_ENGINE_MAX_PAYLOAD||!source_ip||!destination_ip||!source_port||!destination_port)return false;
- size_t udp_length=8+payload->len,total=20+udp_length;if(total>UINT16_MAX||14+total>NETWORK_ENGINE_MAX_FRAME)return false;packet_clear(frame);
- for(size_t i=0;i<6;i++){frame->bytes[i]=destination_mac.bytes[i];frame->bytes[6+i]=source_mac.bytes[i];}packet_put16(frame,12,0x0800);
- frame->bytes[14]=0x45;packet_put16(frame,16,(uint16_t)total);packet_put16(frame,20,0x4000);frame->bytes[22]=64;frame->bytes[23]=17;
- packet_put32(frame,26,source_ip);packet_put32(frame,30,destination_ip);packet_put16(frame,24,packet_checksum(frame,14,20,0));
- size_t udp=34;packet_put16(frame,udp,source_port);packet_put16(frame,udp+2,destination_port);packet_put16(frame,udp+4,(uint16_t)udp_length);
- for(size_t i=0;i<payload->len;i++)frame->bytes[udp+8+i]=payload->bytes[i];
- uint16_t checksum=packet_checksum(frame,udp,udp_length,packet_pseudo(source_ip,destination_ip,17,(uint16_t)udp_length));packet_put16(frame,udp+6,checksum?checksum:UINT16_MAX);
- frame->length=14+total;return true;
+
+static uint32_t packet_pseudo(uint32_t source, uint32_t destination, uint8_t protocol,
+                              uint16_t length) {
+    return (source >> 16) + (source & 0xffff) + (destination >> 16) + (destination & 0xffff) +
+           protocol + length;
+}
+
+static void packet_clear(NetworkEngineFrame *frame) {
+    for (size_t i = 0; i < NETWORK_ENGINE_MAX_FRAME; i++)
+        frame->bytes[i] = 0;
+    frame->length = 0;
+}
+
+NetworkArpPacket network_engine_arp_decode(const NetworkEngineFrame *frame) {
+    NetworkArpPacket out = {0};
+    if (frame->length > NETWORK_ENGINE_MAX_FRAME || frame->length < 42)
+        return out;
+    if (packet_be16(frame, 12) != 0x0806 || packet_be16(frame, 14) != 1 ||
+        packet_be16(frame, 16) != 0x0800 || frame->bytes[18] != 6 || frame->bytes[19] != 4)
+        return out;
+    uint16_t operation = packet_be16(frame, 20);
+    if (operation != 1 && operation != 2)
+        return out;
+    out.valid = true;
+    out.operation = operation;
+    for (size_t i = 0; i < 6; i++) {
+        out.sender_mac.bytes[i] = frame->bytes[22 + i];
+        out.target_mac.bytes[i] = frame->bytes[32 + i];
+    }
+    out.sender_ip = packet_be32(frame, 28);
+    out.target_ip = packet_be32(frame, 38);
+    return out;
+}
+
+static bool arp_build(NetworkEngineFrame *frame, NetConfig config, NetworkEngineMac mac,
+                      NetworkEngineMac peer_mac, uint32_t peer_ip, bool reply) {
+    if (!net_config_valid(config) || !frame || !peer_ip)
+        return false;
+    packet_clear(frame);
+    for (size_t i = 0; i < 6; i++) {
+        frame->bytes[i] = reply ? peer_mac.bytes[i] : 255;
+        frame->bytes[6 + i] = mac.bytes[i];
+        frame->bytes[22 + i] = mac.bytes[i];
+        frame->bytes[32 + i] = reply ? peer_mac.bytes[i] : 255;
+    }
+    packet_put16(frame, 12, 0x0806);
+    packet_put16(frame, 14, 1);
+    packet_put16(frame, 16, 0x0800);
+    frame->bytes[18] = 6;
+    frame->bytes[19] = 4;
+    packet_put16(frame, 20, reply ? 2 : 1);
+    packet_put32(frame, 28, config.local);
+    packet_put32(frame, 38, peer_ip);
+    frame->length = 42;
+    return true;
+}
+
+bool network_engine_arp_request(NetworkEngineFrame *frame, NetConfig config, NetworkEngineMac mac,
+                                uint32_t target) {
+    NetworkEngineMac zero = {{0}};
+    return arp_build(frame, config, mac, zero, target, false);
+}
+
+bool network_engine_arp_reply(NetworkEngineFrame *frame, NetConfig config, NetworkEngineMac mac,
+                              NetworkEngineMac peer_mac, uint32_t peer_ip) {
+    return arp_build(frame, config, mac, peer_mac, peer_ip, true);
+}
+
+NetworkIpv4Packet network_engine_ipv4_decode(const NetworkEngineFrame *frame) {
+    NetworkIpv4Packet out = {0};
+    if (frame->length > NETWORK_ENGINE_MAX_FRAME || frame->length < 34 ||
+        packet_be16(frame, 12) != 0x0800)
+        return out;
+    if (frame->bytes[14] >> 4 != 4)
+        return out;
+    size_t header = (size_t)(frame->bytes[14] & 15) * 4;
+    if (header < 20 || frame->length < 14 + header)
+        return out;
+    size_t total = packet_be16(frame, 16);
+    if (total < header || total > frame->length - 14 || packet_be16(frame, 20) & 0x3fff)
+        return out;
+    if (packet_checksum(frame, 14, header, 0) != 0)
+        return out;
+    out.valid = true;
+    out.protocol = frame->bytes[23];
+    out.source = packet_be32(frame, 26);
+    out.destination = packet_be32(frame, 30);
+    out.header_length = header;
+    out.transport_offset = 14 + header;
+    out.transport_length = total - header;
+    return out;
+}
+
+NetworkUdpPacket network_engine_udp_decode(const NetworkEngineFrame *frame) {
+    NetworkUdpPacket out = {0};
+    NetworkIpv4Packet ip = network_engine_ipv4_decode(frame);
+    if (!ip.valid || ip.protocol != 17 || ip.transport_length < 8)
+        return out;
+    size_t offset = ip.transport_offset;
+    size_t length = packet_be16(frame, offset + 4);
+    if (length != ip.transport_length || length < 8)
+        return out;
+    uint16_t checksum = packet_be16(frame, offset + 6);
+    if (checksum &&
+        packet_checksum(frame, offset, length,
+                        packet_pseudo(ip.source, ip.destination, 17, (uint16_t)length)) != 0)
+        return out;
+    out.valid = true;
+    out.source_port = packet_be16(frame, offset);
+    out.destination_port = packet_be16(frame, offset + 2);
+    out.payload_offset = offset + 8;
+    out.payload_length = length - 8;
+    return out;
+}
+
+bool network_engine_udp_build(NetworkEngineFrame *frame, NetworkEngineMac destination_mac,
+                              NetworkEngineMac source_mac, uint32_t source_ip,
+                              uint32_t destination_ip, uint16_t source_port,
+                              uint16_t destination_port, const NetworkEnginePayload *payload) {
+    if (!frame || !payload || payload->len > NETWORK_ENGINE_MAX_PAYLOAD || !source_ip ||
+        !destination_ip || !source_port || !destination_port)
+        return false;
+    size_t udp_length = 8 + payload->len, total = 20 + udp_length;
+    if (total > UINT16_MAX || 14 + total > NETWORK_ENGINE_MAX_FRAME)
+        return false;
+    packet_clear(frame);
+    for (size_t i = 0; i < 6; i++) {
+        frame->bytes[i] = destination_mac.bytes[i];
+        frame->bytes[6 + i] = source_mac.bytes[i];
+    }
+    packet_put16(frame, 12, 0x0800);
+    frame->bytes[14] = 0x45;
+    packet_put16(frame, 16, (uint16_t)total);
+    packet_put16(frame, 20, 0x4000);
+    frame->bytes[22] = 64;
+    frame->bytes[23] = 17;
+    packet_put32(frame, 26, source_ip);
+    packet_put32(frame, 30, destination_ip);
+    packet_put16(frame, 24, packet_checksum(frame, 14, 20, 0));
+    size_t udp = 34;
+    packet_put16(frame, udp, source_port);
+    packet_put16(frame, udp + 2, destination_port);
+    packet_put16(frame, udp + 4, (uint16_t)udp_length);
+    for (size_t i = 0; i < payload->len; i++)
+        frame->bytes[udp + 8 + i] = payload->bytes[i];
+    uint16_t checksum = packet_checksum(
+        frame, udp, udp_length, packet_pseudo(source_ip, destination_ip, 17, (uint16_t)udp_length));
+    packet_put16(frame, udp + 6, checksum ? checksum : UINT16_MAX);
+    frame->length = 14 + total;
+    return true;
 }
 
 

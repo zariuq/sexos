@@ -151,3 +151,41 @@ Document and Spindle queues use distinct value-record types around shared
 state. Captured notices are data; the native held-route send remains an
 explicit obligation. Queue mutation during a live exclusive loan and writes
 through a read-only receiver are refused.
+
+Native C layout, shares and obligations
+---------------------------------------
+
+Every (native "...") fragment in src/ is laid out by one rule, .clang-format,
+applied by clang-format 21.1.8 through tools/native_format.py. The tool
+refuses any result that differs from the original in more than whitespace
+and C line splices, and --check lists sources that do not follow the rule.
+When the rule was first applied, all 101 GCC and 101 Clang outputs of
+cesta build and all four AArch64 images were byte-identical before and after.
+Tests that mutate exported C or Cesta source match their patterns through
+tests/layout_text.py, which ignores layout at token boundaries.
+
+tools/native_census.py reports three shares in non-whitespace bytes:
+structured Cesta, native C read by the ownership check, and native C the
+check does not read. Every unit with native function bodies carries
+(ownership (check-all)); --check fails for one that does not. A definition
+the check refuses is named with what its code relies on,
+(unchecked (NAME...) CONTRACT... (obligation "...")): the body is not read,
+its callers are checked against the declared contract, and the plan records
+it as a foreign obligation. Units whose native text is only declarations
+count as read by the check when a checked unit includes the header they
+generate.
+
+The Browser's regex compiler and PNG decoder are fully checked. The PNG
+helpers read the source, scratch and pixel records through offsets into
+their inline arrays rather than raw byte pointers. The script core checks 72
+of its definitions and HTML 7; their named definitions read or write
+(pointer, length) ranges, return interior pointers into the workspace tables
+or use do-while loops. Across the kernel, AArch64, shell bindings, network
+and probes, the refused definitions are named with their unit's obligation:
+inline assembly, volatile and MMIO access, integer-derived addresses, records
+whose reference fields have no contracts yet, and calls into interfaces
+without foreign contracts. The native profile does not yet admit dynamically
+sized views as function parameters or do-while statements, and its loop rule
+does not recognize an unconditional loop with no normal exit; each of those
+extensions, and field and foreign contracts for the shell and network
+bindings, turns a group of named definitions into checked code.

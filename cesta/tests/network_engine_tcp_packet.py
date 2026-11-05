@@ -1,6 +1,7 @@
 """Qualify the shared current-engine TCP segment boundary."""
 import argparse,hashlib,importlib,json,os,random,subprocess,sys
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent;BASIS=0xCBF29CE484222325;MASK=(1<<64)-1
 def run(cmd,data=None,*,cwd=HERE,env=None):
  r=subprocess.run(list(map(str,cmd)),cwd=cwd,input=data,capture_output=True,env=env);assert r.returncode==0,(cmd,r.returncode,r.stdout[-2000:],r.stderr[-8000:]);return r.stdout
@@ -75,7 +76,7 @@ def main():
    run(cmd+['--','-Igenerated/include']);sources.append(target)
   for mode,flags in (('O0',['-O0']),('O2',['-O2']),('SAN',['-O1','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie'])):
    binary=w/f'{cc}-{mode}';run([cc,'-std=c11','-Wall','-Wextra','-Wpedantic','-Werror',*flags,'-Igenerated/include',*sources,host,'-o',binary]);actual=run([binary],commands,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=1:abort_on_error=1'});assert actual==expected,(cc,mode);configs.append({'compiler':cc,'mode':mode,'sha256':hashlib.sha256(actual).hexdigest()})
- base=exports['gcc'].read_text();mutations=[('protocol','ip.protocol!=6','false'),('header-min','header<20','header<16'),('header-extent','header>ip.transport_length','false'),('checksum','tcp_checksum(frame,offset,ip.transport_length,tcp_pseudo(ip.source,ip.destination,(uint16_t)ip.transport_length))!=0','false'),('payload-cap','payload->len>1460','payload->len>1459'),('source-port','!source_port','source_port==48001'),('destination-port','!destination_port','destination_port==46078'),('ip-checksum','tcp_put16(frame,24,tcp_checksum(frame,14,20,0))','tcp_put16(frame,24,0)'),('tcp-checksum','tcp_put16(frame,tcp+16,tcp_checksum(frame,tcp,tcp_length,tcp_pseudo(source_ip,destination_ip,(uint16_t)tcp_length)))','tcp_put16(frame,tcp+16,0)')];caught=[];prefix=[w/f'{n}-gcc.c' for n in ('network_config','network_engine_frame','network_engine_packet')]
+ base=LayoutText(exports['gcc'].read_text());mutations=[('protocol','ip.protocol!=6','false'),('header-min','header<20','header<16'),('header-extent','header>ip.transport_length','false'),('checksum','tcp_checksum(frame,offset,ip.transport_length,tcp_pseudo(ip.source,ip.destination,(uint16_t)ip.transport_length))!=0','false'),('payload-cap','payload->len>1460','payload->len>1459'),('source-port','!source_port','source_port==48001'),('destination-port','!destination_port','destination_port==46078'),('ip-checksum','tcp_put16(frame,24,tcp_checksum(frame,14,20,0))','tcp_put16(frame,24,0)'),('tcp-checksum','tcp_put16(frame,tcp+16,tcp_checksum(frame,tcp,tcp_length,tcp_pseudo(source_ip,destination_ip,(uint16_t)tcp_length)))','tcp_put16(frame,tcp+16,0)')];caught=[];prefix=[w/f'{n}-gcc.c' for n in ('network_config','network_engine_frame','network_engine_packet')]
  for name,old,new in mutations:
   assert base.count(old)>=1,(name,base.count(old));m=w/f'mutant-{name}.c';m.write_text(base.replace(old,new));b=w/f'mutant-{name}';run(['gcc','-std=c11','-O2','-Igenerated/include',*prefix,m,host,'-o',b]);assert run([b],commands)!=expected,('survived',name);caught.append(name)
  admission=[]

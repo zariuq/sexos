@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 FIXTURES = HERE / 'tests/silk_shell_models'
@@ -682,7 +683,7 @@ def check_variant(work, scenarios, oracle, exported, compiler, source, flags, in
         ('drop-name-bytes', 'model_linen_row', 'write_bytes(object->name, object->name_len)', 'write_bytes(object->name, 0)'),
         ('draw-eighth-mesh-row', 'model_mesh_render_row', 'state->rows >= MESH_LIST_ROW_RECTS', 'state->rows > MESH_LIST_ROW_RECTS'),
     )
-    text = exported.read_text()
+    text = LayoutText(exported.read_text())
     for name, function, target, replacement in mutations:
         mutant = work / (name + '.c')
         mutant.write_text(mutate_function(text, function, target, replacement))

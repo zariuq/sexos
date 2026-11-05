@@ -1,3 +1,15 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 #include "sexos_kernel.h"
 /*Physical frames, the one page table of the single address space, the user virtual-address cursor, and checked access to user memory. Translated from the files of kernel/src/memory and the page walks of pku.rs and syscalls/mod.rs. The reference maps a 256 MiB kernel heap page by page and runs a lock-free buddy allocator beside it; this kernel needs no heap, so frames come from one cursor over the usable regions, aligned to their block size as the buddy allocator aligns them, and are zeroed before use.*/
 #define FRAME_REGIONS 64u
@@ -102,7 +114,9 @@ uint64_t frames_alloc(uint32_t order) {
 }
 /*allocate_va of the reference: page-aligned addresses from one ascending cursor.*/
 uint64_t va_alloc(uint64_t size) {
-  if (size > UINT64_MAX - (KERNEL_PAGE_SIZE - 1)) return NO_ADDRESS;
+/*A reservation names at least one page and never wraps; a misaligned cursor reserves nothing.*/
+  if (size == 0 || size > UINT64_MAX - (KERNEL_PAGE_SIZE - 1)) return NO_ADDRESS;
+  if (frames.va_next % KERNEL_PAGE_SIZE != 0) return NO_ADDRESS;
   uint64_t rounded = align_up(size, KERNEL_PAGE_SIZE);
 /*The heap cursor stays below the domain stacks and never wraps.*/
   uint64_t limit = 0x700000000000ULL;
@@ -148,15 +162,16 @@ bool map_page(uint64_t va, uint64_t phys, uint64_t flags, uint8_t key) {
   cpu_invlpg(va);
   return true;
 }
-uint64_t page_leaf_address(uint64_t va)
-{
-    uint64_t *table=root_table();
-    for (unsigned level=3;level>0;--level) {
-        uint64_t entry=table[table_index(va,level)];
-        if (!(entry&PTE_PRESENT) || (entry&PTE_HUGE)) return 0;
-        table=table_at(entry);
+
+uint64_t page_leaf_address(uint64_t va) {
+    uint64_t *table = root_table();
+    for (unsigned level = 3; level > 0; --level) {
+        uint64_t entry = table[table_index(va, level)];
+        if (!(entry & PTE_PRESENT) || (entry & PTE_HUGE))
+            return 0;
+        table = table_at(entry);
     }
-    return (uint64_t)(uintptr_t)&table[table_index(va,0)];
+    return (uint64_t)(uintptr_t)&table[table_index(va, 0)];
 }
 
 /*The entry that maps va, a large page's entry included.*/

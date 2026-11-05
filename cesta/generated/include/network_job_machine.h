@@ -1,20 +1,30 @@
+
 #ifndef SEXOS_NETWORK_JOB_MACHINE_H
 #define SEXOS_NETWORK_JOB_MACHINE_H
 #include "network_job_abi.h"
-enum { NETWORK_JOB_OWNER_SLOTS = 6 };
-typedef struct NetworkJobIdentity { uint32_t pd, task; } NetworkJobIdentity;
+
+enum {
+    NETWORK_JOB_OWNER_SLOTS = 6
+};
+
+typedef struct NetworkJobIdentity {
+    uint32_t pd, task;
+} NetworkJobIdentity;
+
 typedef struct NetworkJobResolution {
     NetworkJobIdentity owner;
     uint32_t generation;
     uint8_t address[4];
     uint64_t observed_tick, expires_tick;
 } NetworkJobResolution;
+
 typedef enum NetworkJobLink {
     NETWORK_JOB_LINK_OPENING = 0,
     NETWORK_JOB_LINK_OPEN = 1,
     NETWORK_JOB_LINK_PEER_FIN = 2,
     NETWORK_JOB_LINK_CLOSED = 3
 } NetworkJobLink;
+
 typedef struct NetworkJobWire {
     void *context;
     bool (*begin)(void *context, uint32_t ticket, uint32_t *error);
@@ -25,33 +35,47 @@ typedef struct NetworkJobWire {
     void (*finish_send)(void *context);
     void (*abort)(void *context);
 } NetworkJobWire;
+
 typedef struct NetworkJobWireResult {
     bool ok;
     size_t count;
     uint32_t error;
 } NetworkJobWireResult;
-typedef struct NetworkJobReadView { const uint8_t *data; size_t len; } NetworkJobReadView;
-typedef struct NetworkJobWriteView { uint8_t *data; size_t len; } NetworkJobWriteView;
+
+typedef struct NetworkJobReadView {
+    const uint8_t *data;
+    size_t len;
+} NetworkJobReadView;
+
+typedef struct NetworkJobWriteView {
+    uint8_t *data;
+    size_t len;
+} NetworkJobWriteView;
+
 typedef struct NetworkJobSnapshot {
     NetworkJobState state;
     uint32_t ticket;
     size_t staged, sent, received;
 } NetworkJobSnapshot;
+
 typedef struct NetworkJobStreamSnapshot {
     bool present;
     size_t produced, consumed, buffered;
 } NetworkJobStreamSnapshot;
+
 typedef struct NetworkJobReceipt {
     bool present;
     NetworkJobIdentity owner;
     NetworkJobRequest request;
     uint64_t word;
 } NetworkJobReceipt;
+
 typedef struct NetworkJobPendingReply {
     bool present;
     NetworkJobIdentity owner;
     uint64_t word;
 } NetworkJobPendingReply;
+
 typedef struct NetworkJobMachine {
     bool owner_present;
     NetworkJobIdentity owner;
@@ -70,10 +94,13 @@ typedef struct NetworkJobMachine {
     bool resolution_present;
     NetworkJobResolution resolution;
 } NetworkJobMachine;
+
 bool network_job_wire_valid(NetworkJobWire wire);
 NetworkJobWireResult network_job_wire_begin(NetworkJobWire wire, uint32_t ticket);
-NetworkJobWireResult network_job_wire_receive(NetworkJobWire wire, NetworkJobWriteView out, size_t offset, size_t length);
-NetworkJobWireResult network_job_wire_send(NetworkJobWire wire, NetworkJobReadView data, size_t offset, size_t length);
+NetworkJobWireResult network_job_wire_receive(NetworkJobWire wire, NetworkJobWriteView out,
+                                              size_t offset, size_t length);
+NetworkJobWireResult network_job_wire_send(NetworkJobWire wire, NetworkJobReadView data,
+                                           size_t offset, size_t length);
 size_t network_job_wire_queued(NetworkJobWire wire);
 NetworkJobLink network_job_wire_link(NetworkJobWire wire);
 void network_job_wire_finish_send(NetworkJobWire wire);
@@ -86,9 +113,16 @@ bool network_job_machine_can_transmit(const NetworkJobMachine *machine, uint32_t
 NetworkJobPendingReply network_job_machine_pending_reply(const NetworkJobMachine *machine);
 void network_job_machine_reply_accepted(NetworkJobMachine *machine);
 void network_job_machine_reply_deferred(NetworkJobMachine *machine);
-bool network_job_machine_retire(NetworkJobMachine *machine, NetworkJobIdentity owner, NetworkJobWire wire);
-bool network_job_machine_handle(NetworkJobMachine *machine, NetworkJobIdentity owner, NetworkJobRequest request, uint64_t now, NetworkJobWire wire);
-bool network_job_machine_handle_exclusive(NetworkJobMachine *machine, NetworkJobIdentity owner, NetworkJobRequest request, uint64_t now, bool other_held, NetworkJobWire wire);
-bool network_job_machine_handle_resolved(NetworkJobMachine *machine, NetworkJobIdentity owner, NetworkJobRequest request, uint64_t now, bool other_held, const NetworkJobResolution *resolution, uint32_t admission_error, NetworkJobWire wire);
+bool network_job_machine_retire(NetworkJobMachine *machine, NetworkJobIdentity owner,
+                                NetworkJobWire wire);
+bool network_job_machine_handle(NetworkJobMachine *machine, NetworkJobIdentity owner,
+                                NetworkJobRequest request, uint64_t now, NetworkJobWire wire);
+bool network_job_machine_handle_exclusive(NetworkJobMachine *machine, NetworkJobIdentity owner,
+                                          NetworkJobRequest request, uint64_t now, bool other_held,
+                                          NetworkJobWire wire);
+bool network_job_machine_handle_resolved(NetworkJobMachine *machine, NetworkJobIdentity owner,
+                                         NetworkJobRequest request, uint64_t now, bool other_held,
+                                         const NetworkJobResolution *resolution,
+                                         uint32_t admission_error, NetworkJobWire wire);
 void network_job_machine_advance(NetworkJobMachine *machine, uint64_t now, NetworkJobWire wire);
 #endif

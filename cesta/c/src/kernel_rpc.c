@@ -1,3 +1,15 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
 #include "sexos_kernel.h"
 /*Correlated calls are separate from the legacy reply slot. Each caller owns a bounded set of outstanding requests. Only the peer that received a request may complete it; polling or cancellation consumes its identity.*/
 static RpcSlot *rpc_find(Domain *caller, uint64_t id) {
@@ -56,34 +68,45 @@ typedef struct KernelReplyContext {
     RpcSlot *request;
     uint64_t id;
 } KernelReplyContext;
+
 static bool kernel_reply_is_heard(KernelReplyContext *c) {
-    return c->request && c->request->id == c->id &&
-        c->request->peer == c->peer->id && c->request->state == RPC_HEARD;
+    return c->request && c->request->id == c->id && c->request->peer == c->peer->id &&
+           c->request->state == RPC_HEARD;
 }
+
 static bool kernel_reply_is_ready(KernelReplyContext *c) {
-    return c->request && c->request->id == c->id &&
-        c->request->peer == c->peer->id && c->request->state == RPC_READY;
+    return c->request && c->request->id == c->id && c->request->peer == c->peer->id &&
+           c->request->state == RPC_READY;
 }
+
 static bool kernel_reply_inspect(KernelReplyContext *c) {
-    if (c->frame->rdi >= KERNEL_MAX_DOMAINS) return false;
+    if (c->frame->rdi >= KERNEL_MAX_DOMAINS)
+        return false;
     c->caller = domain_get((uint32_t)c->frame->rdi);
-    if (!c->caller) return false;
+    if (!c->caller)
+        return false;
     c->id = c->frame->rsi;
     c->request = rpc_find(c->caller, c->id);
     return kernel_reply_is_heard(c);
 }
+
 static bool kernel_reply_complete(KernelReplyContext *c) {
-    if (!kernel_reply_is_heard(c)) return false;
+    if (!kernel_reply_is_heard(c))
+        return false;
     c->request->value = c->frame->rdx;
     c->request->state = RPC_READY;
-    if (SEXOS_KERNEL_CURRENT_PDX) kernel_task_wake(c->caller);
+    if (SEXOS_KERNEL_CURRENT_PDX)
+        kernel_task_wake(c->caller);
     return true;
 }
+
 static bool kernel_reply_publish(KernelReplyContext *c) {
-    if (!kernel_reply_is_ready(c)) return false;
+    if (!kernel_reply_is_ready(c))
+        return false;
     c->frame->rax = 0;
     return true;
 }
+
 typedef struct KernelPollContext {
     Domain *caller;
     TrapFrame *frame;
@@ -91,34 +114,47 @@ typedef struct KernelPollContext {
     uint64_t id, value;
     bool copied;
 } KernelPollContext;
+
 static bool kernel_poll_is_ready(KernelPollContext *c) {
     return c->request && c->request->id == c->id && c->request->state == RPC_READY;
 }
-static bool kernel_poll_is_copied(KernelPollContext *c) { return c->copied; }
+
+static bool kernel_poll_is_copied(KernelPollContext *c) {
+    return c->copied;
+}
+
 static bool kernel_poll_inspect(KernelPollContext *c) {
     c->id = c->frame->rdi;
     c->request = rpc_find(c->caller, c->id);
-    if (!c->request) return false;
+    if (!c->request)
+        return false;
     c->frame->rax = ERR_SERVICE_NOT_READY;
     return kernel_poll_is_ready(c);
 }
+
 static bool kernel_poll_consume(KernelPollContext *c) {
-    if (!kernel_poll_is_ready(c)) return false;
+    if (!kernel_poll_is_ready(c))
+        return false;
     c->value = c->request->value;
-    *c->request = (RpcSlot){ .state = RPC_FREE };
+    *c->request = (RpcSlot){.state = RPC_FREE};
     c->copied = true;
     return true;
 }
+
 static bool kernel_poll_publish(KernelPollContext *c) {
-    if (!c->copied) return false;
+    if (!c->copied)
+        return false;
     c->frame->rsi = c->value;
     c->frame->rax = 0;
     return true;
 }
+
 #define kernel_reply_run_CHECKED 1
 #define kernel_poll_run_CHECKED 1
-#define kernel_reply_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt("reply protocol invariant")
-#define kernel_poll_run_CHECK_FAILURE(ctx, kind, id, expected) kernel_halt("poll protocol invariant")
+#define kernel_reply_run_CHECK_FAILURE(ctx, kind, id, expected)                                    \
+    kernel_halt("reply protocol invariant")
+#define kernel_poll_run_CHECK_FAILURE(ctx, kind, id, expected)                                     \
+    kernel_halt("poll protocol invariant")
 
 /* Generated from a declared Cesta protocol. Declare the context and native hooks first. */
 

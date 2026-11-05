@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from layout_text import LayoutText
 
 
 HERE = Path(__file__).resolve().parent.parent
@@ -382,7 +383,7 @@ fn main(){let n:usize=std::env::args().nth(1).unwrap().parse().unwrap();match ru
             builds.append((compiler, mode))
     mutations = []
     if args.mutations:
-        base = exports["gcc"].read_text()
+        base = LayoutText(exports["gcc"].read_text())
         changes = [
             ("output-bound", "output_len+s.len>KALEIDOSCOPE_SCRIPT_MAX_OUTPUT", "false"),
             ("const-required", "if(v->kind==2&&!declare)return KALEIDOSCOPE_SCRIPT_UNSUPPORTED", "if(false)return KALEIDOSCOPE_SCRIPT_UNSUPPORTED"),
