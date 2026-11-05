@@ -876,6 +876,7 @@ fn dispatch(line: &[u8], sb: &mut Scrollback, hist: &mut History, ev: &mut Event
                         calc_command::Error::Domain => b"calc: square root of a negative number",
                         calc_command::Error::Unknown => b"calc: unknown name (set one with  calc x = 2)",
                         calc_command::Error::NotWhole => b"calc: only whole results show in hex/bin/oct",
+                        calc_command::Error::NotReal => b"calc: needs a real number",
                         calc_command::Error::Syntax => b"usage: calc <expr>  e.g. calc 2*(3+4)/5",
                     });
                     sex_pdx::serial_record!("[spindle.calc] expr_bytes={} error={:?} ok=0", args.len(), error);
