@@ -1208,6 +1208,16 @@ static bool input_action_key(ShellInputContext *ctx, uint8_t code, uint64_t valu
     return false;
 }
 
+/* Spindle key word: scancode in bits 0..8, held Shift in bit 8 and Ctrl in bit 9 for Spindle's
+   line editor. Modifiers are presentation state from the Shell's own tracking; no authority. */
+static uint64_t input_spindle_key_word(const ShellInputContext *ctx, uint8_t code) {
+    bool shift =
+        ctx->shell.input->APP_MODIFIER_LEFT_SHIFT || ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT;
+    bool control =
+        ctx->shell.input->APP_MODIFIER_LEFT_CONTROL || ctx->shell.input->APP_MODIFIER_RIGHT_CONTROL;
+    return (uint64_t)code | (uint64_t)shift << 8 | (uint64_t)control << 9;
+}
+
 static void input_handle_key(ShellInputContext *ctx, uint8_t code, uint64_t value) {
     if (handle_hid_event__KEY_RECV_DRAIN_BUDGET > 0) {
         --handle_hid_event__KEY_RECV_DRAIN_BUDGET;
@@ -1236,12 +1246,8 @@ static void input_handle_key(ShellInputContext *ctx, uint8_t code, uint64_t valu
                        (unsigned long long)SURFACE_ID_SPINDLE, (unsigned)code,
                        (unsigned long long)value);
         }
-        (void)sexos_pdx_call(SLOT_SPINDLE, OP_HID_EVENT,
-                             (uint64_t)code |
-                                 (uint64_t)(ctx->shell.input->APP_MODIFIER_LEFT_SHIFT ||
-                                            ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT)
-                                     << 8,
-                             value, EV_KEY);
+        (void)sexos_pdx_call(SLOT_SPINDLE, OP_HID_EVENT, input_spindle_key_word(ctx, code), value,
+                             EV_KEY);
         return;
     }
     if (shell_input_peer_quil_has_focus(ctx) && shell_input_peer_is_quil_text_key(ctx, code)) {
@@ -1294,11 +1300,7 @@ static void input_handle_key(ShellInputContext *ctx, uint8_t code, uint64_t valu
         }
         uint8_t live = (uint8_t)shell_input_surface_is_alive(ctx, sid);
         shell_input_peer_surface_input_lifetime_mark_key_route(ctx, sid, live, 1, live);
-        uint64_t key_word =
-            spindle ? ((uint64_t)code | (uint64_t)(ctx->shell.input->APP_MODIFIER_LEFT_SHIFT ||
-                                                   ctx->shell.input->APP_MODIFIER_RIGHT_SHIFT)
-                                            << 8)
-                    : (uint64_t)code;
+        uint64_t key_word = spindle ? input_spindle_key_word(ctx, code) : (uint64_t)code;
         (void)sexos_pdx_call(slot, OP_HID_EVENT, key_word, value, EV_KEY);
         if (SHELL_INTERACTION_CONTRACT_PROOF_ENABLED) {
             sexos_line(

@@ -12,9 +12,11 @@ from layout_text import LayoutText
 
 
 HERE = Path(__file__).resolve().parent.parent
+# The evaluator's source capacity (KALEIDOSCOPE_SCRIPT_MAX_SOURCE).
+MAX_SOURCE = 16384
 REPO = HERE.parent
-PIN = "d58fcf4af6b9d37d77a6793bfec6d9fd655a3377"
-SOURCE_SHA256 = "61b42d63cb819a938d34f8cdb11ce9682e4def5a45348a190394bfdda38c41a1"
+PIN = "b6be1b451a6c21985d00d192674feedf66bb11dd"
+SOURCE_SHA256 = "1a1a612fab2d9ac343485abeee712cc9a22b414972cc78aa241ca3d590949e35"
 
 
 def run(argv, *, env=None):
@@ -304,11 +306,77 @@ def cases():
         b"document.write(typeof String,typeof Number,typeof Boolean)",
         b"document.write([1].map(String)[0],[].map(Number).length)",
         b"var Number=x=>x+10;document.write([1,2].map(Number).join(','))",
+        # Since b6be1b45: exact number text, number methods, nested templates, bound calls.
+        b"document.write(1e21, ' ', 1e-7, ' ', 123e-20, ' ', 0.1 + 0.2, ' ', 5e-324, ' ', 1.7976931348623157e308, ' ', 2 ** 53 + 1, ' ', 0.000001, ' ', 123456789012345680000)",
+        b"document.write((1.005).toFixed(2), ' ', (2.5).toFixed(0), ' ', (0.000001234).toFixed(20), ' ', (-0).toFixed(2), ' ', (-1.5).toFixed(0), ' ', (1e20).toFixed(2))",
+        b"document.write((123.456).toPrecision(4), ' ', (0.00001234).toPrecision(2), ' ', (1e21).toPrecision(3), ' ', (99.99).toPrecision(3), ' ', (0).toPrecision(3), ' ', (1234.5678).toLocaleString(), ' ', (-0.0004).toLocaleString(), ' ', (1e21).toLocaleString())",
+        b"var a = 1; document.write(`x${`y${`z${a}`}`}`, ' ', `${'}'}${\"{\"}`)",
+        b"var f = function (x) { return x }.bind(null); var t = 0; for (var i = 0; i < 70; i++) t += f(i); document.write(t)",
+        b"class K { #n = 3; get n() { return this.#n } } var k = new K(); document.write(k.n, Object.keys(k).length, JSON.stringify(k))",
+        b"document.write(parseFloat('0.1e-310'), ' ', Number('9007199254740993'), ' ', 2.4703282292062328e-324, ' ', 0.30000000000000004 === 0.1 + 0.2)",
+        b"Promise.resolve(5).finally(x => document.write(typeof x)).then(v => document.write(v)); Promise.reject(1).finally(() => 7).catch(e => document.write(e))",
+        b"class A { static x = 1 } class B extends A {} B.x = 5; document.write(A.x, B.x, ' ', B.y)",
+        b"document.write((0.007).toFixed(19), ' ', (0.024).toFixed(18), ' ', (0.044).toFixed(19))",
+        # Nesting across the depth budget: one level more or less changes the outcome.
+        *[b"document.write(" + b"(" * n + b"1" + b")" * n + b")" for n in range(56, 68)],
+        *[b"function f(n) { return n ? f(n - 1) : 0 } document.write(f(" + str(n).encode() + b"))" for n in range(28, 36)],
     ]
 
 
 def rust_slice(data):
     return "&[" + ",".join(map(str, data)) + "]"
+
+
+def math_cases():
+    """Every Math function over awkward arguments: the elementary functions are bit-exact ports."""
+    values = ["0", "-0", "1", "-1", "0.5", "-0.5", "2", "3", "10", "1e-7", "-1e-7", "1e-300", "1e300", "709", "710",
+              "-745", "-746", "Math.PI", "Math.PI / 2", "-Math.PI / 4", "1e16", "123.456", "-987.654", "NaN", "Infinity",
+              "-Infinity", "Math.E", "0.1", "7e-310", "4", "0.999999", "1.000001"]
+    names = ["sqrt", "exp", "expm1", "log", "log1p", "log2", "log10", "sin", "cos", "tan", "atan", "asin", "acos",
+             "cbrt", "sinh", "cosh", "tanh", "floor", "ceil", "round", "trunc", "sign", "abs"]
+    rows = []
+    for name in names:
+        rows.append(("document.write(" + ", ' ', ".join(f"Math.{name}({v})" for v in values) + ")").encode())
+    pairs = [(a, b) for a in values[:12] for b in ["0", "-0", "1", "-1", "Infinity", "-Infinity", "NaN", "2", "0.5"]]
+    for name in ("atan2", "pow", "hypot", "max", "min"):
+        rows.append(("document.write(" + ", ' ', ".join(f"Math.{name}({a}, {b})" for a, b in pairs) + ")").encode())
+    rows.append(b"document.write(Math.hypot(), Math.hypot(3, 4, 12), Math.max(), Math.min(), Math.LN2, Math.LN10, Math.LOG2E, Math.LOG10E, Math.SQRT2, Math.SQRT1_2, Math.E)")
+    rows.append(b"document.write(Math.foo)")
+    rows.append(b"document.write(Math.foo(1))")
+    return rows
+
+
+def upstream_cases(work):
+    """Every script upstream's own host tests (tests/browser_script.rs) run, in order."""
+    show = lambda path: subprocess.check_output(["git", "show", f"{PIN}:{path}"], cwd=REPO)
+    for name in ("regex", "fmath", "script"):
+        (work / f"{name}.rs").write_bytes(show(f"apps/kaleidoscope/src/{name}.rs"))
+    tests = show("tests/browser_script.rs").decode()
+    for name in ("regex", "fmath", "script"):
+        tests = tests.replace(f'#[path="../apps/kaleidoscope/src/{name}.rs"]', f'#[path="{name}.rs"]')
+    wrapper = """use script::Error;
+fn run(src: &[u8]) -> Result<alloc::vec::Vec<u8>, Error> {
+    use std::io::Write;
+    let hex: String = src.iter().map(|b| format!("{b:02x}")).collect();
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(std::env::var("SCRIPT_LOG").unwrap()).unwrap();
+    writeln!(f, "{hex}").unwrap();
+    script::run(src)
+}"""
+    assert "use script::{run, Error};" in tests
+    (work / "harvest.rs").write_text(tests.replace("use script::{run, Error};", wrapper))
+    run(["rustc", "--edition=2021", "--test", "-O", "--cap-lints", "allow", work / "harvest.rs", "-o", work / "harvest"])
+    log = work / "harvest.log"
+    if log.exists():
+        log.unlink()
+    subprocess.run([work / "harvest", "--test-threads=1"], cwd=work, env={**os.environ, "SCRIPT_LOG": str(log)},
+                   capture_output=True, check=True)
+    seen, rows = set(), []
+    for line in log.read_text().split():
+        data = bytes.fromhex(line)
+        if data not in seen:
+            seen.add(data)
+            rows.append(data)
+    return rows
 
 
 def c_row(data):
@@ -329,9 +397,19 @@ def main():
     source = subprocess.check_output(["git", "show", PIN + ":apps/kaleidoscope/src/script.rs"], cwd=REPO)
     assert hashlib.sha256(source).hexdigest() == SOURCE_SHA256
     regex_source = subprocess.check_output(["git", "show", PIN + ":apps/kaleidoscope/src/regex.rs"], cwd=REPO)
+    fmath_source = subprocess.check_output(["git", "show", PIN + ":apps/kaleidoscope/src/fmath.rs"], cwd=REPO)
+    inventory = json.loads((HERE / "interfaces/kaleidoscope_script.source.json").read_text())
+    assert (inventory["pin"], inventory["sha256"]) == (PIN, SOURCE_SHA256), inventory
+    assert inventory["math"]["sha256"] == hashlib.sha256(fmath_source).hexdigest(), inventory
     text = ("extern crate alloc;\nmod regex {\n" + regex_source.decode().replace("//!", "//") +
-            "\n}\n" + source.decode().replace("//!", "//"))
-    selected = cases()
+            "\n}\nmod fmath {\n" + fmath_source.decode().replace("//!", "//") + "\n}\nmod script {\n" +
+            source.decode().replace("//!", "//") + "\n}\nuse script::{run, Error};\n")
+    harvested = upstream_cases(work)
+    selected = cases() + [case for case in harvested if case not in cases()] + math_cases()
+    # Sources beyond the C source capacity never reach the evaluator (the page
+    # converter refuses them first); upstream must refuse them too.
+    oversized = [case for case in selected if len(case) > MAX_SOURCE]
+    selected = [case for case in selected if len(case) <= MAX_SOURCE]
     rows = ",\n".join(rust_slice(case) for case in selected)
     text += "\nstatic CASES:&[&[u8]]=&[" + rows + "];\n"
     text += r'''
@@ -343,6 +421,12 @@ fn main(){let n:usize=std::env::args().nth(1).unwrap().parse().unwrap();match ru
     reference = work / "reference"
     run(["rustc", "--edition=2021", "-C", "opt-level=2", work / "reference.rs", "-o", reference])
     expected = [run([reference, i]) for i in range(len(selected))]
+    if oversized:
+        probe = work / "oversized.rs"
+        probe.write_text(text.split("\nstatic CASES:")[0] + "\nfn main(){" + "".join(
+            f"assert!(matches!(run(&[b' ';{len(case)}]),Err(Error::Limit)));" for case in oversized) + "}\n")
+        run(["rustc", "--edition=2021", "-C", "opt-level=2", probe, "-o", work / "oversized"])
+        run([work / "oversized"])
     (work / "cases.h").write_text(
         "static const KaleidoscopeScriptSource cases[]={\n" + ",\n".join(c_row(case) for case in selected) + "\n};\n"
     )
@@ -350,10 +434,13 @@ fn main(){let n:usize=std::env::args().nth(1).unwrap().parse().unwrap();match ru
     builds = []
     exports = {}
     for compiler in ("gcc", "clang"):
+        decimal = work / f"decimal-{compiler}.c"
         lexer = work / f"lexer-{compiler}.c"
         regex = work / f"regex-{compiler}.c"
         matcher = work / f"regex-match-{compiler}.c"
         core = work / f"core-{compiler}.c"
+        run([args.cesta, "export-c", "src/kaleidoscope_decimal.cesta", "--cc", compiler, "--std=c11",
+             "-o", decimal, "--", "-Igenerated/include"])
         run([args.cesta, "export-c", "src/kaleidoscope_script_lexer.cesta", "--cc", compiler, "--std=c11",
              "-o", lexer, "--", "-Igenerated/include"])
         run([args.cesta, "export-c", "src/kaleidoscope_script_core.cesta", "--cc", compiler, "--std=c11",
@@ -364,10 +451,10 @@ fn main(){let n:usize=std::env::args().nth(1).unwrap().parse().unwrap();match ru
              "-o", matcher, "--", "-Igenerated/include"])
         exports[compiler] = core
         common = ["-std=c11", "-g0", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-                  "-DKALEIDOSCOPE_SCRIPT_DEPTH_LIMIT=32", "-DKALEIDOSCOPE_SCRIPT_ARENA_LIMIT=4096",
-                  "-DKALEIDOSCOPE_SCRIPT_VARS_LIMIT=32", "-DKALEIDOSCOPE_SCRIPT_FUNCS_LIMIT=16",
-                  "-DKALEIDOSCOPE_SCRIPT_ELEMS_LIMIT=256", "-DKALEIDOSCOPE_SCRIPT_PARAMS_LIMIT=6",
-                  "-DKALEIDOSCOPE_SCRIPT_PROPS_LIMIT=128",
+                  "-DKALEIDOSCOPE_SCRIPT_DEPTH_LIMIT=64", "-DKALEIDOSCOPE_SCRIPT_ARENA_LIMIT=12288",
+                  "-DKALEIDOSCOPE_SCRIPT_VARS_LIMIT=48", "-DKALEIDOSCOPE_SCRIPT_FUNCS_LIMIT=32",
+                  "-DKALEIDOSCOPE_SCRIPT_ELEMS_LIMIT=512", "-DKALEIDOSCOPE_SCRIPT_PARAMS_LIMIT=6",
+                  "-DKALEIDOSCOPE_SCRIPT_PROPS_LIMIT=256",
                   "-Igenerated/include", "-I", work]
         for mode, extra in (
             ("O0", ["-O0"]), ("O2", ["-O2"]),
@@ -375,7 +462,7 @@ fn main(){let n:usize=std::env::args().nth(1).unwrap().parse().unwrap();match ru
                      "-fno-pie", "-no-pie"]),
         ):
             binary = work / f"{compiler}-{mode}"
-            run([compiler, *common, *extra, host, lexer, regex, matcher, core, "-o", binary])
+            run([compiler, *common, *extra, host, decimal, lexer, regex, matcher, core, "-o", binary])
             for i, wanted in enumerate(expected):
                 actual = run([binary, i], env={**os.environ,
                     "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=1"})
@@ -390,22 +477,35 @@ fn main(){let n:usize=std::env::args().nth(1).unwrap().parse().unwrap();match ru
             ("remainder-sign", "a-t*b", "a+t*b"),
             ("concat-order", "script_to_text(m,left,&left)", "script_to_text(m,right,&left)"),
             ("depth-bound", "depth>=KALEIDOSCOPE_SCRIPT_DEPTH_LIMIT", "depth>KALEIDOSCOPE_SCRIPT_DEPTH_LIMIT"),
+            ("bound-level", "return KALEIDOSCOPE_SCRIPT_UNSUPPORTED;KaleidoscopeScriptBound bound=", "{m->work->depth--;return KALEIDOSCOPE_SCRIPT_UNSUPPORTED;}m->work->depth--;KaleidoscopeScriptBound bound="),
+            ("private-hidden", "if(property.len>0&&m->work->arena[property.start]=='#')return true;", ""),
+            ("frozen-ignored", "if(base.kind==KALEIDOSCOPE_SCRIPT_VALUE_OBJECT&&script_frozen(m,base.index))return 0;", ""),
+            ("json-indent-space", "if(!error&&layout->indent_len)error=script_json_byte(m,first,count,' ');", ""),
+            ("collection-nan", "script_isnan(item.number)&&script_isnan(key.number)", "false"),
+            ("replace-offset", "{from,script_num((double)i),text}", "{from,script_num(0.0),text}"),
+            ("promise-order", "for(size_t i=0;i<m->work->job_count&&!e;i++)e=script_run_job(m,m->work->jobs[i]);", "for(size_t i=m->work->job_count;i-->0&&!e;)e=script_run_job(m,m->work->jobs[i]);"),
+            ("finally-value", "r.finally?0:1", "1"),
+            ("arguments-count", "m->work->args_now_count=count;", "m->work->args_now_count=count?count-1:0;"),
+            ("comma-last", "while(!e&&script_punct(m,',')){e=script_next(m);if(!e)e=script_expr(m,out);}", "while(!e&&script_punct(m,',')){KaleidoscopeScriptValue skipped={0};e=script_next(m);if(!e)e=script_expr(m,&skipped);}"),
+            ("static-home", "home=record.static_object;searching=false;", "searching=false;"),
+            ("exact-fixed", "script_exact_fixed(&wide,number<0.0?-number:number,40);", "script_exact_fixed(&wide,number<0.0?-number:number,20);"),
         ]
+        decimal = work / "decimal-gcc.c"
         lexer = work / "lexer-gcc.c"
         regex = work / "regex-gcc.c"
         matcher = work / "regex-match-gcc.c"
         common = ["-std=c11", "-O2", "-g0", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-                  "-DKALEIDOSCOPE_SCRIPT_DEPTH_LIMIT=32", "-DKALEIDOSCOPE_SCRIPT_ARENA_LIMIT=4096",
-                  "-DKALEIDOSCOPE_SCRIPT_VARS_LIMIT=32", "-DKALEIDOSCOPE_SCRIPT_FUNCS_LIMIT=16",
-                  "-DKALEIDOSCOPE_SCRIPT_ELEMS_LIMIT=256", "-DKALEIDOSCOPE_SCRIPT_PARAMS_LIMIT=6",
-                  "-DKALEIDOSCOPE_SCRIPT_PROPS_LIMIT=128",
+                  "-DKALEIDOSCOPE_SCRIPT_DEPTH_LIMIT=64", "-DKALEIDOSCOPE_SCRIPT_ARENA_LIMIT=12288",
+                  "-DKALEIDOSCOPE_SCRIPT_VARS_LIMIT=48", "-DKALEIDOSCOPE_SCRIPT_FUNCS_LIMIT=32",
+                  "-DKALEIDOSCOPE_SCRIPT_ELEMS_LIMIT=512", "-DKALEIDOSCOPE_SCRIPT_PARAMS_LIMIT=6",
+                  "-DKALEIDOSCOPE_SCRIPT_PROPS_LIMIT=256",
                   "-Igenerated/include", "-I", work]
         for name, old, new in changes:
             assert base.count(old) >= 1, (name, base.count(old))
             mutant = work / f"{name}.c"
             mutant.write_text(base.replace(old, new))
             binary = work / name
-            built = subprocess.run(["gcc", *common, host, lexer, regex, matcher, mutant, "-o", binary], cwd=HERE, capture_output=True)
+            built = subprocess.run(["gcc", *common, host, decimal, lexer, regex, matcher, mutant, "-o", binary], cwd=HERE, capture_output=True)
             if built.returncode == 0:
                 assert any(subprocess.run([binary, str(i)], cwd=HERE, capture_output=True).stdout != wanted
                            for i, wanted in enumerate(expected)), ("survived", name)

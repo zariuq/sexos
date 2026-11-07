@@ -2,12 +2,13 @@
 import argparse,json,hashlib,subprocess
 from pathlib import Path
 from silk_shell_models_render import prepare,corpus,independent,run,HERE
+from layout_text import LayoutText
 
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--cesta',default='cesta');parser.add_argument('--output',type=Path,default=HERE/'build/models-root-tests');args=parser.parse_args();w=args.output.resolve();w.mkdir(parents=True,exist_ok=True)
     summary=prepare(w);data,count=corpus();expected=run([w/'oracle'],data)
-    units=('silk_shell_models','silk_shell_models_root','silk_shell_models_render','silk_shell_models_render_native','silk_shell_models_paint','silk_shell_models_paint_native','silk_shell_models_linen','silk_shell_models_publish','silk_shell_models_projection','shell_linen_snapshot','shell_linen_list','shell_text_delivery','shell_text_delivery_native');exports=[]
+    units=('silk_shell_models','silk_shell_models_root','silk_shell_models_render','silk_shell_models_render_native','silk_shell_models_paint','silk_shell_models_paint_native','silk_shell_models_linen','silk_shell_models_publish','silk_shell_models_publish_native','silk_shell_models_projection','linen_capture','linen_capture_client','shell_linen_presentation','shell_linen_snapshot','shell_linen_list','shell_text_delivery','shell_text_delivery_native');exports=[]
     for name in units:
         out=w/(name+'.c');run([args.cesta,'export-c','src/'+name+'.cesta','--std=c11','-o',out,'--','-Igenerated/include']);exports.append(out)
     provider=HERE/'tests/silk_shell_models_current/root_provider.c';configs=[]
@@ -26,7 +27,7 @@ def main():
         ('lost_reply','return shell_models_linen_async_reply(&view,message)','return false'),
         ('skip_publication_repaint','linen_paint_surface_fast();','return;'),
     ):
-        assert base.count(old)==1,(name,base.count(old));path=w/('mutant-'+name+'.c');path.write_text(base.replace(old,new));binary=w/('mutant-'+name)
+        assert LayoutText(base).count(old)==1,(name,LayoutText(base).count(old));path=w/('mutant-'+name+'.c');path.write_text(LayoutText(base).replace(old,new));binary=w/('mutant-'+name)
         linked=[path if x.stem=='silk_shell_models_root'else x for x in exports];run(['gcc','-std=c11','-O2','-ffunction-sections','-fdata-sections','-Igenerated/include',*linked,provider,'-Wl,--gc-sections','-o',binary]);r=subprocess.run([binary],input=data,capture_output=True);assert r.returncode!=0 or r.stdout!=expected,('survived',name);mutants.append(name)
     summary.update(commands=count,configurations=configs,mutants_caught=mutants,boundary='Actual global Models/root bindings and component implementations; Chrome and transport scripted. Core event loop and joined boot are not exercised.')
     (w/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print('Actual Models root:',count,'commands/configuration; six compiler modes;',len(mutants),'mutations caught')

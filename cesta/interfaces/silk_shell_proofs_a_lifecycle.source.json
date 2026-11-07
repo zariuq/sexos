@@ -1,6 +1,6 @@
 {
-  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
-  "working_main_sha256": "fb36d2e89eeca1f450b5f8b825bc31bda30c7d50c5aa04f4821b6d52edd8030a",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
+  "working_main_sha256": "e44ae38149a324e69eb18fdd8011f40870654ab0d6ebc9f968bc6d9eff5655e4",
   "functions": [
     {"name":"maybe_run_frame_lights_pointer_proof","done":"FRAME_LIGHTS_POINTER_PROOF_DONE","flag":"SEXOS_FRAME_LIGHTS_POINTER_PROOF","source_sha256":"5f55a5e492e95bdb6cc3973d23d30a469a78190117eeaf5560f5bda66edce0a6"},
     {"name":"maybe_run_lifecycle_multitab_proof","done":"LIFECYCLE_MULTITAB_PROOF_DONE","flag":"SEXOS_LIFECYCLE_MULTITAB_PROOF","source_sha256":"b7effced36109698b2406a12fb2f680e29d07edd4ecad50e56a43179fd063384"},

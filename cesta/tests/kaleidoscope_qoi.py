@@ -13,7 +13,7 @@ from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
-PIN = "44053ea9b017fe89008413f7cc8a6b1a4d28d015"
+PIN = "b6be1b451a6c21985d00d192674feedf66bb11dd"
 SOURCE_SHA256 = "b26f5a609f453dae74b5109b77e48724635f531ccb88e10699ce92112f46e705"
 END = bytes([0, 0, 0, 0, 0, 0, 0, 1])
 

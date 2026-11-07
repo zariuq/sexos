@@ -1,5 +1,5 @@
 {
-  "pin": "a4b703d0af446f3f57691497e785fd2d39b62e01",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "sources": {
     "crates/sex-pdx/src/document_view.rs": "180b16b767d342b26bbf727c21d875a853c6f386bf7729b19b2c928f119a6aa9",
     "crates/sex-pdx/src/spindle_view.rs": "181bbc85e81fe11e7750fdcbda1898b13eebf9cbbd4a01f84c36e42f9c7e97f2",

@@ -1,8 +1,8 @@
 {
   "rect_impl_sha256": "42a188d60add5034557280f8f3fb94c5bbb96513b6d3f40934abac6d80305a43",
   "runtime_panic_owner": "core",
-  "pin": "c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321",
-  "source_sha256": "fb36d2e89eeca1f450b5f8b825bc31bda30c7d50c5aa04f4821b6d52edd8030a",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
+  "source_sha256": "e44ae38149a324e69eb18fdd8011f40870654ab0d6ebc9f968bc6d9eff5655e4",
   "functions": [
     {
       "name": "scancode_to_action",
@@ -138,224 +138,224 @@
     },
     {
       "name": "frame_for_surface",
-      "start": 19721,
-      "end": 19734,
+      "start": 19726,
+      "end": 19739,
       "sha256": "e49bef5797a8491ce664ddb4a8551db067b3d1d362bbd07e4cb4331a2e978901"
     },
     {
       "name": "active_surface_for_frame",
-      "start": 19738,
-      "end": 19749,
+      "start": 19743,
+      "end": 19754,
       "sha256": "70e7a1d10044623dd5b74fa0ce0fb579bfa1858454be4f88a642db84c3f9cfe7"
     },
     {
       "name": "selected_frame_id",
-      "start": 19753,
-      "end": 19755,
+      "start": 19758,
+      "end": 19760,
       "sha256": "7a1c772d91545e2a5ea9e7c30cd22cc2686b9c3054f831df6036018078564b5a"
     },
     {
       "name": "selected_surface_id",
-      "start": 19758,
-      "end": 19761,
+      "start": 19763,
+      "end": 19766,
       "sha256": "94dc908a03f4c84f506230a41ea41851007d51b34f9275b0abcc503a37e30fb1"
     },
     {
       "name": "selected_window_options_mask",
-      "start": 19766,
-      "end": 19775,
+      "start": 19771,
+      "end": 19780,
       "sha256": "b0bdcfa95c1b70bdcfa7a75ebfb605342972461e5e5b8c27193134dc8510a698"
     },
     {
       "name": "frame_is_minimized",
-      "start": 20021,
-      "end": 20030,
+      "start": 20026,
+      "end": 20035,
       "sha256": "909d2aa333e78d5fd619471930308bf01d804b67b3e495962a7480bd5a0f30c6"
     },
     {
       "name": "set_frame_minimized",
-      "start": 20103,
-      "end": 20116,
+      "start": 20108,
+      "end": 20121,
       "sha256": "90dd8cc933d34781872588512aa574b00bab5e9edc8eb88259962a5c0b5216e7"
     },
     {
       "name": "frame_is_zoomed",
-      "start": 20275,
-      "end": 20284,
+      "start": 20280,
+      "end": 20289,
       "sha256": "238d16170a56d8f8837e0c5fefd7ea12bd04a22a65d1c86ea491debcf890825c"
     },
     {
       "name": "set_frame_zoomed",
-      "start": 20287,
-      "end": 20300,
+      "start": 20292,
+      "end": 20305,
       "sha256": "34f34cc93becb9a544fe5dadfc03bcf00b093f71ecf876344c310df49c9bbcfa"
     },
     {
       "name": "frame_has_top_bar",
-      "start": 20305,
-      "end": 20314,
+      "start": 20310,
+      "end": 20319,
       "sha256": "da3f276a3a63a8c479a53f430e54336b22c8ff8e1d81ee9633827773a8724a20"
     },
     {
       "name": "set_frame_top_bar",
-      "start": 20346,
-      "end": 20359,
+      "start": 20351,
+      "end": 20364,
       "sha256": "4a60d175dc822ffd5819cf74f2809f4632dd5da2789614b8be31ce38f1017db2"
     },
     {
       "name": "first_minimized_frame_id",
-      "start": 20120,
-      "end": 20129,
+      "start": 20125,
+      "end": 20134,
       "sha256": "6ee4b180d82c01fc179f042222ecd24f01dee13919c5dbbfc2f57c68ad18b140"
     },
     {
       "name": "frame_accepts_input",
-      "start": 20034,
-      "end": 20057,
+      "start": 20039,
+      "end": 20062,
       "sha256": "ea59dff9d173d77b77c7948d7073f640d009324722308560c3656a067de47fe4"
     },
     {
       "name": "frame_chrome_visible",
-      "start": 20064,
-      "end": 20088,
+      "start": 20069,
+      "end": 20093,
       "sha256": "22f893b4d216ef96b6e22651298f30dff79227da768efccb469b61e113b1c801"
     },
     {
       "name": "clear_hover_if_wrong_scene",
-      "start": 20092,
-      "end": 20100,
+      "start": 20097,
+      "end": 20105,
       "sha256": "8e3da8343c1536cf97cecc68365da46c09342ba3668f5064a8ea063d3acb6716"
     },
     {
       "name": "frame_tab_count",
-      "start": 21822,
-      "end": 21831,
+      "start": 21827,
+      "end": 21836,
       "sha256": "8d55d0d6b5d4b5811e5b086d3b19d4b1c45d5bb9f077d8d1ba303365d2d55df7"
     },
     {
       "name": "frame_active_tab_index",
-      "start": 21834,
-      "end": 21843,
+      "start": 21839,
+      "end": 21848,
       "sha256": "79728e2f19a3277164204284ce7c53b978fc2c06e7c2d30fc77c59f4c554e8e0"
     },
     {
       "name": "frame_tab_at",
-      "start": 21850,
-      "end": 21899,
+      "start": 21855,
+      "end": 21904,
       "sha256": "27f7c3d9e42440545f995af68faabe25f8fec59beb5d7845726c95b6e5c3cbb9"
     },
     {
       "name": "swap_frame_tabs",
-      "start": 21904,
-      "end": 21932,
+      "start": 21909,
+      "end": 21937,
       "sha256": "ee5f624c8c018e06202895a6db0742fdd5f74d99ae4e88901f48ff3477e02e03"
     },
     {
       "name": "frame_light_to_option_mask",
-      "start": 20595,
-      "end": 20602,
+      "start": 20600,
+      "end": 20607,
       "sha256": "7bc1790f311207288542458f8d702d3bc46c625a84d728c1c6cd2947dbb0ada7"
     },
     {
       "name": "abs_screen_to_raw",
-      "start": 20682,
-      "end": 20686,
+      "start": 20687,
+      "end": 20691,
       "sha256": "4e492f03b5732f9d10679d3925921d55838eed525af22975e0817433961389a3"
     },
     {
       "name": "compute_resize_edge",
-      "start": 22687,
-      "end": 22705,
+      "start": 22692,
+      "end": 22710,
       "sha256": "fb4ffc38b66db06622dd210947f6ff75cffdb4271bfa6b0a77d3719594da7a96"
     },
     {
       "name": "compute_resize_rect",
-      "start": 22804,
-      "end": 22840,
+      "start": 22809,
+      "end": 22845,
       "sha256": "8445f52c662732b429ad9ad0ea89879f20d76cb38d5c4f77dc2668a93946a89b"
     },
     {
       "name": "native_child_geometry",
-      "start": 20362,
-      "end": 20376,
+      "start": 20367,
+      "end": 20381,
       "sha256": "da08f0aab9f24680b501d00e395d32040cce3e6d2b0f011656b88b4140f9cbf4"
     },
     {
       "name": "update_local_geometry",
-      "start": 20382,
-      "end": 20438,
+      "start": 20387,
+      "end": 20443,
       "sha256": "7c5bf9be1f6a7a3542ad9706a4b2d2225d9e867ae9a329c394eb2d8f281d42e3"
     },
     {
       "name": "is_closeable_surface",
-      "start": 19780,
-      "end": 19821,
+      "start": 19785,
+      "end": 19826,
       "sha256": "40fd109ac687c5bf59b13198ef29f6f9317c47d96bfd592f389019c01fbf395a"
     },
     {
       "name": "frame_close_allowed",
-      "start": 19824,
-      "end": 19829,
+      "start": 19829,
+      "end": 19834,
       "sha256": "5ed6aadd6b794c8e5ae12c23adf4d7b8389133ed3aef2ebc9a54dc18b9fb677c"
     },
     {
       "name": "emit_chrome_diagnostics",
-      "start": 20319,
-      "end": 20343,
+      "start": 20324,
+      "end": 20348,
       "sha256": "cf2a1ac9d69736a3a337f5d22aba0080ed2bb65c5a4b57c368801e41536aaf58"
     },
     {
       "name": "frame_chrome_operation",
-      "start": 21942,
-      "end": 21973,
+      "start": 21947,
+      "end": 21978,
       "sha256": "803d5c778d62e603907fb346116622928284d014be30aae409727a08c204d502"
     },
     {
       "name": "send_frame_tab_info",
-      "start": 21975,
-      "end": 21992,
+      "start": 21980,
+      "end": 21997,
       "sha256": "a8f22eb005951091c37fef75769389afa5e23b168f2dd105f38c9d2b24bae4ee"
     },
     {
       "name": "close_surface_from_frame_light",
-      "start": 19835,
-      "end": 20018,
+      "start": 19840,
+      "end": 20023,
       "sha256": "2348f6c770636eef1be40c701abbc9f39f620ccdc2b05e666005922b4225667d"
     },
     {
       "name": "minimize_frame",
-      "start": 20134,
-      "end": 20185,
+      "start": 20139,
+      "end": 20190,
       "sha256": "de061027bbb592c343f23308f724d69c0bf12dfcde65895b91e29254a1dc3f53"
     },
     {
       "name": "restore_minimized_frame_inner",
-      "start": 20193,
-      "end": 20270,
+      "start": 20198,
+      "end": 20275,
       "sha256": "45c35608cc6e11e45e1cc5ebe65579d25baec9ea5f1d9419594d34255619302d"
     },
     {
       "name": "restore_minimized_frame",
-      "start": 20190,
-      "end": 20192,
+      "start": 20195,
+      "end": 20197,
       "sha256": "45a78a0076c2a3c478c5329956f53ab1a8509c20015b4f724ff30cbdb7f0b001"
     },
     {
       "name": "zoom_frame",
-      "start": 20444,
-      "end": 20504,
+      "start": 20449,
+      "end": 20509,
       "sha256": "6370d5e8bb190dcdf4c6e7b2946349aeb68d3a88f52b4a413f74e972cf5cdfe3"
     },
     {
       "name": "unzoom_frame",
-      "start": 20509,
-      "end": 20560,
+      "start": 20514,
+      "end": 20565,
       "sha256": "b0a8425a41b4866b2c1d17c33609fb19a3278db177b4eb8077d0dd8e53101549"
     },
     {
       "name": "toggle_zoom_frame",
-      "start": 20564,
-      "end": 20591,
+      "start": 20569,
+      "end": 20596,
       "sha256": "63a0d78e81f7ad757a923f2bf538383186e16d1061d084357aecadb842cc35e8"
     },
     {
@@ -372,38 +372,38 @@
     },
     {
       "name": "frame_light_at",
-      "start": 20608,
-      "end": 20680,
+      "start": 20613,
+      "end": 20685,
       "sha256": "6e80ddfb3a3463afce3d7697b1da736ac5cd4890e9ffa76b538e4cb5e4427fd0"
     },
     {
       "name": "toggle_top_bar_for_active_frame",
-      "start": 21999,
-      "end": 22034,
+      "start": 22004,
+      "end": 22039,
       "sha256": "8f478f96a6bd51e93a3e8ef1c85e078b724be00046a4b372b2a282ce367e2305"
     },
     {
       "name": "switch_to_tab",
-      "start": 22040,
-      "end": 22123,
+      "start": 22045,
+      "end": 22128,
       "sha256": "6ccb8820319c45715751b7b83114dd29d4b1919e60a5152d4d0a534e9af79c7c"
     },
     {
       "name": "try_set_focus_inner",
-      "start": 22279,
-      "end": 22460,
+      "start": 22284,
+      "end": 22465,
       "sha256": "45172c7bd9e49230efb86e3fdb3b8b2f078659bb62033d0991c0c6cb9a31c735"
     },
     {
       "name": "try_set_focus",
-      "start": 22276,
-      "end": 22278,
+      "start": 22281,
+      "end": 22283,
       "sha256": "098fa628ddb8787fb362343605c88d99d5461806022a6f5e4530f07f3fe43ddd"
     },
     {
       "name": "update_frame_hover_at",
-      "start": 22130,
-      "end": 22266,
+      "start": 22135,
+      "end": 22271,
       "sha256": "79dded95931ba9746a07b304d479de4c2038a31fd7aecb61b5f2835d0ab5628f"
     },
     {
@@ -468,110 +468,110 @@
     },
     {
       "name": "try_transition",
-      "start": 22466,
-      "end": 22504,
+      "start": 22471,
+      "end": 22509,
       "sha256": "0f755bcf5e05603400f8aa2c5dcaafd1ae2ef5976f891d3c7141b3059aa778d0"
     },
     {
       "name": "move_surface_by",
-      "start": 22517,
-      "end": 22583,
+      "start": 22522,
+      "end": 22588,
       "sha256": "aefa14e3a5278d9c6ca61816b7cfd7ebbb3e67074d6d745fbd6d4a7e3bd391ce"
     },
     {
       "name": "synthetic_window_drag_target",
-      "start": 20688,
-      "end": 20746,
+      "start": 20693,
+      "end": 20751,
       "sha256": "efb2f7e1e4bcb974a3f41a2a93888804b2d49b9b550b6781f17fda68779615ce"
     },
     {
       "name": "silk_drag_begin_mark",
-      "start": 22586,
-      "end": 22593,
+      "start": 22591,
+      "end": 22598,
       "sha256": "a582526feb1ce180e011836b31cac518c9ee7fb66a4f3e82319b5839b340c131"
     },
     {
       "name": "silk_drag_end_mark",
-      "start": 22595,
-      "end": 22606,
+      "start": 22600,
+      "end": 22611,
       "sha256": "256b2e17723b475ec75ba85fe64ee5f14c81a5b65b3c385d581969e8ea48fa5b"
     },
     {
       "name": "drag_move_focused",
-      "start": 22612,
-      "end": 22684,
+      "start": 22617,
+      "end": 22689,
       "sha256": "297f06bbaa4470ffc41ce0a0e019ae7e323f05eeed1a1e86a2cae9b59fd419df"
     },
     {
       "name": "resize_accumulate_delta",
-      "start": 22709,
-      "end": 22729,
+      "start": 22714,
+      "end": 22734,
       "sha256": "fb6f367f8d5c12a6802c26047ba0fde37b8232dfd93f999912a213efea69648a"
     },
     {
       "name": "clear_resize_if_dead",
-      "start": 22732,
-      "end": 22739,
+      "start": 22737,
+      "end": 22744,
       "sha256": "ddede39bc20e95bfc95e4796e4d1b77c5131da7fc012ec063f2cdf42c434455f"
     },
     {
       "name": "try_snap_on_drag_release",
-      "start": 22744,
-      "end": 22799,
+      "start": 22749,
+      "end": 22804,
       "sha256": "b215fbaf544fe38f605c7f0910d871bb25b7f27337aca3816e02b9576940fec2"
     },
     {
       "name": "apply_resize_geometry",
-      "start": 22845,
-      "end": 22911,
+      "start": 22850,
+      "end": 22916,
       "sha256": "c67ec199a72fc122bdbf62d65be20780387968c965f9f21b5c64cf4cb7cfc111"
     },
     {
       "name": "hit_test_surface_chrome",
-      "start": 22916,
-      "end": 23005,
+      "start": 22921,
+      "end": 23010,
       "sha256": "f75c73aff99fe4ab01d8db577bb96706427993ee0b62eef41f9df722c57cf9dd"
     },
     {
       "name": "hit_test_at",
-      "start": 23012,
-      "end": 23089,
+      "start": 23017,
+      "end": 23094,
       "sha256": "4a0f74b9dda1c8cbc60ce2f8792fd4a10932b6ef649e9f4a0140ecce89f92730"
     },
     {
       "name": "hit_target_surface",
-      "start": 23092,
-      "end": 23097,
+      "start": 23097,
+      "end": 23102,
       "sha256": "4896e6aacf3faa1d5cc17266f24a1218364538b8cfe7d2df40ede4019039278c"
     },
     {
       "name": "hit_target_label",
-      "start": 23101,
-      "end": 23111,
+      "start": 23106,
+      "end": 23116,
       "sha256": "6723bd3864e29e0e6206d353b85f6624ddd91d482d6e52a235b56c61325ec7a8"
     },
     {
       "name": "toggle_os_panel",
-      "start": 23666,
-      "end": 23689,
+      "start": 23671,
+      "end": 23694,
       "sha256": "0fdef56294cf753add631fccbb710db7a588209b33c308881f870dd263ae1ade"
     },
     {
       "name": "toggle_scene_settings_panel",
-      "start": 23694,
-      "end": 23722,
+      "start": 23699,
+      "end": 23727,
       "sha256": "a7eb6586e1dc8d9680a751d82db507a18e78e547ecea3e32f6d552982d14c5e6"
     },
     {
       "name": "handle_silkbar_click",
-      "start": 23727,
-      "end": 23789,
+      "start": 23732,
+      "end": 23794,
       "sha256": "74581159a87d439485cbd5010eaf1c575efb659311a3cea2a500b8b8d96bdc4c"
     },
     {
       "name": "click_hit_test_and_focus",
-      "start": 23121,
-      "end": 23659,
+      "start": 23126,
+      "end": 23664,
       "sha256": "07343c459648a8010cf26626569ed0a1f54ea5a73fa9cf1b813ccc49e44fc47e"
     }
   ],

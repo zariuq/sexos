@@ -1,5 +1,5 @@
 {
-  "pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "sources": [
     {
       "path": "crates/sex-net-config/src/lib.rs",

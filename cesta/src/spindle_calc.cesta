@@ -277,6 +277,150 @@ static bool calc_reserved(const SpindleCalcInput *input, size_t start, size_t le
     return false;
 }
 
+/* Transcendental functions work at 18 decimal places (W) and round to the 9 shown; no floats. */
+#define CALC_W ((SpindleCalcInt)1000000000000000000LL)
+#define CALC_LN2_W ((SpindleCalcInt)693147180559945309LL)
+#define CALC_LN10_W ((SpindleCalcInt)2302585092994045684LL)
+#define CALC_PI_W ((SpindleCalcInt)3141592653589793238LL)
+
+/* Truncating division and remainder, as Rust's `/` and `%`, for a nonzero divisor. */
+static SpindleCalcInt calc_div(SpindleCalcInt numerator, SpindleCalcInt denominator) {
+    SpindleCalcInt quotient = 0, remainder = 0;
+    (void)calc_divmod_signed(numerator, denominator, &quotient, &remainder);
+    return quotient;
+}
+
+static SpindleCalcInt calc_rem(SpindleCalcInt numerator, SpindleCalcInt denominator) {
+    SpindleCalcInt quotient = 0, remainder = 0;
+    (void)calc_divmod_signed(numerator, denominator, &quotient, &remainder);
+    return remainder;
+}
+
+/* A W-scaled value rounded (half away from zero) to the 9-place scale. */
+static SpindleCalcInt calc_to_scale(SpindleCalcInt w) {
+    SpindleCalcInt half = 500000000;
+    return w < 0 ? -calc_div(-w + half, CALC_SCALE) : calc_div(w + half, CALC_SCALE);
+}
+
+/* e^x for a W-scaled x, as a 9-place value: x = k ln2 + r with |r| <= ln2/2, then a Taylor
+   series for e^r. */
+static bool calc_exp_w(SpindleCalcInt x, SpindleCalcInt *out, SpindleCalcError *error) {
+    if (x > (SpindleCalcInt)88 * CALC_W) {
+        *error = SPINDLE_CALC_OVERFLOW;
+        return false;
+    }
+    if (x < (SpindleCalcInt)-30 * CALC_W) {
+        *out = 0;
+        return true;
+    }
+    SpindleCalcInt half_ln2 = 346573590279972654LL;
+    SpindleCalcInt k = calc_div(x < 0 ? x - half_ln2 : x + half_ln2, CALC_LN2_W);
+    SpindleCalcInt r = x - k * CALC_LN2_W, term = CALC_W, sum = CALC_W;
+    for (SpindleCalcInt i = 1; term != 0 && i < 60; i++) {
+        term = calc_div(calc_div(term * r, CALC_W), i);
+        sum += term;
+    }
+    SpindleCalcInt v = calc_to_scale(sum);
+    if (k >= 0) {
+        if (k >= 127 ||
+            !calc_mul_checked(v, (SpindleCalcInt)((SpindleCalcUInt)1 << (unsigned)k), out)) {
+            *error = SPINDLE_CALC_OVERFLOW;
+            return false;
+        }
+        return true;
+    }
+    *out = -k >= 127 ? 0 : (v + ((SpindleCalcInt)1 << (unsigned)(-k - 1))) >> (unsigned)(-k);
+    return true;
+}
+
+/* ln(x) for a positive 9-place x, W-scaled: x = m 2^k with m in [1, 2), and
+   ln m = 2 atanh((m - 1) / (m + 1)). */
+static bool calc_ln_w(SpindleCalcInt x, SpindleCalcInt *out, SpindleCalcError *error) {
+    if (x <= 0) {
+        *error = SPINDLE_CALC_DOMAIN;
+        return false;
+    }
+    SpindleCalcInt k = 0, m = x;
+    while (m >= 2 * CALC_SCALE) {
+        m >>= 1;
+        k++;
+    }
+    while (m < CALC_SCALE) {
+        m <<= 1;
+        k--;
+    }
+    m = m * CALC_SCALE;
+    SpindleCalcInt z = calc_div((m - CALC_W) * CALC_W, m + CALC_W);
+    SpindleCalcInt z2 = calc_div(z * z, CALC_W), term = z, sum = 0;
+    for (SpindleCalcInt i = 1; term != 0 && i < 200; i += 2) {
+        sum += calc_div(term, i);
+        term = calc_div(term * z2, CALC_W);
+    }
+    *out = k * CALC_LN2_W + 2 * sum;
+    return true;
+}
+
+/* sin and cos of a W-scaled angle of at most 1,000,000 radians, W-scaled. */
+static void calc_sin_cos_at(SpindleCalcInt x, SpindleCalcInt *sine, SpindleCalcInt *cosine) {
+    SpindleCalcInt two_pi = 2 * CALC_PI_W, a = calc_rem(x, two_pi);
+    if (a > CALC_PI_W)
+        a -= two_pi;
+    else if (a < -CALC_PI_W)
+        a += two_pi;
+    SpindleCalcInt a2 = calc_div(a * a, CALC_W), s = a, st = a, c = CALC_W, ct = CALC_W;
+    for (SpindleCalcInt i = 1; (st != 0 || ct != 0) && i < 60; i++) {
+        st = calc_div(calc_div(-st * a2, CALC_W), (2 * i) * (2 * i + 1));
+        ct = calc_div(calc_div(-ct * a2, CALC_W), (2 * i - 1) * (2 * i));
+        s += st;
+        c += ct;
+    }
+    *sine = s;
+    *cosine = c;
+}
+
+/* sin and cos of a 9-place x (radians), W-scaled. */
+static bool calc_sin_cos_w(SpindleCalcInt x, SpindleCalcInt *sine, SpindleCalcInt *cosine,
+                           SpindleCalcError *error) {
+    if (calc_magnitude(x) > (SpindleCalcUInt)1000000 * (SpindleCalcUInt)CALC_SCALE) {
+        *error = SPINDLE_CALC_OVERFLOW;
+        return false;
+    }
+    calc_sin_cos_at(x * CALC_SCALE, sine, cosine);
+    return true;
+}
+
+/* A 9-place m times a W-scaled f, rounded half away from zero; m = q W + r keeps the product in
+   range. */
+static bool calc_times_w(SpindleCalcInt m, SpindleCalcInt f, SpindleCalcInt *out,
+                         SpindleCalcError *error) {
+    SpindleCalcInt q = 0, r = 0, high = 0;
+    (void)calc_divmod_signed(m, CALC_W, &q, &r);
+    SpindleCalcInt half = (r < 0) != (f < 0) ? -500000000000000000LL : 500000000000000000LL;
+    if (!calc_mul_checked(q, f, &high) ||
+        !calc_add_checked(high, calc_div(r * f + half, CALC_W), out)) {
+        *error = SPINDLE_CALC_OVERFLOW;
+        return false;
+    }
+    return true;
+}
+
+/* e^(x + yi) = e^x (cos y + i sin y) for W-scaled x and y, as 9-place parts. */
+static bool calc_exp_complex_w(SpindleCalcInt x, SpindleCalcInt y, CalcComplex *out,
+                               SpindleCalcError *error) {
+    if (calc_magnitude(y) > (SpindleCalcUInt)1000000 * (SpindleCalcUInt)CALC_W) {
+        *error = SPINDLE_CALC_OVERFLOW;
+        return false;
+    }
+    SpindleCalcInt m = 0, s = 0, c = 0, re = 0, im = 0;
+    if (!calc_exp_w(x, &m, error))
+        return false;
+    calc_sin_cos_at(y, &s, &c);
+    if (!calc_times_w(m, c, &re, error) || !calc_times_w(m, s, &im, error))
+        return false;
+    *out = (CalcComplex){re, im};
+    return true;
+}
+
 /* The built-in named at the cursor and followed by `(`, numbered from 1; 0 if none. */
 static uint8_t calc_builtin(const CalcParser *parser, size_t *name_length) {
     static const char names[][10] = {\"abs\", \"min\", \"max\",  \"round\", \"floor\",    \"ceil\",
@@ -619,6 +763,79 @@ static bool calc_atom(CalcParser *parser, CalcComplex *out, SpindleCalcError *er
         *out = (CalcComplex){whole, 0};
         return true;
     }
+    uint8_t function = 0;
+    if (parser->current) {
+        if (calc_match6(parser, 4, 'e', 'x', 'p', '(', 0, 0))
+            function = 1;
+        else if (calc_match6(parser, 3, 'l', 'n', '(', 0, 0, 0))
+            function = 2;
+        else if (calc_match6(parser, 4, 'l', 'o', 'g', '(', 0, 0))
+            function = 3;
+        else if (calc_match6(parser, 4, 's', 'i', 'n', '(', 0, 0))
+            function = 4;
+        else if (calc_match6(parser, 4, 'c', 'o', 's', '(', 0, 0))
+            function = 5;
+        else if (calc_match6(parser, 4, 't', 'a', 'n', '(', 0, 0))
+            function = 6;
+    }
+    if (function) {
+        parser->at += function == 2 ? 2 : 3;
+        CalcComplex z = {0, 0};
+        SpindleCalcInt v = 0, result = 0, sine = 0, cosine = 0;
+        if (!calc_atom(parser, &z, error))
+            return false;
+        if (function == 1 && z.im) {
+            /* e^(a+bi) = e^a (cos b + i sin b). */
+            SpindleCalcInt x = 0, y = 0;
+            parser->inexact = true;
+            if (!calc_mul_checked(z.re, CALC_SCALE, &x) ||
+                !calc_mul_checked(z.im, CALC_SCALE, &y)) {
+                *error = SPINDLE_CALC_OVERFLOW;
+                return false;
+            }
+            return calc_exp_complex_w(x, y, out, error);
+        }
+        if (!calc_real(z, &v, error))
+            return false;
+        /* Exact only at the trivial points (exp 0, ln 1, sin/tan 0, cos 0). */
+        if (!(function == 2 || function == 3 ? v == CALC_SCALE : v == 0))
+            parser->inexact = true;
+        if (function == 1) {
+            SpindleCalcInt x = 0;
+            if (!calc_mul_checked(v, CALC_SCALE, &x)) {
+                *error = SPINDLE_CALC_OVERFLOW;
+                return false;
+            }
+            if (!calc_exp_w(x, &result, error))
+                return false;
+        } else if (function == 2 || function == 3) {
+            if (!calc_ln_w(v, &result, error))
+                return false;
+            result = function == 2 ? calc_to_scale(result)
+                                   : calc_to_scale(calc_div(result * CALC_W, CALC_LN10_W));
+        } else {
+            if (!calc_sin_cos_w(v, &sine, &cosine, error))
+                return false;
+            if (function == 4) {
+                result = calc_to_scale(sine);
+            } else if (function == 5) {
+                result = calc_to_scale(cosine);
+            } else {
+                SpindleCalcInt numerator = 0;
+                if (calc_magnitude(cosine) < 1000u) {
+                    *error = SPINDLE_CALC_DOMAIN;
+                    return false;
+                }
+                if (!calc_mul_checked(sine, CALC_W, &numerator)) {
+                    *error = SPINDLE_CALC_OVERFLOW;
+                    return false;
+                }
+                result = calc_to_scale(calc_div(numerator, cosine));
+            }
+        }
+        *out = (CalcComplex){result, 0};
+        return true;
+    }
     if (parser->current && byte == 'p' && calc_match6(parser, 2, 'p', 'i', 0, 0, 0, 0) &&
         (parser->at + 2 == parser->input->len ||
          !calc_alnum(parser->input->bytes[parser->at + 2]))) {
@@ -722,8 +939,32 @@ static bool calc_unary(CalcParser *parser, CalcComplex *out, SpindleCalcError *e
     if (!ok)
         return false;
     SpindleCalcInt quotient = 0, remainder = 0;
-    if (exponent.im || !calc_divmod_signed(exponent.re, CALC_SCALE, &quotient, &remainder) ||
-        remainder || calc_magnitude(quotient) > 64u) {
+    (void)calc_divmod_signed(exponent.re, CALC_SCALE, &quotient, &remainder);
+    if (exponent.im || remainder) {
+        /* A fractional or complex power of a positive base: exp(e * ln(base)). */
+        SpindleCalcInt positive = 0, l = 0, x = 0, y = 0, v = 0;
+        if (!calc_real(base, &positive, error))
+            return false;
+        if (positive <= 0) {
+            *error = SPINDLE_CALC_DOMAIN;
+            return false;
+        }
+        parser->inexact = true;
+        if (!calc_ln_w(positive, &l, error))
+            return false;
+        if (!calc_mul_checked(l, exponent.re, &x) ||
+            (exponent.im && !calc_mul_checked(l, exponent.im, &y))) {
+            *error = SPINDLE_CALC_OVERFLOW;
+            return false;
+        }
+        if (exponent.im)
+            return calc_exp_complex_w(calc_div(x, CALC_SCALE), calc_div(y, CALC_SCALE), out, error);
+        if (!calc_exp_w(calc_div(x, CALC_SCALE), &v, error))
+            return false;
+        *out = (CalcComplex){v, 0};
+        return true;
+    }
+    if (calc_magnitude(quotient) > 64u) {
         *error = SPINDLE_CALC_EXPONENT;
         return false;
     }
@@ -1097,7 +1338,7 @@ const char *spindle_calc_error_text(SpindleCalcError error) {
     case SPINDLE_CALC_NO_ANSWER:
         return \"calc: no previous answer (ans)\";
     case SPINDLE_CALC_EXPONENT:
-        return \"calc: ** needs a whole exponent up to 64\";
+        return \"calc: ** whole exponents go up to 64\";
     case SPINDLE_CALC_DOMAIN:
         return \"calc: square root of a negative number\";
     case SPINDLE_CALC_UNKNOWN:

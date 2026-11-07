@@ -26,13 +26,17 @@ typedef struct HtmlOutput {
     size_t capacity, len;
     bool truncated, space, pre;
     uint8_t newlines, quote;
+    /* Only a list marker is on the current line (a block opening here stays on it). */
+    bool marker;
 } HtmlOutput;
+
+/* Marks a rule line under a table header row until columns are aligned. */
+#define HTML_HEADER_RULE ((uint8_t)0x01)
 
 static const uint8_t html_truncated[] = "\n[page truncated]";
 
 static bool html_space(uint8_t byte) {
-    return byte == ' ' || byte == '\t' || byte == '\n' || byte == '\r' || byte == 0x0b ||
-           byte == 0x0c;
+    return byte == ' ' || byte == '\t' || byte == '\n' || byte == '\r' || byte == 0x0c;
 }
 
 static uint8_t html_lower(uint8_t byte) {
@@ -102,7 +106,23 @@ static void html_text(HtmlOutput *out, uint8_t byte) {
         }
     out->space = false;
     out->newlines = 0;
+    out->marker = false;
     html_byte(out, byte);
+}
+
+/* A space that is always written (`&nbsp;`): pending collapsible space first, then this one. */
+static void html_hard_space(HtmlOutput *out) {
+    if (out->space && !out->newlines)
+        html_byte(out, ' ');
+    if (out->newlines)
+        for (size_t i = 0; i < out->quote; i++) {
+            html_byte(out, '>');
+            html_byte(out, ' ');
+        }
+    html_byte(out, ' ');
+    out->space = false;
+    out->newlines = 0;
+    out->marker = false;
 }
 
 static void html_text_bytes(HtmlOutput *out, const uint8_t *bytes, size_t length) {
@@ -155,11 +175,28 @@ static bool html_separator(const uint8_t *bytes, size_t at, size_t end) {
     return at + 3 <= end && bytes[at] == ' ' && bytes[at + 1] == '|' && bytes[at + 2] == ' ';
 }
 
+/* Unaligned tables keep a short plain rule under header rows. */
+static void html_plain_rules(HtmlOutput *out, size_t start) {
+    for (size_t i = start < out->len ? start : out->len; i < out->len; i++)
+        if (out->bytes[i] == HTML_HEADER_RULE)
+            out->bytes[i] = '-';
+}
+
+/* One byte of the aligned table; false once the table can no longer fit, which is when
+   upstream's whole aligned text would not. */
+static bool html_aligned(HtmlOutput *out, size_t start, size_t *made, uint8_t byte) {
+    if (start + *made >= html_room(out))
+        return false;
+    out->scratch[(*made)++] = byte;
+    return true;
+}
+
 static void html_align(HtmlOutput *out, size_t start) {
     if (out->truncated || start >= out->len) {
+        html_plain_rules(out, start);
         return;
     }
-    size_t widths[16] = {0}, line = start;
+    size_t widths[16] = {0}, line = start, columns = 0;
     while (line <= out->len) {
         size_t end = line;
         while (end < out->len && out->bytes[end] != '\n')
@@ -180,43 +217,68 @@ static void html_align(HtmlOutput *out, size_t start) {
             } else
                 i++;
         }
+        if (column > columns)
+            columns = column;
         if (end == out->len)
             break;
         line = end + 1;
     }
+    if (columns > 16)
+        columns = 16;
     size_t made = 0;
     line = start;
     while (line <= out->len) {
         size_t end = line;
         while (end < out->len && out->bytes[end] != '\n')
             end++;
-        size_t cell = line, column = 0;
-        for (size_t i = line; i <= end;) {
-            if (i == end || html_separator(out->bytes, i, end)) {
-                for (size_t k = cell; k < i; k++)
-                    out->scratch[made++] = out->bytes[k];
-                if (i != end) {
-                    size_t width = html_width(out->bytes + cell, i - cell);
-                    if (column < 16)
-                        while (width++ < widths[column])
-                            out->scratch[made++] = ' ';
-                    out->scratch[made++] = ' ';
-                    out->scratch[made++] = '|';
-                    out->scratch[made++] = ' ';
-                    i += 3;
-                    cell = i;
-                    column++;
+        bool fits = true;
+        if (end == line + 1 && out->bytes[line] == HTML_HEADER_RULE) {
+            /* Under a header row: dashes per column, `-+-` between. */
+            for (size_t k = 0; k < columns && fits; k++) {
+                if (k)
+                    fits = html_aligned(out, start, &made, '-') &&
+                           html_aligned(out, start, &made, '+') &&
+                           html_aligned(out, start, &made, '-');
+                for (size_t n = 0; n < (widths[k] ? widths[k] : 1) && fits; n++)
+                    fits = html_aligned(out, start, &made, '-');
+            }
+        } else {
+            size_t cell = line, column = 0;
+            for (size_t i = line; i <= end && fits;) {
+                if (i == end || html_separator(out->bytes, i, end)) {
+                    for (size_t k = cell; k < i && fits; k++)
+                        fits = html_aligned(out, start, &made, out->bytes[k]);
+                    if (i != end) {
+                        size_t width = html_width(out->bytes + cell, i - cell);
+                        if (column < 16)
+                            while (fits && width++ < widths[column])
+                                fits = html_aligned(out, start, &made, ' ');
+                        fits = fits && html_aligned(out, start, &made, ' ') &&
+                               html_aligned(out, start, &made, '|') &&
+                               html_aligned(out, start, &made, ' ');
+                        i += 3;
+                        cell = i;
+                        column++;
+                    } else
+                        break;
                 } else
-                    break;
-            } else
-                i++;
+                    i++;
+            }
+        }
+        if (!fits) {
+            html_plain_rules(out, start);
+            return;
         }
         if (end == out->len)
             break;
-        out->scratch[made++] = '\n';
+        if (!html_aligned(out, start, &made, '\n')) {
+            html_plain_rules(out, start);
+            return;
+        }
         line = end + 1;
     }
     if (start + made > html_room(out)) {
+        html_plain_rules(out, start);
         return;
     }
     for (size_t i = 0; i < made; i++)
@@ -282,8 +344,8 @@ static bool html_contains_name(const uint8_t *bytes, size_t length, const char *
 }
 
 static bool html_utf8(uint32_t code, uint8_t out[4], size_t *length) {
-    if (code > 0x10ffffu || (code >= 0xd800u && code <= 0xdfffu) || (code < 32u && code != '\n') ||
-        (code >= 0x7fu && code <= 0x9fu))
+    if (code > 0x10ffffu || (code >= 0xd800u && code <= 0xdfffu) ||
+        (code < 32u && code != '\n' && code != '\t') || (code >= 0x7fu && code <= 0x9fu))
         return false;
     if (code < 0x80u) {
         out[0] = (uint8_t)code;
@@ -311,6 +373,97 @@ typedef struct HtmlEntity {
     const char *name;
     uint32_t code;
 } HtmlEntity;
+
+/* Exactly WORD: entity names are case-sensitive. */
+static bool html_exact(const uint8_t *name, size_t length, const char *word) {
+    size_t n = 0;
+    while (word[n])
+        n++;
+    if (length != n)
+        return false;
+    for (size_t i = 0; i < n; i++)
+        if (name[i] != (uint8_t)word[i])
+            return false;
+    return true;
+}
+
+/* Latin-1 letters U+00C0..U+00FF by entity name (the two operators too). */
+static const char *const html_latin1[64] = {
+    "Agrave", "Aacute", "Acirc",  "Atilde", "Auml",   "Aring",  "AElig", "Ccedil",
+    "Egrave", "Eacute", "Ecirc",  "Euml",   "Igrave", "Iacute", "Icirc", "Iuml",
+    "ETH",    "Ntilde", "Ograve", "Oacute", "Ocirc",  "Otilde", "Ouml",  "times",
+    "Oslash", "Ugrave", "Uacute", "Ucirc",  "Uuml",   "Yacute", "THORN", "szlig",
+    "agrave", "aacute", "acirc",  "atilde", "auml",   "aring",  "aelig", "ccedil",
+    "egrave", "eacute", "ecirc",  "euml",   "igrave", "iacute", "icirc", "iuml",
+    "eth",    "ntilde", "ograve", "oacute", "ocirc",  "otilde", "ouml",  "divide",
+    "oslash", "ugrave", "uacute", "ucirc",  "uuml",   "yacute", "thorn", "yuml"};
+/* Greek lower case U+03B1..U+03C9 (`sigmaf` is U+03C2); capitalised names are U+0391.. (there
+   is no capital final sigma). */
+static const char *const html_greek[25] = {
+    "alpha", "beta",   "gamma",   "delta", "epsilon", "zeta",    "eta",  "theta", "iota",
+    "kappa", "lambda", "mu",      "nu",    "xi",      "omicron", "pi",   "rho",   "sigmaf",
+    "sigma", "tau",    "upsilon", "phi",   "chi",     "psi",     "omega"};
+/* Other common named references. */
+static const HtmlEntity html_more[89] = {
+    {"le", 0x2264},     {"ge", 0x2265},     {"ne", 0x2260},     {"micro", 0xb5},
+    {"check", 0x2713},  {"infin", 0x221e},  {"minus", 0x2212},  {"asymp", 0x2248},
+    {"equiv", 0x2261},  {"sum", 0x2211},    {"prod", 0x220f},   {"radic", 0x221a},
+    {"part", 0x2202},   {"nabla", 0x2207},  {"isin", 0x2208},   {"notin", 0x2209},
+    {"cap", 0x2229},    {"cup", 0x222a},    {"forall", 0x2200}, {"exist", 0x2203},
+    {"empty", 0x2205},  {"harr", 0x2194},   {"rArr", 0x21d2},   {"lArr", 0x21d0},
+    {"hArr", 0x21d4},   {"uArr", 0x21d1},   {"dArr", 0x21d3},   {"crarr", 0x21b5},
+    {"sup1", 0xb9},     {"sup2", 0xb2},     {"sup3", 0xb3},     {"frac14", 0xbc},
+    {"frac34", 0xbe},   {"ensp", 0x2002},   {"emsp", 0x2003},   {"thinsp", 0x2009},
+    {"dagger", 0x2020}, {"Dagger", 0x2021}, {"permil", 0x2030}, {"prime", 0x2032},
+    {"Prime", 0x2033},  {"lsaquo", 0x2039}, {"rsaquo", 0x203a}, {"sbquo", 0x201a},
+    {"bdquo", 0x201e},  {"loz", 0x25ca},    {"spades", 0x2660}, {"clubs", 0x2663},
+    {"hearts", 0x2665}, {"diams", 0x2666},  {"curren", 0xa4},   {"brvbar", 0xa6},
+    {"uml", 0xa8},      {"ordf", 0xaa},     {"ordm", 0xba},     {"macr", 0xaf},
+    {"acute", 0xb4},    {"cedil", 0xb8},    {"oline", 0x203e},  {"frasl", 0x2044},
+    {"lowast", 0x2217}, {"sim", 0x223c},    {"cong", 0x2245},   {"sub", 0x2282},
+    {"sup", 0x2283},    {"perp", 0x22a5},   {"sdot", 0x22c5},   {"lceil", 0x2308},
+    {"rceil", 0x2309},  {"lfloor", 0x230a}, {"rfloor", 0x230b}, {"lang", 0x27e8},
+    {"rang", 0x27e9},   {"OElig", 0x152},   {"oelig", 0x153},   {"Scaron", 0x160},
+    {"scaron", 0x161},  {"Yuml", 0x178},    {"fnof", 0x192},    {"circ", 0x2c6},
+    {"tilde", 0x2dc},   {"star", 0x2606},   {"starf", 0x2605},  {"cross", 0x2717},
+    {"hyphen", 0x2010}, {"ang", 0x2220},    {"there4", 0x2234}, {"prop", 0x221d},
+    {"int", 0x222b}};
+
+static bool html_named(const uint8_t *name, size_t length, uint32_t *code) {
+    for (size_t i = 0; i < 64; i++)
+        if (html_exact(name, length, html_latin1[i])) {
+            *code = 0xC0u + (uint32_t)i;
+            return true;
+        }
+    for (size_t i = 0; i < 25; i++)
+        if (html_exact(name, length, html_greek[i])) {
+            *code = 0x3B1u + (uint32_t)i;
+            return true;
+        }
+    for (size_t i = 0; i < 25; i++) {
+        const char *greek = html_greek[i];
+        size_t n = 0;
+        while (greek[n])
+            n++;
+        if (n != length || (uint8_t)(greek[0] - 'a' + 'A') != name[0])
+            continue;
+        size_t k = 1;
+        while (k < n && name[k] == (uint8_t)greek[k])
+            k++;
+        if (k == n) {
+            if (i == 17)
+                return false;
+            *code = 0x391u + (uint32_t)i;
+            return true;
+        }
+    }
+    for (size_t i = 0; i < 89; i++)
+        if (html_exact(name, length, html_more[i].name)) {
+            *code = html_more[i].code;
+            return true;
+        }
+    return false;
+}
 
 static bool html_entity(const uint8_t *input, size_t length, uint8_t out[4], size_t *count,
                         size_t *used) {
@@ -351,19 +504,21 @@ static bool html_entity(const uint8_t *input, size_t length, uint8_t out[4], siz
             {"rarr", 0x2192},  {"uarr", 0x2191},   {"darr", 0x2193},  {"plusmn", 0xb1},
             {"frac12", 0xbd},  {"laquo", 0xab},    {"raquo", 0xbb},   {"iexcl", 0xa1},
             {"iquest", 0xbf}};
-        if (html_name(input, end, "shy")) {
+        if (html_exact(input, end, "shy") || html_exact(input, end, "zwnj") ||
+            html_exact(input, end, "zwj") || html_exact(input, end, "lrm") ||
+            html_exact(input, end, "rlm")) {
             *count = 0;
             *used = end + 1;
             return true;
         }
         bool found = false;
         for (size_t i = 0; i < sizeof(named) / sizeof(named[0]); i++)
-            if (html_name(input, end, named[i].name)) {
+            if (html_exact(input, end, named[i].name)) {
                 code = named[i].code;
                 found = true;
                 break;
             }
-        if (!found)
+        if (!found && !html_named(input, end, &code))
             return false;
     }
     if (!html_utf8(code, out, count))
@@ -448,12 +603,24 @@ static uint8_t html_skip_kind(const uint8_t *name, size_t length) {
     return 0;
 }
 
+/* Media and frames: not played or loaded; their fallback content is skipped. */
+static uint8_t html_media_kind(const uint8_t *name, size_t length) {
+    if (html_name(name, length, "video"))
+        return 6;
+    if (html_name(name, length, "audio"))
+        return 7;
+    if (html_name(name, length, "iframe"))
+        return 8;
+    return 0;
+}
+
 static bool html_skip_matches(uint8_t kind, const uint8_t *name, size_t length) {
     return (kind == 1 && html_name(name, length, "style")) ||
            (kind == 2 && html_name(name, length, "head")) ||
            (kind == 3 && html_name(name, length, "template")) ||
            (kind == 4 && html_name(name, length, "noscript")) ||
-           (kind == 5 && html_name(name, length, "svg"));
+           (kind == 5 && html_name(name, length, "svg")) ||
+           (kind >= 6 && kind == html_media_kind(name, length));
 }
 
 static bool html_block(const uint8_t *name, size_t length) {
@@ -489,6 +656,132 @@ static uint8_t html_inline(const uint8_t *name, size_t length) {
         html_name(name, length, "cite"))
         return '_';
     return 0;
+}
+
+/* An ordered-list marker: decimal, letters (`a`..`z`, `aa`..) or roman. */
+static size_t html_list_marker(size_t number, uint8_t style, uint8_t out[16]) {
+    if (style == 'a' || style == 'A') {
+        uint8_t reverse[16] = {0};
+        size_t length = 0;
+        while (number > 0 && length < 16) {
+            number--;
+            reverse[length++] = (uint8_t)(style + number % 26);
+            number /= 26;
+        }
+        for (size_t i = 0; i < length; i++)
+            out[i] = reverse[length - 1 - i];
+        return length;
+    }
+    if ((style == 'i' || style == 'I') && number >= 1 && number < 4000) {
+        static const size_t values[13] = {1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1};
+        static const char *const romans[13] = {"m",  "cm", "d",  "cd", "c",  "xc", "l",
+                                               "xl", "x",  "ix", "v",  "iv", "i"};
+        size_t length = 0;
+        for (size_t k = 0; k < 13; k++)
+            while (number >= values[k]) {
+                for (size_t c = 0; romans[k][c]; c++)
+                    if (length < 16) {
+                        uint8_t letter = (uint8_t)romans[k][c];
+                        out[length++] = style == 'I' ? (uint8_t)(letter - 'a' + 'A') : letter;
+                    }
+                number -= values[k];
+            }
+        return length;
+    }
+    uint8_t digits[6] = {0};
+    size_t length = html_number(number, digits);
+    for (size_t i = 0; i < length; i++)
+        out[i] = digits[i];
+    return length;
+}
+
+/* The scalar at AT in valid UTF-8 and its length. */
+static uint32_t html_scalar(const uint8_t *bytes, size_t at, size_t *length) {
+    uint8_t b = bytes[at];
+    if (b < 0x80) {
+        *length = 1;
+        return b;
+    }
+    if (b < 0xe0) {
+        *length = 2;
+        return (uint32_t)(b & 0x1f) << 6 | (bytes[at + 1] & 0x3fu);
+    }
+    if (b < 0xf0) {
+        *length = 3;
+        return (uint32_t)(b & 0x0f) << 12 | (uint32_t)(bytes[at + 1] & 0x3f) << 6 |
+               (bytes[at + 2] & 0x3fu);
+    }
+    *length = 4;
+    return (uint32_t)(b & 0x07) << 18 | (uint32_t)(bytes[at + 1] & 0x3f) << 12 |
+           (uint32_t)(bytes[at + 2] & 0x3f) << 6 | (bytes[at + 3] & 0x3fu);
+}
+
+/* Rust's str::from_utf8 acceptance. */
+static bool html_valid_utf8(const uint8_t *bytes, size_t length) {
+    for (size_t i = 0; i < length;) {
+        uint8_t b = bytes[i];
+        size_t need = b < 0x80                 ? 0
+                      : b >= 0xc2 && b <= 0xdf ? 1
+                      : b >= 0xe0 && b <= 0xef ? 2
+                      : b >= 0xf0 && b <= 0xf4 ? 3
+                                               : 4;
+        if (need == 4 || (need && i + need >= length))
+            return false;
+        uint8_t low = 0x80, high = 0xbf;
+        if (b == 0xe0)
+            low = 0xa0;
+        else if (b == 0xed)
+            high = 0x9f;
+        else if (b == 0xf0)
+            low = 0x90;
+        else if (b == 0xf4)
+            high = 0x8f;
+        for (size_t k = 1; k <= need; k++) {
+            uint8_t c = bytes[i + k];
+            if (c < (k == 1 ? low : 0x80) || c > (k == 1 ? high : 0xbf))
+                return false;
+        }
+        i += need + 1;
+    }
+    return true;
+}
+
+/* Rust's char::is_whitespace (the Unicode White_Space property). */
+static bool html_white_space(uint32_t c) {
+    return (c >= 9 && c <= 13) || c == 32 || c == 0x85 || c == 0xa0 || c == 0x1680 ||
+           (c >= 0x2000 && c <= 0x200a) || c == 0x2028 || c == 0x2029 || c == 0x202f ||
+           c == 0x205f || c == 0x3000;
+}
+
+/* `<ol start=...>`: the value trimmed and read as a u16, as upstream's
+   `str::trim().parse::<u16>()`; anything else (or 0) starts at 1. */
+static uint16_t html_list_start(const uint8_t *value, size_t length) {
+    if (!html_valid_utf8(value, length))
+        return 1;
+    size_t from = 0, to = length, n = 0;
+    while (from < to && html_white_space(html_scalar(value, from, &n)))
+        from += n;
+    while (to > from) {
+        size_t start = to - 1;
+        while (start > from && (value[start] & 0xc0) == 0x80)
+            start--;
+        if (!html_white_space(html_scalar(value, start, &n)))
+            break;
+        to = start;
+    }
+    if (from < to && value[from] == '+')
+        from++;
+    if (from == to)
+        return 1;
+    uint32_t number = 0;
+    for (size_t i = from; i < to; i++) {
+        if (value[i] < '0' || value[i] > '9')
+            return 1;
+        number = number * 10 + (uint32_t)(value[i] - '0');
+        if (number > UINT16_MAX)
+            return 1;
+    }
+    return number ? (uint16_t)number : 1;
 }
 
 static bool html_tag_self_closing(const uint8_t *body, size_t length) {
@@ -531,6 +824,11 @@ uint8_t kaleidoscope_html_convert(const uint8_t *html, size_t length, uint8_t *o
     size_t link_count = 0, open_link = SIZE_MAX, table = SIZE_MAX, depth = 0;
     uint8_t skip = 0, scripts_run = 0, scripts_refused = 0;
     uint16_t lists[4] = {0};
+    /* Marker style per open ordered list: '1', 'a', 'A', 'i' or 'I'. */
+    uint8_t styles[4] = {'1', '1', '1', '1'};
+    /* The open table row: cells so far, and whether all were header cells. */
+    uint8_t row_cells = 0;
+    bool row_all_th = true;
     HtmlSlice title = html_title(html, length);
     if (title.len) {
         html_text_bytes(&out, (const uint8_t *)"Title:", 6);
@@ -614,32 +912,57 @@ uint8_t kaleidoscope_html_convert(const uint8_t *html, size_t length, uint8_t *o
                 if (!end_tag)
                     html_text_bytes(&out, (const uint8_t *)(name[1] <= '2' ? "# " : "## "),
                                     name[1] <= '2' ? 2 : 3);
-            } else if (html_name(name, name_len, "br"))
-                html_line(&out, false);
-            else if (html_name(name, name_len, "li") && !end_tag) {
+            } else if (html_name(name, name_len, "br")) {
+                /* Each <br> ends a line; repeated ones leave blank lines (up to two). */
+                if (!out.newlines)
+                    html_line(&out, false);
+                else if (out.newlines < 3) {
+                    html_byte(&out, '\n');
+                    out.newlines++;
+                }
+            } else if (html_name(name, name_len, "li") && !end_tag) {
                 html_line(&out, false);
                 size_t indent = depth ? depth : 1;
                 for (size_t k = 1; k < indent; k++)
                     html_raw(&out, (const uint8_t *)"  ", 2);
                 uint16_t next = depth && depth <= 4 ? lists[depth - 1] : 0;
                 if (next) {
-                    uint8_t digits[6] = {0};
-                    size_t n = html_number(next, digits);
+                    uint8_t digits[16] = {0};
+                    size_t n = html_list_marker(next, styles[depth - 1], digits);
                     html_raw(&out, digits, n);
                     html_raw(&out, (const uint8_t *)". ", 2);
                     if (depth <= 4 && lists[depth - 1] < UINT16_MAX)
                         lists[depth - 1]++;
                 } else
                     html_raw(&out, (const uint8_t *)"- ", 2);
+                out.marker = true;
             } else if ((html_name(name, name_len, "dt") || html_name(name, name_len, "dd")) &&
                        !end_tag) {
                 html_line(&out, false);
                 if (html_name(name, name_len, "dd"))
                     html_raw(&out, (const uint8_t *)"    ", 4);
-            } else if (html_name(name, name_len, "tr") && end_tag)
+            } else if (html_name(name, name_len, "tr")) {
+                /* A row ends at `</tr>` or at the next `<tr>` (the end tag is optional). */
+                if (end_tag || !out.newlines)
+                    html_line(&out, false);
+                if (row_cells && row_all_th && table != SIZE_MAX) {
+                    uint8_t rule = HTML_HEADER_RULE;
+                    html_raw(&out, &rule, 1);
+                    html_line(&out, false);
+                }
+                row_cells = 0;
+                row_all_th = true;
+            } else if (html_name(name, name_len, "caption")) {
+                /* The caption is its own line above the rows (not a column). */
                 html_line(&out, false);
-            else if ((html_name(name, name_len, "td") || html_name(name, name_len, "th")) &&
-                     !end_tag) {
+                if (end_tag && table != SIZE_MAX)
+                    table = out.len;
+            } else if ((html_name(name, name_len, "td") || html_name(name, name_len, "th")) &&
+                       !end_tag) {
+                if (row_cells < UINT8_MAX)
+                    row_cells++;
+                if (html_name(name, name_len, "td"))
+                    row_all_th = false;
                 if (!out.newlines) {
                     html_text_bytes(&out, (const uint8_t *)" |", 2);
                     out.space = true;
@@ -647,8 +970,14 @@ uint8_t kaleidoscope_html_convert(const uint8_t *html, size_t length, uint8_t *o
             } else if (html_block(name, name_len)) {
                 out.pre = false;
                 bool list = html_name(name, name_len, "ol") || html_name(name, name_len, "ul");
-                html_line(&out, !(list && depth > (end_tag ? 1u : 0u)));
+                /* A list inside a list item continues that item's lines; a paragraph opening right
+                   after a list marker stays on its line, and blocks inside lists are not spaced
+                   apart. */
+                if (!(out.marker && !end_tag && !list))
+                    html_line(&out, !(depth > (end_tag && list ? 1u : 0u)));
                 if (html_name(name, name_len, "table")) {
+                    row_cells = 0;
+                    row_all_th = true;
                     if (!end_tag)
                         table = out.len;
                     else if (table != SIZE_MAX) {
@@ -660,31 +989,22 @@ uint8_t kaleidoscope_html_convert(const uint8_t *html, size_t length, uint8_t *o
                         if (depth)
                             depth--;
                     } else {
-                        uint16_t first = 1;
-                        if (html_name(name, name_len, "ol")) {
+                        if (depth < 4) {
                             HtmlAttribute start =
                                 html_attribute(html + attrs_start, attrs_len, "start");
-                            if (start.present) {
-                                size_t value = 0;
-                                bool valid = start.len > 0;
-                                for (size_t k = 0; k < start.len; k++) {
-                                    uint8_t c = html[attrs_start + start.start + k];
-                                    if (c < '0' || c > '9') {
-                                        valid = false;
-                                        break;
-                                    }
-                                    value = value * 10 + (c - '0');
-                                    if (value > UINT16_MAX) {
-                                        value = UINT16_MAX;
-                                        break;
-                                    }
-                                }
-                                if (valid && value)
-                                    first = (uint16_t)value;
-                            }
-                        }
-                        if (depth < 4)
+                            uint16_t first =
+                                start.present
+                                    ? html_list_start(html + attrs_start + start.start, start.len)
+                                    : 1;
                             lists[depth] = html_name(name, name_len, "ol") ? first : 0;
+                            HtmlAttribute type =
+                                html_attribute(html + attrs_start, attrs_len, "type");
+                            uint8_t style =
+                                type.present && type.len == 1 ? html[attrs_start + type.start] : 0;
+                            styles[depth] =
+                                style == 'a' || style == 'A' || style == 'i' || style == 'I' ? style
+                                                                                             : '1';
+                        }
                         depth++;
                     }
                 } else if (html_name(name, name_len, "blockquote")) {
@@ -719,6 +1039,31 @@ uint8_t kaleidoscope_html_convert(const uint8_t *html, size_t length, uint8_t *o
                         html_text_bytes(&out, (const uint8_t *)"Figure:", 7);
                         out.space = true;
                     }
+                } else if (out.pre && (html_name(name, name_len, "code") ||
+                                       html_name(name, name_len, "kbd"))) {
+                    /* Preformatted code is already set apart: no inline markers. */
+                } else if (html_media_kind(name, name_len) && !end_tag) {
+                    /* Media and frames are not played or loaded; a placeholder stands for them
+                       and their fallback content is skipped. */
+                    uint8_t media = html_media_kind(name, name_len);
+                    html_text(&out, '[');
+                    out.space = false;
+                    html_text_bytes(&out,
+                                    (const uint8_t *)(media == 6   ? "video"
+                                                      : media == 7 ? "audio"
+                                                                   : "frame"),
+                                    5);
+                    HtmlAttribute media_title =
+                        html_attribute(html + attrs_start, attrs_len, "title");
+                    if (media_title.present && media_title.len) {
+                        html_text(&out, ':');
+                        out.space = true;
+                        html_text_bytes(&out, html + attrs_start + media_title.start,
+                                        media_title.len);
+                    }
+                    html_text(&out, ']');
+                    if (!html_tag_self_closing(html + body_start, body_len))
+                        skip = media;
                 } else if (mark) {
                     if (end_tag) {
                         out.space = false;
@@ -871,6 +1216,13 @@ uint8_t kaleidoscope_html_convert(const uint8_t *html, size_t length, uint8_t *o
         if (byte == '&') {
             uint8_t decoded[4] = {0};
             size_t n = 0, used = 0;
+            if (!out.pre && html_window(html, i + 1, length, "nbsp;") && html[i + 1] == 'n' &&
+                html[i + 2] == 'b' && html[i + 3] == 's' && html[i + 4] == 'p') {
+                /* A no-break space is kept, not collapsed (written as a plain space). */
+                html_hard_space(&out);
+                i += 6;
+                continue;
+            }
             if (html_entity(html + i + 1, length - i - 1, decoded, &n, &used)) {
                 html_text_bytes(&out, decoded, n);
                 i += 1 + used;

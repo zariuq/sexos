@@ -22,6 +22,8 @@
 //! |a+b|^2 - |a|^2 - |b|^2: positive where two amplitudes reinforce,
 //! negative where they cancel, `interfere(1, -1)` = -2 and `norm(1 + -1)` = 0.
 //! Whole complex values show in hex, bin and oct too: `= 0xff+0x10i`.
+//! `exp` takes a complex value, e^(a+bi) = e^a (cos b + i sin b), and a
+//! positive base takes a complex exponent, so `e**(1i*pi)` is about -1.
 
 const SCALE: i128 = 1_000_000_000;
 const MAX_DEPTH: u8 = 16;
@@ -95,16 +97,17 @@ impl Parser<'_> {
         if !(self.peek() == Some(b'*') && self.s[self.at..].starts_with(b"**")) { return Ok(base); }
         self.at += 2;
         let e = self.guard(|p| p.unary())?;
-        if e.1 != 0 { return Err(Error::Exponent); }
-        let e = e.0;
-        if e % SCALE != 0 {
-            // A fractional power of a positive base: exp(e * ln(base)).
+        if e.1 != 0 || e.0 % SCALE != 0 {
+            // A fractional or complex power of a positive base: exp(e * ln(base)).
             let base = real(base)?;
             if base <= 0 { return Err(Error::Domain); }
             self.inexact = true;
             let l = ln_w(base)?;
-            return Ok((exp_w(l.checked_mul(e).ok_or(Error::Overflow)? / SCALE)?, 0));
+            let x = l.checked_mul(e.0).ok_or(Error::Overflow)? / SCALE;
+            if e.1 == 0 { return Ok((exp_w(x)?, 0)); }
+            return exp_complex_w(x, l.checked_mul(e.1).ok_or(Error::Overflow)? / SCALE);
         }
+        let e = e.0;
         if (e / SCALE).abs() > 64 { return Err(Error::Exponent); }
         let n = e / SCALE;
         let mut v = (SCALE, 0);
@@ -219,7 +222,13 @@ impl Parser<'_> {
                 let name_len = self.s[self.at..].iter().position(|&c| c == b'(').unwrap_or(0);
                 let name = &self.s[self.at..self.at + name_len];
                 self.at += name_len;
-                let v = real(self.atom()?)?;
+                let z = self.atom()?;
+                if name == b"exp" && z.1 != 0 {
+                    // e^(a+bi) = e^a (cos b + i sin b).
+                    self.inexact = true;
+                    return exp_complex_w(z.0.checked_mul(SCALE).ok_or(Error::Overflow)?, z.1.checked_mul(W / SCALE).ok_or(Error::Overflow)?);
+                }
+                let v = real(z)?;
                 // Exact only at the trivial points (exp 0, ln 1, sin/tan 0, cos 0).
                 let trivial = match name { b"ln" | b"log" => v == SCALE, _ => v == 0 };
                 if !trivial { self.inexact = true; }
@@ -323,9 +332,13 @@ fn ln_w(x: i128) -> Result<i128, Error> {
 }
 /// sin and cos of a 9-place x (radians), W-scaled.
 fn sin_cos_w(x: i128) -> Result<(i128, i128), Error> {
-    if x.abs() > 1_000_000 * SCALE { return Err(Error::Overflow); }
+    if x.unsigned_abs() > (1_000_000 * SCALE) as u128 { return Err(Error::Overflow); }
+    Ok(sin_cos_at(x * (W / SCALE)))
+}
+/// sin and cos of a W-scaled angle of at most 1,000,000 radians, W-scaled.
+fn sin_cos_at(x: i128) -> (i128, i128) {
     let two_pi = 2 * PI_W;
-    let mut a = (x * (W / SCALE)) % two_pi;
+    let mut a = x % two_pi;
     if a > PI_W { a -= two_pi; } else if a < -PI_W { a += two_pi; }
     let a2 = a * a / W;
     let (mut s, mut st, mut c, mut ct, mut i) = (a, a, W, W, 1i128);
@@ -334,7 +347,21 @@ fn sin_cos_w(x: i128) -> Result<(i128, i128), Error> {
         ct = -ct * a2 / W / ((2 * i - 1) * (2 * i));
         s += st; c += ct; i += 1;
     }
-    Ok((s, c))
+    (s, c)
+}
+/// e^(x + yi) = e^x (cos y + i sin y) for W-scaled x and y, as 9-place parts.
+fn exp_complex_w(x: i128, y: i128) -> Result<C, Error> {
+    if y.unsigned_abs() > (1_000_000 * W) as u128 { return Err(Error::Overflow); }
+    let m = exp_w(x)?;
+    let (s, c) = sin_cos_at(y);
+    Ok((times_w(m, c)?, times_w(m, s)?))
+}
+/// A 9-place m times a W-scaled f, rounded half away from zero, without
+/// overflowing the intermediate product: m = q W + r.
+fn times_w(m: i128, f: i128) -> Result<i128, Error> {
+    let (q, r) = (m / W, m % W);
+    let half = if (r < 0) != (f < 0) { -(W / 2) } else { W / 2 };
+    q.checked_mul(f).and_then(|v| v.checked_add((r * f + half) / W)).ok_or(Error::Overflow)
 }
 
 pub fn eval(input: &[u8]) -> Result<Value, Error> { eval_with(input, None) }
@@ -558,12 +585,29 @@ mod tests {
         assert_eq!(show("interfere(0.5, 0.5)"), "= 0.5");
         assert_eq!(show("interfere(1)"), "Syntax");
     }
+    #[test] fn exp_turns_phase_into_amplitude() {
+        assert_eq!(show("exp(1i*pi)"), "~ -1");
+        assert_eq!(show("e**(1i*pi)"), "~ -1");
+        assert_eq!(show("exp(1i*pi/2)"), "~ 1i");
+        assert_eq!(show("2**1i"), "~ 0.769238901+0.638961276i");
+        assert_eq!(show("norm(exp(0.7i))"), "~ 0.999999999", "each part rounds to 9 places first");
+        assert_eq!(show("exp(1+1i)"), "~ 1.46869394+2.287355287i");
+        assert_eq!(show("exp(-1i)"), "~ 0.540302306-0.841470985i");
+        assert_eq!(show("interfere(1, exp(1i*pi/3))"), "~ 1");
+        assert_eq!(show("interfere(1, exp(1i*pi/2))"), "~ 0");
+        assert_eq!(show("exp(0i)"), "= 1");
+        assert_eq!(show("(-2)**1i"), "Domain");
+        assert_eq!(show("1i**1i"), "NotReal");
+        assert_eq!(show("1i**0.5"), "NotReal");
+        assert_eq!(show("sin(1i)"), "NotReal");
+        assert_eq!(show("exp(100+1i)"), "Overflow");
+        assert_eq!(show("exp(10000000i)"), "Overflow");
+    }
     #[test] fn real_only_operations_say_so() {
         assert_eq!(show("min(1i, 2)"), "NotReal");
         assert_eq!(show("round(0.5i)"), "NotReal");
         assert_eq!(show("sqrt(1i)"), "NotReal");
         assert_eq!(show("5%1i"), "NotReal");
-        assert_eq!(show("2**1i"), "Exponent");
         assert_eq!(show("i"), "Unknown");
         assert_eq!(show("2in"), "Syntax");
         assert_eq!(show("4ii"), "Syntax");

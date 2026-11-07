@@ -1,5 +1,5 @@
 {
-  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "jobs_path": "servers/sexnet/src/jobs.rs",
   "jobs_sha256": "a0ae4992630a56f67ebd6514cc447d95dac785aa23518738b85b650e318e72d6",
   "main_path": "servers/sexnet/src/main.rs",

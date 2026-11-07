@@ -140,6 +140,14 @@ static void initialize_browser(SexosListener *listener) {
   sexos_line("[browser.visible.polish.done]");
 }
 void kaleidoscope_main(void) {
+#if SEXOS_KALEIDOSCOPE_CURRENT && !defined(SEXOS_HOST)
+{
+/*Scripts may use the stack down to 10 KiB above the bottom of its 64 KiB mapping, which lies below a 64 KiB-aligned top; deeper nesting is refused before the stack runs out. Host builds have no such mapping and set no floor.*/
+  uint8_t marker = 0;
+  uintptr_t top = ((uintptr_t) &marker + 0xffffu) & ~(uintptr_t) 0xffffu;
+  kaleidoscope_script_set_stack_floor(top - 65536u + 10240u);
+}
+#endif
   SexosListener listener = {
     8u
   };

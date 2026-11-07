@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -44,7 +45,7 @@ def main():
         plans.append(dict(compiler=compiler,sha256=hashlib.sha256(plan.read_bytes()).hexdigest(),plan=plan.name,functions=len(names)))
     original=frozen[source].decode()
     opening='static bool surface_ensure(ShellSurfacesContext *ctx,uint8_t family,uint32_t *out)\n{'
-    assert original.count(opening)==1
+    assert LayoutText(original).count(opening)==1
     changes=[
         ('read_only_frames','(field chrome (borrow write))','(field chrome (borrow read))'),
         ('read_only_surfaces','(field surfaces (borrow write))','(field surfaces (borrow read))'),
@@ -55,8 +56,8 @@ def main():
     dispatch='void shell_surfaces_spindle_dispatch(ShellSurfacesContext *ctx)\n{'
     changes.append(('yarn_borrow_across_dispatch',dispatch,dispatch+'\n    const YarnSession *held=&ctx->surfaces->YARN; shell_surfaces_yarn_cmd_clear(ctx); (void)held->cmd_len;'))
     for name,old,new in changes:
-        assert original.count(old)==1,(name,original.count(old))
-        mutant=work/(name+'.cesta');mutant.write_text(original.replace(old,new))
+        assert LayoutText(original).count(old)==1,(name,LayoutText(original).count(old))
+        mutant=work/(name+'.cesta');mutant.write_text(LayoutText(original).replace(old,new))
         for compiler in ('gcc','clang'):
             run([args.cesta,'cc','--cc',compiler,'-std=c11','-fsyntax-only',include,mutant],False)
     admission=[]

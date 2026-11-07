@@ -7,6 +7,7 @@ import re
 import subprocess
 import silk_shell_chrome as chrome
 from silk_shell_input_differential import item_end
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 FIX=HERE/'tests/silk_shell_chrome'
@@ -248,7 +249,7 @@ def main():
             controls=independent(binary,work)+tail_control(binary,chrome.run)+boundary_controls(binary,chrome.run)+palette_lifecycle_controls(binary,chrome.run)
     mutants=[]
     if args.mutations:
-        body=exports['silk_shell_surfaces'].read_text()
+        body=LayoutText(exports['silk_shell_surfaces'].read_text())
         for name,old,new in [
             ('ignore_custody','if(spec.guard_custody)','if(false)'),
             ('wrong_scene','.scene_id=ctx->shell.chrome->ACTIVE_SCENE_IDX','.scene_id=0'),

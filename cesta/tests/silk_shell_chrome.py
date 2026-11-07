@@ -8,6 +8,7 @@ import random
 import re
 import subprocess
 from silk_shell_input_differential import declarations, identifiers, item_end
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 ROOT=HERE.parent
@@ -588,7 +589,7 @@ def main():
             configurations.append(dict(compiler=compiler,mode=mode,sha256=hashlib.sha256(observed).hexdigest()))
     mutants=[]
     if args.mutations:
-        body=exports['silk_shell_chrome'].read_text()
+        body=LayoutText(exports['silk_shell_chrome'].read_text())
         changes=[
             ('resurrect_stamp','(SurfaceLifecycle){initial_state,LIFECYCLE_GENERATION}','(SurfaceLifecycle){initial_state,1}'),
             ('same_generation','++LIFECYCLE_GENERATION;','LIFECYCLE_GENERATION+=0;'),
@@ -629,9 +630,8 @@ def main():
             ('debug_unsigned_negative','if(value<0)chrome_debug_byte(text,\'-\');','if(false)chrome_debug_byte(text,\'-\');'),
         ]
         for name,old,new in changes:
-            pattern=r'\s+'.join(map(re.escape,re.split(r'\s+',old)))
-            assert re.search(pattern,body),(name,old)
-            changed=re.sub(pattern,lambda _:new,body)
+            assert body.count(old)>=1,(name,old)
+            changed=body.replace(old,new)
             path=work/(name+'.c');path.write_text(changed);binary=work/(name+'.bin')
             run(['gcc','-std=c11','-O2',*defines,include,'-I'+str(work),path,exports['silk_shell_chrome_atomic'],exports['silk_shell_custody'],exports['silk_shell_viewport'],exports['silkbar_geometry'],exports['silkbar_model'],FIX/'provider.c','-o',binary])
             rejected=run([binary],data)!=expected
@@ -640,7 +640,7 @@ def main():
                 except AssertionError:rejected=True
             assert rejected,(name,'mutant survived')
             mutants.append(name)
-        geometry=exports['silkbar_geometry'].read_text()
+        geometry=LayoutText(exports['silkbar_geometry'].read_text())
         for name,old,new in [
             ('geometry_default_only','(void)silkbar_geometry_fit(width,&bar);','(void)width;'),
             ('geometry_overlap','if(CHIP_X0<shift || left_end>SIZE_MAX-16 || CHIP_X0-shift<left_end+16)return false;','if(false)return false;'),

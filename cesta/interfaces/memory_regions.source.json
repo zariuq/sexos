@@ -1,5 +1,5 @@
 {
-  "source_pin": "44053ea9b017fe89008413f7cc8a6b1a4d28d015",
+  "source_pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "sources": [
     {
       "path": "crates/sex-pdx/src/memory_region.rs",

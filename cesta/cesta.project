@@ -21,7 +21,7 @@
   (target kaleidoscope
     (profile userland-f64)
     (sources "src/kaleidoscope.cesta" "src/kaleidoscope_body.cesta"
-             "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
+             "src/kaleidoscope_decimal.cesta" "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
              "src/kaleidoscope_regex_match.cesta" "src/kaleidoscope_script_core.cesta"
              "src/kaleidoscope_html.cesta"
              "runtime/client_runtime.c" "runtime/traps_x86_64.c"
@@ -38,21 +38,26 @@
     (kind archive)
     (sources "src/kaleidoscope_regex.cesta" "src/kaleidoscope_regex_match.cesta")
     (include "generated/include"))
+  (target sexdisplay-font
+    (profile userland)
+    (kind archive)
+    (sources "src/sexdisplay_font.cesta")
+    (include "generated/include"))
   (target kaleidoscope-script-lexer
     (profile userland-f64)
     (kind archive)
-    (sources "src/kaleidoscope_script_lexer.cesta")
+    (sources "src/kaleidoscope_decimal.cesta" "src/kaleidoscope_script_lexer.cesta")
     (include "generated/include"))
   (target kaleidoscope-script-core
     (profile userland-f64)
     (kind archive)
-    (sources "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
+    (sources "src/kaleidoscope_decimal.cesta" "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
              "src/kaleidoscope_regex_match.cesta" "src/kaleidoscope_script_core.cesta")
     (include "generated/include"))
   (target kaleidoscope-html
     (profile userland-f64)
     (kind archive)
-    (sources "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
+    (sources "src/kaleidoscope_decimal.cesta" "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
              "src/kaleidoscope_regex_match.cesta" "src/kaleidoscope_script_core.cesta"
              "src/kaleidoscope_html.cesta")
     (include "generated/include"))

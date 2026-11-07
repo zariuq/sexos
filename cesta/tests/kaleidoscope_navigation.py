@@ -12,8 +12,8 @@ from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
-PIN = "44053ea9b017fe89008413f7cc8a6b1a4d28d015"
-CODEC_SHA256 = "5844ad35713fecaf175f824facbe1c13c7ee96ca8b0dd417aba326cf90331e79"
+PIN = "b6be1b451a6c21985d00d192674feedf66bb11dd"
+CODEC_SHA256 = "e63a8388e49cdf38a09b6caebc5be7fc2ea7d9776154f49ef4048023061d80e6"
 NAV_SHA256 = "5b7b7c36c76b79fe27960c8c2f9df7c3900158b53cfd0502ab9cc1e37d646c38"
 
 

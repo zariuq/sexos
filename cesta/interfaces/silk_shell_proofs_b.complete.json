@@ -1,5 +1,5 @@
 {
-  "current_pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "current_pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "expected_drivers": 37,
   "partitions": [
     {"manifest":"interfaces/silk_shell_proofs_b_palette.source.json","count":18},

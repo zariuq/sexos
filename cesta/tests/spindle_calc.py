@@ -108,7 +108,7 @@ def main():
             assert actual==expected,(compiler,mode)
             records.append(dict(compiler=compiler,mode=mode,sha256=hashlib.sha256(actual).hexdigest()))
     base=LayoutText(exports['gcc'].read_text());mutations=[
-      ('scale','1000000000','100000000'),
+      ('scale','#define CALC_SCALE ((SpindleCalcInt)1000000000)','#define CALC_SCALE ((SpindleCalcInt)100000000)'),
       ('depth','((uint8_t)16)','((uint8_t)15)'),
       ('fraction-inexact','else if(digit)parser->inexact=true','else if(digit)parser->inexact=false'),
       ('mul-bound','if(a>bound)','if(a>bound||a==2)'),

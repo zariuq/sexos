@@ -1,6 +1,7 @@
 """Qualify the shared bounded lifecycle fixture used by the final Proofs-A drivers."""
 import argparse,hashlib,importlib,json,os,subprocess,sys
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(cmd,*,env=None,ok=True):
  r=subprocess.run(list(map(str,cmd)),cwd=HERE,capture_output=True,env=env);assert (r.returncode==0)==ok,(cmd,r.returncode,r.stdout[-2000:],r.stderr[-8000:]);return r.stdout
@@ -33,10 +34,10 @@ def main():
    b=w/f'{cc}-{mode}';run([cc,'-std=c11','-Wall','-Wextra','-Wpedantic','-Werror',*flags,'-Igenerated/include',out,host,'-o',b]);actual=run([b],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=1:abort_on_error=1'});configs.append({'compiler':cc,'mode':mode,'sha256':hashlib.sha256(actual).hexdigest()})
  base=exports['gcc'].read_text();mutations=[('support-both','surface==SURFACE_ID_TEST3||surface==SURFACE_ID_TEST4','surface==SURFACE_ID_TEST3&&surface==SURFACE_ID_TEST4'),('clear-frame','if(fixture_frame_contains(&ctx->chrome->FRAMES[i],surface))','if(false&&fixture_frame_contains(&ctx->chrome->FRAMES[i],surface))'),('pair-second-alive','fixture_set_alive(ctx->chrome,second,true)','fixture_set_alive(ctx->chrome,second,false)'),('visibility-minimized','&&(value->flags&FRAME_FLAG_MINIMIZED)==0',''),('scene-minimized','&SCENE_FLAG_HAS_MINIMIZED','&FRAME_FLAG_ZOOMED'),('death-closing','shell_chrome_set_lifecycle_state(ctx,surface,LIFECYCLE_CLOSING)','shell_chrome_set_lifecycle_state(ctx,surface,LIFECYCLE_TOMBSTONED)'),('tab-shift','frame->tabs[j]=frame->tabs[j+1]','frame->tabs[j]=frame->tabs[j]'),('destroy-empty','if(!frame->tab_count)','if(false)')];caught=[]
  for name,old,new in mutations:
-  assert base.count(old)>=1,(name,base.count(old));m=w/f'mutant-{name}.c';m.write_text(base.replace(old,new));b=w/f'mutant-{name}';run(['gcc','-std=c11','-O2','-Igenerated/include',m,host,'-o',b]);r=subprocess.run([b],cwd=HERE,capture_output=True);assert r.returncode!=0,('survived',name,r.stdout,r.stderr);caught.append(name)
+  assert LayoutText(base).count(old)>=1,(name,LayoutText(base).count(old));m=w/f'mutant-{name}.c';m.write_text(LayoutText(base).replace(old,new));b=w/f'mutant-{name}';run(['gcc','-std=c11','-O2','-Igenerated/include',m,host,'-o',b]);r=subprocess.run([b],cwd=HERE,capture_output=True);assert r.returncode!=0,('survived',name,r.stdout,r.stderr);caught.append(name)
  original=(HERE/'src/shell_proof_lifecycle_fixture.cesta').read_text();controls=[('readonly-chrome','(field chrome (borrow write))','(field chrome (borrow read))'),('const-prepare','ShellChromeContext *ctx,uint64_t surface,uint32_t frame','const ShellChromeContext *ctx,uint64_t surface,uint32_t frame')]
  for name,old,new in controls:
-  assert original.count(old)>=1,(name,original.count(old));path=w/f'{name}.cesta';path.write_text(original.replace(old,new,1));run([a.cesta,'cc','--cc','gcc','-std=c11','-fsyntax-only','-Igenerated/include',path],ok=False)
+  assert LayoutText(original).count(old)>=1,(name,LayoutText(original).count(old));path=w/f'{name}.cesta';path.write_text(LayoutText(original).replace(old,new,1));run([a.cesta,'cc','--cc','gcc','-std=c11','-fsyntax-only','-Igenerated/include',path],ok=False)
  admission=[]
  if a.lean_root:
   assert a.cesta_source;sys.path.insert(0,str(a.cesta_source.resolve()/'tests'));h=importlib.import_module('ownership_admission');unique={}

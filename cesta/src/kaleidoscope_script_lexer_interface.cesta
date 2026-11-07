@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#define KALEIDOSCOPE_SCRIPT_MAX_SOURCE ((size_t)4096)
+#define KALEIDOSCOPE_SCRIPT_MAX_SOURCE ((size_t)16384)
 
 enum {
     KALEIDOSCOPE_SCRIPT_OK = 0,

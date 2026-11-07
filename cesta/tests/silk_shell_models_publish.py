@@ -1,6 +1,7 @@
 """Independent model for checked serial Linen publication."""
 import argparse,hashlib,importlib,json,os,random,subprocess,sys
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 MAX=(1<<64)-1
@@ -88,7 +89,7 @@ def main():
   ('drop_selection_retention','if(retained)selected=previous;',''),
  )
  for name,old,new in mutations:
-  assert original.count(old)==1,(name,original.count(old));source=w/(name+'.cesta');source.write_text(original.replace(old,new));c=w/(name+'.c')
+  assert LayoutText(original).count(old)==1,(name,LayoutText(original).count(old));source=w/(name+'.cesta');source.write_text(LayoutText(original).replace(old,new));c=w/(name+'.c')
   subprocess.run([args.cesta,'export-c',source,'--cc','gcc','--std=c11','-o',c,'--',include],check=True);binary=w/name
   subprocess.run(['gcc','-std=c11','-O2',include,w/'silk_shell_models_projection-gcc.c',c,HERE/'tests/silk_shell_models_publish/host.c','-o',binary],check=True)
   result=subprocess.run([binary],input=data,capture_output=True)

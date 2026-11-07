@@ -7,6 +7,7 @@ from pathlib import Path
 import random
 import re
 import subprocess
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 INVENTORY=HERE/'interfaces/silk_shell_custody.source.json'
@@ -134,8 +135,8 @@ def main():
             ('revive_on_ack','entry->acked=true;','entry->acked=true; entry->dead=false;'),
         ]
         for name,old,new in changes:
-            assert body.count(old)==1,(name,old,body.count(old))
-            path=work/(name+'.c');path.write_text(body.replace(old,new));binary=work/(name+'.bin')
+            assert LayoutText(body).count(old)==1,(name,old,LayoutText(body).count(old))
+            path=work/(name+'.c');path.write_text(LayoutText(body).replace(old,new));binary=work/(name+'.bin')
             run(['gcc','-std=c11','-O2',include,path,HERE/'tests/silk_shell_custody/provider.c','-o',binary])
             observed=run([binary],data)
             assert observed!=expected,(name,'mutant survived')

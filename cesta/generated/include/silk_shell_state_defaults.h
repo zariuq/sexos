@@ -356,5 +356,5 @@ static inline void silk_shell_apply_static_defaults(SilkShellState *state)
  state->surfaces.toggle_quil__QUIL_TOGGLE_BUDGET = 4;
 }
 #define SILK_SHELL_STATIC_DEFAULT_COUNT 351
-#define SILK_SHELL_STATIC_DEFAULT_SOURCE_SHA256 "fb36d2e89eeca1f450b5f8b825bc31bda30c7d50c5aa04f4821b6d52edd8030a"
+#define SILK_SHELL_STATIC_DEFAULT_SOURCE_SHA256 "e44ae38149a324e69eb18fdd8011f40870654ab0d6ebc9f968bc6d9eff5655e4"
 #endif

@@ -1,5 +1,5 @@
 {
-  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "main_path": "servers/sexnet/src/dns_jobs.rs",
   "main_sha256": "c53679005c289f530baa07ce3a4d9aa799a57303547b7acd0efd258b89a1ed62",
   "abi_path": "crates/sex-pdx/src/network_dns.rs",

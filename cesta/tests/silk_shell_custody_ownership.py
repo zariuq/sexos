@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -37,14 +38,14 @@ def main():
         assert names==expected,(names^expected)
         plans.append(dict(compiler=compiler,sha256=hashlib.sha256(plan.read_bytes()).hexdigest(),plan=plan.name,functions=len(names)))
     original=frozen[source].decode();opening='bool shell_custody_request_close(ShellAppCustody *entry)\n{'
-    assert original.count(opening)==1
+    assert LayoutText(original).count(opening)==1
     changes=[
         ('read_only_receiver',opening,opening+'\n const ShellAppCustody *read=entry; shell_custody_request_close(read);'),
         ('write_during_live_loan',opening,opening+'\n ShellAppCustody *held=entry; entry->pending=true; (void)held;'),
         ('read_during_exclusive_loan',opening,opening+'\n ShellAppCustody *held=entry; shell_custody_close_kind(entry); (void)held;'),
     ]
     for name,old,new in changes:
-        mutant=work/(name+'.cesta');mutant.write_text(original.replace(old,new))
+        mutant=work/(name+'.cesta');mutant.write_text(LayoutText(original).replace(old,new))
         for compiler in ('gcc','clang'):
             run([args.cesta,'cc','--cc',compiler,'-std=c11','-fsyntax-only',include,mutant],False)
     admission=[]

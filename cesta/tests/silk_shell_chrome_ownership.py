@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -44,7 +45,7 @@ def main():
         plans.append(dict(compiler=compiler,sha256=hashlib.sha256(plan.read_bytes()).hexdigest(),plan=plan.name,functions=len(names)))
     original=frozen[source].decode()
     opening='bool shell_chrome_lifecycle_register(ShellChromeContext *ctx,uint64_t sid,uint8_t initial_state)\n{'
-    assert original.count(opening)==1
+    assert LayoutText(original).count(opening)==1
     changes=[
         ('read_only_models', '(field models (borrow write))', '(field models (borrow read))'),
         ('dangling_models', opening, opening+'\n    SilkShellModelsState local={0}; ctx->models=&local;'),
@@ -58,8 +59,8 @@ def main():
          'uint32_t shell_chrome_access_label_token(ShellChromeContext *ctx,const ShellAccessLabel *label)\n{\n    label->bytes[0]=0;'),
     ]
     for name,old,new in changes:
-        assert original.count(old)==1,(name,original.count(old))
-        mutant=work/(name+'.cesta');mutant.write_text(original.replace(old,new))
+        assert LayoutText(original).count(old)==1,(name,LayoutText(original).count(old))
+        mutant=work/(name+'.cesta');mutant.write_text(LayoutText(original).replace(old,new))
         for compiler in ('gcc','clang'):
             run([args.cesta,'cc','--cc',compiler,'-std=c11','-fsyntax-only',include,mutant],False)
     admission=[]

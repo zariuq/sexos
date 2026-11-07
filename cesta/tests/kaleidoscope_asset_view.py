@@ -3,7 +3,7 @@
 import argparse,hashlib,json,os,subprocess,sys,tempfile
 from pathlib import Path
 from layout_text import LayoutText
-HERE=Path(__file__).resolve().parent.parent;REPO=HERE.parent;PIN="44053ea9b017fe89008413f7cc8a6b1a4d28d015"
+HERE=Path(__file__).resolve().parent.parent;REPO=HERE.parent;PIN="b6be1b451a6c21985d00d192674feedf66bb11dd"
 def run(a,env=None):
  r=subprocess.run(list(map(str,a)),cwd=HERE,capture_output=True,env=env)
  if r.returncode:raise RuntimeError((a,r.returncode,r.stdout[-2000:],r.stderr[-5000:]))

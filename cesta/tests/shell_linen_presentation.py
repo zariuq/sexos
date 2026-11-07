@@ -1,6 +1,7 @@
 """Three-slot Linen refresh/presentation lifecycle controls."""
 import argparse,hashlib,importlib,json,os,subprocess,sys
 from pathlib import Path
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -23,7 +24,7 @@ def main():
   ('ignore_exhaustion','runtime->next_presentation_job>=UINT64_C(0x7ffffffffffffffe)','false'),
  )
  for name,old,new in mutations:
-  assert original.count(old)>=1,(name,original.count(old));source=w/(name+'.cesta');source.write_text(original.replace(old,new));c=w/(name+'.c')
+  assert LayoutText(original).count(old)>=1,(name,LayoutText(original).count(old));source=w/(name+'.cesta');source.write_text(LayoutText(original).replace(old,new));c=w/(name+'.c')
   subprocess.run([args.cesta,'export-c',source,'--std=c11','-o',c,'--',include],check=True);binary=w/name
   subprocess.run(['gcc','-std=c11','-O2',include,w/'shell_text_delivery.c',c,HERE/'tests/shell_linen_presentation/host.c','-o',binary],check=True)
   result=subprocess.run([binary],capture_output=True);assert result.returncode!=0,('surviving mutation',name)

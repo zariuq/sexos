@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "silk_shell_models_root.h"
+#include "linen_capture_transport.h"
+/* This fixture runs no Linen capture exchange: the transport never advances. */
+LinenCaptureStep linen_capture_transport_step(LinenCaptureClient *state,uint64_t slot){(void)state;(void)slot;return (LinenCaptureStep){0};}
 SilkShellState SILK_SHELL_STATE;
 #define models SILK_SHELL_STATE.models
 #define input SILK_SHELL_STATE.input

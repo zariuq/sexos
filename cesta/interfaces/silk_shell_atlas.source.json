@@ -1,6 +1,6 @@
 {
-  "pin": "e30715434551de373f459123375c642d09cd345c",
-  "source_sha256": "fb36d2e89eeca1f450b5f8b825bc31bda30c7d50c5aa04f4821b6d52edd8030a",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
+  "source_sha256": "e44ae38149a324e69eb18fdd8011f40870654ab0d6ebc9f968bc6d9eff5655e4",
   "functions": [
     {
       "name": "collect_atlas_snapshot",
@@ -566,8 +566,8 @@
     },
     {
       "name": "atlas_same_scene_drop_noop",
-      "start": 17835,
-      "end": 17846,
+      "start": 17840,
+      "end": 17851,
       "sha256": "9ae5bb64809e1c5c42ccdb7aea1771be822839e8d7a08210ac26122deaa186ce",
       "changed_from_4a": false,
       "lines": 12,
@@ -576,8 +576,8 @@
     },
     {
       "name": "reparent_frame_to_scene",
-      "start": 17870,
-      "end": 17962,
+      "start": 17875,
+      "end": 17967,
       "sha256": "6495069e62cf4cde2fcaf32db7325cd7d1abbbcf711575dd1f7cf6f9bb57d9c5",
       "changed_from_4a": true,
       "lines": 93,
@@ -586,8 +586,8 @@
     },
     {
       "name": "atlas_pointer_drag_begin_at",
-      "start": 18706,
-      "end": 18754,
+      "start": 18711,
+      "end": 18759,
       "sha256": "73c94df33e210e2193a7a19b9ab3ad64248d644f45950d47db67caaf6af0b4c4",
       "changed_from_4a": false,
       "lines": 49,
@@ -596,8 +596,8 @@
     },
     {
       "name": "atlas_pointer_drop_at",
-      "start": 18756,
-      "end": 18837,
+      "start": 18761,
+      "end": 18842,
       "sha256": "87747246fd2ffd3eda031ca0bde826b6669d4619be0572bbeb37bfe525c14da5",
       "changed_from_4a": false,
       "lines": 82,
@@ -606,8 +606,8 @@
     },
     {
       "name": "atlas_pointer_drag_cancel",
-      "start": 18839,
-      "end": 18849,
+      "start": 18844,
+      "end": 18854,
       "sha256": "dc80049a315a82411e1552869288dbbb11d67662e76efd6396940ee94ebd34d2",
       "changed_from_4a": false,
       "lines": 11,
@@ -616,8 +616,8 @@
     },
     {
       "name": "snap_compute_checksum",
-      "start": 23853,
-      "end": 23863,
+      "start": 23858,
+      "end": 23868,
       "sha256": "356b16ab805504a42f7936dcbfb9d9ba023cf35c2a457c76f0b6bd64e6d88f53",
       "changed_from_4a": false,
       "lines": 11,
@@ -626,8 +626,8 @@
     },
     {
       "name": "snap_capture_layout",
-      "start": 23867,
-      "end": 23914,
+      "start": 23872,
+      "end": 23919,
       "sha256": "6e4ee8f5c20801e80f9aeefde024b85b92f4fd337cd25c136348760cdfcd340d",
       "changed_from_4a": false,
       "lines": 48,
@@ -636,8 +636,8 @@
     },
     {
       "name": "snap_validate",
-      "start": 23919,
-      "end": 23937,
+      "start": 23924,
+      "end": 23942,
       "sha256": "2c97f0d11450fe200f42de3bcb903121f1d6f5093f293e4ac84ee6014182bcd4",
       "changed_from_4a": false,
       "lines": 19,
@@ -646,8 +646,8 @@
     },
     {
       "name": "snap_restore_layout",
-      "start": 23942,
-      "end": 24020,
+      "start": 23947,
+      "end": 24025,
       "sha256": "6828e2d62d4334b16ccba1d9db28e5c3211f9c744ec4105cf633fb29960334f3",
       "changed_from_4a": false,
       "lines": 79,

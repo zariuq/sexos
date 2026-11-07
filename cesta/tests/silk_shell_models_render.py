@@ -11,10 +11,11 @@ from pathlib import Path
 import re
 import subprocess
 from silk_shell_input_differential import declarations,identifiers,item_end
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 FIX=HERE/'tests/silk_shell_models_render'
-PIN='c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321'
+PIN='b6be1b451a6c21985d00d192674feedf66bb11dd'
 
 
 def run(args,data=None):
@@ -164,7 +165,7 @@ def main():
         ('skip_empty_refresh','silk_shell_models_paint','!ctx->shell.models->LINEN_REMOTE_REAL','false'),
         ('fast_path_fetches','silk_shell_models_paint','bool remote=ctx->shell.models->LINEN_REMOTE_FETCHED','ShellLinenModelsContext c={ctx->shell.models,ctx->linen};shell_models_fetch_remote_snapshot(&c);bool remote=ctx->shell.models->LINEN_REMOTE_FETCHED'),
     ):
-        source=base[unit];assert source.count(old)==1,(name,source.count(old));path=w/('mutant-'+name+'.c');path.write_text(source.replace(old,new));binary=w/('mutant-'+name)
+        source=base[unit];assert LayoutText(source).count(old)==1,(name,LayoutText(source).count(old));path=w/('mutant-'+name+'.c');path.write_text(LayoutText(source).replace(old,new));binary=w/('mutant-'+name)
         linked=[path if x.stem==unit else x for x in exports]
         run(['gcc','-std=c11','-O2','-DSEXOS_LINEN_CORRELATED_REQUIRED=0','-Igenerated/include',*linked,seed,FIX/'provider.c','-o',binary])
         changed=subprocess.run([binary],input=data,capture_output=True)

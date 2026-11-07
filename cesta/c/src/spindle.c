@@ -355,6 +355,11 @@ typedef struct Spindle {
   bool calc_has_answer;
   SpindleCalcInt calc_answer;
   SpindleCalcEnv calc_env;
+  uint8_t search_text[CMD_MAX];
+  size_t search_len;
+  uint8_t search_shown[CMD_MAX];
+  size_t search_shown_len;
+  size_t search_next;
 }
 Spindle;
 static Spindle spindle_state;
@@ -703,6 +708,57 @@ static void scrollback_push(Scrollback *sb, ByteSlice line) {
 }
 static void sb_push_cstr(Scrollback *sb, const char *s) {
   scrollback_push(sb, cstr_slice(s));
+}
+static bool slice_contains(ByteSlice hay, const uint8_t *needle, size_t n) {
+  if (n == 0) return true;
+  if (n > hay.len) return false;
+  for (size_t i = 0; i + n <= hay.len; ++i) if (bytes_eq(hay.ptr + i, needle, n)) return true;
+  return false;
+}
+static bool slice_starts_with(ByteSlice s, const char *prefix) {
+  size_t n = 0;
+  while (prefix[n] != 0) ++n;
+  return s.len >= n && bytes_eq(s.ptr, (const uint8_t *) prefix, n);
+}
+static void line_control(Spindle *sp, uint8_t code) {
+  CmdLine *line = &sp->line;
+  const char *key = "other";
+  if (code == 0x16u) {
+    cmdline_clear(line);
+    key = "u";
+  } else if (code == 0x11u) {
+    size_t a = line->cur;
+    while (a > 0 && line->buf[a - 1] == 32u) a -= 1;
+    while (a > 0 && line->buf[a - 1] != 32u) a -= 1;
+    size_t n = line->cur - a;
+    for (size_t i = 0; i < n; ++i) cmdline_delete_at(line, a);
+    line->cur = a;
+    key = "w";
+  } else if (code == 0x26u) {
+    scrollback_clear(&sp->sb);
+    key = "l";
+  } else if (code == 0x13u) {
+    if (line->len != sp->search_shown_len || !bytes_eq(line->buf, sp->search_shown, line->len)) {
+      for (size_t i = 0; i < line->len; ++i) sp->search_text[i] = line->buf[i];
+      sp->search_len = line->len;
+      sp->search_next = 0;
+    }
+    size_t count = min_size((size_t) sp->hist.total, MAX_HISTORY);
+    for (size_t i = sp->search_next; i < count; ++i) {
+      ByteSlice entry;
+      if (history_get(&sp->hist, i, &entry) && slice_contains(entry, sp->search_text, sp->search_len)) {
+        cmdline_clear(line);
+        for (size_t j = 0; j < entry.len; ++j) cmdline_insert_at(line, line->len, entry.ptr[j]);
+        for (size_t j = 0; j < line->len; ++j) sp->search_shown[j] = line->buf[j];
+        sp->search_shown_len = line->len;
+        sp->search_next = i + 1;
+        break;
+      }
+    }
+    key = "r";
+  }
+  line->has_hist_nav = false;
+  sexos_line("[spindle.line.ctrl] key=%s len=%zu cur=%zu", key, line->len, line->cur);
 }
 static bool complete_command(CmdLine *line, Scrollback *sb) {
   if (line->len == 0 || line->cur != line->len) return false;
@@ -1078,6 +1134,7 @@ static bool dispatch(Spindle *sp, ByteSlice line) {
       sb_push_cstr(sb, "  calc <expr>  exact + - * / % ** sqrt abs min max round floor ceil ans");
       sb_push_cstr(sb, "  calc x = 2   name a value (up to 8)");
       sb_push_cstr(sb, "  calc 255 in hex   also in bin / in oct");
+      sb_push_cstr(sb, "  calc ln(2)   exp ln log sin cos tan, 2**0.5");
       sb_push_cstr(sb, "  Tab          complete a command name");
     } else sb_push_cstr(sb, "  calc <expr>  exact decimal + - * / % ( ), ans");
     sb_push_cstr(sb, "  about        Spindle version + identity");
@@ -1112,7 +1169,10 @@ static bool dispatch(Spindle *sp, ByteSlice line) {
     sexos_line("[spindle.help.section] name=history_events commands=4");
     sb_push_cstr(sb, "--- History & Events ---");
     sb_push_cstr(sb, "  history      show command history");
-    sb_push_cstr(sb, "  history clr  clear command history");
+    if (SPINDLE_CURRENT_ENABLED) {
+      sb_push_cstr(sb, "  history clear  clear and save history");
+      sb_push_cstr(sb, "  history <text>  entries containing text");
+    } else sb_push_cstr(sb, "  history clr  clear command history");
     sb_push_cstr(sb, "  events       show event log");
     sb_push_cstr(sb, "  events clr   clear event log");
     sexos_line("[spindle.help.command] name=history ok=1");
@@ -1504,6 +1564,18 @@ static bool dispatch(Spindle *sp, ByteSlice line) {
     if (slice_eq(args, "clear")) {
       history_clear(hist);
       sb_push_cstr(sb, "History cleared.");
+    } else if (SPINDLE_CURRENT_ENABLED && args.len > 0) {
+      size_t count = min_size((size_t) hist->total, MAX_HISTORY);
+      size_t found = 0;
+      for (size_t i = 0; i < count; ++i) {
+        ByteSlice entry;
+        if (history_get(hist, i, &entry) && (!slice_starts_with(entry, "history ") && slice_contains(entry, args.ptr, args.len))) {
+          scrollback_push(sb, entry);
+          ++found;
+        }
+      }
+      if (found == 0) sb_push_cstr(sb, "No history entries match.");
+      sexos_line("[spindle.history.search] bytes=%zu found=%zu", args.len, found);
     } else {
       if (hist->total == 0u) sb_push_cstr(sb, "History: empty.");
       else {
@@ -1514,8 +1586,13 @@ static bool dispatch(Spindle *sp, ByteSlice line) {
           if (history_get(hist, i, &entry)) scrollback_push(sb, entry);
         }
       }
-      sb_push_cstr(sb, "history persistence pending SexFiles client bridge.");
-      sb_push_cstr(sb, "capability grant pending -- no PDX call to sexfiles.");
+      if (SPINDLE_CURRENT_ENABLED) {
+        sb_push_cstr(sb, "History is incarnation-private; save/load use receipts.");
+        sb_push_cstr(sb, "history-status / history-cancel / history-retry");
+      } else {
+        sb_push_cstr(sb, "history persistence pending SexFiles client bridge.");
+        sb_push_cstr(sb, "capability grant pending -- no PDX call to sexfiles.");
+      }
     }
     recognized = true;
   } else if (slice_eq(cmd, "save")) {
@@ -3459,6 +3536,11 @@ void spindle_main(void) {
       uint64_t value = msg.arg1;
       if (take(&sp->key_recv_budget)) sexos_line("[spindle.key.recv] code=%u down=%llu mod=0", (unsigned) scancode, (unsigned long long) value);
       if (value != 1u) continue;
+      if (SPINDLE_CURRENT_ENABLED && (key_word >> 9u & 1u) != 0u) {
+        line_control(sp, scancode);
+        content_render(sp);
+        continue;
+      }
       if (scancode == 0x1Cu && sp->line.len > 0) {
         sexos_line("[spindle.cmd.recv] line_len=%zu", sp->line.len);
         ByteSlice lb = cmdline_as_bytes(&sp->line);

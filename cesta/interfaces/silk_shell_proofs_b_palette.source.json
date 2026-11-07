@@ -1,5 +1,5 @@
 {
-  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "functions": [
     {"name":"maybe_run_command_palette_status_proof","flag":"SEXOS_COMMAND_PALETTE_STATUS_PROOF","source_sha256":"d1d1c0f48bbc9dfe47c68af2b9efd40631638fa8d3a3c406a5aa6b082ad58d1e"},
     {"name":"maybe_run_command_palette_linen_status_proof","flag":"SEXOS_COMMAND_PALETTE_LINEN_STATUS_PROOF","source_sha256":"06e7e524a05af3661bc358a23ffcc34f234fdcdde09237370432e725c826d14f"},

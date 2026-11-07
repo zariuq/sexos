@@ -605,7 +605,7 @@ def mutate_function(text, function, target, replacement):
         elif text[end] == '}':
             depth -= 1
         end += 1
-    body = text[start:end]
+    body = LayoutText(text[start:end])
     assert body.count(target) == 1, (function, target, body.count(target))
     return text[:start] + body.replace(target, replacement) + text[end:]
 

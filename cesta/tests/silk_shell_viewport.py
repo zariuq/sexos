@@ -7,6 +7,7 @@ from pathlib import Path
 import random
 import re
 import subprocess
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 ROOT=HERE.parent
@@ -179,8 +180,8 @@ def main():
             ('tall_view_unbounded','return rows<limit?rows:limit;','return rows;'),
         ]
         for name,old,new in changes:
-            assert old in body,(name,old)
-            target=work/(name+'.c');target.write_text(body.replace(old,new));binary=work/(name+'.bin')
+            assert old in LayoutText(body),(name,old)
+            target=work/(name+'.c');target.write_text(LayoutText(body).replace(old,new));binary=work/(name+'.bin')
             run(['gcc','-std=c11','-O2',include,target,custody,FIX/'provider.c','-o',binary])
             result=subprocess.run([binary],input=data,capture_output=True)
             assert result.returncode!=0 or result.stdout!=expected,(name,'mutant survived')

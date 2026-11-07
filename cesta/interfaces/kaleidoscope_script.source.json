@@ -1,5 +1,9 @@
 {
-  "pin": "44053ea9b017fe89008413f7cc8a6b1a4d28d015",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "path": "apps/kaleidoscope/src/script.rs",
-  "sha256": "61b42d63cb819a938d34f8cdb11ce9682e4def5a45348a190394bfdda38c41a1"
+  "sha256": "1a1a612fab2d9ac343485abeee712cc9a22b414972cc78aa241ca3d590949e35",
+  "math": {
+    "path": "apps/kaleidoscope/src/fmath.rs",
+    "sha256": "54338f493cfc6613680c8eb1f4aaeabe8231e746500372174195d4a5fe72e134"
+  }
 }

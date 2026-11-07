@@ -1199,8 +1199,9 @@ quil_mark_edited(q);
   sexos_line("[quil.clipboard.paste] len=%zu old_len=%zu new_len=%zu ok=1 reason=pasted_at_cursor", n, old_len, q->buffer_len);
   return true;
 }
-static bool replace_span(Quil *q, size_t start, size_t end, const uint8_t *incoming, size_t incoming_len) {
-  if (start > end || end > q->buffer_len || incoming_len > 31) return false;
+/*Replace START..END with INCOMING as one undoable edit, as upstream's quil_replace: the caret lands after the insertion and the selection collapses there.*/
+static bool replace_range(Quil *q, size_t start, size_t end, const uint8_t *incoming, size_t incoming_len) {
+  if (start > end || end > q->buffer_len) return false;
   size_t removed = end - start;
   if (incoming_len > QUIL_BUFFER_MAX_LEN - (q->buffer_len - removed)) return false;
   text_buffer_undo_push(q);
@@ -1217,6 +1218,153 @@ static bool replace_span(Quil *q, size_t start, size_t end, const uint8_t *incom
   quil_mark_edited(q);
   q->goal_col = SIZE_MAX;
   return true;
+}
+#if SEXOS_QUIL_CURRENT_KEYS
+static uint8_t quil_replace_scratch[QUIL_BUFFER_MAX_LEN];
+
+static size_t line_start_at(const Quil *q, size_t at) {
+  size_t start = min_size(at, q->buffer_len);
+  while (start > 0 && q->buffer[start - 1] != 0x0A) start -= 1;
+  return start;
+}
+static size_t line_end_at(const Quil *q, size_t at) {
+  size_t end = min_size(at, q->buffer_len);
+  while (end < q->buffer_len && q->buffer[end] != 0x0A) end += 1;
+  return end;
+}
+static void select_to(Quil *q, size_t anchor, size_t caret) {
+  q->sel_start = min_size(anchor, caret);
+  q->sel_end = anchor > caret ? anchor : caret;
+  q->cursor_pos = caret;
+}
+/*Ctrl+] indents (a leading tab) and Ctrl+[ outdents (one leading tab, else up to four spaces) every line the selection touches, as one undoable edit; the changed lines stay selected.*/
+
+static bool quil_indent(Quil *q, size_t r0, size_t r1, bool out) {
+  const uint8_t *text = q->buffer;
+  size_t start = line_start_at(q, r0);
+/*A selection ending at a line start does not include that line.*/
+  size_t last = r1 > r0 && text[r1 - 1] == 0x0A ? r1 - 1 : r1;
+  size_t end = line_end_at(q, last);
+  size_t n = 0;
+  size_t lines = 0;
+  size_t seg = start;
+  while (1) {
+    size_t stop = seg;
+    while (stop < end && text[stop] != 0x0A) stop += 1;
+    if (lines > 0) {
+      if (n == QUIL_BUFFER_MAX_LEN) return false;
+      quil_replace_scratch[n] = 0x0A;
+      n += 1;
+    }
+    lines += 1;
+    size_t body = seg;
+    if (out) if (seg < stop && text[seg] == 0x09) body = seg + 1;
+    else {
+      size_t k = 0;
+      while (k < 4 && (seg + k < stop && text[seg + k] == 32u)) k += 1;
+      body = seg + k;
+    } else {
+      if (n == QUIL_BUFFER_MAX_LEN) return false;
+      quil_replace_scratch[n] = 0x09;
+      n += 1;
+    }
+    size_t length = stop - body;
+    if (n + length > QUIL_BUFFER_MAX_LEN) return false;
+    for (size_t i = 0; i < length; ++i) quil_replace_scratch[n + i] = text[body + i];
+    n += length;
+    if (stop >= end) break;
+    seg = stop + 1;
+  }
+  bool applied = replace_range(q, start, end, quil_replace_scratch, n);
+  if (applied) select_to(q, start, start + n);
+  sexos_line("[quil.indent] lines=%zu out=%u start=%zu end=%zu applied=%u len=%zu", lines, (unsigned) out, start, start + n, (unsigned) applied, q->buffer_len);
+  return applied;
+}
+/*Ctrl+K deletes from the caret to the end of its line (at the end, the line break); Ctrl+J joins the next line onto this one with one space, its leading spaces and tabs dropped.*/
+
+static void quil_kill_or_join(Quil *q, bool join) {
+  const uint8_t *text = q->buffer;
+  size_t len = q->buffer_len;
+  size_t caret = min_size(q->cursor_pos, len);
+  size_t end = line_end_at(q, caret);
+  size_t r0 = 0;
+  size_t r1 = 0;
+  size_t insert_len = 0;
+  if (join) {
+    if (end == len) {
+      sexos_line("[quil.line.join] applied=0 reason=last_line");
+      return;
+    }
+    size_t next = end + 1;
+    while (next < len && (text[next] == 32u || text[next] == 0x09)) next += 1;
+    r0 = end;
+    r1 = next;
+    if (end > 0 && text[end - 1] != 32u && (next < len && text[next] != 0x0A)) insert_len = 1;
+  } else if (end > caret) {
+    r0 = caret;
+    r1 = end;
+  } else if (end < len) {
+    r0 = end;
+    r1 = end + 1;
+  } else return;
+  bool applied = replace_range(q, r0, r1, (const uint8_t *) " ", insert_len);
+  if (applied) select_to(q, join ? r0 : caret, join ? r0 : caret);
+  sexos_line("[quil.line.%s] start=%zu removed=%zu applied=%u len=%zu", join ? "join" : "kill", r0, r1 - r0, (unsigned) applied, q->buffer_len);
+  if (applied) redraw(q);
+}
+/*Ctrl+Shift+D copies the caret's line below itself; the caret moves to the same column in the copy.*/
+
+static void quil_duplicate_line(Quil *q) {
+  size_t caret = min_size(q->cursor_pos, q->buffer_len);
+  size_t start = line_start_at(q, caret);
+  size_t end = line_end_at(q, caret);
+  size_t n = end - start;
+/*Upstream's copy into its scratch panics past the scratch's end.*/
+  if (n >= QUIL_BUFFER_MAX_LEN) sexos_spin_forever();
+  quil_replace_scratch[0] = 0x0A;
+  for (size_t i = 0; i < n; ++i) quil_replace_scratch[i + 1] = q->buffer[start + i];
+  bool applied = replace_range(q, end, end, quil_replace_scratch, n + 1);
+  size_t moved = end + 1 + (caret - start);
+  if (applied) select_to(q, moved, moved);
+  sexos_line("[quil.line.duplicate] start=%zu bytes=%zu caret=%zu applied=%u len=%zu", end, n, q->cursor_pos, (unsigned) applied, q->buffer_len);
+  if (applied) redraw(q);
+}
+/*Ctrl+Up / Ctrl+Down swap the caret's line with the one above / below; the caret keeps its column in the moved line.*/
+
+static void quil_move_line(Quil *q, bool up) {
+  const uint8_t *text = q->buffer;
+  size_t len = q->buffer_len;
+  size_t caret = min_size(q->cursor_pos, len);
+  size_t start = line_start_at(q, caret);
+  size_t end = line_end_at(q, caret);
+  if ((up && start == 0) || (!up && end == len)) {
+    sexos_line("[quil.line.move] up=%u applied=0 reason=edge", (unsigned) up);
+    return;
+  }
+  size_t o_start = up ? line_start_at(q, start - 1) : end + 1;
+  size_t o_end = up ? start - 1 : line_end_at(q, end + 1);
+  size_t first_start = up ? start : o_start;
+  size_t first_end = up ? end : o_end;
+  size_t second_start = up ? o_start : start;
+  size_t second_end = up ? o_end : end;
+  size_t r0 = up ? o_start : start;
+  size_t r1 = up ? end : o_end;
+  size_t a = first_end - first_start;
+  size_t b = second_end - second_start;
+  for (size_t i = 0; i < a; ++i) quil_replace_scratch[i] = text[first_start + i];
+  quil_replace_scratch[a] = 0x0A;
+  for (size_t i = 0; i < b; ++i) quil_replace_scratch[a + 1 + i] = text[second_start + i];
+  size_t col = caret - start;
+  size_t moved = up ? r0 + col : r0 + a + 1 + col;
+  bool applied = replace_range(q, r0, r1, quil_replace_scratch, a + 1 + b);
+  if (applied) select_to(q, moved, moved);
+  sexos_line("[quil.line.move] up=%u start=%zu end=%zu caret=%zu applied=%u len=%zu", (unsigned) up, r0, r1, q->cursor_pos, (unsigned) applied, q->buffer_len);
+  if (applied) redraw(q);
+}
+#endif
+static bool replace_span(Quil *q, size_t start, size_t end, const uint8_t *incoming, size_t incoming_len) {
+  if (incoming_len > 31) return false;
+  return replace_range(q, start, end, incoming, incoming_len);
 }
 /*Replace every FROM (1 to 32 bytes) with TO (at most 32), building the result in a 512-byte buffer that truncates longer documents. Returns the count, a u8 that wraps.*/
 static uint8_t replace_all(Quil *q, const char *from_text, const char *to_text) {
@@ -1335,6 +1483,29 @@ static bool control_word_delete(Quil *q, uint64_t scancode) {
   return true;
 }
 static bool control_text_key(Quil *q, uint64_t scancode) {
+#if SEXOS_QUIL_CURRENT_KEYS
+{
+  if (scancode == 0x20 && q->shift_held) {
+    quil_duplicate_line(q);
+    return true;
+  }
+  if (scancode == 0x25 || scancode == 0x24) {
+    quil_kill_or_join(q, scancode == 0x24);
+    return true;
+  }
+  if (scancode == 0x48 || scancode == 0x50) {
+    quil_move_line(q, scancode == 0x48);
+    return true;
+  }
+  if (scancode == 0x1B || scancode == 0x1A) {
+    bool selected = selection_valid(q);
+    size_t r0 = selected ? q->sel_start : q->cursor_pos;
+    size_t r1 = selected ? q->sel_end : q->cursor_pos;
+    if (quil_indent(q, r0, r1, scancode == 0x1A)) redraw(q);
+    return true;
+  }
+}
+#endif
 #if SEXOS_QUIL_CURRENT_DOCUMENT
 if (scancode == 0x20) {
   quil_current_delete(q);
@@ -2178,11 +2349,23 @@ static void text_key(Quil *q, uint64_t scancode, bool event_shift) {
     return;
   }
   if (code == 0x47) {
-    move_cursor_logged(q, 0, "home");
+#if SEXOS_QUIL_CURRENT_KEYS
+move_cursor_logged(q, line_start_at(q, q->cursor_pos), "home");
+
+#else
+move_cursor_logged(q, 0, "home");
+
+#endif
     return;
   }
   if (code == 0x4F) {
-    move_cursor_logged(q, q->buffer_len, "end");
+#if SEXOS_QUIL_CURRENT_KEYS
+move_cursor_logged(q, line_end_at(q, q->cursor_pos), "end");
+
+#else
+move_cursor_logged(q, q->buffer_len, "end");
+
+#endif
     return;
   }
   if (code == 0x53) {

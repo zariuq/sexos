@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 from silk_shell_diagnostics_a import FLAGS, HERE
+from layout_text import LayoutText
 
 
 def run(argv, accepted=True):
@@ -54,8 +55,8 @@ def main():
                                   sha256=hashlib.sha256(plan.read_bytes()).hexdigest(), plan=plan.name))
     source = HERE / 'src/silk_shell_diagnostics_a.cesta'
     original = frozen[source].decode()
-    opening = 'bool shell_diagnostics_silk_text_sink_key(ShellTextSinkContext *ctx,uint8_t scan,uint64_t value)\\n{'
-    assert original.count(opening) == 1
+    opening = 'bool shell_diagnostics_silk_text_sink_key(ShellTextSinkContext *ctx,uint8_t scan,uint64_t value) {'
+    assert LayoutText(original).count(opening) == 1
     changes = (
         ('read_only_sink', '(field proofs_a (borrow write))', '(field proofs_a (borrow read))'),
         ('uninitialized_context', opening, opening + '\\n    ShellTextSinkContext blank; shell_diagnostics_silk_text_sink_redraw(&blank);'),
@@ -65,13 +66,13 @@ def main():
         ('dangling_label', 'if(label->len>=sizeof(label->bytes)', 'char local[128]={0}; return local; if(label->len>=sizeof(label->bytes)'),
     )
     for name, old, new in changes:
-        assert original.count(old) == 1, (name, original.count(old))
-        mutant = work / (name + '.cesta'); mutant.write_text(original.replace(old, new))
+        assert LayoutText(original).count(old) == 1, (name, LayoutText(original).count(old))
+        mutant = work / (name + '.cesta'); mutant.write_text(LayoutText(original).replace(old, new))
         for cc in ('gcc', 'clang'):
             run([args.cesta, 'cc', '--cc', cc, '-std=c11', '-fsyntax-only', include, mutant], False)
     bridge = frozen[HERE / 'src/silk_shell_input_diagnostics.cesta'].decode()
     anchor = '    return shell_diagnostics_silk_text_sink_key(&sink,scancode,value);'
-    assert bridge.count(anchor) == 1
+    assert LayoutText(bridge).count(anchor) == 1
     bridge_changes = (
         ('write_under_sink_view', anchor, '    ctx->shell.chrome->FOCUSED_SURFACE_ID=0;\n' + anchor),
         ('escape_sink_view', anchor, '    {SilkShellProofsAState local={0};sink.proofs_a=&local;}\n' + anchor),
@@ -80,8 +81,8 @@ def main():
          '{SilkShellProofsAState *held=ctx->shell.proofs_a;shell_diagnostics_input_negative_begin_once(ctx->shell.proofs_a);(void)held->INPUT_NEGATIVE_BEGIN_EMITTED;}'),
     )
     for name, old, new in bridge_changes:
-        assert bridge.count(old) == 1, (name, bridge.count(old))
-        mutant = work / (name + '.cesta'); mutant.write_text(bridge.replace(old, new))
+        assert LayoutText(bridge).count(old) == 1, (name, LayoutText(bridge).count(old))
+        mutant = work / (name + '.cesta'); mutant.write_text(LayoutText(bridge).replace(old, new))
         for cc in ('gcc', 'clang'):
             run([args.cesta, 'cc', '--cc', cc, '-std=c11', '-fsyntax-only', include, mutant], False)
     admission = []

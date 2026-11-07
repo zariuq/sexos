@@ -1,5 +1,5 @@
 {
-  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "functions": [
     {"name":"maybe_run_atlas_phase_e1_click_scene_switch_proof","flag":"SEXOS_ATLAS_PHASE_E1_CLICK_SCENE_SWITCH_PROOF","source_sha256":"7e75495854f18bdf422bf9ed57f7b372b4dfc957a0a5101ec978cb81d46c6212"},
     {"name":"maybe_run_atlas_phase_e2_keyboard_scene_cycle_proof","flag":"SEXOS_ATLAS_PHASE_E2_KEYBOARD_SCENE_CYCLE_PROOF","source_sha256":"70b8c950215384ee36237915ccc91aa73a37f0cbb290fd001c783c85a42cfa20"},

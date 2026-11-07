@@ -1,0 +1,6 @@
+{
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
+  "path": "servers/sexdisplay/src/main.rs",
+  "sha256": "ee89cedb284dbf8efaba94ca52ae7b6387445cc314e62d05a2ab2ebdd89c1e31",
+  "items": ["FONT_ASCII_5X7", "FONT_UNICODE_5X7", "FONT_UNSUPPORTED_5X7", "scalar_glyph"]
+}

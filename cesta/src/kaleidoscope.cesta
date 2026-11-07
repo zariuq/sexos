@@ -144,6 +144,13 @@
       (call sexos_line "[browser.visible.polish.done]"))
 
     (fn void kaleidoscope_main (void)
+      (cpp-if "SEXOS_KALEIDOSCOPE_CURRENT && !defined(SEXOS_HOST)"
+        (then
+          (block
+            (comment "Scripts may use the stack down to 10 KiB above the bottom of its 64 KiB mapping, which lies below a 64 KiB-aligned top; deeper nesting is refused before the stack runs out. Host builds have no such mapping and set no floor.")
+            (var uint8_t marker 0)
+            (var uintptr_t top (& (+ (cast uintptr_t (& marker)) 0xffffu) (~ (cast uintptr_t 0xffffu))))
+            (call kaleidoscope_script_set_stack_floor (+ (- top 65536u) 10240u)))))
       (var SexosListener listener (init 8u))
       (call initialize_browser (& listener))
       (while true

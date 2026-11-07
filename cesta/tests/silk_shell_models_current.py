@@ -5,7 +5,7 @@ import silk_shell_models_differential as historical
 from silk_shell_input_differential import declarations,identifiers,item_end
 from silk_shell_models_root import HERE
 
-PIN='c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321'
+PIN='b6be1b451a6c21985d00d192674feedf66bb11dd'
 UNITS=('silk_shell_models','silk_shell_models_root','silk_shell_models_render','silk_shell_models_render_native','silk_shell_models_paint','silk_shell_models_paint_native','silk_shell_models_linen','silk_shell_models_publish','silk_shell_models_publish_native','silk_shell_models_projection','linen_capture','linen_capture_client','shell_linen_snapshot','shell_linen_list','shell_text_delivery','shell_text_delivery_native','shell_linen_presentation')
 
 def output(args):return subprocess.check_output(list(map(str,args)),cwd=HERE).decode()

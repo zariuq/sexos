@@ -9,6 +9,7 @@ import re
 import subprocess
 
 from silk_shell_input_differential import declarations, identifiers, item_end
+from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 FIX = HERE / 'tests/silk_shell_diagnostics_a'
@@ -228,7 +229,7 @@ def main():
         print('diagnostics profile', pi, ':', count, 'commands, six configurations', flush=True)
     mutants = []
     if args.mutations:
-        body = exports[0].read_text()
+        body = LayoutText(exports[0].read_text())
         for name, old, new in (
             ('spindle_missing_punctuation', 'sc==0x0c ||', 'false ||'),
             ('quil_accepts_tab', 'sc==0x1c || sc==0x0e || sc==1 || sc==0x39', 'sc==0x0f || sc==0x1c || sc==0x0e || sc==1 || sc==0x39'),

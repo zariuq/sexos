@@ -1,5 +1,5 @@
 {
-  "pin": "2535b901e6416c1f6ef348ec3c5e70c9eed98c5f",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "sources": [
     {
       "path": "servers/sext/src/allocator.rs",
@@ -31,7 +31,7 @@
     },
     {
       "path": "crates/sex-pdx/src/lib.rs",
-      "sha256": "fbd6af27d0ef9b4bc94eba7b141b95d23634bb5c957b477db83a934bac99b8f2"
+      "sha256": "8374398a5fcb70566f146a0b4a4d3f709f73737b34be600254b593781ac3b6f6"
     }
   ]
 }

@@ -1,7 +1,12 @@
 (cesta native-c/1 compact-c/2
  (unit
   (include "kaleidoscope_script_lexer.h")
-  (ownership (check-all))
+  (include "kaleidoscope_decimal.h")
+  (ownership (check-all)
+    (foreign kaleidoscope_decimal_digit
+      (obligation "Ownership-checked in kaleidoscope_decimal: updates only the borrowed decimal and retains nothing."))
+    (foreign kaleidoscope_decimal_value
+      (obligation "Ownership-checked in kaleidoscope_decimal: reads the borrowed decimal during the call and returns a value.")))
   (native "
 static bool script_alpha(uint8_t c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
@@ -50,30 +55,29 @@ static bool script_after_value(const KaleidoscopeScriptSource *source,
            (state->current.punct == ')' || state->current.punct == ']');
 }
 
+/* A decimal literal, as Rust's correctly rounded `parse::<f64>`: digits, an optional fraction,
+   an optional exponent. */
 static bool script_decimal(const KaleidoscopeScriptSource *source, size_t start, size_t end,
                            double *out) {
     size_t at = start;
-    double value = 0.0;
+    KaleidoscopeDecimal decimal = {0};
     bool digits = false;
     while (at < end && script_digit(source->bytes[at])) {
         digits = true;
-        value = value * 10.0 + (double)(source->bytes[at] - '0');
+        kaleidoscope_decimal_digit(&decimal, (uint8_t)(source->bytes[at] - '0'), false);
         at++;
     }
     if (at < end && source->bytes[at] == '.') {
         at++;
-        double scale = 1.0;
         while (at < end && script_digit(source->bytes[at])) {
             digits = true;
-            scale *= 10.0;
-            value += (double)(source->bytes[at] - '0') / scale;
+            kaleidoscope_decimal_digit(&decimal, (uint8_t)(source->bytes[at] - '0'), true);
             at++;
         }
     }
-    if (!digits) {
+    if (!digits)
         return false;
-    }
-    int exponent = 0;
+    int64_t exponent = 0;
     if (at < end && (source->bytes[at] == 'e' || source->bytes[at] == 'E')) {
         at++;
         bool negative = false;
@@ -84,27 +88,16 @@ static bool script_decimal(const KaleidoscopeScriptSource *source, size_t start,
         if (at == end || !script_digit(source->bytes[at]))
             return false;
         while (at < end && script_digit(source->bytes[at])) {
-            if (exponent < 10000)
+            if (exponent < INT64_C(1000000000000))
                 exponent = exponent * 10 + (source->bytes[at] - '0');
             at++;
         }
         if (negative)
             exponent = -exponent;
     }
-    if (at != end) {
+    if (at != end)
         return false;
-    }
-    bool negative_exponent = exponent < 0;
-    unsigned magnitude = (unsigned)(negative_exponent ? -exponent : exponent);
-    double factor = 1.0, base = 10.0;
-    while (magnitude) {
-        if (magnitude & 1u)
-            factor *= base;
-        base *= base;
-        magnitude >>= 1;
-    }
-    value = negative_exponent ? value / factor : value * factor;
-    *out = value;
+    *out = kaleidoscope_decimal_value(&decimal, exponent);
     return true;
 }
 
@@ -132,6 +125,75 @@ static bool script_number(const KaleidoscopeScriptSource *source, size_t start, 
         return true;
     }
     return script_decimal(source, start, end, out);
+}
+
+/* Template literals nest through `${...}`. Deeper than this, a literal is refused (Limit) so the
+   scan stays within a small stack; evaluation refuses such nesting anyway. */
+#define SCRIPT_TEMPLATE_NESTING 128
+
+enum {
+    SCRIPT_SCAN_FOUND = 0,
+    SCRIPT_SCAN_MISSING = 1,
+    SCRIPT_SCAN_DEEP = 2
+};
+
+static uint8_t script_substitution_end(const KaleidoscopeScriptSource *source, size_t i,
+                                       size_t nesting, size_t *out);
+
+/* The closing backtick of a template whose body starts at i, as upstream's `template_end`. */
+static uint8_t script_template_end(const KaleidoscopeScriptSource *source, size_t i, size_t nesting,
+                                   size_t *out) {
+    if (nesting > SCRIPT_TEMPLATE_NESTING)
+        return SCRIPT_SCAN_DEEP;
+    while (i < source->len) {
+        uint8_t b = source->bytes[i];
+        if (b == 92)
+            i += 2;
+        else if (b == 96) {
+            *out = i;
+            return SCRIPT_SCAN_FOUND;
+        } else if (b == '$' && i + 1 < source->len && source->bytes[i + 1] == '{') {
+            uint8_t found = script_substitution_end(source, i + 2, nesting + 1, &i);
+            if (found != SCRIPT_SCAN_FOUND)
+                return found;
+        } else
+            i++;
+    }
+    return SCRIPT_SCAN_MISSING;
+}
+
+/* Just past the `}` closing a `${` whose body starts at i, as upstream's `substitution_end`. */
+static uint8_t script_substitution_end(const KaleidoscopeScriptSource *source, size_t i,
+                                       size_t nesting, size_t *out) {
+    size_t depth = 1;
+    while (i < source->len) {
+        uint8_t b = source->bytes[i];
+        if (b == '{')
+            depth++;
+        else if (b == '}') {
+            if (--depth == 0) {
+                *out = i + 1;
+                return SCRIPT_SCAN_FOUND;
+            }
+        } else if (b == '\\'' || b == '\"') {
+            i++;
+            for (;;) {
+                if (i >= source->len)
+                    return SCRIPT_SCAN_MISSING;
+                if (source->bytes[i] == b)
+                    break;
+                if (source->bytes[i] == 92)
+                    i++;
+                i++;
+            }
+        } else if (b == 96) {
+            uint8_t found = script_template_end(source, i + 1, nesting + 1, &i);
+            if (found != SCRIPT_SCAN_FOUND)
+                return found;
+        }
+        i++;
+    }
+    return SCRIPT_SCAN_MISSING;
 }
 
 static bool script_three(const KaleidoscopeScriptSource *source, size_t at, uint8_t a, uint8_t b,
@@ -236,9 +298,10 @@ uint8_t kaleidoscope_script_lexer_next(const KaleidoscopeScriptSource *source,
     }
     if (c == 96) {
         size_t start = state->at + 1, i = start;
-        while (i < source->len && source->bytes[i] != 96)
-            i++;
-        if (i >= source->len)
+        uint8_t found = script_template_end(source, start, 0, &i);
+        if (found == SCRIPT_SCAN_DEEP)
+            return KALEIDOSCOPE_SCRIPT_LIMIT;
+        if (found != SCRIPT_SCAN_FOUND)
             return KALEIDOSCOPE_SCRIPT_SYNTAX;
         out->kind = KALEIDOSCOPE_TOKEN_TEMPLATE;
         out->start = start;
@@ -265,8 +328,12 @@ uint8_t kaleidoscope_script_lexer_next(const KaleidoscopeScriptSource *source,
         state->current = *out;
         return KALEIDOSCOPE_SCRIPT_OK;
     }
-    if (script_ident_start(c)) {
+    if (script_ident_start(c) || (c == '#' && state->at + 1 < source->len &&
+                                  script_ident_start(source->bytes[state->at + 1]))) {
+        /* `#name` (a private class member) is an ordinary name here. */
         size_t start = state->at;
+        if (c == '#')
+            state->at++;
         while (state->at < source->len && (script_ident_start(source->bytes[state->at]) ||
                                            script_digit(source->bytes[state->at])))
             state->at++;

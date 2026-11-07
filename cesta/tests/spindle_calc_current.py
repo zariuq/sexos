@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Current Spindle calculator, including environment and radix output.
 
-The reference is calc_command.rs on the sexcos branch: the pinned Rust with
-exact complex values, named by its blob and SHA-256 in
-interfaces/spindle_calc_current.source.json. It gives the pinned answer on
-every generated input without the new syntax, and the checked Cesta unit
-gives its answer on the fixed rows, generated complex sessions and command
-lines around the 200-byte expression bound.
+The reference is apps/spindle/src/calc_command.rs in this tree: upstream's
+calculator with exact complex values, named by its SHA-256 in
+interfaces/spindle_calc_current.source.json. It gives upstream's answer (the
+parity revision there) on every generated input without the new syntax, and
+the checked Cesta unit gives its answer on the fixed rows, generated complex
+sessions and command lines around the 200-byte expression bound.
 """
 import argparse,hashlib,json,os,random,subprocess,sys,tempfile
 from pathlib import Path
 from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
-PIN='44053ea9b017fe89008413f7cc8a6b1a4d28d015'
+PIN='b6be1b451a6c21985d00d192674feedf66bb11dd'
 RUST=r'''
 #[path="SOURCE"]mod calc;use std::io::{self,BufRead};
 fn hex(x:&[u8])->String{x.iter().map(|b|format!("{b:02x}")).collect()}
@@ -35,13 +35,15 @@ def corpus():
  rows+=['R','1i*1i','(3+4i)*(3-4i)','(3+4i)/5','norm((3+4i)/5)','abs(3+4i)','abs(1+1i)','conj(2-3i)','re(2-3i) + im(2-3i)','1/1i','(1+1i)**2','(1+1i)**-2','1i/3','(1+2i)/(3-4i)','-(0.5i)','0xai']
  rows+=['norm(1 + 1)','interfere(1, 1)','norm(1 + -1)','interfere(1, -1)','interfere((3+4i)/5, (-3-4i)/5)','interfere(1i, 1)','interfere(0.000000001, 0.000000001i)','interfere(1)','interfere(1, 2, 3)']
  rows+=['min(1i, 2)','round(0.5i)','sqrt(1i)','5%1i','2**1i','i','2in','4ii','4i5','4 i','99999999999999999999i*99999999999999999999i','1i in hex','(255+16i) in hex','-1i in bin','(8-8i) in oct','(0.5+1i) in hex','1i/3*3 in hex','(2**40)*(1+1i) in bin','1i/0','123456789012345678901.123456789+123456789012345678901.123456789i']
+ rows+=['R','exp(1)','ln(10)','log(1000)','sin(0.523598776)','cos(pi)','tan(1)','2**0.5','(-8)**0.5','exp(100)','ln(0)','tan(pi/2)','exp(-31)']
+ rows+=['R','exp(1i*pi)','e**(1i*pi)','exp(1i*pi/2)','2**1i','interfere(1, exp(1i*pi/3))','norm(exp(0.7i))','exp(1+1i)','exp(0i)','(-2)**1i','1i**1i','1i**0.5','sin(1i)','exp(100+1i)','exp(10000000i)','2**(0.5+0.5i)']
  rows+=['R','i = 3','z = 3+4i','z*conj(z) + i','ans*1i','re = 2','re(z) + re','norm = 1','norm(z) + norm']
  return rows
 def generated(seed,count,complex_values):
  """Random sessions; without complex_values no row uses the new syntax."""
  rng=random.Random(seed);atoms=['0','1','2','3','7','10','0.5','0.1','2.25','123456789','0xff','0b101','pi','e','ans','x','r','i','z','abc','sqrt(4)','sqrt(2)']
- funcs=['abs','min','max','round','floor','ceil','sqrt','maxx']
- if complex_values:atoms+=['1i','2i','0.5i','3+4i','1-1i','0.000000001i','99999999999i'];funcs+=['re','im','conj','norm','interfere','rex']
+ funcs=['abs','min','max','round','floor','ceil','sqrt','exp','ln','log','sin','cos','tan','maxx']
+ if complex_values:atoms+=['1i','2i','0.5i','3+4i','1-1i','0.000000001i','99999999999i','pi*1i','1i*pi/3'];funcs+=['re','im','conj','norm','interfere','rex']
  def expr(d=0):
   k=rng.random()
   if d>4 or k<0.35:return rng.choice(atoms)
@@ -68,11 +70,10 @@ def long_rows(seed,count):
 def encode(rows):return ('\n'.join(rows)+'\n').encode(),len(rows)
 def main():
  p=argparse.ArgumentParser();p.add_argument('--cesta',type=Path,required=True);p.add_argument('--work',type=Path);p.add_argument('--mutations',action='store_true');p.add_argument('--cesta-source',type=Path);p.add_argument('--lean-root',type=Path);a=p.parse_args();w=a.work or Path(tempfile.mkdtemp(prefix='spindle-calc-current-',dir=HERE/'build'));w.mkdir(parents=True,exist_ok=True);w=w.resolve()
- inventory=json.loads((HERE/'interfaces/spindle_calc_current.source.json').read_text());assert inventory['base']==PIN,inventory
+ inventory=json.loads((HERE/'interfaces/spindle_calc_current.source.json').read_text());assert inventory['parity']==PIN,inventory
  source=run(['git','show',PIN+':'+inventory['path']],cwd=HERE.parent);pinned=w/'calc-pinned.rs';pinned.write_bytes(source)
- found=subprocess.run(['git','cat-file','blob',inventory['blob']],cwd=HERE.parent,capture_output=True)
- if found.returncode:sys.exit(f"spindle current calc: blob {inventory['blob']} of the {inventory['branch']} branch is not in this clone; fetch that branch")
- patched=found.stdout;assert hashlib.sha256(patched).hexdigest()==inventory['sha256'],inventory;branch=w/'calc-branch.rs';branch.write_bytes(patched)
+ patched=(HERE.parent/inventory['path']).read_bytes();assert hashlib.sha256(patched).hexdigest()==inventory['sha256'],('the Rust calculator changed; review it and update',inventory)
+ branch=w/'calc-branch.rs';branch.write_bytes(patched)
  binaries={}
  for name,rs in(('pinned',pinned),('reference',branch)):driver=w/f'driver-{name}.rs';driver.write_text(RUST.replace('SOURCE',str(rs)));binaries[name]=w/name;run(['rustc','--edition=2021','-O',driver,'-o',binaries[name]])
  parity,parity_count=encode(generated(44053,6000,False));assert run([binaries['pinned']],data=parity)==run([binaries['reference']],data=parity),'the branch calc differs from pinned without the new syntax'
@@ -84,12 +85,12 @@ def main():
    binary=w/f'{cc}-{mode}';run([cc,'-std=c11','-g0','-Wall','-Wextra','-Wpedantic','-Werror',*flags,'-Igenerated/include',c,host,'-o',binary]);actual=run([binary],data=data,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=1:abort_on_error=1'});assert actual==expected,(cc,mode);builds.append((cc,mode))
  mutations=[]
  if a.mutations:
-  base=LayoutText(exports['gcc'].read_text());changes=[('power-bound','calc_magnitude(quotient)>64u','false'),('sqrt-domain','if(value<0)','if(false)'),('hex-prefix',"session.radix=16","session.radix=8"),('unknown-name','*error=SPINDLE_CALC_UNKNOWN','*error=SPINDLE_CALC_SYNTAX'),('variable-capacity','env->count==SPINDLE_CALC_VARIABLES','false'),('not-whole','value.inexact||','false||'),('complex-product','calc_sub_checked(ac,bd,&re)','calc_add_checked(ac,bd,&re)'),('not-real','if(value.im){*error=SPINDLE_CALC_NOT_REAL;','if(false){*error=SPINDLE_CALC_NOT_REAL;'),('imaginary-suffix','*out=(CalcComplex){0,value};','*out=(CalcComplex){value,0};'),('interference-cross','calc_mul_checked(value,2,&value)','calc_mul_checked(value,1,&value)'),('complex-radix-sign','calc_put_radix(&text,imag_whole,session.radix,value.scaled!=0);','calc_put_radix(&text,imag_whole,session.radix,false);'),('expression-bound','(suffix?expression_end:input->len)>SPINDLE_CALC_INPUT_MAX','input->len>SPINDLE_CALC_INPUT_MAX')]
+  base=LayoutText(exports['gcc'].read_text());changes=[('power-bound','calc_magnitude(quotient)>64u','false'),('sqrt-domain','if(value<0)','if(false)'),('hex-prefix',"session.radix=16","session.radix=8"),('unknown-name','*error=SPINDLE_CALC_UNKNOWN','*error=SPINDLE_CALC_SYNTAX'),('variable-capacity','env->count==SPINDLE_CALC_VARIABLES','false'),('not-whole','value.inexact||','false||'),('complex-product','calc_sub_checked(ac,bd,&re)','calc_add_checked(ac,bd,&re)'),('not-real','if(value.im){*error=SPINDLE_CALC_NOT_REAL;','if(false){*error=SPINDLE_CALC_NOT_REAL;'),('imaginary-suffix','*out=(CalcComplex){0,value};','*out=(CalcComplex){value,0};'),('interference-cross','calc_mul_checked(value,2,&value)','calc_mul_checked(value,1,&value)'),('complex-radix-sign','calc_put_radix(&text,imag_whole,session.radix,value.scaled!=0);','calc_put_radix(&text,imag_whole,session.radix,false);'),('euler-imaginary','calc_times_w(m,s,&im,error)','calc_times_w(m,c,&im,error)'),('ln-series','i+=2)','i+=1)'),('tangent-quotient','calc_to_scale(calc_div(numerator,cosine))','calc_to_scale(calc_div(numerator,sine))'),('expression-bound','(suffix?expression_end:input->len)>SPINDLE_CALC_INPUT_MAX','input->len>SPINDLE_CALC_INPUT_MAX')]
   for name,old,new in changes:
    assert base.count(old)>=1,(name,base.count(old));m=w/f'{name}.c';m.write_text(base.replace(old,new,1));b=w/name;run(['gcc','-std=c11','-O2','-Igenerated/include',m,host,'-o',b]);r=subprocess.run([b],cwd=HERE,input=data,capture_output=True);assert r.returncode!=0 or r.stdout!=expected,('survived',name);mutations.append(name)
  admission=[]
  if a.lean_root:
   assert a.cesta_source;sys.path.insert(0,str(a.cesta_source/'tests'));import ownership_admission
   for i,plan in enumerate(plans.values()):record,=ownership_admission.parse(plan.read_bytes());admission.append(ownership_admission.admit_record(record,w/f'SpindleCalcCurrent{i}.lean',a.lean_root))
- (w/'summary.json').write_text(json.dumps({'pin':PIN,'rust_sha256':hashlib.sha256(source).hexdigest(),'branch':inventory['branch'],'branch_sha256':inventory['sha256'],'parity_commands':parity_count,'commands':count,'builds':builds,'mutations':mutations,'admission':admission},indent=2)+'\n');print('spindle current calc:',parity_count,'pinned-parity commands,',count,'commands,',len(builds),'builds,',len(mutations),'mutants,',sum(x['functions']for x in admission),'admitted')
+ (w/'summary.json').write_text(json.dumps({'pin':PIN,'rust_sha256':hashlib.sha256(source).hexdigest(),'rust_tree_sha256':inventory['sha256'],'parity_commands':parity_count,'commands':count,'builds':builds,'mutations':mutations,'admission':admission},indent=2)+'\n');print('spindle current calc:',parity_count,'pinned-parity commands,',count,'commands,',len(builds),'builds,',len(mutations),'mutants,',sum(x['functions']for x in admission),'admitted')
 if __name__=='__main__':main()

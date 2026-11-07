@@ -1,6 +1,7 @@
 """Admit actual diagnostic plans and reject widened spans or conflicting rights."""
 import argparse,hashlib,importlib,json,re,subprocess,sys
 from pathlib import Path
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 def run(args,accepted=True):
     r=subprocess.run(list(map(str,args)),cwd=HERE,capture_output=True,text=True)
@@ -20,7 +21,7 @@ def main():
         ('mutate_read_view','static ShellDiagnosticDraw proof_draw_17(uint64_t surface,const uint8_t (*text)[17],uint64_t color)\n{','static ShellDiagnosticDraw proof_draw_17(uint64_t surface,const uint8_t (*text)[17],uint64_t color)\n{\n (*text)[0]=0;'),
     )
     for name,old,new in changes:
-        assert text.count(old)==1,(name,text.count(old));path=w/(name+'.cesta');path.write_text(text.replace(old,new))
+        assert LayoutText(text).count(old)==1,(name,LayoutText(text).count(old));path=w/(name+'.cesta');path.write_text(LayoutText(text).replace(old,new))
         for cc in ('gcc','clang'):run([args.cesta,'cc','--cc',cc,'-std=c11','-fsyntax-only',include,path],False)
     admission=[]
     if args.lean_root:

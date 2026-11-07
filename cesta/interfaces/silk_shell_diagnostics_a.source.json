@@ -1,6 +1,6 @@
 {
-  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
-  "source_sha256": "341fa37c96f8e24d99e179853c346a909093c129a8b8b76b46d2253d7e551338",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
+  "source_sha256": "e44ae38149a324e69eb18fdd8011f40870654ab0d6ebc9f968bc6d9eff5655e4",
   "functions": [
     {
       "name": "is_spindle_text_key",

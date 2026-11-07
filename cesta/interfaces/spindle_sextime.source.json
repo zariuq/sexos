@@ -1,5 +1,5 @@
 {
-  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "command_path": "apps/spindle/src/sextime_command.rs",
   "command_sha256": "5a5117ddf81cf19f5ac51769bc91a05bd2bf52b6d1d86b36baa42d86b959dca6",
   "time_path": "crates/sex-time/src/lib.rs",

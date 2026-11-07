@@ -11,7 +11,7 @@ from pathlib import Path
 from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
-PIN = "44053ea9b017fe89008413f7cc8a6b1a4d28d015"
+PIN = "b6be1b451a6c21985d00d192674feedf66bb11dd"
 SOURCE_SHA256 = "1527fc44de5202c11a8b91463a450fd63c7b38c46bb9c06cc5e512fe104f3237"
 
 

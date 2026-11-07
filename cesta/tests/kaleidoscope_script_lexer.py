@@ -12,8 +12,8 @@ from layout_text import LayoutText
 
 HERE = Path(__file__).resolve().parent.parent
 REPO = HERE.parent
-PIN = "44053ea9b017fe89008413f7cc8a6b1a4d28d015"
-SOURCE_SHA256 = "61b42d63cb819a938d34f8cdb11ce9682e4def5a45348a190394bfdda38c41a1"
+PIN = "b6be1b451a6c21985d00d192674feedf66bb11dd"
+SOURCE_SHA256 = "1a1a612fab2d9ac343485abeee712cc9a22b414972cc78aa241ca3d590949e35"
 
 
 def run(argv, *, env=None):
@@ -35,6 +35,13 @@ def cases():
         rb"/[/]/ /[a-z_\d]+/i /a\/b/",
         b"'unterminated", b"/* unterminated", b"/unterminated", b"@",
         b"0xgg", b"1e+", b"/a\nb/",
+        # Since b6be1b45: nested templates, private names, exact decimal literals.
+        b"`a${`b${c}d`}e` `${'}'}` `${\"`\"}` `x\\`y` `${ {a: 1}.a }`",
+        b"`${", b"`${`", b"`a${'b}`", b"#x this.#y #1 # z",
+        b"1e-300 5e-324 2.4703282292062327e-324 2.4703282292062328e-324 1e309 1.7976931348623157e308 1.7976931348623159e308",
+        b"9007199254740993 0.1 0.30000000000000004 123456789012345678901234567890 .5e-3 1. 00012 0.000001e6",
+        b"0." + b"0" * 300 + b"1e300 " + b"1" + b"0" * 400 + b"e-400 3.14159265358979323846264338327950288419716939937510",
+        b"2.2250738585072011e-308 2.2250738585072012e-308 4.9406564584124654e-324 1e-400 7e22 1e23 8.98846567431158e307",
     ]
 
 
@@ -95,10 +102,11 @@ def main():
     upstream = raw.decode()
     start = upstream.index("    fn next(&mut self)")
     end = upstream.index("    fn expect(&mut self", start)
+    scanners = upstream[upstream.index("fn template_end("):upstream.index("/// JavaScript ToInt32")]
     selected = cases()
     rows = ",\n".join(byte_slice(case) for case in selected)
     suffix = RUST_SUFFIX.replace("fn main()", "static CASES:&[&[u8]]=&[" + rows + "];\nfn main()")
-    (work / "reference.rs").write_text(RUST_PREFIX + upstream[start:end] + suffix)
+    (work / "reference.rs").write_text(RUST_PREFIX + upstream[start:end] + suffix + scanners)
     reference = work / "reference"
     run(["rustc", "--edition=2021", "-C", "opt-level=2", work / "reference.rs", "-o", reference])
     expected = [run([reference, i]) for i in range(len(selected))]
@@ -111,7 +119,12 @@ def main():
               "-Igenerated/include", "-I", work]
     sources = {}; plans = {}; builds = []
     host = HERE / "tests/kaleidoscope_script_lexer/host.c"
+    decimals = {}
     for compiler in ("gcc", "clang"):
+        decimal = work / f"decimal-{compiler}.c"
+        run([args.cesta, "export-c", "src/kaleidoscope_decimal.cesta", "--cc", compiler,
+             "--std=c11", "-o", decimal, "--", "-Igenerated/include"])
+        decimals[compiler] = decimal
         source = work / f"lexer-{compiler}.c"
         plan = work / f"lexer-{compiler}.plan"
         run([args.cesta, "export-c", "src/kaleidoscope_script_lexer.cesta", "--cc", compiler,
@@ -124,7 +137,7 @@ def main():
                      "-fno-pie", "-no-pie"]),
         ):
             binary = work / f"{compiler}-{mode}"
-            run([compiler, *common, *extra, host, source, "-o", binary])
+            run([compiler, *common, *extra, host, source, decimals[compiler], "-o", binary])
             for i, wanted in enumerate(expected):
                 actual = run([binary, i], env={**os.environ,
                     "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=1"})
@@ -141,13 +154,17 @@ def main():
             ("newline", "newline|=source->bytes[state->at]=='\\n'", "newline=false"),
             ("triple-equals", "SCRIPT_OP3('=','=','=', 'E')", "SCRIPT_OP3('=','=','=', 'e')"),
             ("hex", "value=value*16.0+d", "value=value*10.0+d"),
+            ("template-nesting", "uint8_t found=script_substitution_end(source,i+2,nesting+1,&i);", "uint8_t found=SCRIPT_SCAN_FOUND;i+=2;"),
+            ("substitution-string", "}else if(b=='\\''||b=='\"'){", "}else if(false){"),
+            ("private-name", "(c=='#'&&state->at+1<source->len", "(false&&state->at+1<source->len"),
+            ("decimal-fraction", "kaleidoscope_decimal_digit(&decimal,(uint8_t)(source->bytes[at]-'0'),true);", "kaleidoscope_decimal_digit(&decimal,(uint8_t)(source->bytes[at]-'0'),false);"),
         ]
         for name, old, new in changes:
             assert base.count(old) >= 1, (name, base.count(old))
             mutant = work / f"{name}.c"
             mutant.write_text(base.replace(old, new, 1))
             binary = work / name
-            built = subprocess.run(["gcc", *common, "-O2", host, mutant, "-o", binary],
+            built = subprocess.run(["gcc", *common, "-O2", host, mutant, decimals["gcc"], "-o", binary],
                                    cwd=HERE, capture_output=True)
             if built.returncode == 0:
                 assert any(subprocess.run([binary, str(i)], cwd=HERE, capture_output=True).stdout != wanted

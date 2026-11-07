@@ -3,7 +3,7 @@ CESTA_SOURCE ?=
 LEAN_ROOT ?=
 JOBS ?= 4
 
-.PHONY: all build regenerate export plain export-plain arm64-build arm64-export arm64-plain check qualify check-services qualify-services check-sext qualify-sext
+.PHONY: check-silk-shell all build regenerate export plain export-plain arm64-build arm64-export arm64-plain check qualify check-services qualify-services check-sext qualify-sext
 all: build
 
 build:
@@ -80,7 +80,7 @@ check-arm64-runtime: arm64-build
 	python3 tests/arm64_runtime.py --image build-arm64/arm64-phase4/arm64-phase4 --phase 4 --work $$work/phase4 && \
 	python3 tests/arm64_runtime.py --image build-arm64/arm64-phase5/arm64-phase5 --phase 5 --work $$work/phase5
 
-check: check-services check-ownership check-sext check-kernel-transport check-memory-regions check-dma-lease check-device-reset check-smp-park check-kernel-regions check-current-boot check-pager check-sources check-pci check-history check-handover
+check: check-silk-shell check-services check-ownership check-sext check-kernel-transport check-memory-regions check-dma-lease check-device-reset check-smp-park check-kernel-regions check-current-boot check-pager check-sources check-pci check-history check-handover
 	python3 tests/boot_observation_controls.py
 	python3 tests/kernel_boot_comparison.py
 	python3 tests/kernel_boot_driver_controls.py
@@ -95,12 +95,14 @@ check: check-services check-ownership check-sext check-kernel-transport check-me
 	python3 tests/sexstore_differential.py --cesta "$(CESTA)"
 	python3 tests/sexstore_versions.py --cesta "$(CESTA)"
 	python3 tests/sexdisplay_differential.py --cesta "$(CESTA)"
+	python3 tests/sexdisplay_font.py --cesta "$(CESTA)"
 	python3 tests/sexbell_differential.py --cesta "$(CESTA)"
 	python3 tests/linen_differential.py --cesta "$(CESTA)"
 	python3 tests/quil_differential.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_body.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_navigation.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_regex.py --cesta "$(CESTA)"
+	python3 tests/kaleidoscope_decimal.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_script_lexer.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_script_core.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_html.py --cesta "$(CESTA)"
@@ -112,6 +114,7 @@ check: check-services check-ownership check-sext check-kernel-transport check-me
 	python3 tests/kaleidoscope_png.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_asset_pipeline.py --cesta "$(CESTA)"
 	python3 tests/quil_autosave.py --cesta "$(CESTA)"
+	python3 tests/quil_lines_current.py --cesta "$(CESTA)"
 	python3 tests/document_protocol.py --cesta "$(CESTA)"
 	python3 tests/document_client.py --cesta "$(CESTA)"
 	python3 tests/document_service.py --cesta "$(CESTA)"
@@ -124,6 +127,7 @@ check: check-services check-ownership check-sext check-kernel-transport check-me
 	python3 tests/spindle_complete.py --cesta "$(CESTA)"
 	python3 tests/spindle_calc.py --cesta "$(CESTA)"
 	python3 tests/spindle_calc_current.py --cesta "$(CESTA)"
+	python3 tests/spindle_line_current.py --cesta "$(CESTA)"
 	python3 tests/spindle_differential.py --cesta "$(CESTA)"
 	python3 tests/purple_scanout_differential.py --cesta "$(CESTA)"
 	python3 tests/sexfiles_differential.py --cesta "$(CESTA)"
@@ -149,12 +153,14 @@ qualify: qualify-ownership qualify-sext check-kernel-transport qualify-memory-re
 	python3 tests/sexstore_differential.py --cesta "$(CESTA)" --cases 96 --durable-cases 20000
 	python3 tests/sexstore_versions.py --cesta "$(CESTA)" --cases 10000
 	python3 tests/sexdisplay_differential.py --cesta "$(CESTA)" --all-variants --cases 48
+	python3 tests/sexdisplay_font.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/sexbell_differential.py --cesta "$(CESTA)" --cases 144
 	python3 tests/linen_differential.py --cesta "$(CESTA)" --cases 72
 	python3 tests/quil_differential.py --cesta "$(CESTA)" --all-variants --cases 48
 	python3 tests/kaleidoscope_body.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/kaleidoscope_navigation.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/kaleidoscope_regex.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
+	python3 tests/kaleidoscope_decimal.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/kaleidoscope_script_lexer.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/kaleidoscope_script_core.py --cesta "$(CESTA)" --mutations
 	python3 tests/kaleidoscope_html.py --cesta "$(CESTA)" --mutations
@@ -166,6 +172,7 @@ qualify: qualify-ownership qualify-sext check-kernel-transport qualify-memory-re
 	python3 tests/kaleidoscope_png.py --cesta "$(CESTA)" --mutations
 	python3 tests/kaleidoscope_asset_pipeline.py --cesta "$(CESTA)"
 	python3 tests/quil_autosave.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
+	python3 tests/quil_lines_current.py --cesta "$(CESTA)" --mutations
 	python3 tests/document_protocol.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/document_client.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/document_service.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
@@ -178,6 +185,7 @@ qualify: qualify-ownership qualify-sext check-kernel-transport qualify-memory-re
 	python3 tests/spindle_complete.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/spindle_calc.py --cesta "$(CESTA)" --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/spindle_calc_current.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
+	python3 tests/spindle_line_current.py --cesta "$(CESTA)" --mutations
 	python3 tests/spindle_differential.py --cesta "$(CESTA)" --all-variants --cases 18
 	python3 tests/purple_scanout_differential.py --cesta "$(CESTA)"
 	python3 tests/sexfiles_differential.py --cesta "$(CESTA)" --all-variants --cases 18
@@ -189,6 +197,8 @@ qualify: qualify-ownership qualify-sext check-kernel-transport qualify-memory-re
 	python3 tests/silk_shell_atlas_differential.py --cesta "$(CESTA)" --cases 256 --mutations
 
 .PHONY: check-silk-shell-models check-silk-shell-models-historical
+check-silk-shell: check-silk-shell-models check-silk-shell-chrome check-silk-shell-models-linen check-silk-shell-proofs-a check-silk-shell-proofs-a-ownership check-silk-shell-proofs-b-palette check-silk-shell-proofs-b-palette-ownership check-silk-shell-proofs-b-atlas check-silk-shell-proofs-b-atlas-ownership check-silk-shell-proofs-b check-silk-shell-proofs-b-ownership check-silk-shell-core check-silk-shell-startup check-silk-shell-startup-ownership check-silk-shell-models-render check-silk-shell-models-render-ownership check-silk-shell-diagnostics-a check-silk-shell-diagnostics-a-ownership check-silk-shell-surfaces check-silk-shell-surfaces-ownership check-silk-shell-chrome-ownership
+
 check-silk-shell-models:
 	python3 tests/silk_shell_models_current.py --cesta "$(CESTA)"
 	python3 tests/silk_shell_models_root.py --cesta "$(CESTA)"

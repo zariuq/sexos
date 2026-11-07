@@ -1,5 +1,5 @@
 {
-  "pin": "e30715434551de373f459123375c642d09cd345c",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "sources": {
     "servers/silk-shell/src/app_custody.rs": "07847af51c94ddd5c9dac06214beef38287697d72a919c34185ee6598ed2abd0",
     "crates/sex-pdx/src/app_catalog.rs": "b64e70fd3e9d813b20edd479bab9c68edbd1485f0af382fdc0f0d9424a2c2f0c"

@@ -3,10 +3,11 @@ import argparse
 from pathlib import Path
 import subprocess,sys,re,json,hashlib
 from silk_shell_input_differential import declarations,identifiers,item_end
+from layout_text import LayoutText
 p=Path(__file__).resolve().parent.parent
 
 def prepare(w):
-    pin='c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321';source=subprocess.check_output(['git','show',pin+':servers/silk-shell/src/main.rs'],cwd=p).decode();pdx=subprocess.check_output(['git','show',pin+':crates/sex-pdx/src/lib.rs'],cwd=p).decode()
+    pin='b6be1b451a6c21985d00d192674feedf66bb11dd';source=subprocess.check_output(['git','show',pin+':servers/silk-shell/src/main.rs'],cwd=p).decode();pdx=subprocess.check_output(['git','show',pin+':crates/sex-pdx/src/lib.rs'],cwd=p).decode()
     names=('linen_fetch_remote_snapshot','linen_queue_open','linen_async_poll','linen_async_reply','linen_select_first_valid_object');functions=[];rows=[]
     for name in names:
      m=re.search(r'(?m)^(?:unsafe )?fn '+name+r'\b',source);assert m,name;raw=source[m.start():item_end(source,m.start())]+'\n';functions.append(raw);rows.append(dict(name=name,sha256=hashlib.sha256(raw.encode()).hexdigest()))
@@ -73,7 +74,7 @@ def main():
      ('projection_wrong_kind','silk_shell_models_projection','source->kind==1?LINEN_OBJ_KIND_PROJECT:LINEN_OBJ_KIND_DOCUMENT','source->kind==1?LINEN_OBJ_KIND_DOCUMENT:LINEN_OBJ_KIND_PROJECT'),
      ('projection_omits_name','silk_shell_models_projection','out->name[i]=source->name[i]','out->name[i]=0'),
     ):
-     text=base[unit];assert text.count(old)==1,(name,text.count(old));path=w/('live-mutant-'+name+'.c');path.write_text(text.replace(old,new));binary=w/('live-mutant-'+name)
+     text=base[unit];assert LayoutText(text).count(old)==1,(name,LayoutText(text).count(old));path=w/('live-mutant-'+name+'.c');path.write_text(LayoutText(text).replace(old,new));binary=w/('live-mutant-'+name)
      linked=[path if out.stem==unit else out for out in exports];run(['gcc','-std=c11','-O2','-Igenerated/include',*linked,w/'live-seed.c',fix/'provider.c','-o',binary]);changed=subprocess.run([binary],input=data,capture_output=True);assert changed.returncode!=0 or changed.stdout!=expected,('survived',name);mutants.append(name)
     summary=json.loads((w/'live-runtime-summary.json').read_text());summary['mutants']=mutants;(w/'live-runtime-summary.json').write_text(json.dumps(summary,indent=2)+'\n');print(len(mutants),'live publication mutations caught')
 

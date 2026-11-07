@@ -2,9 +2,10 @@
 import argparse,hashlib,json,re,subprocess
 from pathlib import Path
 from silk_shell_input_differential import declarations,item_end
+from layout_text import LayoutText
 HERE=Path(__file__).resolve().parent.parent
 FIX=HERE/'tests/shell_linen_list'
-PIN='c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321'
+PIN='b6be1b451a6c21985d00d192674feedf66bb11dd'
 def run(args,data=None):
  r=subprocess.run(list(map(str,args)),cwd=HERE,input=data,capture_output=True);assert r.returncode==0,(args,r.returncode,r.stderr[-6000:]);return r.stdout
 def main():
@@ -41,6 +42,6 @@ def main():
   ('lost_selection','out.has_selected=true','out.has_selected=false'),
   ('wrong_untitled','item.len?item.len:10','item.len?item.len:0'),
  ):
-  assert base.count(old)==1,(name,base.count(old));path=w/('mutant-'+name+'.c');path.write_text(base.replace(old,new));binary=w/('mutant-'+name);run(['gcc','-std=c11','-O2','-Igenerated/include',path,FIX/'provider.c','-o',binary]);changed=subprocess.run([binary],input=data,capture_output=True);assert changed.returncode!=0 or changed.stdout!=expected,('survived',name);mutants.append(name)
+  assert LayoutText(base).count(old)==1,(name,LayoutText(base).count(old));path=w/('mutant-'+name+'.c');path.write_text(LayoutText(base).replace(old,new));binary=w/('mutant-'+name);run(['gcc','-std=c11','-O2','-Igenerated/include',path,FIX/'provider.c','-o',binary]);changed=subprocess.run([binary],input=data,capture_output=True);assert changed.returncode!=0 or changed.stdout!=expected,('survived',name);mutants.append(name)
  (w/'summary.json').write_text(json.dumps({'pin':PIN,'source_sha256':hashlib.sha256(raw.encode()).hexdigest(),'commands':len(rows),'configurations':configs,'mutants_caught':mutants},indent=2)+'\n');print('Linen list:',len(rows),'layout cases per configuration; six compiler/sanitizer configurations agree;',len(mutants),'mutants caught')
 if __name__=='__main__':main()

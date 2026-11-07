@@ -1,6 +1,6 @@
 {
-  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
-  "source_sha256": "341fa37c96f8e24d99e179853c346a909093c129a8b8b76b46d2253d7e551338",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
+  "source_sha256": "e44ae38149a324e69eb18fdd8011f40870654ab0d6ebc9f968bc6d9eff5655e4",
   "functions": [
     {
       "name": "input_trace_shell_summary",
@@ -452,14 +452,14 @@
     },
     {
       "name": "spindle_key_word",
-      "start": 16280,
-      "end": 16280,
-      "sha256": "25be3fb6c9fc4f9a754241ca8d33398f38639539f80177be3fe95f98c7c1929f"
+      "start": 16281,
+      "end": 16281,
+      "sha256": "20457b788e0bd424a2ac677e852794d0e41122b22a3b1bd92be52fd85607a047"
     },
     {
       "name": "spindle_has_focus",
-      "start": 16281,
-      "end": 16281,
+      "start": 16282,
+      "end": 16282,
       "sha256": "1529dac343b71cccfda44faf43f6561f0e219779608e5829b39068132578613a"
     }
   ],

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -32,7 +33,7 @@ def main():
         ('outbox_loan_across_render','ShellLinenItems items=shell_models_peer_list_items(ctx);','ShellTextOutbox *held=&ctx->linen->text;shell_models_render_static_ui(ctx);(void)held->sequence;ShellLinenItems items=shell_models_peer_list_items(ctx);'),
     )
     for name,old,new in changes:
-        assert text.count(old)==1,(name,text.count(old));path=w/(name+'.cesta');path.write_text(text.replace(old,new))
+        assert LayoutText(text).count(old)==1,(name,LayoutText(text).count(old));path=w/(name+'.cesta');path.write_text(LayoutText(text).replace(old,new))
         for cc in ('gcc','clang'):run([args.cesta,'cc','--cc',cc,'-std=c11','-fsyntax-only',include,path],False)
     workspace=sources['silk_shell_models_workspace'].decode()
     workspace_changes=(
@@ -40,7 +41,7 @@ def main():
         ('snapshot_loan_across_refresh','bool found=false;','const ShellLinenSnapshot *held=&ctx->linen->snapshot;shell_models_workspace_poll(ctx);(void)held->count;bool found=false;'),
     )
     for name,old,new in workspace_changes:
-        assert workspace.count(old)==1,(name,workspace.count(old));path=w/(name+'.cesta');path.write_text(workspace.replace(old,new))
+        assert LayoutText(workspace).count(old)==1,(name,LayoutText(workspace).count(old));path=w/(name+'.cesta');path.write_text(LayoutText(workspace).replace(old,new))
         for cc in ('gcc','clang'):run([args.cesta,'cc','--cc',cc,'-std=c11','-fsyntax-only',include,path],False)
     admission=[]
     if args.lean_root:

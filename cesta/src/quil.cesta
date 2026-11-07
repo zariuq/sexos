@@ -12,8 +12,8 @@
                 quil_current_event quil_current_load quil_current_save quil_current_step
                 quil_current_utf8 quil_cursor_vertical quil_dispatch_palette_key
                 quil_doc_create_and_save quil_init quil_layout quil_line_of quil_load quil_main
-                quil_mark_edited quil_persist_load quil_persist_save quil_save
-                quil_storage_cap_probe read_v2_chunk redraw replace_all replace_span replay_phase
+                quil_duplicate_line quil_indent quil_kill_or_join quil_mark_edited quil_move_line quil_persist_load quil_persist_save quil_save
+                quil_storage_cap_probe read_v2_chunk redraw replace_all replace_range replace_span replay_phase
                 replay_stash run_clipboard_status_proof run_cmd_surface_proof run_current_keys_proof
                 run_cursor_nav_proof run_dirty_proof run_editor_keybindings_proof run_find_nav_proof
                 run_find_proof run_goto_line_proof run_keyboard_buffer_proof run_keyboard_nav_proof
@@ -824,8 +824,9 @@ static bool quil_current_step(Quil *q);
       (call sexos_line "[quil.clipboard.paste] len=%zu old_len=%zu new_len=%zu ok=1 reason=pasted_at_cursor" n old_len (-> q buffer_len))
       (return true))
 
-    (fn (static bool) replace_span ((Quil (* q)) (size_t start) (size_t end) ((const uint8_t) (* incoming)) (size_t incoming_len))
-      (if (|| (|| (> start end) (> end (-> q buffer_len))) (> incoming_len 31)) (return false))
+    (comment "Replace START..END with INCOMING as one undoable edit, as upstream's quil_replace: the caret lands after the insertion and the selection collapses there.")
+    (fn (static bool) replace_range ((Quil (* q)) (size_t start) (size_t end) ((const uint8_t) (* incoming)) (size_t incoming_len))
+      (if (|| (> start end) (> end (-> q buffer_len))) (return false))
       (var size_t removed (- end start))
       (if (> incoming_len (- QUIL_BUFFER_MAX_LEN (- (-> q buffer_len) removed))) (return false))
       (call text_buffer_undo_push q)
@@ -845,6 +846,154 @@ static bool quil_current_step(Quil *q);
       (call quil_mark_edited q)
       (= (-> q goal_col) SIZE_MAX)
       (return true))
+
+    (cpp-if "SEXOS_QUIL_CURRENT_KEYS"
+      (then
+    (var (static uint8_t) ([] quil_replace_scratch QUIL_BUFFER_MAX_LEN))
+
+    (fn (static size_t) line_start_at (((const Quil) (* q)) (size_t at))
+      (var size_t start (call min_size at (-> q buffer_len)))
+      (while (&& (> start 0) (!= ([] (-> q buffer) (- start 1)) 0x0A)) (-= start 1))
+      (return start))
+
+    (fn (static size_t) line_end_at (((const Quil) (* q)) (size_t at))
+      (var size_t end (call min_size at (-> q buffer_len)))
+      (while (&& (< end (-> q buffer_len)) (!= ([] (-> q buffer) end) 0x0A)) (+= end 1))
+      (return end))
+
+    (fn (static void) select_to ((Quil (* q)) (size_t anchor) (size_t caret))
+      (= (-> q sel_start) (call min_size anchor caret))
+      (= (-> q sel_end) (?: (> anchor caret) anchor caret))
+      (= (-> q cursor_pos) caret))
+
+    (comment "Ctrl+] indents (a leading tab) and Ctrl+[ outdents (one leading tab, else up to four spaces) every line the selection touches, as one undoable edit; the changed lines stay selected.")
+    (fn (static bool) quil_indent ((Quil (* q)) (size_t r0) (size_t r1) (bool out))
+      (var (const uint8_t) (* text) (-> q buffer))
+      (var size_t start (call line_start_at q r0))
+      (comment "A selection ending at a line start does not include that line.")
+      (var size_t last (?: (&& (> r1 r0) (== ([] text (- r1 1)) 0x0A)) (- r1 1) r1))
+      (var size_t end (call line_end_at q last))
+      (var size_t n 0)
+      (var size_t lines 0)
+      (var size_t seg start)
+      (while 1
+        (block
+          (var size_t stop seg)
+          (while (&& (< stop end) (!= ([] text stop) 0x0A)) (+= stop 1))
+          (if (> lines 0)
+            (block
+              (if (== n QUIL_BUFFER_MAX_LEN) (return false))
+              (= ([] quil_replace_scratch n) 0x0A)
+              (+= n 1)))
+          (+= lines 1)
+          (var size_t body seg)
+          (if out
+            (if (&& (< seg stop) (== ([] text seg) 0x09))
+              (= body (+ seg 1))
+              (block
+                (var size_t k 0)
+                (while (&& (< k 4) (&& (< (+ seg k) stop) (== ([] text (+ seg k)) 32u))) (+= k 1))
+                (= body (+ seg k))))
+            (block
+              (if (== n QUIL_BUFFER_MAX_LEN) (return false))
+              (= ([] quil_replace_scratch n) 0x09)
+              (+= n 1)))
+          (var size_t length (- stop body))
+          (if (> (+ n length) QUIL_BUFFER_MAX_LEN) (return false))
+          (for (var size_t i 0) (< i length) (++ i) (= ([] quil_replace_scratch (+ n i)) ([] text (+ body i))))
+          (+= n length)
+          (if (>= stop end) break)
+          (= seg (+ stop 1))))
+      (var bool applied (call replace_range q start end quil_replace_scratch n))
+      (if applied (call select_to q start (+ start n)))
+      (call sexos_line "[quil.indent] lines=%zu out=%u start=%zu end=%zu applied=%u len=%zu"
+        lines (cast unsigned out) start (+ start n) (cast unsigned applied) (-> q buffer_len))
+      (return applied))
+
+    (comment "Ctrl+K deletes from the caret to the end of its line (at the end, the line break); Ctrl+J joins the next line onto this one with one space, its leading spaces and tabs dropped.")
+    (fn (static void) quil_kill_or_join ((Quil (* q)) (bool join))
+      (var (const uint8_t) (* text) (-> q buffer))
+      (var size_t len (-> q buffer_len))
+      (var size_t caret (call min_size (-> q cursor_pos) len))
+      (var size_t end (call line_end_at q caret))
+      (var size_t r0 0)
+      (var size_t r1 0)
+      (var size_t insert_len 0)
+      (if join
+        (block
+          (if (== end len)
+            (block
+              (call sexos_line "[quil.line.join] applied=0 reason=last_line")
+              (return)))
+          (var size_t next (+ end 1))
+          (while (&& (< next len) (|| (== ([] text next) 32u) (== ([] text next) 0x09))) (+= next 1))
+          (= r0 end)
+          (= r1 next)
+          (if (&& (&& (> end 0) (!= ([] text (- end 1)) 32u)) (&& (< next len) (!= ([] text next) 0x0A)))
+            (= insert_len 1)))
+        (if (> end caret)
+          (block (= r0 caret) (= r1 end))
+          (if (< end len)
+            (block (= r0 end) (= r1 (+ end 1)))
+            (return))))
+      (var bool applied (call replace_range q r0 r1 (cast ((const uint8_t) *) " ") insert_len))
+      (if applied (call select_to q (?: join r0 caret) (?: join r0 caret)))
+      (call sexos_line "[quil.line.%s] start=%zu removed=%zu applied=%u len=%zu"
+        (?: join "join" "kill") r0 (- r1 r0) (cast unsigned applied) (-> q buffer_len))
+      (if applied (call redraw q)))
+
+    (comment "Ctrl+Shift+D copies the caret's line below itself; the caret moves to the same column in the copy.")
+    (fn (static void) quil_duplicate_line ((Quil (* q)))
+      (var size_t caret (call min_size (-> q cursor_pos) (-> q buffer_len)))
+      (var size_t start (call line_start_at q caret))
+      (var size_t end (call line_end_at q caret))
+      (var size_t n (- end start))
+      (comment "Upstream's copy into its scratch panics past the scratch's end.")
+      (if (>= n QUIL_BUFFER_MAX_LEN) (call sexos_spin_forever))
+      (= ([] quil_replace_scratch 0) 0x0A)
+      (for (var size_t i 0) (< i n) (++ i) (= ([] quil_replace_scratch (+ i 1)) ([] (-> q buffer) (+ start i))))
+      (var bool applied (call replace_range q end end quil_replace_scratch (+ n 1)))
+      (var size_t moved (+ (+ end 1) (- caret start)))
+      (if applied (call select_to q moved moved))
+      (call sexos_line "[quil.line.duplicate] start=%zu bytes=%zu caret=%zu applied=%u len=%zu"
+        end n (-> q cursor_pos) (cast unsigned applied) (-> q buffer_len))
+      (if applied (call redraw q)))
+
+    (comment "Ctrl+Up / Ctrl+Down swap the caret's line with the one above / below; the caret keeps its column in the moved line.")
+    (fn (static void) quil_move_line ((Quil (* q)) (bool up))
+      (var (const uint8_t) (* text) (-> q buffer))
+      (var size_t len (-> q buffer_len))
+      (var size_t caret (call min_size (-> q cursor_pos) len))
+      (var size_t start (call line_start_at q caret))
+      (var size_t end (call line_end_at q caret))
+      (if (|| (&& up (== start 0)) (&& (! up) (== end len)))
+        (block
+          (call sexos_line "[quil.line.move] up=%u applied=0 reason=edge" (cast unsigned up))
+          (return)))
+      (var size_t o_start (?: up (call line_start_at q (- start 1)) (+ end 1)))
+      (var size_t o_end (?: up (- start 1) (call line_end_at q (+ end 1))))
+      (var size_t first_start (?: up start o_start))
+      (var size_t first_end (?: up end o_end))
+      (var size_t second_start (?: up o_start start))
+      (var size_t second_end (?: up o_end end))
+      (var size_t r0 (?: up o_start start))
+      (var size_t r1 (?: up end o_end))
+      (var size_t a (- first_end first_start))
+      (var size_t b (- second_end second_start))
+      (for (var size_t i 0) (< i a) (++ i) (= ([] quil_replace_scratch i) ([] text (+ first_start i))))
+      (= ([] quil_replace_scratch a) 0x0A)
+      (for (var size_t i 0) (< i b) (++ i) (= ([] quil_replace_scratch (+ (+ a 1) i)) ([] text (+ second_start i))))
+      (var size_t col (- caret start))
+      (var size_t moved (?: up (+ r0 col) (+ (+ (+ r0 a) 1) col)))
+      (var bool applied (call replace_range q r0 r1 quil_replace_scratch (+ (+ a 1) b)))
+      (if applied (call select_to q moved moved))
+      (call sexos_line "[quil.line.move] up=%u start=%zu end=%zu caret=%zu applied=%u len=%zu"
+        (cast unsigned up) r0 r1 (-> q cursor_pos) (cast unsigned applied) (-> q buffer_len))
+      (if applied (call redraw q)))))
+
+    (fn (static bool) replace_span ((Quil (* q)) (size_t start) (size_t end) ((const uint8_t) (* incoming)) (size_t incoming_len))
+      (if (> incoming_len 31) (return false))
+      (return (call replace_range q start end incoming incoming_len)))
 
     (comment "Replace every FROM (1 to 32 bytes) with TO (at most 32), building the result in a 512-byte buffer that truncates longer documents. Returns the count, a u8 that wraps.")
     (fn (static uint8_t) replace_all ((Quil (* q)) ((const char) (* from_text)) ((const char) (* to_text)))
@@ -967,6 +1116,19 @@ static bool quil_current_step(Quil *q);
       (return true))
 
     (fn (static bool) control_text_key ((Quil (* q)) (uint64_t scancode))
+      (cpp-if "SEXOS_QUIL_CURRENT_KEYS"
+        (then
+          (block
+            (if (&& (== scancode 0x20) (-> q shift_held)) (block (call quil_duplicate_line q) (return true)))
+            (if (|| (== scancode 0x25) (== scancode 0x24)) (block (call quil_kill_or_join q (== scancode 0x24)) (return true)))
+            (if (|| (== scancode 0x48) (== scancode 0x50)) (block (call quil_move_line q (== scancode 0x48)) (return true)))
+            (if (|| (== scancode 0x1B) (== scancode 0x1A))
+              (block
+                (var bool selected (call selection_valid q))
+                (var size_t r0 (?: selected (-> q sel_start) (-> q cursor_pos)))
+                (var size_t r1 (?: selected (-> q sel_end) (-> q cursor_pos)))
+                (if (call quil_indent q r0 r1 (== scancode 0x1A)) (call redraw q))
+                (return true))))))
       (cpp-if "SEXOS_QUIL_CURRENT_DOCUMENT"
         (then (if (== scancode 0x20) (block (call quil_current_delete q) (return true)))))
       (if (== scancode 0x21)
@@ -1782,11 +1944,15 @@ static bool quil_current_step(Quil *q) {
           (return)))
       (if (== code 0x47)
         (block
-          (call move_cursor_logged q 0 "home")
+          (cpp-if "SEXOS_QUIL_CURRENT_KEYS"
+            (then (call move_cursor_logged q (call line_start_at q (-> q cursor_pos)) "home"))
+            (else (call move_cursor_logged q 0 "home")))
           (return)))
       (if (== code 0x4F)
         (block
-          (call move_cursor_logged q (-> q buffer_len) "end")
+          (cpp-if "SEXOS_QUIL_CURRENT_KEYS"
+            (then (call move_cursor_logged q (call line_end_at q (-> q cursor_pos)) "end"))
+            (else (call move_cursor_logged q (-> q buffer_len) "end")))
           (return)))
       (if (== code 0x53)
         (block

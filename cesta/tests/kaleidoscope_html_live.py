@@ -25,7 +25,7 @@ def main():
     args = parser.parse_args()
     work = (args.work or Path(tempfile.mkdtemp(prefix="kaleidoscope-html-live-", dir=HERE / "build"))).resolve()
     work.mkdir(parents=True, exist_ok=True)
-    units = ("kaleidoscope", "kaleidoscope_body", "kaleidoscope_script_lexer",
+    units = ("kaleidoscope", "kaleidoscope_body", "kaleidoscope_decimal", "kaleidoscope_script_lexer",
              "kaleidoscope_regex", "kaleidoscope_regex_match", "kaleidoscope_script_core",
              "kaleidoscope_html")
     host = HERE / "tests/kaleidoscope_html_live/host.c"

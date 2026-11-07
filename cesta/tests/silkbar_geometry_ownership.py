@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from layout_text import LayoutText
 
 HERE=Path(__file__).resolve().parent.parent
 
@@ -30,8 +31,8 @@ def main():
         plans.append(dict(compiler=cc,plan=plan.name,sha256=hashlib.sha256(plan.read_bytes()).hexdigest()))
         mutant=work/'read-only.cesta'
         old='silkbar_geometry_fit(size_t width,SilkBar *out)'
-        assert original.decode().count(old)==1
-        mutant.write_text(original.decode().replace(old,'silkbar_geometry_fit(size_t width,const SilkBar *out)'))
+        assert LayoutText(original.decode()).count(old)==1
+        mutant.write_text(LayoutText(original.decode()).replace(old,'silkbar_geometry_fit(size_t width,const SilkBar *out)'))
         run([args.cesta,'cc','--cc',cc,'-std=c11','-fsyntax-only',include,mutant],False)
     admission=[]
     if args.lean_root:

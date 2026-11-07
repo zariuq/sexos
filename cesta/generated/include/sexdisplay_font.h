@@ -1,0 +1,20 @@
+
+#ifndef SEXDISPLAY_FONT_H
+#define SEXDISPLAY_FONT_H
+#include <stddef.h>
+#include <stdint.h>
+
+/* One 5x7 glyph: 7 rows, bit 4 of a row its leftmost pixel. */
+typedef struct SexdisplayGlyph {
+    uint8_t rows[7];
+} SexdisplayGlyph;
+
+typedef struct SexdisplayFontEntry {
+    uint32_t scalar;
+    uint8_t rows[7];
+} SexdisplayFontEntry;
+
+/* The glyph drawn for a Unicode scalar: printable ASCII, the Latin-1/Greek/symbol set, a blank
+   for tab and a box for anything else. */
+void sexdisplay_scalar_glyph(uint32_t scalar, SexdisplayGlyph *out);
+#endif

@@ -1,5 +1,5 @@
 {
-  "pin": "9a25ce42bf17c36bec3b215ae33471c9fd5c2d28",
+  "pin": "b6be1b451a6c21985d00d192674feedf66bb11dd",
   "functions": [
     {"name":"maybe_run_window_drag_synthetic_proof","flag":"SEXOS_WINDOW_DRAG_PROOF","source_sha256":"5d574569736156e976484f447471a6df83915b95d3204ff4b846b7acbc9c836f"},
     {"name":"maybe_run_silk_de_integrated_interaction_proof","flag":"SILK_DE_INTEGRATED_INTERACTION_PROOF","source_sha256":"61e3e90c43d833b2e74581f5fa1a0743871d591a22301c0096d4b72627f410ff"},
