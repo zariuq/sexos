@@ -1,10 +1,11 @@
 SHELL CUSTODY AND THE CHROME LIFECYCLE/FRAME SLICE
 
-The shell still runs as Rust. Five of the original eight implementation
-partitions are translated. Chrome contains all 88 original entry functions,
+Chrome is linked into the joined Cesta shell. Its component translation
+contains all 88 original entry functions,
 seven current helpers, the two Rect methods and 52 internal helpers. The process
-panic handler belongs to Core. Remaining native peers and current-source
-reconciliation still prevent a joined-shell claim.
+panic handler belongs to Core. Native peers and current-source reconciliation
+remain boundaries of this component's evidence; tests/silk_shell_boot.py
+qualifies joined readiness and sustained execution separately.
 
 ShellChromeContext borrows Chrome, Models, Input and proof state plus the current
 app custody and viewport records. Geometry arithmetic explicitly preserves release-Rust

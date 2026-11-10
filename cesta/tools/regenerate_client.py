@@ -176,6 +176,8 @@ def main():
     generate(["export-c", "src/pci_policy_interface.cesta", "--"], include / "sexos_pci_policy.h")
     generate(["export-c", "src/history_recovery_interface.cesta", "--"], include / "sexos_history_recovery.h")
     generate(["export-c", "src/kernel_interface.cesta", "--", "-Iruntime/kernel", "-Igenerated/include"], include / "sexos_kernel.h")
+    generate(["checked", "header", "src/program_image_bytes.cesta"], include / "program_image_bytes.h")
+    generate(["export-c", "src/program_image_interface.cesta", "--"], include / "program_image.h")
     # Machine-local generator identity belongs with build evidence, not source.
     evidence = HERE / "build/regeneration.json"
     evidence.parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,6 @@
+{
+  "commit": "845de95033f6c11e73775633b1d69ad1ae1eb435",
+  "path": "kernel/src/program_image.rs",
+  "sha256": "aef48e5328d98b172db0a455d258a2e3d33b3bb8d99d487057bf85832644bf4c",
+  "scope": "Pure ELF parse projection and in-range relocation observations; kernel policy and stricter accessor refusals are independent controls."
+}

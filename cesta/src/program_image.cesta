@@ -1,0 +1,252 @@
+(cesta native-c/1 compact-c/2
+ (unit
+  (ownership (check-all)
+  (view cesta_read_bytes data len read)
+  (record ProgramImage)
+  (function image_reject (returns-record ((source) (borrow 0))))
+  (function program_image_parse (returns-record ((source) (borrow 0))))
+  (foreign program_image_bytes_u8_at (obligation "Checked counted-byte access; retains no view."))
+  (foreign program_image_bytes_u16_at (obligation "Checked counted-byte decoding; retains no view."))
+  (foreign program_image_bytes_u32_at (obligation "Checked counted-byte decoding; retains no view."))
+  (foreign program_image_bytes_u64_at (obligation "Checked counted-byte decoding; retains no view."))
+  (foreign program_image_bytes_key_write (obligation "Checked bounded byte scan; retains no view.")))
+  (native "/* SPDX-License-Identifier: GPL-3.0-only */
+/* Adapted from kernel/src/program_image.rs at upstream 845de950, 2026-11-09.
+   The parser is pure. Kernel policy is checked separately before page effects. */
+#include \"program_image.h\"
+#include <limits.h>
+
+static bool image_range(cesta_read_bytes bytes, uint64_t at, uint64_t count) {
+    return at <= bytes.len && count <= bytes.len - at;
+}
+
+static uint64_t image_header_at(cesta_read_bytes bytes, uint64_t phoff,
+                               uint64_t stride, uint64_t index) {
+    if (!stride || phoff > bytes.len || index > (bytes.len - phoff) / stride)
+        return UINT64_MAX;
+    uint64_t at = phoff + index * stride;
+    return image_range(bytes, at, 4) ? at : UINT64_MAX;
+}
+
+static ProgramImage image_reject(cesta_read_bytes source, uint32_t error) {
+    ProgramImage image = {.source = source};
+    image.error = error;
+    return image;
+}
+
+static uint64_t image_file_offset(const ProgramImage *image, uint64_t at, uint64_t size) {
+    if (image->count > PROGRAM_IMAGE_SEGMENTS)
+        return UINT64_MAX;
+    for (size_t i = 0; i < image->count; ++i) {
+        ProgramSegment s = image->segments[i];
+        if (at >= s.window && at - s.window <= s.file &&
+            size <= s.file - (at - s.window) && s.offset <= UINT64_MAX - (at - s.window))
+            return s.offset + (at - s.window);
+    }
+    return UINT64_MAX;
+}
+
+ProgramImage program_image_parse(cesta_read_bytes source, uint64_t window) {
+    if (!source.data || source.len < 64 || source.len > (size_t)PTRDIFF_MAX)
+        return image_reject(source, PROGRAM_IMAGE_HEADER);
+    if (program_image_bytes_u32_at(source, 0) != UINT32_C(0x464c457f) ||
+        program_image_bytes_u16_at(source, 4) != UINT16_C(0x0102) ||
+        program_image_bytes_u16_at(source, 16) != 3 ||
+        program_image_bytes_u16_at(source, 18) != 62)
+        return image_reject(source, PROGRAM_IMAGE_HEADER);
+    uint64_t entry = program_image_bytes_u64_at(source, 24);
+    uint64_t phoff = program_image_bytes_u64_at(source, 32);
+    uint64_t stride = program_image_bytes_u16_at(source, 54);
+    uint64_t phnum = program_image_bytes_u16_at(source, 56);
+    if (stride < 56 || !phnum || phnum > 64)
+        return image_reject(source, PROGRAM_IMAGE_HEADER);
+    ProgramImage image = {.source = source};
+    image.bias = UINT64_MAX;
+    image.window = window;
+    uint64_t dynamic_offset = 0, dynamic_size = 0;
+    bool dynamic = false;
+    for (uint64_t i = 0; i < phnum; ++i) {
+        uint64_t at = image_header_at(source, phoff, stride, i);
+        if (at == UINT64_MAX)
+            return image_reject(source, PROGRAM_IMAGE_HEADER);
+        uint32_t kind = program_image_bytes_u32_at(source, at);
+        if (kind == UINT32_C(0x6474e551)) {
+            if (!image_range(source, at, 48)) return image_reject(source, PROGRAM_IMAGE_HEADER);
+            image.stack = program_image_bytes_u64_at(source, at + 40);
+        }
+        if (kind == 2) {
+            if (!image_range(source, at, 40)) return image_reject(source, PROGRAM_IMAGE_HEADER);
+            dynamic = true;
+            dynamic_offset = program_image_bytes_u64_at(source, at + 8);
+            dynamic_size = program_image_bytes_u64_at(source, at + 32);
+        }
+        if (kind == 1) {
+            if (!image_range(source, at, 48)) return image_reject(source, PROGRAM_IMAGE_HEADER);
+            if (program_image_bytes_u64_at(source, at + 40)) {
+                uint64_t address = program_image_bytes_u64_at(source, at + 16);
+                if (address < image.bias) image.bias = address;
+            }
+        }
+    }
+    if (image.bias == UINT64_MAX || image.bias % 4096)
+        return image_reject(source, PROGRAM_IMAGE_LAYOUT);
+    uint64_t end = 0;
+    for (uint64_t i = 0; i < phnum; ++i) {
+        uint64_t at = image_header_at(source, phoff, stride, i);
+        if (at == UINT64_MAX) return image_reject(source, PROGRAM_IMAGE_HEADER);
+        if (program_image_bytes_u32_at(source, at) != 1) continue;
+        if (!image_range(source, at, 48)) return image_reject(source, PROGRAM_IMAGE_HEADER);
+        uint32_t flags = program_image_bytes_u32_at(source, at + 4);
+        uint64_t offset = program_image_bytes_u64_at(source, at + 8);
+        uint64_t address = program_image_bytes_u64_at(source, at + 16);
+        uint64_t file = program_image_bytes_u64_at(source, at + 32);
+        uint64_t memory = program_image_bytes_u64_at(source, at + 40);
+        if (!memory) continue;
+        if ((flags & 3) == 3) return image_reject(source, PROGRAM_IMAGE_PERMISSIONS);
+        if (file > memory || !image_range(source, offset, file))
+            return image_reject(source, PROGRAM_IMAGE_LAYOUT);
+        if (address < image.bias) return image_reject(source, PROGRAM_IMAGE_LAYOUT);
+        uint64_t start = address - image.bias;
+        if (start > window || memory > window - start)
+            return image_reject(source, PROGRAM_IMAGE_SPAN);
+        uint64_t stop = start + memory;
+        if (start % 4096 && start / 4096 < end / 4096 + (end % 4096 != 0))
+            return image_reject(source, PROGRAM_IMAGE_PERMISSIONS);
+        if (start < end || image.count == PROGRAM_IMAGE_SEGMENTS)
+            return image_reject(source, PROGRAM_IMAGE_LAYOUT);
+        image.segments[image.count] = (ProgramSegment){
+            offset, file, start, memory, (flags & 2) != 0, (flags & 1) != 0};
+        ++image.count;
+        end = stop;
+    }
+    if (!image.count) return image_reject(source, PROGRAM_IMAGE_LAYOUT);
+    if (entry < image.bias) return image_reject(source, PROGRAM_IMAGE_ENTRY);
+    image.entry = entry - image.bias;
+    bool executable = false;
+    for (size_t i = 0; i < image.count; ++i) {
+        ProgramSegment s = image.segments[i];
+        if (s.executable && image.entry >= s.window && image.entry - s.window < s.memory)
+            executable = true;
+    }
+    if (!executable) return image_reject(source, PROGRAM_IMAGE_ENTRY);
+    if (dynamic) {
+        if (!image_range(source, dynamic_offset, dynamic_size))
+            return image_reject(source, PROGRAM_IMAGE_RELOCATION);
+        uint64_t rela = 0, size = 0, record = 24;
+        bool terminated = false;
+        uint64_t at = dynamic_offset, finish = dynamic_offset + dynamic_size;
+        while (at <= finish && finish - at >= 16) {
+            uint64_t tag = program_image_bytes_u64_at(source, at);
+            uint64_t value = program_image_bytes_u64_at(source, at + 8);
+            if (!tag) { terminated = true; break; }
+            if (tag == 7) rela = value;
+            if (tag == 8) size = value;
+            if (tag == 9) record = value;
+            at += 16;
+        }
+        if (!terminated || record != 24 || size % 24)
+            return image_reject(source, PROGRAM_IMAGE_RELOCATION);
+        if (size) {
+            if (rela < image.bias) return image_reject(source, PROGRAM_IMAGE_RELOCATION);
+            uint64_t offset = image_file_offset(&image, rela - image.bias, size);
+            if (offset == UINT64_MAX || !image_range(source, offset, size))
+                return image_reject(source, PROGRAM_IMAGE_RELOCATION);
+            for (uint64_t i = 0; i < size / 24; ++i) {
+                uint64_t pos = offset + i * 24;
+                uint64_t target = program_image_bytes_u64_at(source, pos);
+                uint64_t info = program_image_bytes_u64_at(source, pos + 8);
+                uint64_t addend = program_image_bytes_u64_at(source, pos + 16);
+                if ((info & UINT64_C(0xffffffff)) != 8 || target < image.bias || addend < image.bias)
+                    return image_reject(source, PROGRAM_IMAGE_RELOCATION);
+                target -= image.bias;
+                bool contained = false;
+                for (size_t j = 0; j < image.count; ++j) {
+                    ProgramSegment s = image.segments[j];
+                    if (target >= s.window && target - s.window <= s.memory &&
+                        8 <= s.memory - (target - s.window)) contained = true;
+                }
+                if (!contained || addend - image.bias > window)
+                    return image_reject(source, PROGRAM_IMAGE_RELOCATION);
+            }
+            image.rela = offset;
+            image.rela_count = size / 24;
+        }
+    }
+    return image;
+}
+
+ProgramRelocation program_image_relocation(const ProgramImage *image, uint64_t index, uint64_t base) {
+    ProgramRelocation refused = {0};
+    if (image->error || image->count > PROGRAM_IMAGE_SEGMENTS ||
+        !image->source.data || image->source.len > (size_t)PTRDIFF_MAX ||
+        index >= image->rela_count || image->rela > image->source.len ||
+        index > (image->source.len - image->rela) / 24)
+        return refused;
+    uint64_t at = image->rela + index * 24;
+    if (!image_range(image->source, at, 24)) return refused;
+    uint64_t target = program_image_bytes_u64_at(image->source, at);
+    uint64_t info = program_image_bytes_u64_at(image->source, at + 8);
+    uint64_t addend = program_image_bytes_u64_at(image->source, at + 16);
+    if ((info & UINT64_C(0xffffffff)) != 8 || target < image->bias || addend < image->bias)
+        return refused;
+    target -= image->bias;
+    addend -= image->bias;
+    if (addend > image->window || base > UINT64_MAX - addend)
+        return refused;
+    bool contained = false;
+    for (size_t i = 0; i < image->count; ++i) {
+        ProgramSegment s = image->segments[i];
+        if (target >= s.window && target - s.window <= s.memory &&
+            8 <= s.memory - (target - s.window)) contained = true;
+    }
+    if (!contained) return refused;
+    return (ProgramRelocation){target, base + addend, true};
+}
+
+/* Used only for the at-most-two bytes crossing an executable file boundary.
+   Unmapped, non-executable and zero-filled bytes cannot complete WRPKRU. */
+static uint32_t image_executable_byte(const ProgramImage *image, uint64_t at) {
+    for (size_t i = 0; i < image->count && i < PROGRAM_IMAGE_SEGMENTS; ++i) {
+        ProgramSegment s = image->segments[i];
+        if (!s.executable || at < s.window || at - s.window >= s.file) continue;
+        uint64_t offset = at - s.window;
+        if (s.offset > image->source.len || offset >= image->source.len - s.offset) return 256;
+        return program_image_bytes_u8_at(image->source, s.offset + offset);
+    }
+    return 256;
+}
+
+bool program_image_kernel_allowed(const ProgramImage *image) {
+    if (image->error || !image->count || image->count > PROGRAM_IMAGE_SEGMENTS ||
+        !image->source.data || image->source.len > (size_t)PTRDIFF_MAX)
+        return false;
+    for (size_t i = 0; i < image->count; ++i) {
+        ProgramSegment s = image->segments[i];
+        if (s.window > image->window || s.memory > image->window - s.window ||
+            s.file > s.memory || !image_range(image->source, s.offset, s.file))
+            return false;
+        if (!s.executable) continue;
+        if (program_image_bytes_key_write(image->source, s.offset, s.file)) return false;
+        uint64_t first = s.file > 1 ? s.file - 2 : 0;
+        for (uint64_t j = first; j < s.file; ++j) {
+            uint64_t at = s.window + j;
+            if (at > UINT64_MAX - 2) return false;
+            if (image_executable_byte(image, at) == 0x0f &&
+                image_executable_byte(image, at + 1) == 0x01 &&
+                image_executable_byte(image, at + 2) == 0xef) return false;
+        }
+    }
+    for (uint64_t i = 0; i < image->rela_count; ++i) {
+        ProgramRelocation r = program_image_relocation(image, i, 0);
+        if (!r.valid) return false;
+        uint64_t info = program_image_bytes_u64_at(image->source, image->rela + i * 24 + 8);
+        if (info >> 32) return false;
+        for (size_t j = 0; j < image->count; ++j) {
+            ProgramSegment s = image->segments[j];
+            if (s.executable && r.offset >= s.window && r.offset - s.window < s.memory)
+                return false;
+        }
+    }
+    return true;
+}
+")))

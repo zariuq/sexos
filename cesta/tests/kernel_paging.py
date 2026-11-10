@@ -22,12 +22,15 @@ def main():
     work=args.work or Path(tempfile.mkdtemp(prefix='kernel-paging-',dir=HERE/'build'));work.mkdir(parents=True,exist_ok=True)
     units=['kernel_domains','kernel_paging','kernel_task_wait','pager_state','kernel_memory','kernel_boot_memory','kernel_apps','app_private','memory_regions']
     for unit in units:(work/(unit+'.c')).write_bytes(run([args.cesta,'export-c','src/'+unit+'.cesta','--std=c11','--','-Igenerated/include','-Iruntime/kernel']))
+    (work/'program_image_bytes.c').write_bytes(run([args.cesta,'export-c','src/program_image_bytes.cesta']))
+    (work/'program_image.c').write_bytes(run([args.cesta,'export-c','src/program_image.cesta','--','-Igenerated/include']))
     flags=['-std=c11','-g0','-ffreestanding','-fno-builtin','-ffunction-sections','-fdata-sections','-DSEXOS_KERNEL_CURRENT_PDX=1','-Wall','-Wextra','-Wpedantic','-Werror','-Igenerated/include','-Itests/kernel_paging','-Iruntime/kernel']
     renames=[a for n in ('memcpy','memmove','memset','memcmp') for a in ('--redefine-sym',n+'=sexos_'+n)]
     def compile(cc,extra,name):
         obj=work/(name+'-memory.o');renamed=work/(name+'-renamed.o');binary=work/name
         run([cc,*flags,*extra,'-c',work/'kernel_memory.c','-o',obj]);run(['objcopy',*renames,obj,renamed])
         run([cc,*flags,*extra,'-I'+str(work),'-Wl,--gc-sections','tests/kernel_paging/host.c',renamed,
+            work/'program_image.c',work/'program_image_bytes.c','runtime/kernel/image_failure.c',
             *[work/(u+'.c') for u in units if u not in ('kernel_domains','kernel_paging','kernel_task_wait','kernel_memory')],'-o',binary])
         return binary
     builds=[]
@@ -75,6 +78,7 @@ def main():
                 result=subprocess.run([binary],cwd=HERE,capture_output=True);assert result.returncode!=0,('mutation survived',name);caught.append(name)
             finally:p.write_text(original)
     names=['src/'+u+'.cesta' for u in units]+['src/kernel_interface.cesta','interfaces/kernel_page_install_protocol.module','interfaces/kernel_page_reclaim_protocol.module','interfaces/kernel_page_cleanup_protocol.module','tests/kernel_paging.py','tests/kernel_paging/host.c','tests/kernel_paging/cpu_x86_64.h']
+    names+=['src/program_image_bytes.cesta','generated/include/program_image_bytes.h','runtime/kernel/image_failure.c']
     summary={'builds':builds,'mutations':caught,'source_sha256':{n:hashlib.sha256((HERE/n).read_bytes()).hexdigest() for n in names},'scope':'actual BOOT backing, ELF loader, retained frames, page walks, checked state core and native paging/wake adapters on RAM. CPU/TLB providers are observed; no CPU execution, SMP or whole-C refinement claim.'}
     (work/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
 

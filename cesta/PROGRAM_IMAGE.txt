@@ -1,0 +1,101 @@
+EXECUTABLE IMAGE ADMISSION
+
+The BOOT loader now consumes ProgramImage, a pure load plan retaining a
+read-only view of its source file. The parser is adapted from upstream
+845de950; interfaces/program_image.source.json identifies the exact reference.
+tests/program_image/reference.rs preserves those reference bytes so its
+differential gate works offline.
+
+Source lifetime and interpretation
+----------------------------------
+
+src/program_image.cesta admits all eight function bodies under Cesta's native
+ownership profile. ProgramImage.source is one atomic pointer/length view.
+Successful and rejected results retain the original input extent. Relocation
+access receives the plan itself, so a caller cannot accidentally supply a
+different byte buffer as a separate argument.
+
+The emitted ownership plans use whole-view units for dynamic input spans.
+Lean interprets those units at the caller's byte extent, including zero,
+while ordinary record storage remains measured in bytes. Calls, nested
+record results and each recorded control-flow prefix retain their permission
+and lifetime interpretation. The underlying source-to-plan projection and
+native caller conformance remain separate boundaries.
+
+Checked-c/1 helpers decode bounded little-endian words and scan executable
+bytes. Native functions pass complete views to those helpers; they cannot
+turn a dynamic view into a fixed-pointee call or raw indexed access.
+
+Admission before page effects
+-----------------------------
+
+The parser checks ELF identity, the executable entry, at most eight ordered
+LOAD segments, file/memory extents, page separation, W^X and the complete
+relative-relocation table. It also reports the declared stack size.
+
+The kernel adds these conditions before frames_alloc, map_page, payload
+copies or private-manifest capture:
+
+- Complete program-header entries, including ignored header kinds.
+- Recognized key-register-write bytes absent from executable payloads,
+  including sequences spanning adjacent executable segments.
+- No executable relocation targets or nonzero relocation symbol indices.
+- All relocated values fit the chosen base; all target words lie in the
+  admitted image. Accessor indices are checked independently.
+- Code and stack ranges stay in their BOOT windows and do not overlap.
+- Destination pages are vacant; an existing mapping is never reused.
+- The private-image manifest has capacity for every code/data and stack page.
+- The fixed BOOT stack provides at least the requested size; requests above
+  64 KiB are refused. Runtime program/worker stack policies are separate work.
+
+Payloads and relocation words are copied in page-bounded chunks. An eight-byte
+relocation can cross two nonadjacent physical frames. Relocation values use
+base + (addend - image bias), including nonzero image bias.
+
+The source module must remain immutable through this serialized BOOT sequence.
+Application processors remain parked. Allocation or mapping failure after
+admission may leave partial resources; this change does not add rollback for
+resource exhaustion. The loader's native page-table/physical-memory operations
+remain explicit obligations. Recognizing a forbidden byte sequence is not a
+proof of isolation against arbitrary hostile x86 programs.
+
+Qualification
+-------------
+
+    python3 tests/program_image.py --cesta "$CESTA"
+    python3 tests/program_image_kernel.py --cesta "$CESTA" --mutations
+
+The first compares complete parse/relocation observations with the pinned Rust
+implementation under GCC/Clang and sanitizers, and checks independent kernel
+policy examples, source preservation and readable-C binary identity. Repeat
+--image BINARY to include actual userland executables. Its --admit option also
+requires --cesta-source and --lean-root and admits the emitted permission plan.
+
+The second executes the actual loader, allocator, page tables and private
+capture on a RAM provider. Padding allocations force nonadjacent physical
+pages. Rejected images must preserve RAM, allocation state, mapping counters,
+domain state and the manifest. Separate controls cover successful loading and
+resource failure. These host controls do not execute user instructions.
+
+Optional machine proof
+----------------------
+
+proofs/program_image_u32.ml proves the successful-call result, call/return
+frame and bounded architectural memory accesses of program_image_bytes_u32_at
+for exact GCC and Clang kernel bytes. The proof gate checks both the decoder's
+call from program_image_parse and the loader's call into that parser.
+
+    python3 tests/program_image_hol.py \
+      --gcc-image GCC_KERNEL --clang-image CLANG_KERNEL \
+      --cesta-source "$CESTA_SOURCE" --hol "$HOLDIR" --s2n "$S2N" --out NEW_EVIDENCE
+
+HOL Light and s2n-bignum are external, optional qualification dependencies.
+The gate independently compares ELF symbol extraction, checks runtime and
+artifact mutations, and replays the proofs without new axioms. Invalid-input
+runtime controls use the generated-C route. This is a selected machine-code
+contract, not a proof of the entire parser, loader, compiler or kernel.
+
+tests/silk_shell_boot.py qualifies the assembled current Cesta userland with
+each candidate kernel. Device fixtures can include snapshot-backed NVMe,
+restricted networking and a USB keyboard. A post-readiness soak must finish
+in full; readiness followed by an early exit or timeout is refused.

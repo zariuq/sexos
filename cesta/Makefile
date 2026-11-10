@@ -80,7 +80,7 @@ check-arm64-runtime: arm64-build
 	python3 tests/arm64_runtime.py --image build-arm64/arm64-phase4/arm64-phase4 --phase 4 --work $$work/phase4 && \
 	python3 tests/arm64_runtime.py --image build-arm64/arm64-phase5/arm64-phase5 --phase 5 --work $$work/phase5
 
-check: check-silk-shell check-services check-ownership check-sext check-kernel-transport check-memory-regions check-dma-lease check-device-reset check-smp-park check-kernel-regions check-current-boot check-pager check-sources check-pci check-history check-handover
+check: check-silk-shell check-services check-ownership check-sext check-kernel-transport check-memory-regions check-dma-lease check-device-reset check-smp-park check-kernel-regions check-current-boot check-pager check-sources check-pci check-history check-handover check-program-image
 	python3 tests/boot_observation_controls.py
 	python3 tests/kernel_boot_comparison.py
 	python3 tests/kernel_boot_driver_controls.py
@@ -138,7 +138,7 @@ check: check-silk-shell check-services check-ownership check-sext check-kernel-t
 	python3 tests/silk_shell_input_differential.py --cesta "$(CESTA)" --mutations
 	python3 tests/silk_shell_atlas_differential.py --cesta "$(CESTA)" --mutations
 
-qualify: qualify-ownership qualify-sext check-kernel-transport qualify-memory-regions qualify-dma-lease qualify-device-reset qualify-smp-park qualify-kernel-regions qualify-sources qualify-pci qualify-history qualify-handover
+qualify: qualify-ownership qualify-sext check-kernel-transport qualify-memory-regions qualify-dma-lease qualify-device-reset qualify-smp-park qualify-kernel-regions qualify-sources qualify-pci qualify-history qualify-handover qualify-program-image
 	python3 tests/boot_observation_controls.py
 	python3 tests/kernel_boot_comparison.py
 	python3 tests/kernel_boot_driver_controls.py
@@ -548,3 +548,18 @@ check-shell-text-delivery:
 	python3 tests/shell_text_delivery.py --cesta "$(CESTA)" --mutations
 qualify-shell-text-delivery: check-shell-text-delivery
 	python3 tests/shell_text_delivery_ownership.py --cesta "$(CESTA)" --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
+
+.PHONY: check-program-image qualify-program-image qualify-program-image-hol
+check-program-image:
+	python3 -B tests/program_image.py --cesta "$(CESTA)"
+	python3 -B tests/program_image_kernel.py --cesta "$(CESTA)"
+
+qualify-program-image:
+	@test -n "$(CESTA_SOURCE)" -a -n "$(LEAN_ROOT)" || { echo "set CESTA_SOURCE and LEAN_ROOT"; exit 1; }
+	python3 -B tests/program_image.py --cesta "$(CESTA)" --admit --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
+	python3 -B tests/program_image_kernel.py --cesta "$(CESTA)" --mutations
+
+# Exact-machine qualification remains independent of ordinary build/check.
+qualify-program-image-hol:
+	@test -n "$(CESTA_SOURCE)" || { echo "set CESTA_SOURCE"; exit 1; }
+	python3 -B tests/program_image_hol.py --cesta "$(CESTA)" --cesta-source "$(CESTA_SOURCE)" $(PROGRAM_IMAGE_HOL_FLAGS)

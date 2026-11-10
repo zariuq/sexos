@@ -24,6 +24,8 @@ def main():
     units=('kernel_domains','kernel_memory','kernel_apps','app_private','kernel_current_boot','kernel_boot_memory','memory_regions','kernel_paging','kernel_task_wait','pager_state','kernel_sources','source_policy','kernel_pci','pci_policy','network_config','kernel_history','history_recovery','history_decode','region_writer','kernel_region_writer','device_reset','kernel_device_reset','kernel_syscalls')
     for unit in units:
         (work/(unit+'.c')).write_bytes(run([args.cesta,'export-c','src/'+unit+'.cesta','--std=c11','--','-Igenerated/include','-Iruntime/kernel']))
+    (work/'program_image_bytes.c').write_bytes(run([args.cesta,'export-c','src/program_image_bytes.cesta']))
+    (work/'program_image.c').write_bytes(run([args.cesta,'export-c','src/program_image.cesta','--','-Igenerated/include']))
     flags=['-std=c11','-g0','-ffreestanding','-fno-builtin','-ffunction-sections','-fdata-sections',
            '-DSEXOS_KERNEL_CURRENT_PDX=1','-Wall','-Wextra','-Wpedantic','-Werror','-Igenerated/include']
     renames=[a for n in ('memcpy','memmove','memset','memcmp') for a in ('--redefine-sym',n+'=sexos_'+n)]
@@ -34,6 +36,7 @@ def main():
         run(['objcopy',*renames,obj,renamed])
         run([cc,*flags,*extra,'-Itests/kernel_memory','-Iruntime/kernel','-c',work/'kernel_apps.c','-o',apps])
         run([cc,*flags,*extra,'-I'+str(work),'-Itests/kernel_paging','-Iruntime/kernel','-Wl,--gc-sections',
+             work/'program_image.c',work/'program_image_bytes.c','runtime/kernel/image_failure.c',
              'tests/kernel_private/host.c',work/'kernel_syscalls.c',work/'region_writer.c',work/'kernel_region_writer.c',work/'device_reset.c',work/'kernel_device_reset.c',work/'kernel_sources.c',work/'source_policy.c',work/'pci_policy.c',work/'network_config.c',work/'history_recovery.c',work/'history_decode.c',work/'kernel_history.c',work/'kernel_pci.c',work/'kernel_paging.c',work/'kernel_task_wait.c',work/'pager_state.c',work/'app_private.c',work/'kernel_boot_memory.c',work/'memory_regions.c',renamed,apps,'-o',binary])
         return binary
 
@@ -82,6 +85,7 @@ def main():
                 result=subprocess.run([binary],cwd=HERE,capture_output=True);assert result.returncode!=0,('mutation survived',name);caught.append(name)
             finally:path.write_text(original)
     names=['src/'+u+'.cesta' for u in units]+['src/kernel_interface.cesta','src/app_private_interface.cesta','interfaces/kernel_app_handover_protocol.module','interfaces/kernel_app_activation_protocol.module','tests/kernel_private.py','tests/kernel_private/host.c','interfaces/kernel_current.data','generated/include/kernel_current.h']
+    names+=['src/program_image_bytes.cesta','generated/include/program_image_bytes.h','runtime/kernel/image_failure.c']
     summary={'builds':builds,'mutations_caught':caught,'source_sha256':{n:hashlib.sha256((HERE/n).read_bytes()).hexdigest() for n in names},
              'scope':'actual loader/allocator/pagewalks/private-manifest code on RAM, CPU/TLB providers; synthetic ELF payload; no user execution or current-image boot/refinement claim'}
     (work/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print('private admission qualification passed',flush=True)

@@ -420,6 +420,7 @@
   (target sexos-kernel
     (profile kernel)
     (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
              "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include"))
@@ -658,6 +659,7 @@
     (define "SEXOS_KERNEL_CURRENT_PDX=1" "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1"
             "SEXOS_KERNEL_CURRENT_SMP=1" "SEXOS_NVME_INTERRUPT_MODE=1")
     (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
              "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
@@ -668,6 +670,7 @@
             "SEXOS_KERNEL_CURRENT_SMP=1" "SEXOS_NVME_INTERRUPT_MODE=1"
             "SEXOS_FPU_CONTEXT_CORRUPT_PROBE=1")
     (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
              "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
@@ -678,6 +681,7 @@
             "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1" "SEXOS_KERNEL_CURRENT_SMP=1"
             "SEXOS_NVME_INTERRUPT_MODE=1")
     (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
              "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
@@ -688,6 +692,7 @@
             "SEXOS_KERNEL_CURRENT_SMP=1" "SEXOS_SMP_EPOCH_CORRUPT_PROBE=1"
             "SEXOS_NVME_INTERRUPT_MODE=1")
     (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
              "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
@@ -696,6 +701,7 @@
     (profile kernel)
     (define "SEXOS_NETWORK_PROFILE=1")
     (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+             "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
              "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include")))

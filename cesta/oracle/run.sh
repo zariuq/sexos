@@ -118,7 +118,9 @@ while kill -0 "$qemu" 2>/dev/null && (( SECONDS < deadline )); do
     done
     if (( all )); then
       if (( marker_deadline < 0 )); then
-        marker_deadline=$((SECONDS + post_ready))
+        # SECONDS is integral: one extra tick guarantees the requested
+        # post-readiness interval rather than rounding it down.
+        marker_deadline=$((SECONDS + post_ready + (post_ready > 0)))
       fi
       (( SECONDS >= marker_deadline )) && break
     fi
@@ -131,3 +133,18 @@ fi
 kill "$qemu" 2>/dev/null || true
 wait "$qemu" 2>/dev/null || true
 trap - EXIT
+if (( ${#until_markers[@]} )); then
+  for m in "${until_markers[@]}"; do
+    if [[ ! -f "$log" ]] || ! grep -a -q -F -- "$m" "$log"; then
+      echo "boot interval ended before readiness: $m" >&2
+      exit 3
+    fi
+  done
+  if (( post_ready > 0 && (marker_deadline < 0 || SECONDS < marker_deadline) )); then
+    echo "boot interval ended before the complete post-readiness soak" >&2
+    exit 3
+  fi
+elif (( SECONDS < deadline )); then
+  echo "qemu exited before the complete soak interval" >&2
+  exit 3
+fi

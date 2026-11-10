@@ -1,0 +1,64 @@
+(cesta checked-c/1
+  (module program_image_bytes)
+  (word-bits 64)
+  (failure program_image_bounds_failure)
+  (fn u8_at
+    (params (bytes read) (offset usize)) (returns u8) (effects)
+    (body (return (at bytes offset))))
+  (fn key_write
+    (params (bytes read) (start usize) (count usize)) (returns bool) (effects)
+    (body
+      (slice code read bytes start count)
+      (if (lt count (usize 3)) (then (return false)) (else))
+      (var index usize (usize 0))
+      (while (le index (sub count (usize 3)))
+        (body
+          (if (and (eq (at code index) (u8 15))
+                   (and (eq (at code (add index (usize 1))) (u8 1))
+                        (eq (at code (add index (usize 2))) (u8 239))))
+            (then (return true)) (else))
+          (set index (add index (usize 1)))))
+      (return false)))
+  (fn u16_at
+    (params (bytes read) (offset usize))
+    (returns u16) (effects)
+    (body
+      (require (le offset (len bytes)))
+      (require (le (usize 2) (sub (len bytes) offset)))
+      (var value u16 (u16 0))
+      (var index usize (usize 0))
+      (while (lt index (usize 2))
+        (body
+          (set value (bit-or value
+            (shl (as u16 (at bytes (add offset index))) (mul index (usize 8)))))
+          (set index (add index (usize 1)))))
+      (return value)))
+  (fn u32_at
+    (params (bytes read) (offset usize))
+    (returns u32) (effects)
+    (body
+      (require (le offset (len bytes)))
+      (require (le (usize 4) (sub (len bytes) offset)))
+      (var value u32 (u32 0))
+      (var index usize (usize 0))
+      (while (lt index (usize 4))
+        (body
+          (set value (bit-or value
+            (shl (as u32 (at bytes (add offset index))) (mul index (usize 8)))))
+          (set index (add index (usize 1)))))
+      (return value)))
+  (fn u64_at
+    (params (bytes read) (offset usize))
+    (returns u64) (effects)
+    (body
+      (require (le offset (len bytes)))
+      (require (le (usize 8) (sub (len bytes) offset)))
+      (var value u64 (u64 0))
+      (var index usize (usize 0))
+      (while (lt index (usize 8))
+        (body
+          (set value (bit-or value
+            (shl (as u64 (at bytes (add offset index))) (mul index (usize 8)))))
+          (set index (add index (usize 1)))))
+      (return value)))
+)

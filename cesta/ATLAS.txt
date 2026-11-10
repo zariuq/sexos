@@ -3,8 +3,9 @@ SHELL SCENES, ATLAS AND LOCAL LAYOUT SNAPSHOTS
 The Atlas archive implements the forty-four scene, overview, navigation,
 reparenting and snapshot entries selected from the current Rust source. Eight
 internal helpers share rectangle drawing, confirmation, integer wrapping and
-diagnostic-budget operations. The whole shell still runs as Rust until its
-remaining units and current interfaces are joined.
+diagnostic-budget operations. This archive is linked into the Cesta shell;
+tests/silk_shell_boot.py qualifies the joined executable separately from the
+component comparisons described here.
 
 ShellAtlasContext borrows three state records: Atlas, Chrome and Models.
 Checked functions pass these references through typed calls. Small labels are

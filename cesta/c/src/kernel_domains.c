@@ -11,6 +11,7 @@ _Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain ch
 _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
 #endif
 #include "sexos_kernel.h"
+#include "program_image.h"
 #if !defined(SEXOS_NVME_INTERRUPT_MODE)
 #define SEXOS_NVME_INTERRUPT_MODE 0
 
@@ -1324,139 +1325,132 @@ static bool program_header(const uint8_t *image, uint64_t size, const ElfHeader 
   memcpy(out, image + at, sizeof(ProgramHeader));
   return true;
 }
-/*WRPKRU is 0F 01 EF. Found at any byte offset of executable code, it would let the domain open every protection key; the reference loads such code.*/
-static bool has_key_write(const uint8_t *bytes, uint64_t length) {
-  for (uint64_t i = 0; i + 2 < length; ++i) if (bytes[i] == 0x0F && (bytes[i + 1] == 0x01 && bytes[i + 2] == 0xEF)) return true;
-  return false;
-}
 /*The frame mapped at a user address, for writing the image through the higher-half map.*/
 static uint8_t *frame_byte(uint64_t va) {
   uint64_t pte = 0;
   if (!read_pte(va, &pte)) return NULL;
   return (uint8_t *) phys_to_virt(pte & PTE_ADDRESS) + (va & 0xFFF);
 }
-/*Load a static PIE at code_base, as elf.rs::load_elf_for_pd: every PT_LOAD at code_base plus its offset from the lowest one, then the R_X86_64_RELATIVE relocations of PT_DYNAMIC. Pages get their final permissions when mapped, and the image is written through the kernel's own map, so no user page is ever writable and executable at once. Refused: segments both writable and executable, executable bytes containing WRPKRU. Returns the entry point, or 0.*/
-static uint64_t elf_load(Domain *d, const uint8_t *image, uint64_t size) {
-  ElfHeader h;
-  if (size < sizeof(ElfHeader)) return 0;
-  memcpy(&h, image, sizeof(ElfHeader));
-  if (h.ident[0] != 0x7F || (h.ident[1] != 0x45 || (h.ident[2] != 0x4C || h.ident[3] != 0x46))) {
-    klog("ELF: Invalid magic number\n");
-    return 0;
-  }
-  uint64_t min_vaddr = UINT64_MAX;
-  for (uint64_t i = 0; i < h.phnum; ++i) {
-    ProgramHeader ph;
-    if (!program_header(image, size, &h, i, &ph)) return 0;
-    if (ph.type != PT_LOAD) continue;
-    if ((ph.flags & PF_W) != 0 && (ph.flags & PF_X) != 0) {
-      klog("[kernel.elf.refused] reason=writable_executable_segment idx=%llu\n", (unsigned long long) i);
-      return 0;
+/* Admission is read-only. Page allocation, mapping, payload copies and
+   private-manifest capture start only after the complete plan is accepted.
+   The source module remains immutable throughout serialized BOOT loading. */
+static bool image_pages_vacant(uint64_t start, uint64_t length)
+{
+    if (!length || start > UINT64_MAX - (length - 1)) return false;
+    uint64_t first = start & ~UINT64_C(4095);
+    uint64_t last = (start + length - 1) & ~UINT64_C(4095);
+    for (uint64_t page = first;; page += KERNEL_PAGE_SIZE) {
+        uint64_t pte = 0;
+        if (read_pte(page, &pte)) return false;
+        if (page == last) return true;
     }
-    if (ph.offset > size || ph.filesz > size - ph.offset) return 0;
-    if ((ph.flags & PF_X) != 0 && has_key_write(image + ph.offset, ph.filesz)) {
-      klog("[kernel.elf.refused] reason=key_register_write idx=%llu\n", (unsigned long long) i);
-      return 0;
-    }
-    if (ph.memsz > 0 && ph.vaddr < min_vaddr) min_vaddr = ph.vaddr;
-  }
-  if (min_vaddr == UINT64_MAX) return 0;
-  uint64_t base = d->code_base;
-  for (uint64_t i = 0; i < h.phnum; ++i) {
-    ProgramHeader ph;
-    if (!program_header(image, size, &h, i, &ph)) return 0;
-    if (ph.type != PT_LOAD) continue;
-    uint64_t va = base + (ph.vaddr - min_vaddr);
-    klog("ELF: Loading segment: vaddr=%#llx, memsz=%#llx (Key: %u)\n", (unsigned long long) va, (unsigned long long) ph.memsz, d->key);
-    uint64_t flags = PTE_USER | ((ph.flags & PF_W) != 0 ? PTE_WRITABLE : 0);
-    if ((ph.flags & PF_X) == 0) flags |= PTE_NO_EXECUTE;
-    uint64_t end = va + ph.memsz;
-    for (uint64_t page = va & ~(uint64_t) 0xFFF; page < end; page += KERNEL_PAGE_SIZE) {
-      uint64_t pte = 0;
-      if (read_pte(page, &pte)) {
-/*A page shared with the previous segment keeps its frame; both permissions must agree with W^X.*/
-        bool exec = (pte & PTE_NO_EXECUTE) == 0 || (flags & PTE_NO_EXECUTE) == 0;
-        bool write = (pte & PTE_WRITABLE) != 0 || (flags & PTE_WRITABLE) != 0;
-        if (exec && write) {
-          klog("[kernel.elf.refused] reason=shared_page_writable_executable\n");
-          return 0;
-        }
-        continue;
-      }
-      uint64_t frame = frames_alloc(0);
-      if (frame == NO_ADDRESS || !map_page(page, frame, flags, d->key)) return 0;
-    }
-    uint64_t done = 0;
-    while (done < ph.filesz) {
-      uint64_t at = va + done;
-      uint64_t chunk = KERNEL_PAGE_SIZE - (at & 0xFFF);
-      if (chunk > ph.filesz - done) chunk = ph.filesz - done;
-      memcpy(frame_byte(at), image + (ph.offset + done), chunk);
-      done += chunk;
-    }
-    if (SEXOS_KERNEL_CURRENT_PDX && !kernel_app_capture_range(d, va, ph.memsz)) return 0;
-  }
-/*Relocations: the RELA table is found through the PT_LOAD segment whose file bytes cover DT_RELA.*/
-  for (uint64_t i = 0; i < h.phnum; ++i) {
-    ProgramHeader ph;
-    if (!program_header(image, size, &h, i, &ph)) return 0;
-    if (ph.type != PT_DYNAMIC) continue;
-    uint64_t rela = 0;
-    uint64_t rela_size = 0;
-    uint64_t rela_entry = 24;
-    uint64_t rela_count = 0;
-    for (uint64_t j = 0; j < ph.memsz / 16 && ph.offset + (j + 1) * 16 <= size; ++j) {
-      uint64_t dyn[2];
-      memcpy(dyn, image + (ph.offset + j * 16), 16);
-      if (dyn[0] == 0) break;
-      if (dyn[0] == 7) rela = dyn[1];
-      if (dyn[0] == 8) rela_size = dyn[1];
-      if (dyn[0] == 9) rela_entry = dyn[1];
-      if (dyn[0] == 0x6ffffff9) rela_count = dyn[1];
-    }
-    if (rela_count == 0 || (rela_size == 0 || rela_entry < sizeof(RelaEntry))) break;
-    uint64_t rela_file = 0;
-    for (uint64_t k = 0; k < h.phnum; ++k) {
-      ProgramHeader seg;
-      if (!program_header(image, size, &h, k, &seg)) return 0;
-      if (seg.type == PT_LOAD && (rela >= seg.vaddr && rela < seg.vaddr + seg.filesz)) {
-        rela_file = seg.offset + (rela - seg.vaddr);
-        break;
-      }
-    }
-    if (rela_file == 0 || rela_file + rela_count * rela_entry > size) {
-      klog("ELF: R_X86_64_RELATIVE table not in LOAD segment, skipping\n");
-      break;
-    }
-    uint64_t applied = 0;
-    for (uint64_t k = 0; k < rela_count; ++k) {
-      RelaEntry r;
-      memcpy(&r, image + (rela_file + k * rela_entry), sizeof(RelaEntry));
-      if ((r.info & 0xFFFFFFFFu) != 8) continue;
-      uint64_t target = base + (r.offset - min_vaddr);
-      uint8_t *slot = frame_byte(target);
-      if (slot == NULL || (target & 0xFFF) > KERNEL_PAGE_SIZE - 8) return 0;
-      uint64_t value = base + (uint64_t) r.addend;
-      memcpy(slot, &value, 8);
-      applied += 1;
-    }
-    klog("ELF: applied %llu R_X86_64_RELATIVE relocations\n", (unsigned long long) applied);
-    break;
-  }
-/*The stack: 64 KiB below the stack top, writable and not executable.*/
-  for (uint64_t page = d->stack_top - USER_STACK_SIZE; page < d->stack_top; page += KERNEL_PAGE_SIZE) {
-    uint64_t frame = frames_alloc(0);
-    if (frame == NO_ADDRESS || !map_page(page, frame, PTE_USER | (PTE_WRITABLE | PTE_NO_EXECUTE), d->key)) return 0;
-  }
-  if (SEXOS_KERNEL_CURRENT_PDX && !kernel_app_capture_range(d, d->stack_top - USER_STACK_SIZE, USER_STACK_SIZE)) return 0;
-  uint64_t entry = base + (h.entry - min_vaddr);
-  uint64_t pte = 0;
-  if (!read_pte(entry, &pte) || ((pte & PTE_USER) == 0 || (pte & PTE_NO_EXECUTE) != 0)) {
-    klog("loader: entrypoint mapping not user-executable\n");
-    return 0;
-  }
-  return entry;
 }
+
+static bool image_load_preflight(const Domain *d, const ProgramImage *plan)
+{
+    const uint64_t user_top = UINT64_C(1) << 47;
+    uint64_t base = d->code_base;
+    if (!d->key || d->key >= 16 || base % KERNEL_PAGE_SIZE ||
+        base > user_top - DOMAIN_STRIDE || d->stack_top > user_top ||
+        d->stack_top < USER_STACK_SIZE || d->stack_top % KERNEL_PAGE_SIZE ||
+        plan->error || !plan->count || plan->count > PROGRAM_IMAGE_SEGMENTS ||
+        plan->window != DOMAIN_STRIDE || plan->stack > USER_STACK_SIZE)
+        return false;
+    uint64_t stack_start = d->stack_top - USER_STACK_SIZE;
+    if (base < d->stack_top && stack_start < base + DOMAIN_STRIDE) return false;
+    if (!program_image_kernel_allowed(plan)) return false;
+    uint64_t pages = USER_STACK_SIZE / KERNEL_PAGE_SIZE;
+    for (size_t i = 0; i < plan->count; ++i) {
+        ProgramSegment s = plan->segments[i];
+        uint64_t first = s.window & ~UINT64_C(4095);
+        uint64_t last = (s.window + s.memory - 1) & ~UINT64_C(4095);
+        pages += (last - first) / KERNEL_PAGE_SIZE + 1;
+        if (!image_pages_vacant(base + s.window, s.memory)) return false;
+    }
+    if (!image_pages_vacant(stack_start, USER_STACK_SIZE)) return false;
+    for (uint64_t i = 0; i < plan->rela_count; ++i)
+        if (!program_image_relocation(plan, i, base).valid) return false;
+    if (SEXOS_KERNEL_CURRENT_PDX) {
+        KernelAppPrivate *app = kernel_app_get(d->id);
+        if (app && (kernel.genesis_sealed || app->captured || app->image.count ||
+                    pages > APP_PRIVATE_MAX_PAGES)) return false;
+    }
+    return true;
+}
+
+/* A mapped target can cross a page boundary whose physical frames are not
+   adjacent. Use the same bounded chunks for file bytes and relocation words. */
+static bool image_write(uint64_t address, const uint8_t *source, uint64_t count)
+{
+    while (count) {
+        uint64_t chunk = KERNEL_PAGE_SIZE - (address & UINT64_C(4095));
+        if (chunk > count) chunk = count;
+        uint8_t *target = frame_byte(address);
+        if (!target) return false;
+        memcpy(target, source, (size_t)chunk);
+        address += chunk;
+        source += chunk;
+        count -= chunk;
+    }
+    return true;
+}
+
+static uint64_t elf_load(Domain *d, const uint8_t *image, uint64_t size)
+{
+    if (!image || size > (uint64_t)PTRDIFF_MAX) return 0;
+    ProgramImage plan = program_image_parse((cesta_read_bytes){image, (size_t)size}, DOMAIN_STRIDE);
+    if (plan.error) {
+        klog("[kernel.elf.refused] reason=image_metadata code=%u\n", plan.error);
+        return 0;
+    }
+    /* BOOT keeps the complete program-header table requirement of the
+       existing loader, including entries whose kind is otherwise ignored. */
+    ElfHeader header;
+    memcpy(&header, image, sizeof header);
+    for (uint64_t i = 0; i < header.phnum; ++i) {
+        ProgramHeader ph;
+        if (!program_header(image, size, &header, i, &ph)) return 0;
+    }
+    if (!image_load_preflight(d, &plan)) {
+        klog("[kernel.elf.refused] reason=load_plan\n");
+        return 0;
+    }
+    uint64_t base = d->code_base;
+    for (size_t i = 0; i < plan.count; ++i) {
+        ProgramSegment s = plan.segments[i];
+        uint64_t address = base + s.window;
+        uint64_t flags = PTE_USER | (s.writable ? PTE_WRITABLE : 0) |
+                         (s.executable ? 0 : PTE_NO_EXECUTE);
+        uint64_t last = (address + s.memory - 1) & ~UINT64_C(4095);
+        klog("ELF: Loading segment: vaddr=%#llx, memsz=%#llx (Key: %u)\n",
+             (unsigned long long)address, (unsigned long long)s.memory, d->key);
+        for (uint64_t page = address & ~UINT64_C(4095);; page += KERNEL_PAGE_SIZE) {
+            uint64_t frame = frames_alloc(0);
+            if (frame == NO_ADDRESS || !map_page(page, frame, flags, d->key)) return 0;
+            if (page == last) break;
+        }
+        if (!image_write(address, image + s.offset, s.file)) return 0;
+        if (SEXOS_KERNEL_CURRENT_PDX && !kernel_app_capture_range(d, address, s.memory)) return 0;
+    }
+    for (uint64_t i = 0; i < plan.rela_count; ++i) {
+        ProgramRelocation relocation = program_image_relocation(&plan, i, base);
+        if (!relocation.valid ||
+            !image_write(base + relocation.offset, (const uint8_t *)&relocation.value, 8)) return 0;
+    }
+    klog("ELF: applied %llu R_X86_64_RELATIVE relocations\n", (unsigned long long)plan.rela_count);
+    /* Fixed BOOT stack policy: requests beyond this capacity were refused
+       before effects. Runtime program/worker stacks have a separate policy. */
+    for (uint64_t page = d->stack_top - USER_STACK_SIZE; page < d->stack_top; page += KERNEL_PAGE_SIZE) {
+        uint64_t frame = frames_alloc(0);
+        if (frame == NO_ADDRESS || !map_page(page, frame, PTE_USER | PTE_WRITABLE | PTE_NO_EXECUTE, d->key)) return 0;
+    }
+    if (SEXOS_KERNEL_CURRENT_PDX &&
+        !kernel_app_capture_range(d, d->stack_top - USER_STACK_SIZE, USER_STACK_SIZE)) return 0;
+    uint64_t entry = base + plan.entry, pte = 0;
+    if (!read_pte(entry, &pte) || !(pte & PTE_USER) || (pte & PTE_NO_EXECUTE)) return 0;
+    return entry;
+}
+
 /*Create a domain from a module: the next domain id, the image at the key's code region, the stack at the key's stack region, the domain's own ring at slot 2, and a first trap frame that enters the image in user mode.*/
 uint32_t domain_spawn_at(uint32_t id, uint8_t layout, uint8_t key, const char *name, const LimineFile *module) {
   if (next_task_id == 0) return 0;

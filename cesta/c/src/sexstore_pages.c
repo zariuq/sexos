@@ -259,7 +259,8 @@ uint32_t sexstore_pages_crc32c_update(uint32_t crc, cesta_read_bytes bytes)
 {
     (void)crc;
     (void)bytes;
-    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX)
+    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (bytes.len && (uintptr_t)bytes.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     uint32_t state = crc;
     (void)state;
@@ -283,7 +284,8 @@ uint32_t sexstore_pages_crc32c_update(uint32_t crc, cesta_read_bytes bytes)
 uint32_t sexstore_pages_crc32c(cesta_read_bytes bytes)
 {
     (void)bytes;
-    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX)
+    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (bytes.len && (uintptr_t)bytes.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     const uint32_t state = sexstore_pages_crc32c_update(((uint32_t)UINT64_C(4294967295)), (cesta_read_bytes){bytes.data, bytes.len});
     (void)state;
@@ -295,7 +297,8 @@ uint16_t sexstore_pages_crc16_ibm_update(uint16_t crc, cesta_read_bytes bytes)
 {
     (void)crc;
     (void)bytes;
-    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX)
+    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (bytes.len && (uintptr_t)bytes.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     uint16_t state = crc;
     (void)state;
@@ -319,7 +322,8 @@ uint16_t sexstore_pages_crc16_ibm_update(uint16_t crc, cesta_read_bytes bytes)
 uint16_t sexstore_pages_crc16_ibm(cesta_read_bytes bytes)
 {
     (void)bytes;
-    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX)
+    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (bytes.len && (uintptr_t)bytes.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     const uint16_t state = sexstore_pages_crc16_ibm_update(((uint16_t)UINT64_C(0)), (cesta_read_bytes){bytes.data, bytes.len});
     (void)state;
@@ -330,7 +334,8 @@ uint16_t sexstore_pages_crc16_ibm(cesta_read_bytes bytes)
 uint64_t sexstore_pages_load_le(cesta_read_bytes bytes, size_t offset, size_t width)
 {
     (void)bytes;
-    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX)
+    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (bytes.len && (uintptr_t)bytes.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     (void)offset;
     (void)width;
@@ -354,7 +359,8 @@ uint64_t sexstore_pages_load_le(cesta_read_bytes bytes, size_t offset, size_t wi
 void sexstore_pages_store_le(cesta_write_bytes bytes, size_t offset, size_t width, uint64_t value)
 {
     (void)bytes;
-    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX)
+    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (bytes.len && (uintptr_t)bytes.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     (void)offset;
     (void)width;
@@ -384,7 +390,8 @@ size_t sexstore_pages_record_offset(size_t index)
 bool sexstore_pages_page_valid(cesta_read_bytes page)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     if (!((page.len) == (((size_t)UINT64_C(512))))) cesta_sexstore_pages_fail();
     const uint64_t page_id = sexstore_pages_load_le((cesta_read_bytes){page.data, page.len}, ((size_t)UINT64_C(0)), ((size_t)UINT64_C(4)));
@@ -426,7 +433,8 @@ bool sexstore_pages_page_valid(cesta_read_bytes page)
 uint32_t sexstore_pages_page_seq(cesta_read_bytes page)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     const bool valid = sexstore_pages_page_valid((cesta_read_bytes){page.data, page.len});
     (void)valid;
@@ -444,7 +452,8 @@ uint32_t sexstore_pages_page_seq(cesta_read_bytes page)
 void sexstore_pages_page_begin(cesta_write_bytes page, uint32_t seq)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     (void)seq;
     if (!((page.len) == (((size_t)UINT64_C(512))))) cesta_sexstore_pages_fail();
@@ -456,7 +465,8 @@ void sexstore_pages_page_begin(cesta_write_bytes page, uint32_t seq)
 void sexstore_pages_page_put_record(cesta_write_bytes page, size_t index, uint8_t state, uint8_t generation, uint32_t key, uint64_t value)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     (void)index;
     (void)state;
@@ -502,7 +512,8 @@ void sexstore_pages_page_put_record(cesta_write_bytes page, size_t index, uint8_
 void sexstore_pages_page_seal(cesta_write_bytes page)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     if (!((page.len) == (((size_t)UINT64_C(512))))) cesta_sexstore_pages_fail();
     sexstore_pages_store_le((cesta_write_bytes){page.data, page.len}, ((size_t)UINT64_C(8)), ((size_t)UINT64_C(4)), ((uint64_t)UINT64_C(0)));
@@ -517,7 +528,8 @@ void sexstore_pages_page_seal(cesta_write_bytes page)
 bool sexstore_pages_record_valid(cesta_read_bytes page, size_t index)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     (void)index;
     if (!((page.len) == (((size_t)UINT64_C(512))))) cesta_sexstore_pages_fail();
@@ -579,7 +591,8 @@ bool sexstore_pages_record_valid(cesta_read_bytes page, size_t index)
 uint8_t sexstore_pages_record_state(cesta_read_bytes page, size_t index)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     (void)index;
     const size_t offset = sexstore_pages_record_offset(index);
@@ -591,7 +604,8 @@ uint8_t sexstore_pages_record_state(cesta_read_bytes page, size_t index)
 uint8_t sexstore_pages_record_generation(cesta_read_bytes page, size_t index)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     (void)index;
     const size_t offset = sexstore_pages_record_offset(index);
@@ -603,7 +617,8 @@ uint8_t sexstore_pages_record_generation(cesta_read_bytes page, size_t index)
 uint32_t sexstore_pages_record_key(cesta_read_bytes page, size_t index)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     (void)index;
     const size_t offset = sexstore_pages_record_offset(index);
@@ -617,7 +632,8 @@ uint32_t sexstore_pages_record_key(cesta_read_bytes page, size_t index)
 uint64_t sexstore_pages_record_value(cesta_read_bytes page, size_t index)
 {
     (void)page;
-    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX)
+    if ((page.len && !page.data) || page.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (page.len && (uintptr_t)page.data % _Alignof(uint8_t)))
         cesta_sexstore_pages_fail();
     (void)index;
     const size_t offset = sexstore_pages_record_offset(index);

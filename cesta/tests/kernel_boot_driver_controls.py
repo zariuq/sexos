@@ -16,10 +16,13 @@ def main():
 import json
 from pathlib import Path
 import sys
+import os
+import time
 args = sys.argv[1:]
 serial = Path(args[args.index('-serial') + 1].removeprefix('file:'))
 serial.with_suffix('.args.json').write_text(json.dumps(args))
 serial.write_text('[test.ready]\\n')
+time.sleep(float(os.environ.get('TEST_BOOT_HOLD', '0')))
 ''')
     fake.chmod(0o755)
     log = work / "serial.log"
@@ -41,7 +44,15 @@ serial.write_text('[test.ready]\\n')
                "--network-gateway", "invalid,gateway"]
     assert subprocess.run(list(map(str, invalid)), env=env, capture_output=True).returncode == 2
     assert not (work / "invalid.log").exists()
-    print("kernel boot driver: explicit CPU, snapshot NVMe, restricted network, USB keyboard and preserved logs")
+    for name, seconds, post, hold, expected in (
+        ('early-exit', 4, 1, 0, 3), ('short-interval', 1, 3, 4, 3),
+        ('complete-interval', 4, 1, 4, 0)):
+        probe = [HERE/'oracle/run.sh', work/'image.iso', work/(name+'.log'), str(seconds),
+                 '--until', '[test.ready]', '--post-ready', str(post)]
+        result = subprocess.run(list(map(str, probe)), env={**env, 'TEST_BOOT_HOLD': str(hold)},
+                                capture_output=True)
+        assert result.returncode == expected, (name, result.returncode, result.stderr)
+    print("kernel boot driver: CPU/devices, preserved logs, early-exit and incomplete-soak refusals")
 
 
 if __name__ == "__main__":
