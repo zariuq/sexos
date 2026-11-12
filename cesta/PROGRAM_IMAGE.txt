@@ -53,11 +53,14 @@ relocation can cross two nonadjacent physical frames. Relocation values use
 base + (addend - image bias), including nonzero image bias.
 
 The source module must remain immutable through this serialized BOOT sequence.
-Application processors remain parked. Allocation or mapping failure after
-admission may leave partial resources; this change does not add rollback for
-resource exhaustion. The loader's native page-table/physical-memory operations
-remain explicit obligations. Recognizing a forbidden byte sequence is not a
-proof of isolation against arbitrary hostile x86 programs.
+Application processors remain parked. Post-admission allocation, mapping, write,
+capture and batch-commit failures roll back every unpublished mapping and
+transient lease in reverse order. A fully preflighted batch commit then pins the
+image. Page-table allocations and any explicitly quarantined native inconsistency
+remain separate resource obligations; published IPC or hardware effects are not
+rolled back. The loader's native page-table/physical-memory operations remain
+explicit obligations. Recognizing a forbidden byte sequence is not a proof of
+isolation against arbitrary hostile x86 programs.
 
 Qualification
 -------------
@@ -73,9 +76,11 @@ requires --cesta-source and --lean-root and admits the emitted permission plan.
 
 The second executes the actual loader, allocator, page tables and private
 capture on a RAM provider. Padding allocations force nonadjacent physical
-pages. Rejected images must preserve RAM, allocation state, mapping counters,
-domain state and the manifest. Separate controls cover successful loading and
-resource failure. These host controls do not execute user instructions.
+pages. Rejected images must preserve RAM, allocation state, mappings, bindings,
+domain state and the manifest. Another 45 injected post-admission failures cover
+every take, map, write and capture plus the atomic commit; rollback leaves no
+transient lease, binding, manifest or image/stack mapping. These host controls
+do not execute user instructions.
 
 Optional machine proof
 ----------------------

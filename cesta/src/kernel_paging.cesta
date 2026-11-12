@@ -105,7 +105,7 @@ static PgFaultResult native_fault_query(PgMapping m, uint32_t pager, uint64_t to
         return (PgFaultResult){.status = PG_DENIED};
     PgFaultResult r = claim ? pager_fault_claim(&target->fault, pager, token)
                             : pager_fault_query(&target->fault, pager, token);
-    if (!r.status && (r.record.target_pd != target->id || r.record.task_id != target->task_id))
+    if (!r.status && !kernel_worker_fault_matches(target, &r.record))
         kernel_halt(\"fault task identity\");
     return r;
 }
@@ -118,17 +118,19 @@ static uint64_t native_fault_complete(PgBinding b) {
     if (r.status)
         return PG_RETRY;
     if (r.present) {
-        if (r.record.target_pd != target->id || r.record.task_id != target->task_id ||
-            r.record.saved_frame != (uint64_t)(uintptr_t)target->frame ||
-            r.record.saved_rip != target->frame->rip)
+        if (!kernel_worker_fault_matches(target, &r.record))
             kernel_halt(\"committed fault task or frame identity\");
         bool resume = target->task_state == TASK_WAIT_FAULT;
         if (resume) {
-            target->task_state = TASK_READY;
-            run_push(target->id);
+            if (r.record.task_id == target->task_id) {
+                target->task_state = TASK_READY;
+                run_push(target->id);
+            } else if (!kernel_worker_fault_complete(target, &r.record)) {
+                kernel_halt(\"worker fault completion custody\");
+            }
         }
         klog(\"[paging.fault.completed] target=%u task=%u token=%llu resume=%u saved_rip=%#llx\\n\",
-             target->id, target->task_id, (unsigned long long)b.token, (unsigned)resume,
+             target->id, r.record.task_id, (unsigned long long)b.token, (unsigned)resume,
              (unsigned long long)r.record.saved_rip);
     }
     if (pager_ledger_finalize(&kernel.paging.ledger, b))
@@ -164,7 +166,7 @@ static bool kernel_page_install_current(const KernelPageInstallContext *c) {
         !mapping_equal(c->state->mappings[c->binding.range_id - 1], c->mapping) ||
         c->mapping.target_pd != c->target->id || c->target->key != c->key || !c->key ||
         c->key >= 16 || c->target->task_state != TASK_WAIT_FAULT || c->target->queued ||
-        kernel.run_count >= KERNEL_RUN_QUEUE_CAPACITY ||
+        kernel.run_queue.count >= KERNEL_RUN_QUEUE_CAPACITY ||
         memcmp(&c->state->ledger, &c->before_ledger, sizeof c->before_ledger) ||
         memcmp(&c->target->fault, &c->before_fault, sizeof c->before_fault) ||
         !kernel_epoch_current(c->epoch))
@@ -174,9 +176,7 @@ static bool kernel_page_install_current(const KernelPageInstallContext *c) {
             return false;
     return c->before_fault.phase == PG_CLAIMED && c->record.token == c->binding.token &&
            c->record.target_pd == c->target->id && c->record.pager_pd == c->binding.pager_pd &&
-           c->record.task_id == c->target->task_id &&
-           c->record.saved_frame == (uint64_t)(uintptr_t)c->target->frame &&
-           c->record.saved_rip == c->target->frame->rip && c->record.page_addr == c->address &&
+           kernel_worker_fault_matches(c->target, &c->record) && c->record.page_addr == c->address &&
            c->address == c->mapping.base_va + c->binding.page_index * 4096u &&
            c->leaf == &c->state->leaves[c->binding.range_id - 1][c->binding.page_index] &&
            *(volatile uint64_t *)(uintptr_t)*c->leaf == 0 &&
@@ -255,10 +255,14 @@ static bool kernel_page_install_commit(KernelPageInstallContext *c) {
     *(volatile uint64_t *)(uintptr_t)*c->leaf = c->expected;
     c->state->ledger = c->after_ledger;
     c->target->fault = c->after_fault;
-    c->target->task_state = TASK_READY;
-    run_push(c->target->id);
+    if (c->record.task_id == c->target->task_id) {
+        c->target->task_state = TASK_READY;
+        run_push(c->target->id);
+    } else if (!kernel_worker_fault_complete(c->target, &c->record)) {
+        kernel_halt(\"worker fault completion custody\");
+    }
     klog(\"[paging.fault.completed] target=%u task=%u token=%llu resume=1 saved_rip=%#llx\\n\",
-         c->target->id, c->target->task_id, (unsigned long long)c->binding.token,
+         c->target->id, c->record.task_id, (unsigned long long)c->binding.token,
          (unsigned long long)c->record.saved_rip);
     cpu_invlpg(c->address);
     kernel_epoch_record_page_key(c->epoch, KERNEL_EPOCH_PAGE_INSTALL, c->target->id, c->address,
@@ -497,6 +501,7 @@ static bool kernel_page_cleanup_current(const KernelPageCleanupContext *c) {
         c->mapping.range_id > PG_CLIENTS ||
         !mapping_equal(c->state->mappings[c->mapping.range_id - 1], c->mapping) ||
         c->pager != c->state->pager || c->target->task_state != TASK_EXITED || c->target->queued ||
+        !kernel_worker_all_dead(c->target->id) ||
         kernel.current == c->target->id || c->target->key != c->key || !c->key || c->key >= 16 ||
         memcmp(&c->state->ledger, &c->before_ledger, sizeof c->before_ledger) ||
         memcmp(&c->target->fault, &c->before_fault, sizeof c->before_fault) ||
@@ -568,8 +573,8 @@ static bool kernel_page_cleanup_snapshot(KernelPageCleanupContext *c) {
     c->after_ledger = c->before_ledger;
     c->before_fault = c->target->fault;
     c->after_fault = c->before_fault;
-    if (pager_ledger_cleanup_plan(&c->before_ledger, c->mapping.range_id, c->target->id, c->pager,
-                                  c->target->task_id, &c->plan))
+    if (pager_ledger_cleanup_run(&c->before_ledger, c->mapping.range_id, c->target->id, c->pager,
+                                 &c->plan))
         return false;
     c->bitmap = 0;
     for (size_t frame = 0; frame < PG_PAGES; ++frame)
@@ -582,9 +587,9 @@ static bool kernel_page_cleanup_snapshot(KernelPageCleanupContext *c) {
 static bool kernel_page_cleanup_transform(KernelPageCleanupContext *c) {
     if (!kernel_page_cleanup_current(c))
         return false;
-    if (pager_fault_retire(&c->after_fault, c->target->id, c->pager, c->target->task_id) ||
-        pager_ledger_close(&c->after_ledger, c->mapping.range_id, c->target->id, c->pager,
-                           c->target->task_id))
+    if (pager_fault_retire_run(&c->after_fault, c->target->id, c->pager) ||
+        pager_ledger_close_run(&c->after_ledger, c->mapping.range_id, c->target->id, c->pager,
+                               c->target->task_id))
         return false;
     c->transformed = true;
     return kernel_page_cleanup_after_valid(c);
@@ -727,8 +732,11 @@ void kernel_paging_syscall(Domain *d, TrapFrame *f, uint64_t number) {
             PgFaultResult r = pager_fault_reject(&target->fault, d->id, second);
             f->rax = r.status;
             if (!r.status) {
-                if (r.record.target_pd != target->id || r.record.task_id != target->task_id)
+                if (!kernel_worker_fault_matches(target, &r.record))
                     kernel_halt(\"rejected fault task identity\");
+                if (r.record.task_id != target->task_id &&
+                    !kernel_worker_fault_reject(target, &r.record))
+                    kernel_halt(\"rejected worker fault custody\");
                 target->task_state = TASK_EXITED;
             }
         }
@@ -736,8 +744,10 @@ void kernel_paging_syscall(Domain *d, TrapFrame *f, uint64_t number) {
 }
 
 bool kernel_pager_forward(Domain *d, TrapFrame *f, uint64_t address) {
-    if (!kernel.paging.initialized || kernel.current != d->id || d->task_state != TASK_RUNNING ||
-        !d->task_id || !pager_fault_eligible(address, f->error, f->cs))
+    if (!kernel.paging.initialized || kernel.current != d->id || !d->task_id ||
+        !pager_fault_eligible(address, f->error, f->cs) ||
+        (!kernel_current_worker && d->task_state != TASK_RUNNING) ||
+        (kernel_current_worker && !kernel_current_task(d)))
         return false;
     const Cap *held = cap_get(d, 2);
     if (!held || held->kind != CAP_DOMAIN || held->target == d->id)
@@ -745,11 +755,14 @@ bool kernel_pager_forward(Domain *d, TrapFrame *f, uint64_t address) {
     Domain *pager = domain_get(held->target);
     if (!pager)
         return false;
+    uint32_t task = kernel_current_task(d);
+    if (!task)
+        return false;
     uint64_t token = 0;
     if (pager_token_issue(&kernel.paging.last_token, &token))
         return false;
     PgFaultRecord r = {token,      d->id,   pager->id,
-                       d->task_id, address, address & ~UINT64_C(4095),
+                       task,       address, address & ~UINT64_C(4095),
                        f->error,   f->rip,  (uint64_t)(uintptr_t)f};
     if (pager_fault_prepare(&d->fault, r))
         return false;
@@ -765,7 +778,7 @@ bool kernel_pager_forward(Domain *d, TrapFrame *f, uint64_t address) {
                         .arg1 = f->error,
                         .arg2 = token,
                         .sender = d->id,
-                        .caller_task = d->task_id,
+                        .caller_task = task,
                         .from_call = true};
     if (!domain_enqueue(pager, notice)) {
         --pager->reply_rights[d->id];
@@ -775,10 +788,11 @@ bool kernel_pager_forward(Domain *d, TrapFrame *f, uint64_t address) {
     }
     if (pager_fault_publish(&d->fault, token))
         kernel_halt(\"fault publication identity\");
-    d->frame = f;
+    if (!kernel_worker_fault_begin(d))
+        d->frame = f;
     d->task_state = TASK_WAIT_FAULT;
     klog(\"[paging.fault.pending] target=%u task=%u token=%llu page=%#llx rip=%#llx\\n\", d->id,
-         d->task_id, (unsigned long long)token, (unsigned long long)r.page_addr,
+         task, (unsigned long long)token, (unsigned long long)r.page_addr,
          (unsigned long long)r.saved_rip);
     return true;
 }

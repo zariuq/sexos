@@ -36,8 +36,12 @@ int main(void)
     assert(va_alloc(0) == NO_ADDRESS);
     uint64_t first = va_alloc(1);
     assert(first != NO_ADDRESS && va_alloc(UINT64_MAX) == NO_ADDRESS && va_alloc(0) == NO_ADDRESS);
-    assert(va_alloc(0x700000000000ULL - (first + 4096) + 1) == NO_ADDRESS);
+    const uint64_t shared_end = UINT64_C(0x444444440000);
+    assert(va_alloc(shared_end - (first + 4096) + 1) == NO_ADDRESS);
     assert(va_alloc(4097) == first + 4096 && va_alloc(1) == first + 3 * 4096);
+    uint64_t current = first + 4 * 4096;
+    assert(va_alloc(shared_end - current) == current);
+    assert(va_alloc(1) == NO_ADDRESS && va_alloc(4096) == NO_ADDRESS);
     uint64_t va = UINT64_C(0x400000000000), pte = 0;
     uint64_t flags = PTE_USER | PTE_WRITABLE | PTE_NO_EXECUTE;
     assert(map_page(va, frame, flags, 4));
@@ -57,6 +61,15 @@ int main(void)
     assert(!user_range_ok(va + 4095, 2, true, mask));
     assert(map_page(va + 8192, frames_alloc(0), flags, 5));
     assert(!user_range_ok(va + 8192, 1, false, mask));
+
+    uint64_t prepared = UINT64_C(0x600000000000);
+    assert(prepare_page_table(prepared, 10));
+    uint64_t *empty = (uint64_t *)(uintptr_t)page_leaf_address(prepared);
+    assert(empty && !*empty && !read_pte(prepared, &pte));
+    assert(prepare_page_table(prepared, 10));
+    assert(map_page(prepared, frames_alloc(0), flags, 10));
+    assert(!prepare_page_table(prepared, 10));
+    assert(!prepare_page_table(prepared + 4096, 0));
 
     /* Split an executable supervisor 1-GiB mapping. Only one requested 4-KiB
      * page gains user access; it must also become non-executable. */

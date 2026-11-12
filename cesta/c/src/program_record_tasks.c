@@ -1,0 +1,263 @@
+#include "sexos_kernel.h"
+#include "program_record_tasks.h"
+
+void program_record_tasks_init(ProgramRecordTask *tasks, ProgramRecordTaskStorage *storage,
+                               size_t count) {
+    if (!tasks || !storage) return;
+    if (count > PROGRAM_RECORD_CAPACITY) count = PROGRAM_RECORD_CAPACITY;
+    for (size_t i = 0; i < count; ++i) {
+        tasks[i] = (ProgramRecordTask){.pd = PROGRAM_RECORD_BASE + i,
+                                       .owner_core = PROGRAM_RECORD_NO_CORE,
+                                       .phase = PROGRAM_WORKER_CONSTRUCTED};
+        storage[i].frame = (TrapFrame *)(storage[i].stack + PROGRAM_RECORD_KSTACK_BYTES -
+                                         sizeof(TrapFrame));
+        kmemset(storage[i].stack, 0, PROGRAM_RECORD_KSTACK_BYTES);
+        cpu_fpu_state_init(storage[i].fpu);
+    }
+}
+
+bool program_record_task_rearm(ProgramRecordTask *tasks, ProgramRecordTaskStorage *storage,
+                               size_t count, size_t index, uint32_t task,
+                               uint64_t entry, uint64_t stack_top) {
+    if (!tasks || !storage || index >= count || count > PROGRAM_RECORD_CAPACITY ||
+        task < PROGRAM_RECORD_TASK_FIRST || !entry || stack_top < 16)
+        return false;
+    ProgramRecordTask *record = &tasks[index];
+    if (record->pd != PROGRAM_RECORD_BASE + index || record->queued ||
+        (record->phase != PROGRAM_WORKER_CONSTRUCTED && record->phase != PROGRAM_WORKER_DEAD) ||
+        record->owner_core != PROGRAM_RECORD_NO_CORE)
+        return false;
+    ProgramRecordTaskStorage *state = &storage[index];
+    kmemset(state->stack, 0, PROGRAM_RECORD_KSTACK_BYTES);
+    state->frame = (TrapFrame *)(state->stack + PROGRAM_RECORD_KSTACK_BYTES - sizeof(TrapFrame));
+    kmemset(state->frame, 0, sizeof(TrapFrame));
+    cpu_fpu_state_init(state->fpu);
+    record->kstack_top = (uint64_t)(uintptr_t)(state->stack + PROGRAM_RECORD_KSTACK_BYTES);
+    state->frame->rip = entry;
+    state->frame->cs = 0x2b;
+    state->frame->rflags = 0x202;
+    state->frame->rsp = ((stack_top - 8) & ~UINT64_C(0xF)) + 8;
+    state->frame->ss = 0x23;
+    state->frame->rdi = 0;
+    record->id = task;
+    record->owner_core = PROGRAM_RECORD_NO_CORE;
+    record->phase = PROGRAM_WORKER_DETACHED;
+    record->exited = false;
+    record->wait_deadline = 0;
+    record->fs_base = 0;
+    record->queued = false;
+    record->pending = false;
+    record->admission_pending = false;
+    record->blocked = false;
+    return true;
+}
+
+void program_record_queue_init(ProgramRecordQueue *queue) {
+    queue->head = 0;
+    queue->count = 0;
+    queue->handoff = 0;
+    queue->handoff_streak = 0;
+    queue->handoff_armed = false;
+}
+
+static bool program_record_queue_contains(const ProgramRecordQueue *queue, uintptr_t token) {
+    if (!queue || !token) return false;
+    if (queue->handoff == token) return true;
+    for (size_t i = 0; i < queue->count; ++i)
+        if (queue->entries[(queue->head + i) % PROGRAM_RECORD_QUEUE_CAPACITY] == token)
+            return true;
+    return false;
+}
+
+bool program_record_queue_push(ProgramRecordQueue *queue, uintptr_t token) {
+    if (!queue || !token || queue->count == PROGRAM_RECORD_QUEUE_CAPACITY ||
+        program_record_queue_contains(queue, token)) return false;
+    queue->entries[(queue->head + queue->count) % PROGRAM_RECORD_QUEUE_CAPACITY] = token;
+    ++queue->count;
+    return true;
+}
+
+uintptr_t program_record_queue_pop(ProgramRecordQueue *queue) {
+    if (!queue || !queue->count) return 0;
+    uintptr_t token = queue->entries[queue->head];
+    queue->entries[queue->head] = 0;
+    queue->head = (queue->head + 1) % PROGRAM_RECORD_QUEUE_CAPACITY;
+    --queue->count;
+    return token;
+}
+
+void program_record_queue_arm(ProgramRecordQueue *queue, bool enabled) {
+    if (queue) queue->handoff_armed = enabled;
+}
+
+bool program_record_queue_admit(ProgramRecordQueue *queue, uintptr_t token) {
+    if (!queue || program_record_queue_contains(queue, token)) return false;
+    bool handoff = queue->handoff_armed;
+    queue->handoff_armed = false;
+    if (handoff && !queue->handoff) {
+        queue->handoff = token;
+        return true;
+    }
+    return program_record_queue_push(queue, token);
+}
+
+uintptr_t program_record_queue_select(ProgramRecordQueue *queue) {
+    if (!queue) return 0;
+    if (!queue->handoff) {
+        queue->handoff_streak = 0;
+        return program_record_queue_pop(queue);
+    }
+    if (queue->handoff_streak < PROGRAM_RECORD_HANDOFF_STREAK) {
+        ++queue->handoff_streak;
+        uintptr_t token = queue->handoff;
+        queue->handoff = 0;
+        return token;
+    }
+    queue->handoff_streak = 0;
+    if (!queue->count) {
+        uintptr_t token = queue->handoff;
+        queue->handoff = 0;
+        return token;
+    }
+    uintptr_t ordinary = program_record_queue_pop(queue);
+    uintptr_t deferred = queue->handoff;
+    queue->handoff = 0;
+    if (!program_record_queue_push(queue, deferred)) queue->handoff = deferred;
+    return ordinary;
+}
+
+bool program_record_task_activate(ProgramRecordQueue *queue, ProgramRecordTask *task) {
+    if (!queue || !task || task->phase != PROGRAM_WORKER_DETACHED || task->exited ||
+        (task->blocked && !task->pending) || task->queued) {
+        if (task) task->admission_pending = true;
+        return false;
+    }
+    if (!program_record_queue_admit(queue, (uintptr_t)task)) {
+        task->admission_pending = true;
+        return false;
+    }
+    task->phase = PROGRAM_WORKER_QUEUED;
+    task->queued = true;
+    task->admission_pending = false;
+    return true;
+}
+
+bool program_record_task_begin_dispatch(ProgramRecordTask *task, uint32_t core) {
+    if (!task || core >= PROGRAM_RECORD_MAX_CORES || task->phase != PROGRAM_WORKER_QUEUED)
+        return false;
+    task->queued = false;
+    if (task->exited) {
+        task->phase = PROGRAM_WORKER_DEAD;
+        task->owner_core = PROGRAM_RECORD_NO_CORE;
+        return false;
+    }
+    task->phase = PROGRAM_WORKER_DISPATCHING;
+    task->owner_core = core;
+    return true;
+}
+
+ProgramRecordTask *program_record_task_next(ProgramRecordQueue *queue, uint32_t core) {
+    if (!queue || core >= PROGRAM_RECORD_MAX_CORES) return NULL;
+    ProgramRecordTask *task = (ProgramRecordTask *)program_record_queue_select(queue);
+    while (task) {
+        if (program_record_task_begin_dispatch(task, core)) return task;
+        task = (ProgramRecordTask *)program_record_queue_select(queue);
+    }
+    return NULL;
+}
+
+bool program_record_task_attach(ProgramRecordTask *task, uint32_t core) {
+    if (!task || core >= PROGRAM_RECORD_MAX_CORES ||
+        task->phase != PROGRAM_WORKER_DISPATCHING || task->owner_core != core)
+        return false;
+    if (task->exited) {
+        task->phase = PROGRAM_WORKER_DEAD;
+        task->owner_core = PROGRAM_RECORD_NO_CORE;
+        return false;
+    }
+    task->phase = PROGRAM_WORKER_ATTACHED;
+    return true;
+}
+
+bool program_record_task_begin_switch_out(ProgramRecordTask *task, uint32_t core) {
+    if (!task || task->phase != PROGRAM_WORKER_ATTACHED || task->owner_core != core)
+        return false;
+    task->phase = PROGRAM_WORKER_SWITCHING_OUT;
+    return true;
+}
+
+bool program_record_task_release_after_stack_switch(ProgramRecordTask *task, uint32_t core) {
+    if (!task || task->phase != PROGRAM_WORKER_SWITCHING_OUT || task->owner_core != core)
+        return false;
+    task->phase = task->exited ? PROGRAM_WORKER_DEAD : PROGRAM_WORKER_DETACHED;
+    task->owner_core = PROGRAM_RECORD_NO_CORE;
+    return true;
+}
+
+bool program_record_task_exit(ProgramRecordTask *task) {
+    if (!task || task->exited) return false;
+    task->exited = true;
+    task->pending = false;
+    task->admission_pending = false;
+    task->blocked = false;
+    task->wait_deadline = 0;
+    if (task->phase == PROGRAM_WORKER_CONSTRUCTED || task->phase == PROGRAM_WORKER_DETACHED) {
+        task->phase = PROGRAM_WORKER_DEAD;
+        task->owner_core = PROGRAM_RECORD_NO_CORE;
+    }
+    return true;
+}
+
+uint64_t program_record_task_wake(ProgramRecordQueue *queue, ProgramRecordTask *task) {
+    if (!queue || !task || task->exited || task->phase == PROGRAM_WORKER_DEAD)
+        return PROGRAM_RECORD_EXITED;
+    task->pending = true;
+    if (task->phase == PROGRAM_WORKER_DETACHED) {
+        if (program_record_task_activate(queue, task)) return PROGRAM_RECORD_NEEDS_ADMISSION;
+        return PROGRAM_RECORD_RETRY;
+    }
+    return PROGRAM_RECORD_RECORDED;
+}
+
+uint64_t program_record_task_park(ProgramRecordTask *task, uint32_t core,
+                                  uint64_t now, uint64_t ticks) {
+    if (!task) return PROGRAM_RECORD_DENIED;
+    if (task->exited) return PROGRAM_RECORD_EXITED;
+    if (task->phase != PROGRAM_WORKER_ATTACHED || task->owner_core != core)
+        return PROGRAM_RECORD_DENIED;
+    if (task->pending) {
+        task->pending = false;
+        task->blocked = false;
+        task->wait_deadline = 0;
+        return PROGRAM_RECORD_WAKE_CONSUMED;
+    }
+    task->blocked = true;
+    task->wait_deadline = ticks ? (now > UINT64_MAX - ticks ? UINT64_MAX : now + ticks) : 0;
+    return PROGRAM_RECORD_BLOCKED;
+}
+
+bool program_record_task_poll(ProgramRecordTask *tasks, ProgramRecordQueue *queue,
+                              size_t count, uint64_t now) {
+    if (!tasks || !queue || count > PROGRAM_RECORD_CAPACITY) return false;
+    for (size_t i = 0; i < count; ++i) {
+        ProgramRecordTask *task = &tasks[i];
+        if (task->wait_deadline && now >= task->wait_deadline) {
+            task->wait_deadline = 0;
+            task->pending = true;
+        }
+        if ((task->pending || task->admission_pending) &&
+            task->phase == PROGRAM_WORKER_DETACHED && !task->exited &&
+            (!task->blocked || task->pending)) {
+            bool was_blocked = task->blocked;
+            if (!program_record_task_activate(queue, task)) {
+                task->admission_pending = true;
+                return false;
+            }
+            if (was_blocked) {
+                task->blocked = false;
+                task->pending = false;
+            }
+        }
+    }
+    return true;
+}

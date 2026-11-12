@@ -173,11 +173,13 @@ static void pdx_call(Domain *d, TrapFrame *f) {
 }
 /*Take the next message off a ring. The historical cohort grants at hearing; the current cohort reserved its obligation before enqueue.*/
 static bool take_message(Domain *d, RingEntry *out) {
+  if (SEXOS_KERNEL_CURRENT_PDX) kernel_device_interrupt_drain(d);
   while (d->ring.count > 0) {
     const RingEntry *head = &d->ring.entries[d->ring.head];
 /*A full reply-right counter defers a call until an outstanding reply is consumed; it never wraps or drops the queued call.*/
     if (!SEXOS_KERNEL_CURRENT_PDX && (head->from_call && (head->sender < KERNEL_MAX_DOMAINS && d->reply_rights[head->sender] == UINT64_MAX))) return false;
     if (!domain_dequeue(d, out)) return false;
+    if (SEXOS_KERNEL_CURRENT_PDX) kernel_device_interrupt_drain(d);
     if (out->type_id == 0xFF && (out->sender == 0 && !out->from_call)) {
       uint64_t vector = out->arg0;
       uint64_t revision = out->arg1;
@@ -450,10 +452,38 @@ static uint64_t current_bar_view(Domain *d, uint64_t slot, uint64_t bar, uint64_
 
 TrapFrame *kernel_syscall(TrapFrame *f) {
   if (kernel.pku) cpu_wrpkru(0);
+  if (kernel_current_record != NULL) {
+    *kernel_record_storage(kernel_current_record)->frame = *f;
+#if SEXOS_KERNEL_CURRENT_FPU
+kernel_record_fpu_save();
+
+#endif
+    kernel_task_poll();
+    uint64_t record_number = f->rax;
+    switch (record_number) {
+      case SEXOS_SYSCALL_call: return kernel_record_pdx_call(f);
+      case PROGRAM_RECORD_SYSCALL: return kernel_record_syscall(f);
+      case 70: return kernel_record_sleep(f);
+      case 62: return kernel_record_finish(f, false);
+      case SEXOS_SYSCALL_yield: return schedule_yield();
+      case SEXOS_SYSCALL_ticks: {
+        f->rax = kernel.ticks;
+        return resume_frame(f);
+      }
+      default: {
+        f->rax = NO_ADDRESS;
+        f->rsi = 0;
+        f->rdx = 0;
+        f->r10 = 0;
+        f->r8 = 0;
+        return resume_frame(f);
+      }
+    }
+  }
   Domain *d = domain_get(kernel.current);
   if (d == NULL) kernel_halt("system call without a current domain");
   if (SEXOS_KERNEL_CURRENT_PDX) {
-    d->frame = f;
+    if (!kernel_worker_entry(f)) d->frame = f;
 #if SEXOS_KERNEL_CURRENT_FPU
 kernel_fpu_save_current();
 
@@ -487,6 +517,22 @@ kernel_fpu_save_current();
     case SEXOS_SYSCALL_map_mem_lend: f->rax = SEXOS_KERNEL_CURRENT_PDX ? NO_ADDRESS : map_mem_lend(d, f->rdi);
     break;
     case SEXOS_SYSCALL_net_diag: f->rax = SEXOS_KERNEL_CURRENT_PDX ? NO_ADDRESS : net_diag(f->rdi);
+    break;
+    case 100: if (SEXOS_KERNEL_CURRENT_PDX) {
+      program_record_queue_arm(&kernel.run_queue, true);
+      pdx_call(d, f);
+      program_record_queue_arm(&kernel.run_queue, false);
+      if (f->rax == 0) return kernel_task_block(d, f, 0);
+      return resume_frame(f);
+    } else f->rax = NO_ADDRESS;
+    break;
+    case 101: if (SEXOS_KERNEL_CURRENT_PDX) {
+      program_record_queue_arm(&kernel.run_queue, true);
+      pdx_reply(d, f);
+      program_record_queue_arm(&kernel.run_queue, false);
+      if (f->rax == 0) return kernel_task_block(d, f, 0);
+      return resume_frame(f);
+    } else f->rax = NO_ADDRESS;
     break;
     case 53: if (SEXOS_KERNEL_CURRENT_PDX) if (f->rdi == 0) return kernel_task_block(d, f, 0);
     else f->rax = ERR_CAP_INVALID;
@@ -554,6 +600,27 @@ kernel_fpu_save_current();
     else f->rax = NO_ADDRESS;
     break;
     case 62: if (SEXOS_KERNEL_CURRENT_PDX) return kernel_task_finish(d, f);
+    else f->rax = NO_ADDRESS;
+    break;
+    case 81: if (SEXOS_KERNEL_CURRENT_PDX) {
+      ProgramMemoryReply reply = kernel_program_memory(d, f->rdi);
+      f->rax = reply.status;
+      f->rsi = reply.base;
+      f->rdx = reply.held;
+      f->r10 = reply.pressure;
+      f->r8 = 0;
+    } else {
+      f->rax = NO_ADDRESS;
+      f->rsi = 0;
+      f->rdx = 0;
+      f->r10 = 0;
+      f->r8 = 0;
+    }
+    break;
+    case PROGRAM_RECORD_SYSCALL: return kernel_record_syscall(f);
+    case SEXOS_SYSCALL_epoch_flush: f->rax = SEXOS_KERNEL_CURRENT_PDX && kernel_epoch_log_flush(d, f->rdi != 0) ? 1 : 0;
+    break;
+    case 83: if (SEXOS_KERNEL_CURRENT_PDX) return resume_frame(kernel_worker_syscall(d, f));
     else f->rax = NO_ADDRESS;
     break;
     case 54: if (SEXOS_KERNEL_CURRENT_PDX) kernel_region_query(d, f, number);

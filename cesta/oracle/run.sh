@@ -4,7 +4,9 @@
 #     [--post-ready SECONDS] [--accel tcg|kvm]
 #     [--cpu MODEL] [--smp COUNT] [--nvme-image RAW] [--nvme-persistent RAW]
 #     [--network] [--network-gateway IPV4] [--usb-keyboard]
-#     [--qmp-socket PATH]
+#     [--qmp-socket PATH] [--controller]
+#   --controller  a QMP controller owns observations and clean shutdown;
+#                 it cannot be combined with --until.
 # The machine is the upstream runtime gate's: q35, 512 MiB, PKU, an xHCI
 # controller with a USB tablet. Network and writable storage are opt-in.
 #   --fixed-clock  time comes from instruction counts (-icount) and the RTC
@@ -27,6 +29,7 @@ cpu_explicit=0
 accel=
 fixed_clock=0
 post_ready=0
+controller=0
 network=0
 nvme_mode=0
 nic_model=e1000
@@ -50,6 +53,7 @@ while [[ $# -gt 0 ]]; do
       qmp_socket="${2:?--qmp-socket needs a path}"
       [[ ! -e "$qmp_socket" ]] || { echo "choose a new QMP socket path" >&2; exit 2; }
       args+=(-qmp "unix:$qmp_socket,server=on,wait=off"); shift 2 ;;
+    --controller) controller=1; shift ;;
     --until) until_markers+=("${2:?--until needs a marker}"); shift 2 ;;
     --cpu) cpu="${2:?--cpu needs a model}"; cpu_explicit=1; shift 2 ;;
     --smp)
@@ -81,6 +85,10 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
+[[ "$controller" == 0 || ${#until_markers[@]} -eq 0 ]] || {
+  echo "--controller owns observation and shutdown and cannot be combined with --until" >&2
+  exit 2
+}
 [[ "$post_ready" == 0 || ${#until_markers[@]} -gt 0 ]] || {
   echo "--post-ready requires at least one --until marker" >&2
   exit 2
@@ -133,6 +141,9 @@ fi
 kill "$qemu" 2>/dev/null || true
 wait "$qemu" 2>/dev/null || true
 trap - EXIT
+if (( controller )); then
+  exit 0
+fi
 if (( ${#until_markers[@]} )); then
   for m in "${until_markers[@]}"; do
     if [[ ! -f "$log" ]] || ! grep -a -q -F -- "$m" "$log"; then

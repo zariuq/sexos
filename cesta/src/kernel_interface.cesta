@@ -16,6 +16,9 @@
         (include "sexos_nvme_msix.h")
         (include "sexos_app_private.h")
         (include "sexos_pager_state.h")
+        (include "frame_lease.h")
+        (include "program_memory.h")
+        (include "epoch_types.h")
         (include "sexos_source_policy.h")
         (include "sexos_source_profile.h")
         (include "sexos_network_config.h")
@@ -24,6 +27,19 @@
         (include "sexos_smp_park.h")
         (include "kernel_current.h")
         (native "
+typedef struct ProgramWorker ProgramWorker;
+typedef struct ProgramWorkerStorage {
+    struct TrapFrame *frame;
+    uint8_t stack[65536u] __attribute__((aligned(16)));
+    uint8_t fpu[512u] __attribute__((aligned(16)));
+} ProgramWorkerStorage;
+
+#define MSR_FS_BASE UINT32_C(0xC0000100)
+
+#ifndef PROGRAM_FRAME_CAPACITY
+#define PROGRAM_FRAME_CAPACITY 8192u
+#endif
+
 #define COUNT_CURRENT_APP(...) +1
 #define COUNT_CURRENT_DOMAIN(...) +1
 #define COUNT_CURRENT_ROUTE(...) +1
@@ -33,6 +49,9 @@
 #define COUNT_CURRENT_QUIL(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,  \\
                            p_activation, p_predecessor, p_logical, p_route)                        \\
     +(p_logical == CURRENT_PD_quil ? 1 : 0)
+#define COUNT_CURRENT_WEB(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,   \\
+                          p_activation, p_predecessor, p_logical, p_route)                         \\
+    +((p_logical == CURRENT_PD_spindle || p_logical == CURRENT_PD_kaleidoscope) ? 1 : 0)
 
 enum {
     KERNEL_CURRENT_APPS = 0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_APP),
@@ -41,9 +60,10 @@ enum {
     KERNEL_CURRENT_ROUTES = 0 SEXOS_CURRENT_ROUTE_ROWS(COUNT_CURRENT_ROUTE),
     KERNEL_CURRENT_SOURCE_CAPS = 0 SEXOS_CURRENT_SOURCE_ROWS(COUNT_CURRENT_SOURCE),
     KERNEL_CURRENT_QUILS = 0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_QUIL),
+    KERNEL_CURRENT_WEB = 0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_WEB),
     KERNEL_CURRENT_DORMANT = KERNEL_CURRENT_DOMAINS - KERNEL_CURRENT_ACTIVE,
-    /* Three DMA regions, four paired regions, the paging pool, Display's frames and one document pair per Quil. */
-    KERNEL_CURRENT_BACKINGS = 9 + KERNEL_CURRENT_QUILS
+    /* Fixed device/display/paging/epoch/record regions, one document pair per Quil and one web pair per Spindle/Browser. */
+    KERNEL_CURRENT_BACKINGS = 12 + KERNEL_CURRENT_QUILS + KERNEL_CURRENT_WEB
 };
 
 #undef COUNT_CURRENT_APP
@@ -52,6 +72,7 @@ enum {
 #undef COUNT_CURRENT_SOURCE
 #undef COUNT_CURRENT_ACTIVE
 #undef COUNT_CURRENT_QUIL
+#undef COUNT_CURRENT_WEB
 ")
 
         (comment "Shared interface of the SexOS kernel, translated from kernel/src. The kernel's state is one owned record (Kernel); every table in it has a declared bound, and nothing is allocated after boot except page frames.")
@@ -83,7 +104,7 @@ _Static_assert(SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 0 || SEXOS_FPU_CONTEXT_CORRUPT
         (define KERNEL_RING_CAPACITY "256u")
         (define KERNEL_INPUT_CAPACITY "512u")
         (define KERNEL_EPOCH_EVENT_CAPACITY "8192u")
-        (define KERNEL_RUN_QUEUE_CAPACITY "32u")
+        (cpp-if "!defined(KERNEL_RUN_QUEUE_CAPACITY)" (then (define KERNEL_RUN_QUEUE_CAPACITY "512u")))
         (define KERNEL_STACK_SIZE "65536u")
         (define KERNEL_BLOCKS "4096u")
         (define KERNEL_SHARED_BUFFERS "64u")
@@ -128,9 +149,14 @@ _Static_assert(sizeof(TrapFrame) == 176 && offsetof(TrapFrame, rax) == 112 &&
                    offsetof(TrapFrame, rip) == 136,
                \"trap frame layout of entry_x86_64.S\");
 ")
+        (include "program_workers.h")
+        (include "program_record_memory.h")
+        (cpp-if "!defined(PROGRAM_RECORD_QUEUE_CAPACITY)" (then (define PROGRAM_RECORD_QUEUE_CAPACITY "KERNEL_RUN_QUEUE_CAPACITY")))
+        (include "program_record_tasks.h")
+        (native "_Static_assert(KERNEL_RUN_QUEUE_CAPACITY == PROGRAM_RECORD_QUEUE_CAPACITY, \"shared task FIFO capacity\");\n")
 
         (comment "What a capability names. MESSAGE_QUEUE is the domain's own ring (listen); DOMAIN a domain's ring (call, lend); PCI a device lease; MEM_LEND a lent frame.")
-        (typedef (enum CapKind CAP_NONE CAP_DOMAIN CAP_INPUT_RING CAP_MESSAGE_QUEUE CAP_PCI CAP_MEM_LEND CAP_REGION CAP_APP_LIFECYCLE CAP_APP_ACTIVATION CAP_FRAME_POOL CAP_PAGER_MAPPING CAP_DEMAND_REGION CAP_ENTROPY_SOURCE CAP_CLOCK_SOURCE CAP_TRUST_POLICY CAP_HISTORY_RECOVERY) CapKind)
+        (typedef (enum CapKind CAP_NONE CAP_DOMAIN CAP_INPUT_RING CAP_MESSAGE_QUEUE CAP_PCI CAP_MEM_LEND CAP_REGION CAP_APP_LIFECYCLE CAP_APP_ACTIVATION CAP_FRAME_POOL CAP_PAGER_MAPPING CAP_DEMAND_REGION CAP_ENTROPY_SOURCE CAP_CLOCK_SOURCE CAP_TRUST_POLICY CAP_HISTORY_RECOVERY CAP_RECORD_POOL) CapKind)
 
         (typedef (struct Cap
           (uint8_t kind)
@@ -157,24 +183,8 @@ typedef struct {
 } CapabilityStorage;
 #endif
 ")
-        (comment "A ring entry holds exactly what listen returns: the type word, the reported caller and three arguments. from_call marks an IpcCall, whose receiver may then reply once to its sender.")
-        (typedef (struct RingEntry (uint64_t type_id) (uint64_t caller) (uint64_t arg0) (uint64_t arg1) (uint64_t arg2) (uint32_t sender) (uint32_t caller_task) (bool from_call) (uint64_t request_id)) RingEntry)
-        (typedef (enum KernelEpochEventKind
-          (= KERNEL_EPOCH_RING_PUSH 1) (= KERNEL_EPOCH_RING_POP 2)
-          (= KERNEL_EPOCH_INPUT_PUSH 3) (= KERNEL_EPOCH_INPUT_POP 4)
-          (= KERNEL_EPOCH_PAGE_RECLAIM 5) (= KERNEL_EPOCH_PAGE_INSTALL 6)
-          (= KERNEL_EPOCH_PAGE_CLEANUP 7) (= KERNEL_EPOCH_APP_HANDOVER 8)
-          (= KERNEL_EPOCH_APP_ACTIVATION 9) (= KERNEL_EPOCH_PCI_COMMAND 10)
-          (= KERNEL_EPOCH_REGION_WRITER 11) (= KERNEL_EPOCH_DEVICE_RESET 12)) KernelEpochEventKind)
-        (typedef (struct KernelEpochEvent
-          (uint64_t epoch) (uint32_t subject) (uint32_t peer) (uint8_t kind) (uint8_t scancode)
-          (uint8_t rights) (uint8_t key) (uint8_t source_key) (uint64_t revision)
-          (uint64_t address) (uint64_t token) (uint64_t frame) (uint64_t bitmap)
-          (uint64_t pages)
-          (uint32_t device) (uint32_t device_identity) (uint32_t device_expected_identity)
-          (uint16_t device_before) (uint16_t device_expected)
-          (uint16_t device_after) (bool device_attempted) (uint64_t device_status)
-          (RingEntry message)) KernelEpochEvent)
+        (typedef (struct KernelEpochCheckpoint
+          (uint64_t through) (KernelEpochEvent boundary)) KernelEpochCheckpoint)
         (comment "A cursor certificate includes a non-reused revision. Exhaustion refuses mutation rather than wrapping into an old certificate.")
         (typedef (struct Ring (RingEntry ([] entries KERNEL_RING_CAPACITY)) (uint32_t head) (uint32_t count) (uint64_t revision)) Ring)
         (cpp-if "!defined(KERNEL_RPC_CAPACITY)" (then (define KERNEL_RPC_CAPACITY "8u")))
@@ -204,14 +214,16 @@ _Static_assert(KERNEL_RPC_CAPACITY > 0 && KERNEL_RPC_CAPACITY <= KERNEL_RING_CAP
           (comment "Opt-in calls retain a distinct slot until consumption or cancellation. Identities never wrap or reuse a cancelled call.")
           (bool rpc_enabled) (uint64_t rpc_next)
           (RpcSlot ([] rpc KERNEL_RPC_CAPACITY))
-          (uint32_t task_id) (uint8_t task_state) (bool queued) (bool wake_pending) (uint64_t wait_deadline) (uint64_t wait_count) (uint64_t expired_count) (bool exit_notice) (PgFaultState fault)
+          (uint32_t task_id) (uint8_t task_state) (bool queued) (bool admission_pending) (bool wake_pending) (uint64_t wait_deadline) (uint64_t wait_count) (uint64_t expired_count) (bool exit_notice) (PgFaultState fault)
           (TrapFrame (* frame))
           (uint64_t kstack_top)
           (comment "The domain's serial output up to its next newline: each line reaches the serial port whole, so lines of different domains never interleave.")
           (uint8_t ([] line KERNEL_LINE_CAPACITY)) (uint32_t line_length)
           (comment "The display lease handed to sexdisplay once (pdx_get_init_arg).")
           (bool init_arg_ready) (uint64_t init_arg)
-          (uint64_t code_base) (uint64_t stack_top) (uint64_t entry)) Domain)
+          (uint64_t code_base) (uint64_t stack_top) (uint64_t entry)
+          (uint64_t wait_address) (uint64_t fs_base) (uint8_t fault_main_state)
+          (ProgramMemoryState program)) Domain)
 
         (native "
 #if SEXOS_KERNEL_CURRENT_PDX
@@ -324,8 +336,8 @@ typedef struct {
           (KernelAppPrivate ([] apps KERNEL_CURRENT_APPS)) (uint32_t app_count) (KernelPaging paging)
           (CapabilityStorage cap_storage)
           (BootBacking ([] boot_backings KERNEL_BOOT_REGIONS)) (uint32_t boot_backing_count)
-          (comment "Run queue of domain ids, first in first out, as the reference's single-core work-stealing queue behaves.")
-          (uint32_t ([] run_queue KERNEL_RUN_QUEUE_CAPACITY)) (uint32_t run_head) (uint32_t run_count)
+          (comment "Shared FIFO of domain, worker and record tokens, with bounded direct handoff and exact dispatch types.")
+          (ProgramRecordQueue run_queue)
           (comment "The running domain; 0 before the first switch and while idle.")
           (uint32_t current)
           (uint32_t display_pd) (uint32_t shell_pd) (uint32_t input_pd)
@@ -333,10 +345,13 @@ typedef struct {
           (bool first_scheduled_logged) (bool idle_timed_logged)
           (comment "The boot authority graph is fixed before the first user domain runs. Later page lending cannot add or replace a communication capability.")
           (bool genesis_sealed)
-          (comment "Bounded committed causal prefix. No effect may advance after this ledger or the global epoch exhausts.")
-          (KernelEpochEvent ([] epoch_events KERNEL_EPOCH_EVENT_CAPACITY)) (uint32_t epoch_event_count) (uint64_t epoch)
+          (comment "Bounded committed event window and elided-prefix checkpoint. Total epoch and event count never wrap; elided events cannot be replayed.")
+          (KernelEpochEvent ([] epoch_events KERNEL_EPOCH_EVENT_CAPACITY))
+          (uint64_t epoch_event_count) (uint64_t epoch) (uint64_t epoch_compacted_through)
+          (KernelEpochCheckpoint epoch_checkpoint)
           (DeviceResetState device_reset)
           (uint64_t ([] vector_revision 256))
+          (uint64_t ([] vector_pending 256))
           (uint64_t ([] vector_heard_revision 256))
           (uint64_t ([] vector_ack_revision 256))
           (comment "Scancodes from the PS/2 keyboard, for the holder of the input-ring capability.")
@@ -366,9 +381,28 @@ typedef struct {
         (comment "kernel_memory: frames, page tables, the user virtual-address cursor, and checked user access.")
         (var void (function memory_init ((const LimineMemmapResponse) (* map))))
         (var uint64_t (function frames_alloc (uint32_t order)))
+        (var FrameLeaseResult (function program_frame_take (uint32_t holder)))
+        (var FrameLeaseResult (function program_frame_take_transient (uint32_t holder)))
+        (var uint64_t (function program_frame_commit (FrameLease lease)))
+        (var uint64_t (function program_frame_commit_all (FrameLease (* leases)) (size_t count)))
+        (var bool (function program_frame_map (FrameLease lease) (uint64_t va) (uint64_t flags) (uint8_t key)))
+        (var bool (function program_frame_map_run (FrameLease lease) (uint32_t run) (uint64_t va) (uint64_t flags) (uint8_t key)))
+        (var bool (function program_frame_workspace_map ((const AppPrivatePage) (* image)) (uint32_t target) (uint32_t run) (uint64_t address) (uint8_t key)))
+        (var bool (function program_frame_handover_check ((const AppPrivatePages) (* image)) ((const AppPrivatePages) (* workspace)) (uint32_t target) (uint32_t run) (uint32_t holder)))
+        (var bool (function program_frame_handover_commit ((const AppPrivatePages) (* image)) ((const AppPrivatePages) (* workspace)) (uint32_t target) (uint32_t run) (uint32_t holder)))
+        (var uint64_t (function program_frame_detach (FrameLease lease)))
+        (var uint64_t (function program_frame_give (FrameLease lease)))
+        (var bool (function program_frame_release (FrameLease lease)))
+        (var bool (function program_frame_release_run (uint32_t target) (uint32_t run)))
+        (var uint64_t (function program_frame_available void))
+        (var uint64_t (function program_frame_lent void))
+        (var uint64_t (function program_frame_pressure void))
         (var void (* (function phys_to_virt (uint64_t phys))))
         (var uint64_t (function va_alloc (uint64_t size)))
         (var bool (function map_page (uint64_t va) (uint64_t phys) (uint64_t flags) (uint8_t key)))
+        (var bool (function prepare_page_table (uint64_t va) (uint8_t key)))
+        (var bool (function image_write (uint64_t address) ((const uint8_t) (* source)) (uint64_t count)))
+        (var uint8_t (* (function frame_byte (uint64_t address))))
         (var bool (function read_pte (uint64_t va) (uint64_t (* pte))))
         (var bool (function expose_to_user (uint64_t va) (uint64_t length) (uint8_t key)))
         (var bool (function user_range_ok (uint64_t start) (uint64_t length) (bool write) (uint32_t mask)))
@@ -392,7 +426,15 @@ typedef struct {
         (var uint32_t (function pci_scan (PciFunction (* out)) (uint32_t max)))
 
         (comment "kernel_domains: spawning, the genesis grants, the scheduler, traps and system calls.")
+        (var bool (function kernel_epoch_log_boot void))
+        (var bool (function kernel_epoch_log_ready (uint64_t expected)))
+        (var bool (function kernel_epoch_log_append (uint64_t next) ((const KernelEpochEvent) (* event))))
+        (var bool (function kernel_epoch_log_internal void))
+        (var bool (function kernel_epoch_log_eligible (uint32_t id)))
+        (var bool (function kernel_epoch_log_flush (Domain (* d)) (bool enter)))
+        (var void (function kernel_epoch_log_poll void))
         (var bool (function kernel_epoch_current (uint64_t epoch)))
+        (var bool (function kernel_epoch_event_read (uint64_t event_epoch) (KernelEpochEvent (* out))))
         (var void (function kernel_epoch_record_page (uint64_t expected) (uint8_t kind)
           (uint32_t subject) (uint64_t address) (uint64_t token) (uint64_t frame) (uint8_t rights)))
         (var void (function kernel_epoch_record_page_key (uint64_t expected) (uint8_t kind)
@@ -415,6 +457,28 @@ typedef struct {
         (var void (function kernel_main void))
         (var void (function domains_boot void))
         (var void (function domains_boot_current void))
+        (var (extern ProgramRecords) kernel_program_records)
+        (var (extern ProgramRecordMemory) kernel_program_record_memory)
+        (var bool (function kernel_records_boot void))
+        (var bool (function kernel_records_boot_audit void))
+        (var uint64_t (function kernel_record_image_physical void))
+        (var (extern ProgramRecordTask) ([] kernel_record_tasks PROGRAM_RECORD_CAPACITY))
+        (var (extern ProgramRecordTaskStorage) ([] kernel_record_task_storage PROGRAM_RECORD_CAPACITY))
+        (var (extern ProgramRecordTask) (* kernel_current_record))
+        (var (extern ProgramRecordTask) (* kernel_outgoing_record))
+        (var bool (function kernel_record_run_push (uint32_t id)))
+        (var ProgramRecordTask (* (function kernel_record_dispatch (uintptr_t id))))
+        (var ProgramRecordTaskStorage (* (function kernel_record_storage (ProgramRecordTask (* task)))))
+        (var TrapFrame (* (function kernel_record_switch (uintptr_t id))))
+        (var bool (function kernel_record_outgoing (TrapFrame (* frame))))
+        (var void (function kernel_record_stack_departed void))
+        (var TrapFrame (* (function kernel_record_pdx_call (TrapFrame (* frame)))))
+        (var TrapFrame (* (function kernel_record_syscall (TrapFrame (* frame)))))
+        (var TrapFrame (* (function kernel_record_sleep (TrapFrame (* frame)))))
+        (var TrapFrame (* (function kernel_record_finish (TrapFrame (* frame)) (bool fault))))
+        (var void (function kernel_records_poll void))
+        (var void (function kernel_record_fpu_save void))
+        (var void (function kernel_record_fpu_restore void))
         (var void (function kernel_paging_boot void))
         (var void (function kernel_sources_boot void))
         (var void (function kernel_source_syscall (Domain (* d)) (TrapFrame (* frame)) (uint64_t number)))
@@ -425,6 +489,9 @@ typedef struct {
         (var bool (function kernel_pci_boot_valid (Domain (* d)) (uint64_t slot)))
         (var void (function kernel_pci_syscall (Domain (* d)) (TrapFrame (* frame)) (uint64_t number)))
         (var void (function kernel_region_writer_syscall (Domain (* d)) (TrapFrame (* frame))))
+        (var void (function kernel_device_interrupt_publish (uint32_t vector)))
+        (var bool (function kernel_device_interrupt_retry (uint32_t vector)))
+        (var void (function kernel_device_interrupt_drain (Domain (* d))))
         (var void (function kernel_device_reset_syscall (Domain (* d)) (TrapFrame (* frame))))
         (var bool (function kernel_device_reset_owner_dead (Domain (* dead))))
         (var bool (function kernel_region_writer_expected_write
@@ -465,6 +532,27 @@ typedef struct {
         (var bool (function kernel_app_finish_capture (Domain (* d))))
         (var bool (function kernel_app_reserve_successor (uint32_t predecessor) (uint32_t successor)))
         (var uint32_t (function kernel_current_task (Domain (* d))))
+        (var ProgramMemoryReply (function kernel_program_memory (Domain (* d)) (uint64_t want)))
+        (var void (function kernel_workers_boot void))
+        (var (struct ProgramWorkerStorage) (* (function kernel_worker_storage (ProgramWorker (* worker)))))
+        (var bool (function kernel_worker_entry (TrapFrame (* frame))))
+        (var void (function kernel_worker_stack_departed void))
+        (var bool (function kernel_worker_token (uintptr_t token)))
+        (var ProgramWorker (* (function kernel_worker_dispatch (uintptr_t token))))
+        (var TrapFrame (* (function kernel_worker_schedule (TrapFrame (* frame)) (bool resume_current))))
+        (var TrapFrame (* (function kernel_worker_yield void)))
+        (var void (function kernel_worker_poll void))
+        (var void (function kernel_worker_end (Domain (* d))))
+        (var void (function kernel_worker_memory_end (Domain (* d))))
+        (var void (function kernel_worker_fault (Domain (* d))))
+        (var bool (function kernel_worker_fault_begin (Domain (* d))))
+        (var bool (function kernel_worker_fault_matches (Domain (* d)) ((const PgFaultRecord) (* record))))
+        (var bool (function kernel_worker_fault_complete (Domain (* d)) ((const PgFaultRecord) (* record))))
+        (var bool (function kernel_worker_fault_reject (Domain (* d)) ((const PgFaultRecord) (* record))))
+        (var bool (function kernel_worker_all_dead (uint32_t target)))
+        (var TrapFrame (* (function kernel_worker_syscall (Domain (* d)) (TrapFrame (* frame)))))
+        (var void (function kernel_fpu_restore (Domain (* d))))
+        (native "extern ProgramWorker *kernel_current_worker;\nextern ProgramWorker *kernel_outgoing_worker;")
         (var uint32_t (function mask_for_key (uint8_t key)))
         (var (const Cap) (* (function cap_get (Domain (* d)) (uint64_t slot))))
         (var bool (function cap_set (Domain (* d)) (uint64_t slot) (Cap c)))
@@ -474,6 +562,9 @@ typedef struct {
         (var bool (function boot_region_map (uint32_t holder) ((const BootBacking) (* backing)) (bool writable) (uint64_t (* out))))
         (var bool (function boot_region_dma (uint32_t holder) (uint64_t slot) (uint32_t id) (uint64_t length)))
         (var bool (function boot_region_pair (uint32_t first) (uint32_t second) (uint64_t first_slot) (uint64_t second_slot) (uint32_t id) (uint64_t length) (bool second_writable)))
+        (var bool (function boot_region_shared_pair (uint32_t first) (uint32_t second) (uint64_t first_slot) (uint64_t second_slot) (uint32_t id) (uint64_t length)))
+        (var bool (function boot_epoch_log_region (uint32_t holder) (uint64_t (* physical_out))))
+        (var bool (function boot_record_image_region (uint32_t holder) (uint64_t (* physical_out))))
         (comment "Display's two BOOT frame buffers: checked packed-XRGB geometry and reservation sizes, as crates/sex-pdx/src/display_frames.rs.")
         (define DISPLAY_FRAME_SLOT "98u")
         (define DISPLAY_FRAME_REGION_ID "11u")
@@ -493,8 +584,8 @@ typedef struct {
         (var bool (function input_push (uint8_t scancode)))
         (var bool (function input_pop (uint8_t (* out))))
         (var void (function run_push (uint32_t id)))
-        (var uint32_t (function run_pop void))
-        (var TrapFrame (* (function switch_to (uint32_t id))))
+        (var uintptr_t (function run_pop void))
+        (var TrapFrame (* (function switch_to (uintptr_t id))))
         (var void (function kernel_fpu_save_current void))
         (var TrapFrame (* (function resume_frame (TrapFrame (* frame)))))
         (var TrapFrame (* (function schedule_tick (TrapFrame (* frame)))))

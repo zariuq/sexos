@@ -1,0 +1,11 @@
+{
+  "schema": "epoch-event-sector-v1",
+  "sector_bytes": 512,
+  "version": 1,
+  "payload": "Complete KernelEpochEvent value with no pointers",
+  "ordering": "Disk sequence numbers order records independently of kernel epochs; explicit session records scope contiguous per-boot epochs",
+  "commit": "Two metadata sectors follow the data extent. Alternating checksummed generations locate the accepted boundary; deferred flush commits are recovered from a complete contiguous uncommitted tail",
+  "checksum": "FNV-1a 64 over sector bytes 0..503; corruption detection, not cryptographic authentication",
+  "recovery": "Opening recovers the boundary without claiming whole-prefix verification. Replay validates every record; physical gaps, epoch gaps, corruption and capacity overflow are refused",
+  "scope": "Journal core, host SexFiles adapter and native kernel producer qualified. Real-disk recovery and whole-OS state replay remain separate work"
+}

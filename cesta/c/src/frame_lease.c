@@ -1,0 +1,275 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
+#include "frame_lease.h"
+
+static size_t frame_lease_empty(const FrameLeaseState *state) {
+    for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i)
+        if (state->entries[i].phase == FRAME_LEASE_EMPTY) return i;
+    return FRAME_LEASE_CAPACITY;
+}
+
+static bool frame_lease_overlaps(uint64_t base, uint64_t pages,
+                                 uint64_t other, uint64_t other_pages) {
+    return base < other + other_pages * FRAME_LEASE_PAGE_SIZE &&
+           other < base + pages * FRAME_LEASE_PAGE_SIZE;
+}
+
+static void frame_lease_remove(FrameLeaseState *state, size_t index) {
+    state->entries[index] = (FrameLeaseEntry){0};
+    --state->count;
+}
+
+static void frame_lease_coalesce(FrameLeaseState *state) {
+    bool merged = true;
+    while (merged) {
+        merged = false;
+        for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i) {
+            if (state->entries[i].phase != FRAME_LEASE_FREE) continue;
+            for (size_t j = 0; j < FRAME_LEASE_CAPACITY; ++j) {
+                if (i == j || state->entries[j].phase != FRAME_LEASE_FREE) continue;
+                uint64_t end = state->entries[i].base +
+                               state->entries[i].pages * FRAME_LEASE_PAGE_SIZE;
+                if (end != state->entries[j].base) continue;
+                state->entries[i].pages += state->entries[j].pages;
+                frame_lease_remove(state, j);
+                merged = true;
+                break;
+            }
+            if (merged) break;
+        }
+    }
+}
+
+void frame_lease_init(FrameLeaseState *state, uint64_t reserve) {
+    for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i)
+        state->entries[i] = (FrameLeaseEntry){0};
+    state->count = 0;
+    state->free_pages = 0;
+    state->lent = 0;
+    state->reserve = reserve;
+    state->next_incarnation = 1;
+}
+
+uint64_t frame_lease_region(FrameLeaseState *state, uint64_t base, uint64_t pages) {
+    if (!base || base % FRAME_LEASE_PAGE_SIZE || !pages ||
+        pages > (UINT64_MAX - base) / FRAME_LEASE_PAGE_SIZE)
+        return FRAME_LEASE_INVALID;
+    for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i) {
+        FrameLeaseEntry entry = state->entries[i];
+        if (entry.phase == FRAME_LEASE_EMPTY) continue;
+        if (entry.phase != FRAME_LEASE_FREE) return FRAME_LEASE_DENIED;
+        if (frame_lease_overlaps(base, pages, entry.base, entry.pages))
+            return FRAME_LEASE_DENIED;
+    }
+    size_t slot = frame_lease_empty(state);
+    if (slot == FRAME_LEASE_CAPACITY) return FRAME_LEASE_FULL;
+    state->entries[slot] = (FrameLeaseEntry){
+        .base = base, .pages = pages, .phase = FRAME_LEASE_FREE,
+        .kind = FRAME_LEASE_PINNED};
+    ++state->count;
+    state->free_pages += pages;
+    frame_lease_coalesce(state);
+    return FRAME_LEASE_OK;
+}
+
+static bool frame_lease_reclaimable(uint8_t kind) {
+    return kind == FRAME_LEASE_PROGRAM || kind == FRAME_LEASE_TRANSIENT;
+}
+
+FrameLeaseResult frame_lease_take(FrameLeaseState *state, uint8_t order, uint8_t kind,
+                                  uint32_t holder) {
+    FrameLeaseResult result = {0};
+    if (order > FRAME_LEASE_MAX_ORDER || kind > FRAME_LEASE_TRANSIENT ||
+        (kind == FRAME_LEASE_PINNED) != (holder == 0)) {
+        result.status = FRAME_LEASE_INVALID;
+        return result;
+    }
+    if (!state->next_incarnation) {
+        result.status = FRAME_LEASE_FULL;
+        return result;
+    }
+    uint64_t pages = UINT64_C(1) << order;
+    uint64_t size = pages * FRAME_LEASE_PAGE_SIZE;
+    if (kind == FRAME_LEASE_PROGRAM &&
+        (state->free_pages < pages || state->free_pages - pages < state->reserve)) {
+        result.status = FRAME_LEASE_FULL;
+        return result;
+    }
+    size_t selected = FRAME_LEASE_CAPACITY;
+    uint64_t selected_base = 0, prefix = 0, suffix = 0;
+    for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i) {
+        FrameLeaseEntry entry = state->entries[i];
+        if (entry.phase != FRAME_LEASE_FREE || entry.pages < pages ||
+            entry.base > UINT64_MAX - (size - 1)) continue;
+        uint64_t base = (entry.base + size - 1) & ~(size - 1);
+        uint64_t before = (base - entry.base) / FRAME_LEASE_PAGE_SIZE;
+        if (before > entry.pages - pages) continue;
+        if (selected == FRAME_LEASE_CAPACITY || base < selected_base) {
+            selected = i;
+            selected_base = base;
+            prefix = before;
+            suffix = entry.pages - before - pages;
+        }
+    }
+    if (selected == FRAME_LEASE_CAPACITY) {
+        result.status = FRAME_LEASE_FULL;
+        return result;
+    }
+    size_t extras = (prefix != 0) + (suffix != 0);
+    if (extras > FRAME_LEASE_CAPACITY - state->count) {
+        result.status = FRAME_LEASE_FULL;
+        return result;
+    }
+    size_t prefix_slot = FRAME_LEASE_CAPACITY, suffix_slot = FRAME_LEASE_CAPACITY;
+    for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i) {
+        if (state->entries[i].phase != FRAME_LEASE_EMPTY) continue;
+        if (prefix && prefix_slot == FRAME_LEASE_CAPACITY) {
+            prefix_slot = i;
+            continue;
+        }
+        if (suffix && suffix_slot == FRAME_LEASE_CAPACITY) {
+            suffix_slot = i;
+            break;
+        }
+    }
+    if ((prefix && prefix_slot == FRAME_LEASE_CAPACITY) ||
+        (suffix && suffix_slot == FRAME_LEASE_CAPACITY)) {
+        result.status = FRAME_LEASE_FULL;
+        return result;
+    }
+    uint64_t free_base = state->entries[selected].base;
+    if (prefix)
+        state->entries[prefix_slot] = (FrameLeaseEntry){
+            .base = free_base, .pages = prefix, .phase = FRAME_LEASE_FREE,
+            .kind = FRAME_LEASE_PINNED};
+    if (suffix)
+        state->entries[suffix_slot] = (FrameLeaseEntry){
+            .base = selected_base + size, .pages = suffix, .phase = FRAME_LEASE_FREE,
+            .kind = FRAME_LEASE_PINNED};
+    FrameLease lease = {selected_base, holder, state->next_incarnation, order, kind};
+    state->entries[selected] = (FrameLeaseEntry){
+        .base = lease.base, .pages = pages, .holder = holder,
+        .incarnation = lease.incarnation, .order = order,
+        .phase = FRAME_LEASE_LIVE, .kind = kind};
+    state->count += extras;
+    state->free_pages -= pages;
+    if (kind == FRAME_LEASE_PROGRAM) state->lent += pages;
+    if (state->next_incarnation == UINT32_MAX)
+        state->next_incarnation = 0;
+    else
+        ++state->next_incarnation;
+    result.status = FRAME_LEASE_OK;
+    result.value = lease;
+    return result;
+}
+
+uint64_t frame_lease_detach(FrameLeaseState *state, FrameLease lease) {
+    if (!frame_lease_reclaimable(lease.kind) || !lease.holder || !lease.incarnation ||
+        !lease.base || lease.base % FRAME_LEASE_PAGE_SIZE ||
+        lease.order > FRAME_LEASE_MAX_ORDER)
+        return FRAME_LEASE_INVALID;
+    for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i) {
+        FrameLeaseEntry *entry = &state->entries[i];
+        if (entry->phase != FRAME_LEASE_LIVE || entry->base != lease.base ||
+            entry->order != lease.order || entry->kind != lease.kind ||
+            entry->holder != lease.holder || entry->incarnation != lease.incarnation)
+            continue;
+        entry->phase = FRAME_LEASE_DETACHED;
+        return FRAME_LEASE_OK;
+    }
+    return FRAME_LEASE_DENIED;
+}
+
+uint64_t frame_lease_give(FrameLeaseState *state, FrameLease lease) {
+    if (!frame_lease_reclaimable(lease.kind) || !lease.holder || !lease.incarnation ||
+        !lease.base || lease.base % FRAME_LEASE_PAGE_SIZE ||
+        lease.order > FRAME_LEASE_MAX_ORDER)
+        return FRAME_LEASE_INVALID;
+    for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i) {
+        FrameLeaseEntry entry = state->entries[i];
+        if (entry.base != lease.base || entry.order != lease.order ||
+            entry.kind != lease.kind || entry.holder != lease.holder ||
+            entry.incarnation != lease.incarnation)
+            continue;
+        if (entry.phase == FRAME_LEASE_LIVE) return FRAME_LEASE_RETRY;
+        if (entry.phase != FRAME_LEASE_DETACHED) return FRAME_LEASE_DENIED;
+        state->entries[i] = (FrameLeaseEntry){
+            .base = lease.base, .pages = entry.pages, .phase = FRAME_LEASE_FREE,
+            .kind = FRAME_LEASE_PINNED};
+        state->free_pages += entry.pages;
+        if (entry.kind == FRAME_LEASE_PROGRAM) state->lent -= entry.pages;
+        frame_lease_coalesce(state);
+        return FRAME_LEASE_OK;
+    }
+    return FRAME_LEASE_DENIED;
+}
+
+uint64_t frame_lease_commit(FrameLeaseState *state, FrameLease lease) {
+    if (lease.kind != FRAME_LEASE_TRANSIENT || !lease.holder || !lease.incarnation ||
+        !lease.base || lease.base % FRAME_LEASE_PAGE_SIZE ||
+        lease.order > FRAME_LEASE_MAX_ORDER)
+        return FRAME_LEASE_INVALID;
+    for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i) {
+        FrameLeaseEntry *entry = &state->entries[i];
+        if (entry->phase != FRAME_LEASE_LIVE || entry->base != lease.base ||
+            entry->order != lease.order || entry->kind != lease.kind ||
+            entry->holder != lease.holder || entry->incarnation != lease.incarnation)
+            continue;
+        entry->kind = FRAME_LEASE_PINNED;
+        entry->holder = 0;
+        return FRAME_LEASE_OK;
+    }
+    return FRAME_LEASE_DENIED;
+}
+
+uint64_t frame_lease_available(const FrameLeaseState *state) {
+    return state->free_pages > state->reserve ? state->free_pages - state->reserve : 0;
+}
+
+bool frame_lease_audit(const FrameLeaseState *state) {
+    size_t occupied = 0;
+    uint64_t free = 0, lent = 0;
+    if (state->count > FRAME_LEASE_CAPACITY) return false;
+    for (size_t i = 0; i < FRAME_LEASE_CAPACITY; ++i) {
+        FrameLeaseEntry a = state->entries[i];
+        if (a.phase == FRAME_LEASE_EMPTY) continue;
+        ++occupied;
+        if (!a.base || a.base % FRAME_LEASE_PAGE_SIZE || !a.pages ||
+            a.pages > (UINT64_MAX - a.base) / FRAME_LEASE_PAGE_SIZE ||
+            a.kind > FRAME_LEASE_TRANSIENT ||
+            (a.phase != FRAME_LEASE_FREE && a.phase != FRAME_LEASE_LIVE &&
+             a.phase != FRAME_LEASE_DETACHED)) return false;
+        if (a.phase == FRAME_LEASE_FREE) {
+            if (a.holder || a.incarnation || a.kind != FRAME_LEASE_PINNED) return false;
+            free += a.pages;
+        } else {
+            if (a.order > FRAME_LEASE_MAX_ORDER ||
+                a.pages != (UINT64_C(1) << a.order) || !a.incarnation ||
+                (a.kind == FRAME_LEASE_PINNED) != (a.holder == 0)) return false;
+            if (a.kind == FRAME_LEASE_PROGRAM) lent += a.pages;
+        }
+        for (size_t j = i + 1; j < FRAME_LEASE_CAPACITY; ++j) {
+            FrameLeaseEntry b = state->entries[j];
+            if (b.phase == FRAME_LEASE_EMPTY) continue;
+            if (frame_lease_overlaps(a.base, a.pages, b.base, b.pages)) return false;
+            if (a.phase != FRAME_LEASE_FREE && a.phase != FRAME_LEASE_LIVE &&
+                a.phase != FRAME_LEASE_DETACHED) return false;
+            if (a.phase != FRAME_LEASE_FREE && b.phase != FRAME_LEASE_FREE &&
+                a.incarnation == b.incarnation) return false;
+            if (a.phase == FRAME_LEASE_FREE && b.phase == FRAME_LEASE_FREE &&
+                (a.base + a.pages * FRAME_LEASE_PAGE_SIZE == b.base ||
+                 b.base + b.pages * FRAME_LEASE_PAGE_SIZE == a.base)) return false;
+        }
+    }
+    return occupied == state->count && free == state->free_pages && lent == state->lent;
+}

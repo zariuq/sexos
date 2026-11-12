@@ -4,6 +4,7 @@
 #include "silk_shell_proofs_b_input.h"
 void silk_shell_state_init(SilkShellState *state);
 void silk_shell_proofs_tick(void);
+void shell_record_spawn_poll(void);
 
 typedef struct SilkShellDispatchResult {
     bool handled, mutated, reply;

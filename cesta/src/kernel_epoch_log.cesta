@@ -1,0 +1,154 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (ownership (check-all)
+    (unchecked (cpu_clac cpu_cli cpu_cpuid cpu_fpu_state_init cpu_fxrstor cpu_fxsave cpu_hlt cpu_inb cpu_inl
+                cpu_invlpg cpu_irq_restore cpu_irq_save cpu_lidt cpu_ltr cpu_outb cpu_outl cpu_outw
+                cpu_pause cpu_rdmsr cpu_rdseed cpu_read_cr0 cpu_read_cr2 cpu_read_cr3 cpu_read_cr4
+                cpu_read_rsp cpu_stac cpu_sti cpu_sti_hlt cpu_write_cr0 cpu_write_cr4 cpu_wrmsr
+                cpu_wrpkru cpu_xgetbv kernel_epoch_log_boot kernel_epoch_log_ready
+                kernel_epoch_log_append kernel_epoch_log_internal kernel_epoch_log_backlogged
+                kernel_epoch_log_eligible kernel_epoch_log_kick
+                kernel_epoch_log_flush kernel_epoch_log_poll)
+      (obligation "Serialized BSP epoch producer with application processors parked. BOOT publishes one bounded shared batch only to SexFiles. Release/acquire counters publish complete sectors. Journal flushes and backlog drains are internal critical sections restricted to SexFiles and SexDrive; only already accepted work completes there, without extending the logical event stream or publishing batch sectors. Backpressure sets scheduler wake state only and never writes a reply slot or consumes reply rights. A missing batch is reserved for native legacy harnesses; the current BOOT path always requires it.")))
+  (include "sexos_kernel.h")
+  (include "epoch_journal.h")
+    (native "
+static EpochLogBatch *kernel_epoch_batch;
+static uint64_t kernel_epoch_flush_task;
+static bool kernel_epoch_flush_active;
+static uint64_t kernel_epoch_stall_report;
+static uint64_t kernel_epoch_schedule_seen;
+
+bool kernel_epoch_log_boot(void) {
+    if (!SEXOS_KERNEL_CURRENT_PDX || kernel.genesis_sealed || kernel_epoch_batch)
+        return false;
+    uint64_t physical = 0;
+    if (!boot_epoch_log_region(CURRENT_PD_sexfiles, &physical))
+        return false;
+    EpochLogBatch *batch = phys_to_virt(physical);
+    if (!batch || kernel.epoch == UINT64_MAX)
+        return false;
+    batch->flushed_through = 0;
+    batch->failed = 0;
+    __atomic_store_n(&batch->producer, kernel.epoch + 1, __ATOMIC_RELEASE);
+    const Cap *cap = cap_get(domain_get(CURRENT_PD_sexfiles), SEXOS_SLOT_epoch_log);
+    if (!cap || cap->kind != CAP_REGION || cap->region.grant.region_id != EPOCH_LOG_REGION_ID ||
+        cap->region.grant.length != EPOCH_LOG_REGION_BYTES ||
+        cap->region.grant.rights != (REGION_QUERY | REGION_READ | REGION_WRITE) ||
+        cap->region.grant.has_dma || cap->region.grant.has_peer)
+        return false;
+    kernel_epoch_batch = batch;
+    kernel_epoch_flush_task = 0;
+    kernel_epoch_flush_active = false;
+    klog(\"[boot.epoch.log] region=%u slot=%llu bytes=%llu events=%u producer=%llu\\n\",
+         EPOCH_LOG_REGION_ID, (unsigned long long)SEXOS_SLOT_epoch_log,
+         (unsigned long long)EPOCH_LOG_REGION_BYTES, EPOCH_LOG_BATCH_EVENTS,
+         (unsigned long long)(kernel.epoch + 1));
+    return true;
+}
+
+static bool kernel_epoch_log_backlogged(void) {
+    if (!kernel_epoch_batch) return false;
+    uint64_t producer = __atomic_load_n(&kernel_epoch_batch->producer, __ATOMIC_ACQUIRE);
+    uint64_t flushed = __atomic_load_n(&kernel_epoch_batch->flushed_through, __ATOMIC_ACQUIRE);
+    return producer > flushed && producer - 1 - flushed >= EPOCH_LOG_BATCH_EVENTS;
+}
+
+bool kernel_epoch_log_internal(void) {
+    return (kernel_epoch_flush_active || kernel_epoch_log_backlogged()) &&
+           (kernel.current == CURRENT_PD_sexfiles || kernel.current == CURRENT_PD_sexdrive);
+}
+
+bool kernel_epoch_log_eligible(uint32_t id) {
+    if (kernel_epoch_log_backlogged() && id < 64 && !(kernel_epoch_schedule_seen & (UINT64_C(1) << id))) {
+        kernel_epoch_schedule_seen |= UINT64_C(1) << id;
+        klog(\"[kernel.epoch.schedule] id=%u active=%u\\n\", id, kernel_epoch_flush_active);
+    }
+    return (!kernel_epoch_flush_active && !kernel_epoch_log_backlogged()) ||
+           id == CURRENT_PD_sexfiles || id == CURRENT_PD_sexdrive;
+}
+
+static void kernel_epoch_log_kick(void) {
+    Domain *files = domain_get(CURRENT_PD_sexfiles);
+    kernel_task_wake(files);
+}
+
+bool kernel_epoch_log_ready(uint64_t expected) {
+    if (kernel_epoch_log_internal())
+        return expected == kernel.epoch;
+    if (kernel_epoch_flush_active)
+        return false;
+    if (!kernel_epoch_batch)
+        return true;
+    if (expected != kernel.epoch || expected == UINT64_MAX - 1)
+        return false;
+    uint64_t next = expected + 1;
+    if (__atomic_load_n(&kernel_epoch_batch->failed, __ATOMIC_ACQUIRE) ||
+        __atomic_load_n(&kernel_epoch_batch->producer, __ATOMIC_ACQUIRE) != next)
+        return false;
+    uint64_t flushed = __atomic_load_n(&kernel_epoch_batch->flushed_through, __ATOMIC_ACQUIRE);
+    uint64_t elided = next > KERNEL_EPOCH_EVENT_CAPACITY ? next - KERNEL_EPOCH_EVENT_CAPACITY : 0;
+    if (flushed > next || next - flushed > EPOCH_LOG_BATCH_EVENTS || flushed < elided) {
+        if (next != kernel_epoch_stall_report) {
+            kernel_epoch_stall_report = next;
+            kernel_epoch_schedule_seen = 0;
+            Domain *files = domain_get(CURRENT_PD_sexfiles);
+            klog(\"[kernel.epoch.backpressure] next=%llu flushed=%llu producer=%llu current=%u files_state=%u queued=%u run_count=%zu flush=%u wake=%u\\n\",
+                 (unsigned long long)next, (unsigned long long)flushed,
+                 (unsigned long long)__atomic_load_n(&kernel_epoch_batch->producer, __ATOMIC_ACQUIRE),
+                 kernel.current, files ? files->task_state : 0, files ? files->queued : 0,
+                 kernel.run_queue.count, kernel_epoch_flush_active, files ? files->wake_pending : 0);
+        }
+        kernel_epoch_log_kick();
+        return false;
+    }
+    return true;
+}
+
+bool kernel_epoch_log_append(uint64_t next, const KernelEpochEvent *event) {
+    if (!kernel_epoch_batch)
+        return true;
+    if (!event || event->epoch != next || !kernel_epoch_log_ready(next - 1))
+        return false;
+    uint8_t *sector = kernel_epoch_batch->sectors[(next - 1) % EPOCH_LOG_BATCH_EVENTS];
+    if (epoch_journal_event_encode(sector, event) != EPOCH_JOURNAL_OK)
+        return false;
+    __atomic_store_n(&kernel_epoch_batch->producer, next + 1, __ATOMIC_RELEASE);
+    return true;
+}
+
+bool kernel_epoch_log_flush(Domain *d, bool enter) {
+    if (!SEXOS_KERNEL_CURRENT_PDX || !d || d->id != CURRENT_PD_sexfiles ||
+        kernel.current != d->id || !d->task_id || d->program.run != d->task_id)
+        return false;
+    if (enter) {
+        if (kernel_epoch_flush_active || !kernel_epoch_batch || !kernel.genesis_sealed ||
+            !kernel.scheduler_running || !domain_get(CURRENT_PD_sexdrive))
+            return false;
+        kernel_epoch_flush_task = d->task_id;
+        kernel_epoch_flush_active = true;
+        return true;
+    }
+    if (!kernel_epoch_flush_active || kernel_epoch_flush_task != d->task_id)
+        return false;
+    kernel_epoch_flush_active = false;
+    kernel_epoch_flush_task = 0;
+    return true;
+}
+
+void kernel_epoch_log_poll(void) {
+    if (!kernel_epoch_flush_active)
+        return;
+    Domain *owner = domain_get(CURRENT_PD_sexfiles);
+    if (owner && owner->task_id == kernel_epoch_flush_task && owner->task_state != TASK_EXITED &&
+        owner->task_state != TASK_DORMANT)
+        return;
+    kernel_epoch_flush_active = false;
+    uint64_t abandoned = kernel_epoch_flush_task;
+    kernel_epoch_flush_task = 0;
+    if (kernel_epoch_batch)
+        __atomic_store_n(&kernel_epoch_batch->failed, EPOCH_JOURNAL_IO, __ATOMIC_RELEASE);
+    klog(\"[kernel.epoch.log.abandoned] task=%llu failed=%u\\n\",
+         (unsigned long long)abandoned, EPOCH_JOURNAL_IO);
+}
+")))

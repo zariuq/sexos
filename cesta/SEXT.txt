@@ -1,10 +1,10 @@
 SEXT: CURRENT PAGER PORT
 
-The service follows upstreamb7cef540b6b3c55a572bf0e7d6e079ec33c36682.
-Its pager/allocator/service bodies retain their behavior; the catalog now
-supplies app capacity.
-Each qualification records its exact kernel, source and executable cohort.
-interfaces/sext.source.json pins its Rust source and shared protocol inputs.
+interfaces/sext.source.json pins the complete behavioral reference at
+b6be1b451a6c21985d00d192674feedf66bb11dd. The allocator, pager, workspace and
+main files are byte-identical at b7cef540, but that later label does not cover
+every shared input or establish parity with 8019f72d. The catalog supplies app
+capacity. Each qualification records its exact kernel, source and executable cohort.
 
 Build and export
 ----------------
@@ -93,4 +93,23 @@ hashes and verifies that packaging changes only servers/sext. Paging uses the
 upstream two-client checker. Retirement uses actual keyboard input, all five
 service ACKs, kernel detach, pool zero/reuse and surviving Linen input/rescan.
 It tests a component swap on the current Rust kernel, not an all-Cesta image.
+
+Worker execution probe
+----------------------
+The explicit sext-worker-probe target adds one bounded lifecycle check; ordinary
+Sext does not execute it. The probe performs two spawn/wait/wake/TLS/exit cycles,
+restores main/worker TLS across switches, waits past the four-tick grace period and
+requires a fresh worker id. The boot harness independently requires the second
+kernel spawn to report reuse of the same slot.
+
+The completed probe image reached all 18 ordinary markers plus its worker marker,
+with two clean worker exits and the joined shell in 146.02 seconds. This is a quick
+execution check, not a 90-second post-readiness soak, pager-forwarding test,
+restart/rebirth demonstration or general frame-reuse proof.
+
+The dedicated pager fixture separately completes four main-task faults and two
+worker data faults. Worker completion carries worker ids, the workers write and exit,
+and main joins them. Both ranges close after run-wide retirement of worker and main
+fault metadata and page bindings. This validates worker pager continuation and
+terminal cleanup through real Sext; it is not ordinary-desktop restart qualification.
 

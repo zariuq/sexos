@@ -1,0 +1,57 @@
+{
+  "pin": "8019f72d617927949545bde1fb5fc6fc56acd939",
+  "sources": [
+    {
+      "path": "kernel/src/memory/allocator.rs",
+      "sha256": "49af0cf817063c1f0e50850792ddf1ef984743eaa0fe4b663c07bf5a9d29ba60"
+    },
+    {
+      "path": "kernel/src/boot_frame_reservations.rs",
+      "sha256": "414589fd7d913b544f17b4205fddbfb6e352ec61f3faae5bea5a365a33c779ec"
+    },
+    {
+      "path": "kernel/src/program_frames.rs",
+      "sha256": "33619fd498b49e89e7f813ed7ef7927f36edee7e0d0ea1270f1db4af8ba93d39"
+    },
+    {
+      "path": "kernel/src/program_records.rs",
+      "sha256": "2748a109fad502694d0a66d76868b46a9d0d035f2fca5a9cc07567e55dd8f12a"
+    },
+    {
+      "path": "kernel/src/program_workers.rs",
+      "sha256": "338a26a0f5856a709384188072c6a757f9fe9be2735425ea8c8515eb76854d4b"
+    },
+    {
+      "path": "kernel/src/app_resource_state.rs",
+      "sha256": "46394f9fcc0d6f624417c2294b72a96be7da76e009f5ecc846d54f4885d45b80"
+    },
+    {
+      "path": "kernel/src/app_resources.rs",
+      "sha256": "e13c2573dadd9fc2725da96cabc1a562fb04c7b20a1e5d0ac32425a07d20d113"
+    },
+    {
+      "path": "kernel/src/service_memory.rs",
+      "sha256": "117b82543e09cd7f25ca9235eb87ee2724380dc8b655fbdf842729d0b2c7134c"
+    },
+    {
+      "path": "kernel/src/service_restart.rs",
+      "sha256": "de3a71f164d3b4aa72c862e0912b947a8348d0ac9be99ae32087ddaa22c6da6f"
+    },
+    {
+      "path": "kernel/src/task_exit.rs",
+      "sha256": "2b4dd5309360aa9005c1b2eaaab5c6a61bfec579391d440145a3dca2d9dc2548"
+    },
+    {
+      "path": "crates/sex-pdx/src/program_memory.rs",
+      "sha256": "7bb87aa1010d27d5e0315eb214ea71b7bfa338e3187f2e7f55fa93b350f883ac"
+    },
+    {
+      "path": "crates/sex-pdx/src/program_store.rs",
+      "sha256": "6bd4ad2eb2698b66af680e02978aa1a853755a396b067bac844d3a26200475c0"
+    },
+    {
+      "path": "crates/sex-pdx/src/program_threads.rs",
+      "sha256": "72644f5e61188d372d7374f05eb299d7fc4376c0d96d37582dfdda0e5bbdb165"
+    }
+  ]
+}

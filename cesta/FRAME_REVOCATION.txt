@@ -1,0 +1,95 @@
+Exact frame-lease detachment
+===========================
+
+The optional machine gate qualifies frame_lease_detach from the actual GCC and
+Clang x86-64 kernels. Ordinary builds and checks do not require HOL Light.
+
+The contract identifies the first Live entry whose base, holder, allocation
+incarnation, order and kind match the request. Success changes precisely that
+entry's phase byte to Detached. An invalid request returns Invalid before any
+table access. A valid request with no matching live entry returns Denied. Both
+refusals leave memory unchanged. All paths return through the actual SysV ABI.
+
+The mathematical result selects its own first match from initial memory. It
+does not accept an index or a successful outcome supplied by the caller. The
+proof covers every table position and exhaustion by induction rather than by
+unrolling a fixed collection of examples.
+
+ABI and memory
+--------------
+
+The authoritative declarations are src/frame_lease_interface.cesta and its
+generated frame_lease.h. Qualification compiles layout assertions against that
+header; no shadow structure declaration is used.
+
+The qualified ABI is x86-64 SysV LP64. FrameLease is 24 bytes, aligned to eight.
+It is passed by value on the stack; the state pointer is in RDI. From the entry
+stack pointer, the return address occupies bytes 0-7, base bytes 8-15, holder
+16-19, incarnation 20-23, order byte 24 and kind byte 25.
+
+FrameLeaseEntry is 32 bytes. Its fields begin at offsets 0 (base), 8 (pages),
+16 (holder), 20 (incarnation), 24 (order), 25 (phase), and 26 (kind). The current
+production table contains 8192 entries and occupies 262144 bytes. The earlier
+4096-entry machine contract does not establish this expanded layout; exact
+machine replay for it is a separate qualification step. The metadata following
+the table, unselected entries, other fields and padding remain unchanged.
+
+The full machine contract excludes the table from code and the 32-byte argument
+and return region. The initial memory value and each argument field are tied to
+actual processor memory. Modeled data loads stay within the table and that
+stack region; the only permitted store is the selected phase byte. Invalid
+requests have the stronger stack-only access theorem, including null state
+pointers. These are machine-artifact properties, not a relaxation of every
+source-level ownership contract.
+
+Kernel connection
+-----------------
+
+program_frame_detach checks the tracked mapping, allowing only hardware Accessed
+and Dirty changes in the expected PTE. It clears the leaf and invalidates the
+translation before marking the binding detached and invoking the lease core.
+An uncertain transition remains quarantined. FRAMES.txt describes the native
+mapping, return, workspace transfer and zero-before-publication discipline.
+
+The machine gate compares fresh exports with the selected kernel instructions,
+executes those same bytes in host controls and checks the real native caller's
+connection. Native RAM/page-table tests and device-present boots are separate
+evidence for the surrounding lifecycle; instruction inspection is not a proof
+of the whole caller.
+
+Authority and scope
+-------------------
+
+A matching tuple does not authenticate its presenter. Kernel callers must
+derive domain/run authority from current scheduled tasks and kernel records.
+The allocator's uniqueness, extent, non-wrapping incarnation and coalescing
+invariants remain separate obligations. Incarnations are scoped to the current
+boot; cross-reboot authority and durable recovery are not established here.
+
+The machine model covers the selected ordinary-memory computation. Privileged
+translation invalidation, protection keys, interrupts, DMA and SMP quiescence
+need their own architectural contracts. This is not whole-C, compiler or whole-
+kernel refinement, nor a speculative-execution or constant-time result.
+
+Mettapedia's Kernel.FrameLease model separately proves first-match decomposition,
+conservation of identities and extents, preservation of unrelated leases, and
+refusal of old incarnations at a reused base. It distinguishes a matching lease
+from caller authority. No automatic Lean-to-HOL translation is claimed.
+
+Qualification
+-------------
+
+  make qualify-frame-detach-hol CESTA=... CESTA_SOURCE=... \
+    FRAME_DETACH_HOL_FLAGS='--gcc-image ... --clang-image ... --hol ... --s2n ... --out build/detach-proof'
+
+Supply kernel images built from the same source/header/profile. The gate exports
+the current Cesta unit, checks layout, compares independently extracted symbol
+bytes and runs complete-function proofs in a fresh external HOL Light process.
+It requires an axiom audit and refusal of a valid-instruction semantic mutant
+that changes Detached to Free. Altered instructions, extents and targets are
+also refused by the artifact checks.
+
+receipt.json records the exact inputs, artifacts, compiler commands, theorem
+names and checker identities. It is a reproducibility record, not a signature.
+--runtime-only writes runtime.json with proof_status not-run and no proof claim.
+Standalone native lifecycle and boot receipts retain their own scope.

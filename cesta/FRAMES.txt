@@ -1,0 +1,106 @@
+BOUNDED FRAME LEASES AND PROGRAM-FRAME DETACHMENT
+
+The production allocator now uses bounded interval leases rather than only a
+monotonic cursor. BOOT and other pinned blocks keep their previous lowest-address
+allocation order and cannot be returned through the program path. At most 4,096
+lease entries are stored, with orders 0..18 and explicit FULL results on capacity
+or resource exhaustion.
+
+Lease identity and transitions
+------------------------------
+Every allocation records its base, exact order/extent, holder, allocation
+incarnation, kind and phase. Incarnations never wrap; exhaustion refuses further
+allocations. Wrong-owner, partial-overlap, stale and duplicate transitions do not
+select another lease. Free intervals split on aligned allocation and coalesce on
+return. The independent model in tests/frame_lease.py compares complete normalized
+state after every operation.
+
+Program allocations preserve 4,096 pages for other work. program_frame_available
+reports free pages above that floor; program_frame_lent reports pages currently
+held by programs. A zeroed block is published only after its lease exists.
+
+One tracked mapping
+-------------------
+The program sequence is:
+
+    program_frame_take -> program_frame_map -> program_frame_detach -> program_frame_give
+
+An unpublished allocation can instead go directly to program_frame_give for
+rollback. Each live program frame has one bounded binding. program_frame_map
+refuses aliases and any return already in progress. Ordinary map_page refuses a
+program frame unless the wrapper is performing that one mapping. Direct native
+page-table writes outside these interfaces remain a trusted-kernel boundary, not
+a checked user capability.
+
+program_frame_give while the binding is mapped returns RETRY before changing the
+PTE, invalidation count, binding or lease metadata. It never treats a mapped page
+as if the caller had detached it.
+
+program_frame_detach validates the exact tracked PTE, allowing only Accessed and
+Dirty bits to change. It then clears the leaf and performs the architecture
+invalidation before marking the lease detached. A mismatch is inert. A failed or
+uncertain transition leaves the binding in a returning state: it cannot be
+remapped, and only detachment/release cleanup can be retried. Metadata and hardware
+invalidation are different obligations; one is not inferred from the other.
+
+Reused pages are zeroed before publication to their new holder. The RAM controls
+check cross-owner reuse, simultaneous live non-overlap, stale/double returns,
+wrong extents, bypass mappings, corrupted leaves, metadata-failure quarantine,
+reserve exhaustion and exact invalidation counts.
+
+Transient loader leases and atomic commit
+-----------------------------------------
+Transient leases reclaim failed image materialization without spending the
+ordinary program reserve or changing its lent count. They use the same tracked
+single-mapping and detachment discipline. An unmanaged commit (run zero) pins the
+frame permanently. A run-managed commit changes it to FRAME_LEASE_PROGRAM,
+retaining the holder, run and mapping while adding its pages to the lent count.
+
+elf_load records every transient lease. Any take, map, write, capture or commit
+failure rolls back all unpublished mappings and leases in reverse order and
+clears the private manifest. program_frame_commit_all validates every lease and
+binding, including duplicates, before changing any ownership; a bad later lease
+therefore cannot leave an earlier page committed. Only after the complete image
+and its entry mapping validate does one batch commit publish the whole image.
+Page-table allocations and explicitly quarantined native inconsistencies remain
+separate obligations, not silently reclaimed successes.
+
+Workspace ownership transfer
+----------------------------
+Application workspaces use program_frame_workspace_map for their preallocated
+BOOT aliases. This is the only alias path for a tracked program frame; the
+aliases are immediately hidden until retirement. Ordinary map_page still refuses
+untracked aliases.
+
+program_frame_handover_check validates the old run, current image mapping,
+physical identity and absent workspace before effects. After the old leaves are
+cleared and the workspace leaves installed, program_frame_handover_commit moves
+the lease and its one tracked binding to the pager's workspace. The workspace is
+not selected by the old run's cleanup, and zero run identities cannot release it.
+Private-retirement controls require the old run to close while every workspace
+mapping and its lease remain intact.
+
+Scope and checks
+----------------
+
+    make check-frame-leases
+    make check-program-frames
+    make qualify-program-frames CESTA_SOURCE=... LEAN_ROOT=...
+
+The metadata gate uses an independent sorted-interval model, six compiler/sanitizer
+routes, plain-C identity and actual emitted-plan admission. The native gate executes
+the production allocator and page tables on RAM with controlled CPU/TLB providers.
+Existing loader, BOOT, paging and private-retirement regressions remain separate
+required checks.
+
+The loader has 45 post-admission rollback cases plus its original refusal and
+mutation controls. The frame matrix adds run commit, ownership transfer and
+zero-run refusals; all 13 semantic mutations are required to fail. The private
+suite requires old-run closure with workspace mappings and accounting intact.
+
+The retirement gate requires 28 real application executions, 25 successor
+launches, all 140 service acknowledgements and hardware confirmation that every old
+private address is absent. The pager fixture also requires physical reuse of a
+released program frame by a later run. Full GUI/service parity and durable prefix
+replay remain separate obligations. Rollback of published IPC or hardware effects
+is outside this lifecycle model.

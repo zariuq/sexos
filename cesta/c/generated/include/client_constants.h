@@ -21,6 +21,7 @@ typedef enum {
     SEXOS_SYSCALL_net_diag = 52,
     SEXOS_SYSCALL_region_writer = 75,
     SEXOS_SYSCALL_device_reset = 76,
+    SEXOS_SYSCALL_epoch_flush = 82,
 } SexosSyscall;
 
 typedef enum {
@@ -44,6 +45,7 @@ typedef enum {
     SEXOS_SLOT_block = 15,
     SEXOS_SLOT_buf_lend = 17,
     SEXOS_SLOT_net = 18,
+    SEXOS_SLOT_epoch_log = 20,
 } SexosSlot;
 
 typedef enum {

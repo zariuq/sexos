@@ -13,6 +13,11 @@
         (typedef
           (struct SexosReply (uint64_t status) (uint64_t value)) SexosReply)
         (typedef
+          (struct SexosProgramMemory
+            (uint64_t status) (uint64_t base) (uint64_t pages) (uint64_t pressure)) SexosProgramMemory)
+        (typedef
+          (struct SexosRecordReply (uint64_t status) (uint64_t first) (uint64_t second)) SexosRecordReply)
+        (typedef
           (struct SexosListener (unsigned wrapper_budget)) SexosListener)
         (typedef
           (struct SexosMessage
@@ -22,6 +27,10 @@
         (var SexosReply
           (function sexos_pdx_call (uint64_t slot) (uint64_t opcode)
             (uint64_t arg0) (uint64_t arg1) (uint64_t arg2)))
+        (var SexosProgramMemory (function sexos_program_memory_grow (uint64_t pages)))
+        (var SexosRecordReply (function sexos_record_call (uint64_t op) (uint64_t a) (uint64_t b)))
+        (var void (function sexos_wait_self_ticks (uint64_t ticks)))
+        (var void (function sexos_task_finish (uint64_t status)))
         (var SexosMessage (function sexos_listen (SexosListener (* listener)) (uint64_t slot)))
         (var SexosMessage (function sexos_listen_once (uint64_t slot)))
         (var void (function sexos_yield void))

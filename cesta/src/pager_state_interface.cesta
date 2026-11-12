@@ -122,6 +122,7 @@ PgFaultResult pager_fault_claim(PgFaultState *state, uint32_t pager, uint64_t to
 uint64_t pager_fault_rollback(PgFaultState *state, uint32_t pager, uint64_t token);
 PgFaultResult pager_fault_complete(PgFaultState *state, uint32_t pager, uint64_t token);
 uint64_t pager_fault_retire(PgFaultState *state, uint32_t target, uint32_t pager, uint32_t task);
+uint64_t pager_fault_retire_run(PgFaultState *state, uint32_t target, uint32_t pager);
 PgFaultResult pager_fault_reject(PgFaultState *state, uint32_t pager, uint64_t token);
 PgBindingResult pager_mapping_validate(PgMapping map, PgFramePool pool, uint32_t pager,
                                        PgFaultView fault, uint64_t frame, uint64_t rights);
@@ -136,5 +137,9 @@ uint64_t pager_ledger_cleanup_plan(const PgLedger *ledger, uint32_t range, uint3
                                    uint32_t pager, uint32_t task, PgCleanupPlan *out);
 uint64_t pager_ledger_close(PgLedger *ledger, uint32_t range, uint32_t target, uint32_t pager,
                             uint32_t task);
+uint64_t pager_ledger_cleanup_run(const PgLedger *ledger, uint32_t range, uint32_t target,
+                                  uint32_t pager, PgCleanupPlan *out);
+uint64_t pager_ledger_close_run(PgLedger *ledger, uint32_t range, uint32_t target, uint32_t pager,
+                                uint32_t task);
 #endif
 ")))

@@ -37,6 +37,18 @@ def main():
         else:
             raise AssertionError("boot qualification accepted a fault or ambiguity")
     print("boot observation: clean reference accepted; four faults, ambiguity and unknown schema/value refused")
+    spec = importlib.util.spec_from_file_location("dma_probe", HERE / "tests/dma_quarantine_boot.py")
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    complete = ("[sexdrive.dma.probe.recovered] status=0 phase=0 generation=2 "
+                "device_generation=2 ready=1 read_phys=0xf00000 resets=1\n")
+    for end in range(len(complete)):
+        assert not probe.probe_record_complete(complete[:end]), end
+    assert probe.probe_record_complete(complete)
+    assert probe.probe_record_complete(complete.replace("\n", "\r\n"))
+    assert not probe.probe_record_complete("[sexdrive.dma.probe.arm]\n")
+    assert probe.probe_record_complete("[sexdrive.dma.probe.failed] reason=read\n")
+    print("DMA probe observation: partial result prefixes wait; complete LF/CRLF records permit shutdown")
 
 
 if __name__ == "__main__":

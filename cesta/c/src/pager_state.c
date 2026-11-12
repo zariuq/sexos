@@ -122,6 +122,19 @@ uint64_t pager_fault_retire(PgFaultState *s, uint32_t target, uint32_t pager, ui
     return PG_OK;
 }
 
+uint64_t pager_fault_retire_run(PgFaultState *s, uint32_t target, uint32_t pager) {
+    if (s->phase != PG_IDLE &&
+        (s->active.target_pd != target || s->active.pager_pd != pager || !s->active.task_id))
+        return PG_DENIED;
+    if (s->has_completed && (s->completed.target_pd != target || s->completed.pager_pd != pager ||
+                             !s->completed.task_id))
+        return PG_DENIED;
+    s->phase = PG_IDLE;
+    s->has_completed = false;
+    s->retired = true;
+    return PG_OK;
+}
+
 PgFaultResult pager_fault_reject(PgFaultState *s, uint32_t pager, uint64_t token) {
     PgFaultResult r = pager_fault_query(s, pager, token);
     if (!r.status)
@@ -260,6 +273,50 @@ uint64_t pager_ledger_close(PgLedger *s, uint32_t range, uint32_t target, uint32
                             uint32_t task) {
     PgCleanupPlan plan = {0};
     uint64_t error = pager_ledger_cleanup_plan(s, range, target, pager, task, &plan);
+    if (error)
+        return error;
+    uint8_t frames = 0;
+    for (size_t i = 0; i < PG_PAGES; ++i) {
+        if (!plan.entries[i].present)
+            continue;
+        PgBinding b = plan.entries[i].value;
+        frames |= (uint8_t)(1u << b.frame_index);
+        s->retired[b.frame_index] = (PgMaybeBinding){true, b};
+        if (b.token > s->retired_highwater[range - 1])
+            s->retired_highwater[range - 1] = b.token;
+        s->entries[b.frame_index] = (PgCommit){0};
+    }
+    s->closed[range - 1] = (PgCleanup){true, target, task, frames};
+    return PG_OK;
+}
+
+uint64_t pager_ledger_cleanup_run(const PgLedger *s, uint32_t range, uint32_t target,
+                                  uint32_t pager, PgCleanupPlan *out) {
+    *out = (PgCleanupPlan){0};
+    if (!range || range > PG_CLIENTS)
+        return PG_INVALID;
+    if (s->closed[range - 1].present)
+        return PG_DENIED;
+    for (size_t i = 0; i < PG_PAGES; ++i) {
+        if (!s->entries[i].present)
+            continue;
+        PgBinding b = s->entries[i].binding;
+        if (b.range_id != range && b.target_pd != target)
+            continue;
+        if (b.range_id != range || b.target_pd != target || b.pager_pd != pager ||
+            !b.task_id || b.frame_index != i)
+            return PG_DENIED;
+        out->entries[i] = (PgMaybeBinding){true, b};
+    }
+    return PG_OK;
+}
+
+uint64_t pager_ledger_close_run(PgLedger *s, uint32_t range, uint32_t target, uint32_t pager,
+                                uint32_t task) {
+    if (!task)
+        return PG_DENIED;
+    PgCleanupPlan plan = {0};
+    uint64_t error = pager_ledger_cleanup_run(s, range, target, pager, &plan);
     if (error)
         return error;
     uint8_t frames = 0;

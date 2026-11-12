@@ -1,0 +1,91 @@
+NVME DEFERRED RECOVERY
+
+The current driver separates a controller timeout from permanent device failure.
+DEVICE_RESET_INTERRUPTED (3) means an authentic interrupt receipt is still
+outstanding; DEVICE_RESET_HARDWARE (4) is a different result. An interrupted
+BEGIN does not reach interrupt masking or commit the reset transition.
+
+Current durability/IRQ builds give command completions a 5,000-tick deadline on
+the kernel's millisecond clock, sampling at cooperative polling turns. A separate
+32-bit counter guard prevents wrap if the clock stalls. This replaces an
+instruction-count cutoff whose elapsed time varied with compiler output. The
+historical durability profile retains its original polling bound and independent
+Rust differential controls. Controller recovery quotas are unchanged.
+
+A submitted read/write timeout quarantines its private DMA buffer. If reset
+BEGIN is interrupted, the request returns BLOCK_ERR_TIMEOUT (5), retains the
+pending recovery and makes no further queue submission. A flush has no data
+payload but retains the same pending controller obligation. Queries and reset
+retries use the existing held NVMe capability and exact device generation.
+
+The driver accepts hardware notifications only from the kernel's synthetic
+sender (domain 1, task 0). Ordinary calls with the same opcode stay ordinary
+requests and receive the unsupported-command reply. The current driver targets
+enable the sender-task register ABI. Acknowledgement still requires the exact
+revision actually heard by the kernel; neither a query nor a retry invents it.
+After acknowledgement, recovery can proceed without another interrupt. A late
+receipt during quiescence similarly defers observation without releasing the
+quarantined buffer or advancing its generation.
+
+A physical interrupt may precede publication of its notification. The kernel
+retains that produced revision when queue capacity or the journal's current
+execution scope defers publication. The owner's listen path drains retained
+notifications before checking an empty ring and after freeing a full-ring slot.
+It uses the authenticated owner context, the same revision and ordinary queue
+publication. Hearing is recorded only when the notification is actually taken;
+acknowledgement still requires the owner's explicit ACK. It does not depend on
+another hardware edge or a scheduler poll in a favorable context.
+
+SexFiles and the journal preserve retry through single-sector metadata,
+bulk data and sync callbacks. Failed reads publish no caller data. Uncertain
+writes may already have reached storage: retry is not rollback. The journal
+retains uncertainty, reconciles the exact pending record and refuses a changed
+record. Metadata generation and shared flushed boundaries advance only after
+their validation and sync protocol succeeds. The existing no-progress retry
+limit remains enforced; permanent errors and corruption remain failures.
+
+The adapter derives an uncommitted prefix from the journal's next-event cursor.
+It settles that prefix before appending new producer records and publishes the
+shared flushed boundary only after the metadata commit succeeds. A retry never
+enters the permanent batch-failure field. Polling also settles uncertain
+metadata when no new producer records exist. This prevents both duplicate
+appends and a retryable commit from closing the kernel's interrupt-delivery gate.
+
+Journal-internal completion work is deliberately distinct from logical event
+history. Device reset diagnostics identify internal work and whether an event
+was recorded. Tests require exact receipt order and reset phases, allow an
+unchanged logical epoch only for identified internal work, and require recorded
+events to advance the epoch. This is not whole-OS checkpoint/effect replay.
+
+Native controls
+---------------
+
+tests/kernel_transport.py joins the actual IRQ producer, ring/listen path and
+epoch producer. It covers publication deferred in another domain's context,
+both a full history batch and an explicit journal flush, empty/full rings,
+stale workers, exact hearing and no fabricated acknowledgement. IRQ delivery
+lives in kernel_device_interrupt.cesta; controller MMIO/reset stays in
+kernel_device_reset.cesta. The isolated reset fixture remains a separate layer.
+
+tests/nvme_recovery.py includes the actual exported driver and real DMA/reset
+policy cores. Six GCC/Clang routes cover read, write, flush, sender/task and
+revision forgery, duplicate acknowledgements, deferred quiescence, no premature
+submission/reuse and terminal/one-shot outcomes. The host fixture ends at an
+accepted reset/observation boundary; hardware rebuild is checked separately.
+Clock controls cover read/write/flush completions after the historical poll
+cutoff but before the deadline, exact expiry, reversed/wrapped time and the
+poll-counter guard.
+
+tests/epoch_journal.py injects retry before and after callback effects, preserving
+uncertainty and exact pending records. tests/epoch_files.py covers both metadata
+sectors and single/bulk/sync conversion, together with bounded flush progress.
+Commit controls include both syncs, metadata write/read before and after their
+effects, delayed prefix publication, new producer work during uncertainty, idle
+metadata polling, malformed cursors and bounded no-progress exhaustion.
+
+tests/dma_quarantine_boot.py throttles a disposable QEMU NVMe backend after queue
+creation. It requires a real timeout, queued-receipt deferral, ordered actual
+acknowledgements, no resubmission while quarantined, CC.EN/CSTS.RDY quiescence,
+queue rebuild and successful reuse of the same buffer in the next generation.
+The QMP controller owns shutdown; this diagnostic boot is separate from the
+full device-present post-readiness soaks.

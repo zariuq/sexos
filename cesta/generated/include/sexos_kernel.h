@@ -27,6 +27,12 @@
 
 #include "sexos_pager_state.h"
 
+#include "frame_lease.h"
+
+#include "program_memory.h"
+
+#include "epoch_types.h"
+
 #include "sexos_source_policy.h"
 
 #include "sexos_source_profile.h"
@@ -42,6 +48,19 @@
 #include "kernel_current.h"
 
 
+typedef struct ProgramWorker ProgramWorker;
+typedef struct ProgramWorkerStorage {
+    struct TrapFrame *frame;
+    uint8_t stack[65536u] __attribute__((aligned(16)));
+    uint8_t fpu[512u] __attribute__((aligned(16)));
+} ProgramWorkerStorage;
+
+#define MSR_FS_BASE UINT32_C(0xC0000100)
+
+#ifndef PROGRAM_FRAME_CAPACITY
+#define PROGRAM_FRAME_CAPACITY 8192u
+#endif
+
 #define COUNT_CURRENT_APP(...) +1
 #define COUNT_CURRENT_DOMAIN(...) +1
 #define COUNT_CURRENT_ROUTE(...) +1
@@ -51,6 +70,9 @@
 #define COUNT_CURRENT_QUIL(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,  \
                            p_activation, p_predecessor, p_logical, p_route)                        \
     +(p_logical == CURRENT_PD_quil ? 1 : 0)
+#define COUNT_CURRENT_WEB(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,   \
+                          p_activation, p_predecessor, p_logical, p_route)                         \
+    +((p_logical == CURRENT_PD_spindle || p_logical == CURRENT_PD_kaleidoscope) ? 1 : 0)
 
 enum {
     KERNEL_CURRENT_APPS = 0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_APP),
@@ -59,9 +81,10 @@ enum {
     KERNEL_CURRENT_ROUTES = 0 SEXOS_CURRENT_ROUTE_ROWS(COUNT_CURRENT_ROUTE),
     KERNEL_CURRENT_SOURCE_CAPS = 0 SEXOS_CURRENT_SOURCE_ROWS(COUNT_CURRENT_SOURCE),
     KERNEL_CURRENT_QUILS = 0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_QUIL),
+    KERNEL_CURRENT_WEB = 0 SEXOS_CURRENT_APP_ROWS(COUNT_CURRENT_WEB),
     KERNEL_CURRENT_DORMANT = KERNEL_CURRENT_DOMAINS - KERNEL_CURRENT_ACTIVE,
-    /* Three DMA regions, four paired regions, the paging pool, Display's frames and one document pair per Quil. */
-    KERNEL_CURRENT_BACKINGS = 9 + KERNEL_CURRENT_QUILS
+    /* Fixed device/display/paging/epoch/record regions, one document pair per Quil and one web pair per Spindle/Browser. */
+    KERNEL_CURRENT_BACKINGS = 12 + KERNEL_CURRENT_QUILS + KERNEL_CURRENT_WEB
 };
 
 #undef COUNT_CURRENT_APP
@@ -70,6 +93,7 @@ enum {
 #undef COUNT_CURRENT_SOURCE
 #undef COUNT_CURRENT_ACTIVE
 #undef COUNT_CURRENT_QUIL
+#undef COUNT_CURRENT_WEB
 
 
 /*Shared interface of the SexOS kernel, translated from kernel/src. The kernel's state is one owned record (Kernel); every table in it has a declared bound, and nothing is allocated after boot except page frames.*/
@@ -148,7 +172,10 @@ _Static_assert(SEXOS_FPU_CONTEXT_CORRUPT_PROBE == 0 || SEXOS_FPU_CONTEXT_CORRUPT
 
 #define KERNEL_EPOCH_EVENT_CAPACITY 8192u
 
-#define KERNEL_RUN_QUEUE_CAPACITY 32u
+#if !defined(KERNEL_RUN_QUEUE_CAPACITY)
+#define KERNEL_RUN_QUEUE_CAPACITY 512u
+
+#endif
 
 #define KERNEL_STACK_SIZE 65536u
 
@@ -240,10 +267,24 @@ _Static_assert(sizeof(TrapFrame) == 176 && offsetof(TrapFrame, rax) == 112 &&
                "trap frame layout of entry_x86_64.S");
 
 
+#include "program_workers.h"
+
+#include "program_record_memory.h"
+
+#if !defined(PROGRAM_RECORD_QUEUE_CAPACITY)
+#define PROGRAM_RECORD_QUEUE_CAPACITY KERNEL_RUN_QUEUE_CAPACITY
+
+#endif
+
+#include "program_record_tasks.h"
+
+_Static_assert(KERNEL_RUN_QUEUE_CAPACITY == PROGRAM_RECORD_QUEUE_CAPACITY, "shared task FIFO capacity");
+
+
 /*What a capability names. MESSAGE_QUEUE is the domain's own ring (listen); DOMAIN a domain's ring (call, lend); PCI a device lease; MEM_LEND a lent frame.*/
 
 typedef enum CapKind {
-  CAP_NONE, CAP_DOMAIN, CAP_INPUT_RING, CAP_MESSAGE_QUEUE, CAP_PCI, CAP_MEM_LEND, CAP_REGION, CAP_APP_LIFECYCLE, CAP_APP_ACTIVATION, CAP_FRAME_POOL, CAP_PAGER_MAPPING, CAP_DEMAND_REGION, CAP_ENTROPY_SOURCE, CAP_CLOCK_SOURCE, CAP_TRUST_POLICY, CAP_HISTORY_RECOVERY
+  CAP_NONE, CAP_DOMAIN, CAP_INPUT_RING, CAP_MESSAGE_QUEUE, CAP_PCI, CAP_MEM_LEND, CAP_REGION, CAP_APP_LIFECYCLE, CAP_APP_ACTIVATION, CAP_FRAME_POOL, CAP_PAGER_MAPPING, CAP_DEMAND_REGION, CAP_ENTROPY_SOURCE, CAP_CLOCK_SOURCE, CAP_TRUST_POLICY, CAP_HISTORY_RECOVERY, CAP_RECORD_POOL
 }
 CapKind;
 
@@ -292,52 +333,11 @@ typedef struct {
 #endif
 
 
-/*A ring entry holds exactly what listen returns: the type word, the reported caller and three arguments. from_call marks an IpcCall, whose receiver may then reply once to its sender.*/
-
-typedef struct RingEntry {
-  uint64_t type_id;
-  uint64_t caller;
-  uint64_t arg0;
-  uint64_t arg1;
-  uint64_t arg2;
-  uint32_t sender;
-  uint32_t caller_task;
-  bool from_call;
-  uint64_t request_id;
+typedef struct KernelEpochCheckpoint {
+  uint64_t through;
+  KernelEpochEvent boundary;
 }
-RingEntry;
-
-typedef enum KernelEpochEventKind {
-  KERNEL_EPOCH_RING_PUSH = 1, KERNEL_EPOCH_RING_POP = 2, KERNEL_EPOCH_INPUT_PUSH = 3, KERNEL_EPOCH_INPUT_POP = 4, KERNEL_EPOCH_PAGE_RECLAIM = 5, KERNEL_EPOCH_PAGE_INSTALL = 6, KERNEL_EPOCH_PAGE_CLEANUP = 7, KERNEL_EPOCH_APP_HANDOVER = 8, KERNEL_EPOCH_APP_ACTIVATION = 9, KERNEL_EPOCH_PCI_COMMAND = 10, KERNEL_EPOCH_REGION_WRITER = 11, KERNEL_EPOCH_DEVICE_RESET = 12
-}
-KernelEpochEventKind;
-
-typedef struct KernelEpochEvent {
-  uint64_t epoch;
-  uint32_t subject;
-  uint32_t peer;
-  uint8_t kind;
-  uint8_t scancode;
-  uint8_t rights;
-  uint8_t key;
-  uint8_t source_key;
-  uint64_t revision;
-  uint64_t address;
-  uint64_t token;
-  uint64_t frame;
-  uint64_t bitmap;
-  uint64_t pages;
-  uint32_t device;
-  uint32_t device_identity;
-  uint32_t device_expected_identity;
-  uint16_t device_before;
-  uint16_t device_expected;
-  uint16_t device_after;
-  bool device_attempted;
-  uint64_t device_status;
-  RingEntry message;
-}
-KernelEpochEvent;
+KernelEpochCheckpoint;
 
 /*A cursor certificate includes a non-reused revision. Exhaustion refuses mutation rather than wrapping into an old certificate.*/
 
@@ -404,6 +404,7 @@ typedef struct Domain {
   uint32_t task_id;
   uint8_t task_state;
   bool queued;
+  bool admission_pending;
   bool wake_pending;
   uint64_t wait_deadline;
   uint64_t wait_count;
@@ -421,6 +422,10 @@ typedef struct Domain {
   uint64_t code_base;
   uint64_t stack_top;
   uint64_t entry;
+  uint64_t wait_address;
+  uint64_t fs_base;
+  uint8_t fault_main_state;
+  ProgramMemoryState program;
 }
 Domain;
 
@@ -657,10 +662,8 @@ typedef struct Kernel {
   CapabilityStorage cap_storage;
   BootBacking boot_backings[KERNEL_BOOT_REGIONS];
   uint32_t boot_backing_count;
-/*Run queue of domain ids, first in first out, as the reference's single-core work-stealing queue behaves.*/
-  uint32_t run_queue[KERNEL_RUN_QUEUE_CAPACITY];
-  uint32_t run_head;
-  uint32_t run_count;
+/*Shared FIFO of domain, worker and record tokens, with bounded direct handoff and exact dispatch types.*/
+  ProgramRecordQueue run_queue;
 /*The running domain; 0 before the first switch and while idle.*/
   uint32_t current;
   uint32_t display_pd;
@@ -671,12 +674,15 @@ typedef struct Kernel {
   bool idle_timed_logged;
 /*The boot authority graph is fixed before the first user domain runs. Later page lending cannot add or replace a communication capability.*/
   bool genesis_sealed;
-/*Bounded committed causal prefix. No effect may advance after this ledger or the global epoch exhausts.*/
+/*Bounded committed event window and elided-prefix checkpoint. Total epoch and event count never wrap; elided events cannot be replayed.*/
   KernelEpochEvent epoch_events[KERNEL_EPOCH_EVENT_CAPACITY];
-  uint32_t epoch_event_count;
+  uint64_t epoch_event_count;
   uint64_t epoch;
+  uint64_t epoch_compacted_through;
+  KernelEpochCheckpoint epoch_checkpoint;
   DeviceResetState device_reset;
   uint64_t vector_revision[256];
+  uint64_t vector_pending[256];
   uint64_t vector_heard_revision[256];
   uint64_t vector_ack_revision[256];
 /*Scancodes from the PS/2 keyboard, for the holder of the input-ring capability.*/
@@ -731,11 +737,49 @@ void memory_init(const LimineMemmapResponse *map);
 
 uint64_t frames_alloc(uint32_t order);
 
+FrameLeaseResult program_frame_take(uint32_t holder);
+
+FrameLeaseResult program_frame_take_transient(uint32_t holder);
+
+uint64_t program_frame_commit(FrameLease lease);
+
+uint64_t program_frame_commit_all(FrameLease *leases, size_t count);
+
+bool program_frame_map(FrameLease lease, uint64_t va, uint64_t flags, uint8_t key);
+
+bool program_frame_map_run(FrameLease lease, uint32_t run, uint64_t va, uint64_t flags, uint8_t key);
+
+bool program_frame_workspace_map(const AppPrivatePage *image, uint32_t target, uint32_t run, uint64_t address, uint8_t key);
+
+bool program_frame_handover_check(const AppPrivatePages *image, const AppPrivatePages *workspace, uint32_t target, uint32_t run, uint32_t holder);
+
+bool program_frame_handover_commit(const AppPrivatePages *image, const AppPrivatePages *workspace, uint32_t target, uint32_t run, uint32_t holder);
+
+uint64_t program_frame_detach(FrameLease lease);
+
+uint64_t program_frame_give(FrameLease lease);
+
+bool program_frame_release(FrameLease lease);
+
+bool program_frame_release_run(uint32_t target, uint32_t run);
+
+uint64_t program_frame_available(void);
+
+uint64_t program_frame_lent(void);
+
+uint64_t program_frame_pressure(void);
+
 void *phys_to_virt(uint64_t phys);
 
 uint64_t va_alloc(uint64_t size);
 
 bool map_page(uint64_t va, uint64_t phys, uint64_t flags, uint8_t key);
+
+bool prepare_page_table(uint64_t va, uint8_t key);
+
+bool image_write(uint64_t address, const uint8_t *source, uint64_t count);
+
+uint8_t *frame_byte(uint64_t address);
 
 bool read_pte(uint64_t va, uint64_t *pte);
 
@@ -779,7 +823,23 @@ uint32_t pci_scan(PciFunction *out, uint32_t max);
 
 /*kernel_domains: spawning, the genesis grants, the scheduler, traps and system calls.*/
 
+bool kernel_epoch_log_boot(void);
+
+bool kernel_epoch_log_ready(uint64_t expected);
+
+bool kernel_epoch_log_append(uint64_t next, const KernelEpochEvent *event);
+
+bool kernel_epoch_log_internal(void);
+
+bool kernel_epoch_log_eligible(uint32_t id);
+
+bool kernel_epoch_log_flush(Domain *d, bool enter);
+
+void kernel_epoch_log_poll(void);
+
 bool kernel_epoch_current(uint64_t epoch);
+
+bool kernel_epoch_event_read(uint64_t event_epoch, KernelEpochEvent *out);
 
 void kernel_epoch_record_page(uint64_t expected, uint8_t kind, uint32_t subject, uint64_t address, uint64_t token, uint64_t frame, uint8_t rights);
 
@@ -803,6 +863,50 @@ void domains_boot(void);
 
 void domains_boot_current(void);
 
+extern ProgramRecords kernel_program_records;
+
+extern ProgramRecordMemory kernel_program_record_memory;
+
+bool kernel_records_boot(void);
+
+bool kernel_records_boot_audit(void);
+
+uint64_t kernel_record_image_physical(void);
+
+extern ProgramRecordTask kernel_record_tasks[PROGRAM_RECORD_CAPACITY];
+
+extern ProgramRecordTaskStorage kernel_record_task_storage[PROGRAM_RECORD_CAPACITY];
+
+extern ProgramRecordTask *kernel_current_record;
+
+extern ProgramRecordTask *kernel_outgoing_record;
+
+bool kernel_record_run_push(uint32_t id);
+
+ProgramRecordTask *kernel_record_dispatch(uintptr_t id);
+
+ProgramRecordTaskStorage *kernel_record_storage(ProgramRecordTask *task);
+
+TrapFrame *kernel_record_switch(uintptr_t id);
+
+bool kernel_record_outgoing(TrapFrame *frame);
+
+void kernel_record_stack_departed(void);
+
+TrapFrame *kernel_record_pdx_call(TrapFrame *frame);
+
+TrapFrame *kernel_record_syscall(TrapFrame *frame);
+
+TrapFrame *kernel_record_sleep(TrapFrame *frame);
+
+TrapFrame *kernel_record_finish(TrapFrame *frame, bool fault);
+
+void kernel_records_poll(void);
+
+void kernel_record_fpu_save(void);
+
+void kernel_record_fpu_restore(void);
+
 void kernel_paging_boot(void);
 
 void kernel_sources_boot(void);
@@ -822,6 +926,12 @@ bool kernel_pci_boot_valid(Domain *d, uint64_t slot);
 void kernel_pci_syscall(Domain *d, TrapFrame *frame, uint64_t number);
 
 void kernel_region_writer_syscall(Domain *d, TrapFrame *frame);
+
+void kernel_device_interrupt_publish(uint32_t vector);
+
+bool kernel_device_interrupt_retry(uint32_t vector);
+
+void kernel_device_interrupt_drain(Domain *d);
 
 void kernel_device_reset_syscall(Domain *d, TrapFrame *frame);
 
@@ -899,6 +1009,49 @@ bool kernel_app_reserve_successor(uint32_t predecessor, uint32_t successor);
 
 uint32_t kernel_current_task(Domain *d);
 
+ProgramMemoryReply kernel_program_memory(Domain *d, uint64_t want);
+
+void kernel_workers_boot(void);
+
+struct ProgramWorkerStorage *kernel_worker_storage(ProgramWorker *worker);
+
+bool kernel_worker_entry(TrapFrame *frame);
+
+void kernel_worker_stack_departed(void);
+
+bool kernel_worker_token(uintptr_t token);
+
+ProgramWorker *kernel_worker_dispatch(uintptr_t token);
+
+TrapFrame *kernel_worker_schedule(TrapFrame *frame, bool resume_current);
+
+TrapFrame *kernel_worker_yield(void);
+
+void kernel_worker_poll(void);
+
+void kernel_worker_end(Domain *d);
+
+void kernel_worker_memory_end(Domain *d);
+
+void kernel_worker_fault(Domain *d);
+
+bool kernel_worker_fault_begin(Domain *d);
+
+bool kernel_worker_fault_matches(Domain *d, const PgFaultRecord *record);
+
+bool kernel_worker_fault_complete(Domain *d, const PgFaultRecord *record);
+
+bool kernel_worker_fault_reject(Domain *d, const PgFaultRecord *record);
+
+bool kernel_worker_all_dead(uint32_t target);
+
+TrapFrame *kernel_worker_syscall(Domain *d, TrapFrame *frame);
+
+void kernel_fpu_restore(Domain *d);
+
+extern ProgramWorker *kernel_current_worker;
+extern ProgramWorker *kernel_outgoing_worker;
+
 uint32_t mask_for_key(uint8_t key);
 
 const Cap *cap_get(Domain *d, uint64_t slot);
@@ -916,6 +1069,12 @@ bool boot_region_map(uint32_t holder, const BootBacking *backing, bool writable,
 bool boot_region_dma(uint32_t holder, uint64_t slot, uint32_t id, uint64_t length);
 
 bool boot_region_pair(uint32_t first, uint32_t second, uint64_t first_slot, uint64_t second_slot, uint32_t id, uint64_t length, bool second_writable);
+
+bool boot_region_shared_pair(uint32_t first, uint32_t second, uint64_t first_slot, uint64_t second_slot, uint32_t id, uint64_t length);
+
+bool boot_epoch_log_region(uint32_t holder, uint64_t *physical_out);
+
+bool boot_record_image_region(uint32_t holder, uint64_t *physical_out);
 
 /*Display's two BOOT frame buffers: checked packed-XRGB geometry and reservation sizes, as crates/sex-pdx/src/display_frames.rs.*/
 
@@ -960,9 +1119,9 @@ bool input_pop(uint8_t *out);
 
 void run_push(uint32_t id);
 
-uint32_t run_pop(void);
+uintptr_t run_pop(void);
 
-TrapFrame *switch_to(uint32_t id);
+TrapFrame *switch_to(uintptr_t id);
 
 void kernel_fpu_save_current(void);
 

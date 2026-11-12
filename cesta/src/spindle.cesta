@@ -813,6 +813,26 @@
         (call sexos_line "[spindle.grid.render.ok] cols=%zu rows=%zu surfaces=%zu"
           GRID_COLS GRID_ROWS GRID_SURFACES)))
 
+    (fn (static bool) program_name_valid ((ByteSlice name))
+      (if (|| (== (. name len) 0) (> (. name len) 16)) (return false))
+      (for (var size_t i 0) (< i (. name len)) (++ i)
+        (if (|| (<= ([] (. name ptr) i) 32u) (>= ([] (. name ptr) i) 127u)) (return false)))
+      (return true))
+
+    (fn (static bool) program_count_valid ((ByteSlice args) (uint64_t (* out)))
+      (if (== (. args len) 0) (return false))
+      (var uint64_t value 0)
+      (for (var size_t i 0) (< i (. args len)) (++ i)
+        (block
+          (var uint8_t b ([] (. args ptr) i))
+          (if (|| (< b 48u) (> b 57u)) (return false))
+          (var uint64_t digit (cast uint64_t (- b 48u)))
+          (if (> value (/ (- UINT64_MAX digit) 10u)) (return false))
+          (= value (+ (* value 10u) digit))))
+      (if (== value 0) (return false))
+      (= (* out) value)
+      (return true))
+
     (fn (static bool) dispatch ((Spindle (* sp)) (ByteSlice line))
       (var Scrollback (* sb) (& (-> sp sb)))
       (var History (* hist) (& (-> sp hist)))
@@ -850,6 +870,32 @@
         (call sexos_line "[spindle.alias.proof.summary] alias_count=6 ok=1"))
       (if (== (. cmd len) 0) (return true))
       (var bool recognized false)
+      (if (call slice_eq cmd "spawn")
+        (block
+          (var TokenPair parts (call tokenize args))
+          (var uint64_t name0 0)
+          (var uint64_t name1 0)
+          (var uint64_t count 0)
+          (if (&& (call program_name_valid (. parts cmd)) (call program_count_valid (. parts args) (& count)))
+            (block
+              (call pack_doc_name (. parts cmd) (& name0) (& name1))
+              (var SexosReply reply (call sexos_pdx_call SEXOS_SLOT_shell 0x50u name0 name1 count))
+              (call sexos_line "[spindle.records.spawn] status=%llu" (cast (unsigned long long) (. reply status)))
+            (call sb_push_cstr sb "Usage: spawn NAME COUNT"))
+          (= recognized true))))
+      (if (call slice_eq cmd "stopall")
+        (block
+          (var uint64_t force (?: (call slice_eq args "force") 1 0))
+          (var SexosReply reply (call sexos_pdx_call SEXOS_SLOT_shell 0x51u force 0 0))
+          (call sexos_line "[spindle.records.stop] force=%llu status=%llu"
+            (cast (unsigned long long) force) (cast (unsigned long long) (. reply status)))
+          (= recognized true)))
+      (if (call slice_eq cmd "records")
+        (block
+          (var SexosReply reply (call sexos_pdx_call SEXOS_SLOT_shell 0x52u 0 0 0))
+          (call sexos_line "[spindle.records.census] status=%llu"
+            (cast (unsigned long long) (. reply status)))
+          (= recognized true)))
       (if (call slice_eq cmd "calc")
         (block
           (var SpindleCalcInput input (init 0))
@@ -3126,6 +3172,55 @@
       (call sexos_line "[spindle.help.proof] stage=5 command=safety ok=1 reason=no_blocking_local_only")
       (call sexos_line "[spindle.help.proof.done] ok=%u" (?: help_ok 1u 0u)))
 
+(cpp-if "SEXOS_RECORD_PROBE" (then
+    (fn (static bool) record_wait_live ((uint64_t wanted))
+      (var bool awaiting false)
+      (var uint64_t quiet 0)
+      (for (var size_t attempt 0) (< attempt 128) (++ attempt)
+        (block
+          (if (! awaiting)
+            (block
+              (var SexosReply reply (call sexos_pdx_call SEXOS_SLOT_shell 0x52u 0 0 0))
+              (if (== (. reply status) 0) (block (= awaiting true) (= quiet 0)))))
+          (if awaiting
+            (block
+              (+= quiet 1)
+              (if (>= quiet 16) (block (= awaiting false) (= quiet 0)))))
+          (var SexosMessage msg (call sexos_listen_once 0))
+          (if (&& (== (. msg type_id) 0x1u) (== (. msg caller_pd) 3u))
+            (block
+              (= awaiting false)
+              (= quiet 0)
+              (call sexos_line "[spindle.record.reply] live=%llu wanted=%llu"
+                (cast (unsigned long long) (. msg arg0)) (cast (unsigned long long) wanted))
+              (if (== (. msg arg0) wanted) (return true))))
+          (if (&& (== (. msg type_id) 0x53u) (== (. msg caller_pd) 3u))
+            (return false))
+          (call sexos_wait_self_ticks 4)))
+      (return false))
+
+    (fn (static void) run_record_probe ((Spindle (* sp)))
+      (call sexos_line "[spindle.record.probe.begin]")
+      (call dispatch sp (call cstr_slice "spawn hum 1"))
+      (if (! (call record_wait_live 1))
+        (block (call sexos_line "[spindle.record.probe.timeout] stage=start") (return)))
+      (call dispatch sp (call cstr_slice "stopall"))
+      (if (! (call record_wait_live 0))
+        (block (call sexos_line "[spindle.record.probe.timeout] stage=stop") (return)))
+      (call dispatch sp (call cstr_slice "spawn hum 15"))
+      (if (! (call record_wait_live 15))
+        (block (call sexos_line "[spindle.record.probe.timeout] stage=batch") (return)))
+      (call dispatch sp (call cstr_slice "stopall"))
+      (if (! (call record_wait_live 0))
+        (block (call sexos_line "[spindle.record.probe.timeout] stage=batch-stop") (return)))
+      (call dispatch sp (call cstr_slice "spawn hum 1"))
+      (if (! (call record_wait_live 1))
+        (block (call sexos_line "[spindle.record.probe.timeout] stage=restart") (return)))
+      (call dispatch sp (call cstr_slice "stopall"))
+      (if (! (call record_wait_live 0))
+        (block (call sexos_line "[spindle.record.probe.timeout] stage=final") (return)))
+      (call sexos_line "[spindle.record.probe.done]"))))
+
     (fn void spindle_main (void)
       (var Spindle (* sp) (& spindle_state))
       (call spindle_init sp)
@@ -3316,6 +3411,7 @@
           (call sb_push_cstr (& (-> sp sb)) "TYPE HELP")))
       (call content_render sp)
       (call sexos_line "[spindle.ready]")
+      (cpp-if "SEXOS_RECORD_PROBE" (then (call run_record_probe sp)))
 
       (while 1
         (block

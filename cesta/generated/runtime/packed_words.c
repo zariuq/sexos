@@ -118,7 +118,8 @@ static inline uint64_t cesta_packed_words_shift(uint64_t value, size_t count, un
 uint64_t packed_words_load_le64(cesta_read_bytes bytes)
 {
     (void)bytes;
-    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX)
+    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (bytes.len && (uintptr_t)bytes.data % _Alignof(uint8_t)))
         cesta_packed_words_fail();
     if (!((bytes.len) <= (((size_t)UINT64_C(8))))) cesta_packed_words_fail();
     uint64_t packed = ((uint64_t)UINT64_C(0));
@@ -133,7 +134,8 @@ uint64_t packed_words_load_le64(cesta_read_bytes bytes)
 void packed_words_store_le64(cesta_write_bytes bytes, uint64_t packed)
 {
     (void)bytes;
-    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX)
+    if ((bytes.len && !bytes.data) || bytes.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (bytes.len && (uintptr_t)bytes.data % _Alignof(uint8_t)))
         cesta_packed_words_fail();
     (void)packed;
     if (!((bytes.len) <= (((size_t)UINT64_C(8))))) cesta_packed_words_fail();

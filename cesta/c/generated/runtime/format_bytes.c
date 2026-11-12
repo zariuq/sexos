@@ -148,10 +148,12 @@ static inline uint64_t cesta_format_bytes_div(uint64_t value, uint64_t divisor, 
 size_t format_bytes_copy(cesta_write_bytes destination, cesta_read_bytes source)
 {
     (void)destination;
-    if ((destination.len && !destination.data) || destination.len > (size_t)PTRDIFF_MAX)
+    if ((destination.len && !destination.data) || destination.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (destination.len && (uintptr_t)destination.data % _Alignof(uint8_t)))
         cesta_format_bytes_fail();
     (void)source;
-    if ((source.len && !source.data) || source.len > (size_t)PTRDIFF_MAX)
+    if ((source.len && !source.data) || source.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (source.len && (uintptr_t)source.data % _Alignof(uint8_t)))
         cesta_format_bytes_fail();
     if (!((destination.len) >= (source.len))) cesta_format_bytes_fail();
     for (size_t index = 0; index < source.len; ++index) {
@@ -164,7 +166,8 @@ size_t format_bytes_copy(cesta_write_bytes destination, cesta_read_bytes source)
 size_t format_bytes_unsigned_decimal(cesta_write_bytes destination, uint64_t value)
 {
     (void)destination;
-    if ((destination.len && !destination.data) || destination.len > (size_t)PTRDIFF_MAX)
+    if ((destination.len && !destination.data) || destination.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (destination.len && (uintptr_t)destination.data % _Alignof(uint8_t)))
         cesta_format_bytes_fail();
     (void)value;
     uint8_t cesta_2_storage[20] = {0};
@@ -197,7 +200,8 @@ size_t format_bytes_unsigned_decimal(cesta_write_bytes destination, uint64_t val
 size_t format_bytes_unsigned_hex(cesta_write_bytes destination, uint64_t value, bool prefix)
 {
     (void)destination;
-    if ((destination.len && !destination.data) || destination.len > (size_t)PTRDIFF_MAX)
+    if ((destination.len && !destination.data) || destination.len > (size_t)PTRDIFF_MAX / sizeof(uint8_t) ||
+        (destination.len && (uintptr_t)destination.data % _Alignof(uint8_t)))
         cesta_format_bytes_fail();
     (void)value;
     (void)prefix;

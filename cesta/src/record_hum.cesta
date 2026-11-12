@@ -1,0 +1,40 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (ownership (check-all)
+      (unchecked (record_hum_main)
+        (obligation "A route-less record task: private static memory, timed waits and the record-stop syscall. Serial output is synchronous and no pointer or capability is retained.")))
+    (include "sexos_client.h")
+    (native "
+static uint64_t memory[64];
+
+static uint64_t word_at(uint64_t seed, size_t index) {
+    uint32_t turn = (uint32_t)(index % 64);
+    return (((seed << turn) | (seed >> ((64 - turn) % 64))) ^ (uint64_t)index);
+}
+
+void record_hum_main(void) {
+    uint64_t seed = (uint64_t)(uintptr_t)memory;
+    for (size_t i = 0; i < 64; ++i) memory[i] = word_at(seed, i);
+    sexos_line(\"[record.hum.start] seed=%#llx\", (unsigned long long)seed);
+    uint64_t cycles = 0;
+    for (;;) {
+        sexos_wait_self_ticks(1);
+        for (size_t i = 0; i < 64; ++i) {
+            if (memory[i] != word_at(seed, i)) {
+                sexos_line(\"[record.hum.corrupt] seed=%#llx word=%zu\", (unsigned long long)seed, i);
+                sexos_task_finish(3);
+            }
+        }
+        if (cycles < 2) {
+            sexos_line(\"[record.hum.alive] seed=%#llx cycle=%llu\",
+                       (unsigned long long)seed, (unsigned long long)cycles);
+        }
+        ++cycles;
+        if (sexos_record_call(3, 0, 0).first) {
+            sexos_line(\"[record.hum.exit] seed=%#llx cycles=%llu\",
+                       (unsigned long long)seed, (unsigned long long)cycles);
+            sexos_task_finish(0);
+        }
+    }
+}
+")))

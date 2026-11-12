@@ -1,0 +1,336 @@
+#include "sexos_kernel.h"
+#include "program_record_memory.h"
+
+bool program_record_memory_init(ProgramRecordMemory *memory, uint8_t key) {
+    if (!memory) return false;
+    kmemset(memory, 0, sizeof *memory);
+    if (key != PROGRAM_RECORD_KEY) return false;
+    memory->key = key;
+    return true;
+}
+
+static uint64_t memory_expected(const ProgramRecordMemory *memory,
+                                const ProgramRecordPage *page, bool present) {
+    uint64_t value = (uint64_t)page->frame * PROGRAM_RECORD_PAGE_BYTES | PTE_USER |
+                     ((uint64_t)(memory->key & 15) << PTE_KEY_SHIFT);
+    if (page->writable) value |= PTE_WRITABLE;
+    if (!page->executable) value |= PTE_NO_EXECUTE;
+    if (present) value |= PTE_PRESENT;
+    return value;
+}
+
+static uint64_t memory_va(size_t index, size_t page) {
+    return program_record_virtual_page(index, page);
+}
+
+static bool memory_write(ProgramRecord *record, uint64_t at,
+                         const uint8_t *source, uint64_t count) {
+    if (at > PROGRAM_RECORD_WINDOW_BYTES || count > PROGRAM_RECORD_WINDOW_BYTES - at)
+        return false;
+    while (count) {
+        size_t page = (size_t)(at / PROGRAM_RECORD_PAGE_BYTES);
+        size_t inside = (size_t)(at % PROGRAM_RECORD_PAGE_BYTES);
+        if (page >= PROGRAM_RECORD_WINDOW_PAGES || !record->pages[page].allocated)
+            return false;
+        size_t take = PROGRAM_RECORD_PAGE_BYTES - inside;
+        if (take > count) take = (size_t)count;
+        uint64_t physical = (uint64_t)record->pages[page].frame * PROGRAM_RECORD_PAGE_BYTES + inside;
+        kmemcpy(phys_to_virt(physical), source, take);
+        at += take;
+        source += take;
+        count -= take;
+    }
+    return true;
+}
+
+static bool memory_source_valid(const ProgramImage *image) {
+    if (!image || !image->source.data) return false;
+    for (size_t i = 0; i < image->count; ++i) {
+        const ProgramSegment *segment = &image->segments[i];
+        if (segment->offset > image->source.len ||
+            segment->file > image->source.len - segment->offset)
+            return false;
+    }
+    return true;
+}
+
+static bool memory_preflight(ProgramRecords *table, ProgramRecordMemory *memory, size_t index) {
+    ProgramRecord *record = &table->entries[index];
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page) {
+        if (!record->pages[page].allocated) continue;
+        if (memory->leaves[index][page]) return false;
+        uint64_t *leaf = (uint64_t *)(uintptr_t)page_leaf_address(memory_va(index, page));
+        if (leaf && *leaf) return false;
+    }
+    return true;
+}
+
+static bool memory_rollback(ProgramRecords *table, ProgramRecordMemory *memory, size_t index) {
+    ProgramRecord *record = &table->entries[index];
+    bool ok = true;
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page) {
+        uint64_t at = memory->leaves[index][page];
+        if (!at) continue;
+        uint64_t va = memory_va(index, page);
+        volatile uint64_t *leaf = (volatile uint64_t *)(uintptr_t)at;
+        if (page_leaf_address(va) != at ||
+            (*leaf & ~(UINT64_C(0x60) | PTE_PRESENT)) !=
+            (memory_expected(memory, &record->pages[page], false) &
+             ~(UINT64_C(0x60) | PTE_PRESENT))) {
+            ok = false;
+            continue;
+        }
+        *leaf = 0;
+        cpu_invlpg(va);
+        memory->leaves[index][page] = 0;
+    }
+    return ok;
+}
+
+extern void klog(const char *format, ...);
+
+static ProgramRecordLoad memory_begin_fail(uint64_t status, const char *stage) {
+    klog("[records.begin.failed] stage=%s status=%llu\n", stage, (unsigned long long)status);
+    return (ProgramRecordLoad){.status = status};
+}
+
+static ProgramRecordLoad memory_abort(ProgramRecords *table, ProgramRecordMemory *memory,
+                                      size_t index, uint32_t task, uint64_t status,
+                                      const char *stage) {
+    klog("[records.begin.failed] stage=%s status=%llu\n", stage, (unsigned long long)status);
+    if (!memory_rollback(table, memory, index)) status = PROGRAM_RECORD_RETRY;
+    else {
+        ProgramRecordReply aborted = program_record_abort(table, PROGRAM_RECORD_BASE + index, task);
+        if (aborted.status != PROGRAM_RECORD_OK) status = PROGRAM_RECORD_RETRY;
+    }
+    return (ProgramRecordLoad){.status = status};
+}
+
+static bool memory_map_pages(ProgramRecords *table, ProgramRecordMemory *memory, size_t index) {
+    ProgramRecord *record = &table->entries[index];
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page) {
+        ProgramRecordPage *entry = &record->pages[page];
+        if (!entry->allocated) continue;
+        uint64_t va = memory_va(index, page);
+        uint64_t physical = (uint64_t)entry->frame * PROGRAM_RECORD_PAGE_BYTES;
+        uint64_t flags = memory_expected(memory, entry, false) & ~PTE_ADDRESS;
+        if (!map_page(va, physical, flags, memory->key)) return false;
+        uint64_t at = page_leaf_address(va);
+        memory->leaves[index][page] = at;
+        if (!at) return false;
+        volatile uint64_t *leaf = (volatile uint64_t *)(uintptr_t)at;
+        if (*leaf != memory_expected(memory, entry, true)) return false;
+        *leaf = memory_expected(memory, entry, false);
+        cpu_invlpg(va);
+        kmemset(phys_to_virt(physical), 0, PROGRAM_RECORD_PAGE_BYTES);
+    }
+    return true;
+}
+
+ProgramRecordLoad program_record_memory_begin(ProgramRecords *table, ProgramRecordMemory *memory,
+                                              const ProgramImage *image) {
+    if (!table || !memory || memory->key != PROGRAM_RECORD_KEY)
+        return memory_begin_fail(PROGRAM_RECORD_INVALID, "state");
+    ProgramRecordPlan plan = {0};
+    if (program_records_plan(image, &plan) != PROGRAM_RECORD_OK || !memory_source_valid(image))
+        return memory_begin_fail(PROGRAM_RECORD_INVALID, "plan");
+    ProgramRecordReply began = program_record_begin(table, image);
+    if (began.status != PROGRAM_RECORD_OK) return memory_begin_fail(began.status, "begin");
+    size_t index = (size_t)(began.first - PROGRAM_RECORD_BASE);
+    uint32_t task = (uint32_t)began.second;
+    uint64_t base = program_record_virtual_page(index, 0);
+    ProgramRecord *record = &table->entries[index];
+    for (uint64_t i = 0; i < image->rela_count; ++i)
+        if (!program_image_relocation(image, i, base).valid)
+            return memory_abort(table, memory, index, task, PROGRAM_RECORD_INVALID, "relocation");
+    if (!memory_preflight(table, memory, index))
+        return memory_abort(table, memory, index, task, PROGRAM_RECORD_INVALID, "preflight");
+    if (!memory_map_pages(table, memory, index))
+        return memory_abort(table, memory, index, task, PROGRAM_RECORD_FULL, "map");
+    for (size_t i = 0; i < image->count; ++i) {
+        const ProgramSegment *segment = &image->segments[i];
+        if (!memory_write(record, segment->window, image->source.data + segment->offset,
+                          segment->file))
+            return memory_abort(table, memory, index, task, PROGRAM_RECORD_INVALID, "write");
+    }
+    for (uint64_t i = 0; i < image->rela_count; ++i) {
+        ProgramRelocation relocation = program_image_relocation(image, i, base);
+        if (!relocation.valid ||
+            !memory_write(record, relocation.offset, (const uint8_t *)&relocation.value, 8))
+            return memory_abort(table, memory, index, task, PROGRAM_RECORD_INVALID, "relocation-write");
+    }
+    size_t entry_page = (size_t)(image->entry / PROGRAM_RECORD_PAGE_BYTES);
+    if (entry_page >= PROGRAM_RECORD_WINDOW_PAGES || !record->pages[entry_page].allocated ||
+        !record->pages[entry_page].executable)
+        return memory_abort(table, memory, index, task, PROGRAM_RECORD_INVALID, "entry");
+    uint64_t entry_leaf = memory->leaves[index][entry_page];
+    if (!entry_leaf ||
+        *(volatile uint64_t *)(uintptr_t)entry_leaf !=
+            memory_expected(memory, &record->pages[entry_page], false))
+        return memory_abort(table, memory, index, task, PROGRAM_RECORD_INVALID, "entry-leaf");
+    return (ProgramRecordLoad){PROGRAM_RECORD_OK, (uint32_t)began.first, task,
+                               base + image->entry, program_record_stack_top(index)};
+}
+
+ProgramRecordReply program_record_memory_commit(ProgramRecords *table, ProgramRecordMemory *memory,
+                                                uint64_t pd, uint32_t task) {
+    if (!table || !memory || !program_records_is_record(table, pd))
+        return (ProgramRecordReply){PROGRAM_RECORD_DENIED, 0, 0};
+    size_t index = (size_t)(pd - PROGRAM_RECORD_BASE);
+    ProgramRecordReply committed = program_record_commit(table, pd, task);
+    if (committed.status != PROGRAM_RECORD_OK) {
+        ProgramRecordLoad aborted = memory_abort(table, memory, index, task, committed.status, "commit");
+        return (ProgramRecordReply){aborted.status, table->live, table->pool_free};
+    }
+    return committed;
+}
+
+ProgramRecordReply program_record_memory_cancel(ProgramRecords *table, ProgramRecordMemory *memory,
+                                                uint64_t pd, uint32_t task) {
+    if (!table || !memory || !program_records_is_record(table, pd))
+        return (ProgramRecordReply){PROGRAM_RECORD_DENIED, 0, 0};
+    size_t index = (size_t)(pd - PROGRAM_RECORD_BASE);
+    ProgramRecordLoad cancelled = memory_abort(table, memory, index, task, PROGRAM_RECORD_OK, "cancel");
+    return (ProgramRecordReply){cancelled.status, 0, table->pool_free};
+}
+
+ProgramRecordLoad program_record_memory_start(ProgramRecords *table, ProgramRecordMemory *memory,
+                                              const ProgramImage *image) {
+    ProgramRecordLoad load = program_record_memory_begin(table, memory, image);
+    if (load.status != PROGRAM_RECORD_OK) return load;
+    ProgramRecordReply committed = program_record_memory_commit(table, memory, load.pd, load.task);
+    if (committed.status != PROGRAM_RECORD_OK) {
+        load.status = committed.status;
+        load.pd = load.task = 0;
+        load.entry = load.stack_top = 0;
+    }
+    return load;
+}
+
+static bool memory_check(ProgramRecords *table, ProgramRecordMemory *memory, size_t index) {
+    ProgramRecord *record = &table->entries[index];
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page) {
+        ProgramRecordPage *entry = &record->pages[page];
+        uint64_t at = memory->leaves[index][page];
+        if (!entry->allocated) {
+            if (at) return false;
+            continue;
+        }
+        if (!at || page_leaf_address(memory_va(index, page)) != at) return false;
+        uint64_t actual = *(volatile uint64_t *)(uintptr_t)at;
+        if ((actual & ~UINT64_C(0x60)) != memory_expected(memory, entry, entry->present))
+            return false;
+    }
+    return true;
+}
+
+static void memory_present(ProgramRecords *table, ProgramRecordMemory *memory,
+                           size_t index, bool present) {
+    ProgramRecord *record = &table->entries[index];
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page) {
+        ProgramRecordPage *entry = &record->pages[page];
+        if (!entry->allocated) continue;
+        uint64_t va = memory_va(index, page);
+        volatile uint64_t *leaf = (volatile uint64_t *)(uintptr_t)memory->leaves[index][page];
+        *leaf = memory_expected(memory, entry, present);
+        cpu_invlpg(va);
+    }
+}
+
+static void memory_detach(ProgramRecords *table, ProgramRecordMemory *memory, size_t index) {
+    ProgramRecord *record = &table->entries[index];
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page) {
+        if (!record->pages[page].allocated) continue;
+        uint64_t at = memory->leaves[index][page];
+        if (!at) continue;
+        *(volatile uint64_t *)(uintptr_t)at = 0;
+        cpu_invlpg(memory_va(index, page));
+        memory->leaves[index][page] = 0;
+    }
+}
+
+uint64_t program_record_memory_evict(ProgramRecords *table, ProgramRecordMemory *memory) {
+    if (!table || !memory || memory->key != PROGRAM_RECORD_KEY) return PROGRAM_RECORD_DENIED;
+    if (!table->tenant) return PROGRAM_RECORD_OK;
+    size_t index = table->tenant - 1;
+    if (index >= table->count || !memory_check(table, memory, index)) return PROGRAM_RECORD_RETRY;
+    memory_present(table, memory, index, false);
+    program_records_evict(table);
+    return PROGRAM_RECORD_OK;
+}
+
+uint64_t program_record_memory_before_dispatch(ProgramRecords *table, ProgramRecordMemory *memory,
+                                               uint64_t pd, uint32_t task) {
+    if (!table || !memory || memory->key != PROGRAM_RECORD_KEY ||
+        !program_records_is_record(table, pd))
+        return PROGRAM_RECORD_DENIED;
+    size_t index = (size_t)(pd - PROGRAM_RECORD_BASE);
+    ProgramRecord *record = &table->entries[index];
+    if (record->state != PROGRAM_RECORD_LIVE || record->task != task)
+        return PROGRAM_RECORD_DENIED;
+    size_t old = table->tenant ? table->tenant - 1 : table->count;
+    if (old < table->count && !memory_check(table, memory, old)) return PROGRAM_RECORD_RETRY;
+    if (!memory_check(table, memory, index)) return PROGRAM_RECORD_RETRY;
+    if (record->killed) {
+        if (old < table->count) memory_present(table, memory, old, false);
+        return program_records_before_dispatch(table, pd, task);
+    }
+    if (old == index) return PROGRAM_RECORD_OK;
+    if (old < table->count) memory_present(table, memory, old, false);
+    memory_present(table, memory, index, true);
+    uint64_t status = program_records_before_dispatch(table, pd, task);
+    if (status != PROGRAM_RECORD_OK) {
+        memory_present(table, memory, index, false);
+        if (old < table->count) memory_present(table, memory, old, true);
+    }
+    return status;
+}
+
+ProgramRecordReply program_record_memory_reap(ProgramRecords *table, ProgramRecordMemory *memory,
+                                              const ProgramRecordTask *tasks) {
+    if (!table || !memory || memory->key != PROGRAM_RECORD_KEY || !tasks ||
+        !table->count || table->count > PROGRAM_RECORD_CAPACITY)
+        return (ProgramRecordReply){PROGRAM_RECORD_INVALID, 0, 0};
+    size_t cursor = table->reap_cursor, candidates[PROGRAM_RECORD_REAP_BATCH], count = 0;
+    size_t scan = table->count < PROGRAM_RECORD_REAP_SCAN ? table->count : PROGRAM_RECORD_REAP_SCAN;
+    for (size_t scanned = 0; scanned < scan && count < PROGRAM_RECORD_REAP_BATCH; ++scanned) {
+        cursor = (cursor + 1) % table->count;
+        ProgramRecord *record = &table->entries[cursor];
+        const ProgramRecordTask *snapshot = &tasks[cursor];
+        if (record->state != PROGRAM_RECORD_LIVE || snapshot->id != record->task ||
+            !snapshot->exited || snapshot->phase != PROGRAM_RECORD_TASK_DEAD ||
+            snapshot->owner_core != PROGRAM_RECORD_NO_CORE)
+            continue;
+        if (!memory_check(table, memory, cursor))
+            return (ProgramRecordReply){PROGRAM_RECORD_RETRY, count, table->pool_free};
+        candidates[count++] = cursor;
+    }
+    for (size_t i = 0; i < count; ++i) memory_detach(table, memory, candidates[i]);
+    ProgramRecordReply reply = program_records_reap(table, tasks);
+    if (reply.status != PROGRAM_RECORD_OK || reply.first != count)
+        return (ProgramRecordReply){PROGRAM_RECORD_RETRY, reply.first, table->pool_free};
+    return reply;
+}
+
+bool program_record_memory_audit(ProgramRecords *table, ProgramRecordMemory *memory) {
+    if (!table || !memory || memory->key != PROGRAM_RECORD_KEY ||
+        !program_records_audit(table))
+        return false;
+    for (size_t index = 0; index < table->count; ++index) {
+        ProgramRecord *record = &table->entries[index];
+        for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page) {
+            ProgramRecordPage *entry = &record->pages[page];
+            uint64_t at = memory->leaves[index][page];
+            uint64_t *actual_leaf = (uint64_t *)(uintptr_t)page_leaf_address(memory_va(index, page));
+            if (!entry->allocated) {
+                if (at || (actual_leaf && *actual_leaf)) return false;
+                continue;
+            }
+            if (!at || actual_leaf != (uint64_t *)(uintptr_t)at) return false;
+            if ((*(volatile uint64_t *)(uintptr_t)at & ~UINT64_C(0x60)) !=
+                memory_expected(memory, entry, entry->present))
+                return false;
+        }
+    }
+    return true;
+}

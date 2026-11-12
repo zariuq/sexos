@@ -113,6 +113,57 @@ bool boot_region_dma(uint32_t holder, uint64_t slot, uint32_t id, uint64_t lengt
     return boot_region_publish(d, slot, grant);
 }
 
+bool boot_record_image_region(uint32_t holder, uint64_t *physical_out) {
+    Domain *d = domain_get(holder);
+    if (!SEXOS_KERNEL_CURRENT_PDX || !physical_out || kernel.genesis_sealed ||
+        !boot_slot_free(d, PROGRAM_RECORD_IMAGE_SLOT_FILES) || !d->key || d->key >= 16 ||
+        !cap_boot_available(1) || !backing_id_free(PROGRAM_RECORD_IMAGE_REGION_ID))
+        return false;
+    BootBacking backing = {0};
+    uint64_t va = 0;
+    if (!boot_backing_reserve(PROGRAM_RECORD_IMAGE_REGION_ID, PROGRAM_RECORD_IMAGE_BYTES, &backing) ||
+        !boot_region_map(holder, &backing, true, &va))
+        return false;
+    BootBacking *held = backing_record(PROGRAM_RECORD_IMAGE_REGION_ID);
+    if (!held) return false;
+    held->aliases[0] = (BootRegionAlias){holder, va, d->key, true};
+    held->alias_count = 1;
+    MemoryRegionGrant grant = {.region_id = PROGRAM_RECORD_IMAGE_REGION_ID,
+                               .virtual_base = va,
+                               .length = PROGRAM_RECORD_IMAGE_BYTES,
+                               .rights = REGION_QUERY | REGION_READ | REGION_WRITE};
+    if (!boot_region_publish(d, PROGRAM_RECORD_IMAGE_SLOT_FILES, grant))
+        return false;
+    *physical_out = backing.physical;
+    return true;
+}
+
+bool boot_epoch_log_region(uint32_t holder, uint64_t *physical_out) {
+    Domain *d = domain_get(holder);
+    if (!SEXOS_KERNEL_CURRENT_PDX || !physical_out || kernel.genesis_sealed ||
+        !boot_slot_free(d, SEXOS_SLOT_epoch_log) || !d->key || d->key >= 16 ||
+        !cap_boot_available(1) || !backing_id_free(EPOCH_LOG_REGION_ID))
+        return false;
+    BootBacking backing = {0};
+    uint64_t va = 0;
+    if (!boot_backing_reserve(EPOCH_LOG_REGION_ID, EPOCH_LOG_REGION_BYTES, &backing) ||
+        !boot_region_map(holder, &backing, true, &va))
+        return false;
+    BootBacking *held = backing_record(EPOCH_LOG_REGION_ID);
+    if (!held)
+        return false;
+    held->aliases[0] = (BootRegionAlias){holder, va, d->key, true};
+    held->alias_count = 1;
+    MemoryRegionGrant grant = {.region_id = EPOCH_LOG_REGION_ID,
+                               .virtual_base = va,
+                               .length = EPOCH_LOG_REGION_BYTES,
+                               .rights = REGION_QUERY | REGION_READ | REGION_WRITE};
+    if (!boot_region_publish(d, SEXOS_SLOT_epoch_log, grant))
+        return false;
+    *physical_out = backing.physical;
+    return true;
+}
+
 /* Checked packed-XRGB geometry and reservation sizes; no backing is acquired. */
 bool display_frame_layout(uint64_t width, uint64_t height, uint64_t pitch,
                           DisplayFrameLayout *out) {
@@ -209,8 +260,9 @@ void kernel_boot_display_frames(uint32_t display, const DisplayFrameLayout *layo
         (unsigned long long)total, (unsigned long long)layout->buddy_bytes, d->key);
 }
 
-bool boot_region_pair(uint32_t first, uint32_t second, uint64_t first_slot, uint64_t second_slot,
-                      uint32_t id, uint64_t length, bool second_writable) {
+static bool boot_region_pair_kind(uint32_t first, uint32_t second, uint64_t first_slot,
+                                  uint64_t second_slot, uint32_t id, uint64_t length,
+                                  bool second_writable, bool writer_transfer) {
     Domain *a = domain_get(first), *b = domain_get(second);
     if (kernel.genesis_sealed || first == second || !boot_slot_free(a, first_slot) ||
         !boot_slot_free(b, second_slot) || !cap_boot_available(2) || !a->key || !b->key ||
@@ -221,7 +273,7 @@ bool boot_region_pair(uint32_t first, uint32_t second, uint64_t first_slot, uint
     uint64_t av = 0, bv = 0;
     if (!boot_backing_reserve(id, length, &backing) ||
         !boot_region_map(first, &backing, true, &av) ||
-        !boot_region_map(second, &backing, false, &bv))
+        !boot_region_map(second, &backing, second_writable && !writer_transfer, &bv))
         return false;
     BootBacking *held = backing_record(id);
     if (!held)
@@ -229,7 +281,7 @@ bool boot_region_pair(uint32_t first, uint32_t second, uint64_t first_slot, uint
     held->aliases[0] = (BootRegionAlias){first, av, a->key, true};
     held->aliases[1] = (BootRegionAlias){second, bv, b->key, second_writable};
     held->alias_count = 2;
-    if (second_writable)
+    if (writer_transfer)
         held->writer = (RegionWriterState){true, id, first, second, first, 1, 0};
     MemoryRegionGrant producer = {.region_id = id,
                                   .virtual_base = av,
@@ -246,6 +298,17 @@ bool boot_region_pair(uint32_t first, uint32_t second, uint64_t first_slot, uint
         .peer_pd = first};
     return boot_region_publish(a, first_slot, producer) &&
            boot_region_publish(b, second_slot, consumer);
+}
+
+bool boot_region_pair(uint32_t first, uint32_t second, uint64_t first_slot, uint64_t second_slot,
+                      uint32_t id, uint64_t length, bool second_writable) {
+    return boot_region_pair_kind(first, second, first_slot, second_slot, id, length, second_writable,
+                                 second_writable);
+}
+
+bool boot_region_shared_pair(uint32_t first, uint32_t second, uint64_t first_slot,
+                             uint64_t second_slot, uint32_t id, uint64_t length) {
+    return boot_region_pair_kind(first, second, first_slot, second_slot, id, length, true, false);
 }
 
 

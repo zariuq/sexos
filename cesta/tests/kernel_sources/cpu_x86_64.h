@@ -8,6 +8,7 @@ bool cpu_rdseed(uint64_t *out);
 void cpu_outb(uint16_t port,uint8_t value);
 uint8_t cpu_inb(uint16_t port);
 static inline void cpu_wrpkru(uint32_t value){(void)value;abort();}
+static inline void cpu_wrmsr(uint32_t msr,uint64_t value){(void)msr;(void)value;}
 static inline void cpu_sti_hlt(void){abort();}
 /* FPU context switch: the host keeps no FPU state per task. */
 static inline void cpu_fxsave(void *area){(void)area;}

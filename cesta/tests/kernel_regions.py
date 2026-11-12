@@ -27,18 +27,19 @@ def main():
     work = args.work or Path(tempfile.mkdtemp(prefix='kernel-regions-', dir=HERE/'build'))
     work.mkdir(parents=True, exist_ok=True)
     units = ('kernel_domains', 'kernel_syscalls', 'kernel_rpc', 'memory_regions', 'kernel_task_wait', 'kernel_sources', 'source_policy','kernel_pci','pci_policy','network_config','kernel_history','history_recovery',
-             'region_writer', 'kernel_region_writer', 'device_reset', 'kernel_device_reset')
+             'region_writer', 'kernel_region_writer', 'device_reset', 'kernel_device_interrupt', 'kernel_device_reset', 'program_memory', 'program_record_tasks')
     for unit in units:
         (work/(unit+'.c')).write_bytes(run([args.cesta, 'export-c', 'src/'+unit+'.cesta',
             '--std=c11', '--', '-Igenerated/include', '-Iruntime/kernel']))
     flags = ['-std=c11', '-g0', '-Wall', '-Wextra', '-Wpedantic', '-Werror',
-             '-DSEXOS_KERNEL_CURRENT_PDX=1', '-ffunction-sections', '-fdata-sections',
+             '-DSEXOS_KERNEL_CURRENT_PDX=1', '-DSEXOS_DEVICE_RESET_HOST_REAL=1', '-DSEXOS_WORKER_STUBS_NO_PLATFORM=1', '-ffunction-sections', '-fdata-sections',
              '-Wl,--gc-sections', '-I'+str(work), '-Igenerated/include', '-Iruntime/kernel']
 
     def compile(cc, extra, name):
         binary = work/name
-        run([cc, *flags, *extra, HERE/'tests/kernel_regions/host.c', work/'memory_regions.c', work/'source_policy.c',work/'pci_policy.c',work/'network_config.c',work/'history_recovery.c',
-             work/'region_writer.c', work/'kernel_region_writer.c', work/'device_reset.c', work/'kernel_device_reset.c', '-o', binary])
+        run([cc, *flags, *extra, HERE/'tests/kernel_regions/host.c', HERE/'tests/kernel_memory/worker_stubs.c', work/'program_memory.c', work/'memory_regions.c', work/'source_policy.c',work/'pci_policy.c',work/'network_config.c',work/'history_recovery.c',
+             work/'region_writer.c', work/'kernel_region_writer.c', work/'device_reset.c', work/'kernel_device_interrupt.c', work/'kernel_device_reset.c',
+             work/'program_record_tasks.c', HERE/'tests/kernel_memory/record_stubs.c', '-o', binary])
         return binary
 
     builds = []
@@ -50,7 +51,9 @@ def main():
             builds.append(name)
             print(name, 'kernel region and sparse-store controls passed', flush=True)
     mutants = [
-        ("unknown_call_residue", "kernel_syscalls", "f->r8 = 0;", "f->r8 = 1;"),
+        ("unknown_call_residue", "kernel_syscalls",
+         "if (SEXOS_KERNEL_CURRENT_PDX) { f->rsi=0; f->rdx=0; f->r10=0; f->r8=0; }",
+         "if (SEXOS_KERNEL_CURRENT_PDX) { f->rsi=0; f->rdx=0; f->r10=0; f->r8=1; }"),
         ('ambient_display_bridge', 'kernel_syscalls', '!SEXOS_KERNEL_CURRENT_PDX && operation == 0xE3', 'operation == 0xE3'),
         ('display_address_scope', 'kernel_syscalls', 'arg0 == 1 && d->id == kernel.display_pd', 'arg0 == 1'),
         ('selector_alias', 'kernel_domains',
@@ -83,7 +86,8 @@ def main():
                 path.write_text(original)
     names = ['src/'+n+'.cesta' for n in units] + ['src/kernel_interface.cesta',
              'src/memory_regions_interface.cesta', 'tests/kernel_regions.py', 'tests/kernel_regions/host.c',
-             'tests/kernel_model/host.c', 'generated/include/sexos_kernel.h', 'generated/include/sexos_memory_regions.h']
+             'tests/kernel_model/host.c', 'tests/kernel_memory/worker_stubs.c',
+             'generated/include/sexos_kernel.h', 'generated/include/sexos_memory_regions.h']
     summary = {'builds': builds, 'mutations_caught': caught,
                'source_sha256': {n: hashlib.sha256((HERE/n).read_bytes()).hexdigest() for n in names},
                'scope': 'actual compiled kernel dispatch and finite BOOT stores under counted memory/CPU providers; no native mappings, hardware isolation, scheduler or whole-C refinement claim'}

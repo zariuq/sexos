@@ -40,9 +40,240 @@ static const Descriptor descriptors[]={
 #undef DOMAIN_ROW
 };
 
+static void task_namespace(void)
+{
+    Domain unattached = {0};
+    next_task_id = PROGRAM_WORKER_TASK_FIRST - 1;
+    assert(task_attach(&unattached));
+    assert(unattached.task_id == PROGRAM_WORKER_TASK_FIRST - 1);
+    assert(next_task_id == PROGRAM_WORKER_TASK_FIRST);
+    Domain untouched = {0};
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        assert(!task_attach(&untouched) && !untouched.task_id);
+        assert(next_task_id == PROGRAM_WORKER_TASK_FIRST);
+        /* Refuse before allocating a domain record or touching any image. */
+        size_t count = kernel.domains.count;
+        assert(!domain_spawn_at(1, 1, 1, "exhausted", NULL));
+        assert(kernel.domains.count == count && !kernel.domains.slots[1]);
+    }
+    next_task_id = 0;
+    assert(!task_attach(&untouched) && !untouched.task_id && !next_task_id);
+    next_task_id = UINT32_MAX;
+    assert(!task_attach(&untouched) && !untouched.task_id && next_task_id == UINT32_MAX);
+    next_task_id = 1;
+    assert(!task_attach(&unattached) && next_task_id == 1);
+}
+
+static void denied_task_authority(Domain *d)
+{
+    assert(!kernel_current_task(d));
+    ProgramMemoryState before = d->program;
+    assert(kernel_program_memory(d, 4096).status == PROGRAM_MEMORY_DENIED);
+    assert(!memcmp(&before, &d->program, sizeof before));
+}
+
+static void task_authority(Domain *d)
+{
+    uint32_t saved_current = kernel.current;
+    uint8_t saved_state = d->task_state;
+    uint32_t saved_task = d->task_id;
+    assert(!kernel_current_worker);
+    kernel.current = d->id;
+    d->task_state = TASK_RUNNING;
+    assert(kernel_current_task(d) == saved_task);
+    ProgramWorker valid = {.id = PROGRAM_WORKER_TASK_FIRST, .target = d->id,
+        .run = saved_task, .phase = PROGRAM_WORKER_ATTACHED, .owner_core = 0};
+    ProgramWorker worker = valid;
+    kernel_current_worker = &worker;
+    assert(kernel_current_task(d) == valid.id);
+    ++worker.run; denied_task_authority(d); worker = valid;
+    ++worker.target; denied_task_authority(d); worker = valid;
+    worker.owner_core = 1; denied_task_authority(d); worker = valid;
+    worker.phase = PROGRAM_WORKER_DISPATCHING; denied_task_authority(d); worker = valid;
+    worker.exited = true; denied_task_authority(d); worker = valid;
+    worker.id = PROGRAM_WORKER_TASK_FIRST - 1; denied_task_authority(d); worker = valid;
+    worker.id = PROGRAM_WORKER_TASK_END; denied_task_authority(d); worker = valid;
+    d->task_state = TASK_EXITED; denied_task_authority(d);
+    d->task_state = TASK_DORMANT; denied_task_authority(d);
+    d->task_state = TASK_RUNNING;
+    ++d->task_id; denied_task_authority(d); d->task_id = saved_task;
+    kernel_current_worker = NULL;
+    d->task_id = PROGRAM_WORKER_TASK_FIRST; denied_task_authority(d);
+    d->task_id = saved_task;
+    d->task_state = TASK_EXITED; denied_task_authority(d);
+    d->task_state = saved_state;
+    kernel.current = saved_current;
+}
+
+static void domain_admission_backpressure(Domain *shell)
+{
+    for (uintptr_t i = 0; i < PROGRAM_RECORD_QUEUE_CAPACITY; ++i)
+        assert(program_record_queue_push(&kernel.run_queue, UINT64_C(0x100000000000) + i * 16));
+    run_push(shell->id);
+    assert(shell->admission_pending && !shell->queued && shell->task_state == TASK_READY);
+    assert(program_record_queue_pop(&kernel.run_queue));
+    kernel_task_poll();
+    assert(!shell->admission_pending && shell->queued);
+    assert(kernel.run_queue.count == PROGRAM_RECORD_QUEUE_CAPACITY);
+    bool shell_seen = false;
+    while (kernel.run_queue.count)
+        shell_seen |= program_record_queue_pop(&kernel.run_queue) == shell->id;
+    assert(shell_seen);
+    program_record_queue_init(&kernel.run_queue);
+    shell->queued = false;
+    shell->admission_pending = false;
+}
+
+static void record_lifecycle(const uint8_t *elf)
+{
+    Domain *shell=domain_get(CURRENT_PD_silk_shell);
+    program_record_queue_init(&kernel.run_queue);
+    for (uint32_t id=1; id<KERNEL_MAX_DOMAINS; ++id)
+        if (domain_get(id)) domain_get(id)->queued=false;
+    kernel.scheduler_running=true;
+    domain_admission_backpressure(shell);
+    kernel.current=shell->id;shell->task_state=TASK_RUNNING;
+    assert(kernel_records_boot_audit() && program_record_memory_audit(&kernel_program_records,&kernel_program_record_memory));
+    memcpy(phys_to_virt(kernel_record_image_physical()),elf,512);
+
+    uint64_t lent_before=program_frame_lent();
+    TrapFrame denied={.rax=PROGRAM_RECORD_SYSCALL,.rdi=PROGRAM_RECORD_START,.rsi=512,.rdx=1};
+    Domain *other=domain_get(CURRENT_PD_sexnet);kernel.current=other->id;other->task_state=TASK_RUNNING;
+    kernel_syscall(&denied);
+    assert(denied.rax==PROGRAM_RECORD_INVALID && !kernel_program_records.live && program_frame_lent()==lent_before);
+
+    const Cap *record_pool=cap_get(shell,PROGRAM_RECORD_SLOT_SHELL);
+    Cap wrong_kind=*record_pool;wrong_kind.kind=CAP_REGION;
+    shell->caps[PROGRAM_RECORD_SLOT_SHELL]=&wrong_kind;
+    kernel.current=shell->id;
+    denied=(TrapFrame){.rax=PROGRAM_RECORD_SYSCALL,.rdi=PROGRAM_RECORD_START,.rsi=512,.rdx=1};
+    kernel_syscall(&denied);
+    assert(denied.rax==PROGRAM_RECORD_INVALID && !kernel_program_records.live && program_frame_lent()==lent_before);
+    shell->caps[PROGRAM_RECORD_SLOT_SHELL]=record_pool;
+
+    run_push(shell->id);kernel.current=shell->id;
+    TrapFrame start=(TrapFrame){.rax=PROGRAM_RECORD_SYSCALL,.rdi=PROGRAM_RECORD_START,.rsi=512,.rdx=1};kernel_syscall(&start);
+    assert(start.rax==PROGRAM_RECORD_OK && start.rsi==1 && start.rdx==1 && program_frame_lent()==lent_before);
+    assert(run_pop()==shell->id);switch_to(shell->id);
+    size_t index=kernel_program_records.start_cursor;
+    uint64_t pd=PROGRAM_RECORD_BASE+index;
+    ProgramRecordTask *task=&kernel_record_tasks[index];
+    assert(task->pd==pd && task->id==PROGRAM_RECORD_TASK_FIRST && task->phase==PROGRAM_WORKER_QUEUED);
+    assert(run_pop()==(uintptr_t)task && task->phase==PROGRAM_WORKER_DISPATCHING);
+    TrapFrame *record_frame=switch_to((uintptr_t)task);
+    assert(record_frame==kernel_record_storage(task)->frame && kernel_current_record==task);
+    assert(record_frame->rip==program_record_virtual_page(index,0)+0x40 &&
+           record_frame->rsp==program_record_stack_top(index)-8);
+    assert(read_pte(record_frame->rip,&(uint64_t){0}));
+
+    static uint8_t host_print[4096] __attribute__((aligned(4096)));
+    uint64_t print_va=(uint64_t)(uintptr_t)host_print,print_physical=frames_alloc(0);
+    assert(print_physical!=NO_ADDRESS);
+    assert(map_page(print_va,print_physical,PTE_USER|PTE_WRITABLE|PTE_NO_EXECUTE,PROGRAM_RECORD_KEY));
+    const uint8_t printed[]={'o','k','\n'};
+    memcpy(host_print,printed,sizeof printed);
+    TrapFrame print=*record_frame;
+    print.rax=SEXOS_SYSCALL_call;print.rdi=0;print.rsi=69;print.rdx=print_va;print.r10=sizeof printed;
+    assert(user_range_ok(print_va,sizeof printed,false,mask_for_key(PROGRAM_RECORD_KEY)));
+    assert(kernel_syscall(&print)==&print);
+    assert(!print.rax && !print.rsi && !print.rdx);
+    print.rax=SEXOS_SYSCALL_call;print.rsi=69;print.rdx=0;print.r10=0;
+    assert(kernel_syscall(&print)==&print && !print.rax);
+    print.rax=SEXOS_SYSCALL_call;print.rsi=69;print.rdx=UINT64_MAX-1;print.r10=4;
+    assert(kernel_syscall(&print)==&print && print.rax==ERR_CAP_INVALID);
+
+    run_push(shell->id);
+    TrapFrame slept={.rax=70,.rdi=2,.rip=record_frame->rip};
+    assert(kernel_record_sleep(&slept)==shell->frame && !kernel_current_record && !kernel_program_records.tenant);
+    assert(task->phase==PROGRAM_WORKER_SWITCHING_OUT);
+    kernel_record_stack_departed();
+    assert(task->phase==PROGRAM_WORKER_DETACHED && task->owner_core==PROGRAM_RECORD_NO_CORE);
+    kernel.ticks+=2;kernel_records_poll();
+    assert(run_pop()==(uintptr_t)task);switch_to((uintptr_t)task);
+    assert(read_pte(record_frame->rip,&(uint64_t){0}));
+    TrapFrame stop_query={.rax=PROGRAM_RECORD_SYSCALL,.rdi=PROGRAM_RECORD_STOP_REQUESTED};
+    kernel_record_syscall(&stop_query);assert(!stop_query.rax && !stop_query.rsi);
+
+    ++task->id;
+    assert(program_record_memory_reap(&kernel_program_records,&kernel_program_record_memory,
+                                      kernel_record_tasks).first == 0);
+    --task->id;
+    task->exited=true;task->phase=PROGRAM_WORKER_DEAD;task->owner_core=0;
+    assert(program_record_memory_reap(&kernel_program_records,&kernel_program_record_memory,
+                                      kernel_record_tasks).first == 0);
+    task->phase=PROGRAM_WORKER_ATTACHED;task->exited=false;task->owner_core=0;
+    uint32_t old_task=task->id;
+    run_push(shell->id);
+    TrapFrame finished={.rax=62};kernel_record_finish(&finished,false);
+    kernel_record_stack_departed();kernel_records_poll();
+    assert(kernel_program_records.entries[index].state==PROGRAM_RECORD_FREE && !kernel_program_records.live);
+    assert(kernel_program_records.ended==1 && kernel_program_records.pool_free==kernel_program_records.pool_total);
+    assert(program_record_memory_audit(&kernel_program_records,&kernel_program_record_memory));
+
+    kernel.current=shell->id;shell->task_state=TASK_RUNNING;
+    start=(TrapFrame){.rax=PROGRAM_RECORD_SYSCALL,.rdi=PROGRAM_RECORD_START,.rsi=512,.rdx=1};kernel_syscall(&start);
+    assert(start.rax==PROGRAM_RECORD_OK);
+    index=kernel_program_records.start_cursor;pd=PROGRAM_RECORD_BASE+index;task=&kernel_record_tasks[index];
+    assert(task->id>old_task);
+    assert(run_pop()==(uintptr_t)task);switch_to((uintptr_t)task);
+    run_push(shell->id);finished=(TrapFrame){.rax=62};kernel_record_finish(&finished,false);
+    kernel_record_stack_departed();kernel_records_poll();
+    assert(kernel_program_records.ended==2 && kernel_program_records.pool_free==kernel_program_records.pool_total);
+
+    kernel.current=shell->id;shell->task_state=TASK_RUNNING;
+    start=(TrapFrame){.rax=PROGRAM_RECORD_SYSCALL,.rdi=PROGRAM_RECORD_START,.rsi=512,.rdx=1};kernel_syscall(&start);assert(start.rax==PROGRAM_RECORD_OK && start.rsi==1);
+    index=kernel_program_records.start_cursor;pd=PROGRAM_RECORD_BASE+index;task=&kernel_record_tasks[index];
+    TrapFrame stop={.rax=PROGRAM_RECORD_SYSCALL,.rdi=PROGRAM_RECORD_STOP,.rsi=1,.rdx=0};
+    kernel_record_syscall(&stop);
+    assert(stop.rax==PROGRAM_RECORD_OK && stop.rsi==1 && stop.rdx==1);
+    assert(!run_pop());
+    kernel_records_poll();
+    assert(kernel_program_records.ended==3 && !kernel_program_records.live &&
+           kernel_program_records.pool_free==kernel_program_records.pool_total);
+    TrapFrame census={.rax=PROGRAM_RECORD_SYSCALL,.rdi=PROGRAM_RECORD_CENSUS};
+    kernel_record_syscall(&census);
+    assert(!census.rax && !census.rsi && census.rdx==kernel_program_records.pool_total);
+    assert(program_record_memory_audit(&kernel_program_records,&kernel_program_record_memory));
+
+    kernel.current=shell->id;shell->task_state=TASK_RUNNING;
+    start=(TrapFrame){.rax=PROGRAM_RECORD_SYSCALL,.rdi=PROGRAM_RECORD_START,.rsi=512,.rdx=2};
+    kernel_syscall(&start);
+    assert(start.rax==PROGRAM_RECORD_OK && start.rsi==2 && kernel_program_records.live==2);
+    size_t second_index=kernel_program_records.start_cursor;
+    size_t first_index=(second_index+kernel_program_records.count-1)%kernel_program_records.count;
+    ProgramRecordTask *first=&kernel_record_tasks[first_index];
+    ProgramRecordTask *second=&kernel_record_tasks[second_index];
+    assert(run_pop()==(uintptr_t)first && first->phase==PROGRAM_WORKER_DISPATCHING);
+    TrapFrame *first_frame=switch_to((uintptr_t)first);
+    assert(read_pte(first_frame->rip,&(uint64_t){0}));
+    assert(!read_pte(kernel_record_storage(second)->frame->rip,&(uint64_t){0}));
+    assert(schedule_tick(first_frame)==kernel_record_storage(second)->frame);
+    assert(kernel_current_record==second && second->phase==PROGRAM_WORKER_ATTACHED);
+    assert(!read_pte(first_frame->rip,&(uint64_t){0}));
+    assert(read_pte(kernel_record_storage(second)->frame->rip,&(uint64_t){0}));
+    kernel_record_stack_departed();
+    assert(first->phase==PROGRAM_WORKER_QUEUED && !kernel_outgoing_record);
+    TrapFrame peer_sleep={.rax=70,.rdi=2,.rip=kernel_record_storage(second)->frame->rip};
+    assert(kernel_record_sleep(&peer_sleep)==kernel_record_storage(first)->frame);
+    assert(kernel_current_record==first && second->phase==PROGRAM_WORKER_SWITCHING_OUT);
+    kernel_record_stack_departed();
+    assert(second->phase==PROGRAM_WORKER_DETACHED && second->blocked);
+    run_push(shell->id);
+    finished=(TrapFrame){.rax=62};kernel_record_finish(&finished,false);
+    kernel_record_stack_departed();
+    kernel.ticks+=2;kernel_records_poll();
+    assert(run_pop()==(uintptr_t)second);switch_to((uintptr_t)second);
+    run_push(shell->id);finished=(TrapFrame){.rax=62};kernel_record_finish(&finished,false);
+    kernel_record_stack_departed();kernel_records_poll();
+    assert(kernel_program_records.ended==5 && !kernel_program_records.live &&
+           kernel_program_records.pool_free==kernel_program_records.pool_total);
+    assert(program_record_memory_audit(&kernel_program_records,&kernel_program_record_memory));
+}
+
 int main(void)
 {
-    enum { BYTES=16*1024*1024 };
+    task_namespace();
+    enum { BYTES=96*1024*1024 };
     unsigned char *ram=aligned_alloc(4096,BYTES);assert(ram);memset(ram,0xa5,BYTES);
     hhdm_offset=(uint64_t)(uintptr_t)ram;memset(ram+0x1000,0,4096);
     LimineMemmapEntry usable={.base=0x2000,.length=BYTES-0x2000,.type=0};
@@ -67,6 +298,7 @@ int main(void)
         assert(d->code_base==CODE_REGION_BASE+(uint64_t)(g->layout-1)*DOMAIN_STRIDE);
     }
     assert(kernel.domains.count==KERNEL_CURRENT_DOMAINS);
+    task_authority(domain_get(CURRENT_PD_sexfiles));
     kernel.display_pd=CURRENT_PD_sexdisplay;kernel.shell_pd=CURRENT_PD_silk_shell;kernel.input_pd=CURRENT_PD_sexinput;
     kernel_pci_boot();
     assert(kernel.network_config_present && kernel.network_config_owner==CURRENT_PD_sexnet);
@@ -179,7 +411,54 @@ int main(void)
     route->target=18;assert(!kernel_current_catalog_valid());*route=saved_cap;
     assert(kernel_current_catalog_valid());
     current_regions();
-    assert(kernel.boot_backing_count==KERNEL_CURRENT_BACKINGS-2 && kernel.cap_storage.count==KERNEL_CURRENT_ROUTES+1+7*KERNEL_CURRENT_APPS+KERNEL_CURRENT_DORMANT+HISTORY_ROSTER_COUNT+1+11+2*KERNEL_CURRENT_QUILS);
+    size_t web_index=0;
+#define CHECK_WEB_REGION(p_target,p_ordinal,p_surface,p_shell_surface,p_lifecycle,p_close,p_activation,p_predecessor,p_logical,p_route) \
+    do { \
+        if (p_logical==CURRENT_PD_spindle || p_logical==CURRENT_PD_kaleidoscope) { \
+            const Cap *provider=cap_get(domain_get(CURRENT_PD_sexnet),340+web_index); \
+            const Cap *client=cap_get(domain_get(CURRENT_PD_##p_target),259); \
+            assert(provider && client && provider->kind==CAP_REGION && client->kind==CAP_REGION); \
+            const MemoryRegionGrant *p=&provider->region.grant,*c=&client->region.grant; \
+            assert(p->region_id==0x5100+web_index && c->region_id==p->region_id && \
+                   p->length==64*1024 && c->length==p->length && p->rights==7 && c->rights==7 && \
+                   p->virtual_base!=c->virtual_base && p->has_peer && c->has_peer && \
+                   p->peer_pd==CURRENT_PD_##p_target && c->peer_pd==CURRENT_PD_sexnet && \
+                   kernel_region_writer_expected_write(p->region_id,CURRENT_PD_sexnet,true) && \
+                   kernel_region_writer_expected_write(c->region_id,CURRENT_PD_##p_target,true)); \
+            ++web_index; \
+        } \
+    } while (0);
+    SEXOS_CURRENT_APP_ROWS(CHECK_WEB_REGION)
+#undef CHECK_WEB_REGION
+    assert(web_index==KERNEL_CURRENT_WEB);
+    const Cap *record_pool=cap_get(domain_get(CURRENT_PD_silk_shell),PROGRAM_RECORD_SLOT_SHELL);
+    const Cap *record_route=cap_get(domain_get(CURRENT_PD_silk_shell),PROGRAM_RECORD_FILES_ROUTE_SLOT);
+    const Cap *record_image=cap_get(domain_get(CURRENT_PD_sexfiles),PROGRAM_RECORD_IMAGE_SLOT_FILES);
+    assert(record_pool && record_pool->kind==CAP_RECORD_POOL);
+    assert(record_route && record_route->kind==CAP_DOMAIN && record_route->target==CURRENT_PD_sexfiles);
+    assert(record_image && record_image->kind==CAP_REGION);
+    assert(record_image->region.grant.region_id==PROGRAM_RECORD_IMAGE_REGION_ID &&
+           record_image->region.grant.length==PROGRAM_RECORD_IMAGE_BYTES &&
+           record_image->region.grant.rights==7 && !record_image->region.grant.has_dma);
+    uint64_t record_pte=0;
+    assert(read_pte(record_image->region.grant.virtual_base,&record_pte) &&
+           (record_pte&PTE_ADDRESS)==kernel_record_image_physical());
+    assert(kernel_program_records.count==16 && !kernel_program_records.live &&
+           kernel_program_records.pool_free==kernel_program_records.pool_total);
+    for(size_t i=0;i<kernel_program_records.count;++i){
+        uint64_t *entry=(uint64_t *)(uintptr_t)page_leaf_address(program_record_virtual_page(i,0));
+        assert(entry && !*entry);
+    }
+    assert(kernel_records_boot_audit());
+    assert(!kernel_records_boot() && kernel_records_boot_audit());
+    size_t expected_backings = KERNEL_CURRENT_BACKINGS - 2;
+    /* The epoch batch and Shell's typed Files route each add one private grant. */
+    size_t expected_caps = KERNEL_CURRENT_ROUTES+1+7*KERNEL_CURRENT_APPS+KERNEL_CURRENT_DORMANT+HISTORY_ROSTER_COUNT+1+14+2*KERNEL_CURRENT_QUILS+2*KERNEL_CURRENT_WEB+1;
+    if (kernel.boot_backing_count != expected_backings || kernel.cap_storage.count != expected_caps)
+        fprintf(stderr, "BOOT resources: backings=%zu/%zu capabilities=%zu/%zu\n",
+                (size_t)kernel.boot_backing_count, expected_backings,
+                (size_t)kernel.cap_storage.count, expected_caps);
+    assert(kernel.boot_backing_count == expected_backings && kernel.cap_storage.count == expected_caps);
     PciFunction nic={.bus=0,.dev=3,.func=0,.vendor_id=0x8086,.device_id=0x100e};
     PciFunction gpu=nic;gpu.class_id=3;
     Cap gpu_lease=pci_cap(domain_get(1),4,&gpu);
@@ -201,10 +480,11 @@ int main(void)
     kernel_boot_display_frames(1,&frames_layout);
     const Cap *frames_cap=cap_get(domain_get(1),DISPLAY_FRAME_SLOT);
     assert(frames_cap && frames_cap->kind==CAP_REGION && frames_cap->region.grant.region_id==DISPLAY_FRAME_REGION_ID && frames_cap->region.grant.length==16384 && !frames_cap->region.grant.has_dma);
-    assert(kernel.boot_backing_count==KERNEL_CURRENT_BACKINGS && kernel.cap_storage.count==KERNEL_CURRENT_ROUTES+1+7*KERNEL_CURRENT_APPS+KERNEL_CURRENT_DORMANT+HISTORY_ROSTER_COUNT+1+11+2*KERNEL_CURRENT_QUILS+5+KERNEL_CURRENT_SOURCE_CAPS+1);
+    assert(kernel.boot_backing_count == KERNEL_CURRENT_BACKINGS &&
+           kernel.cap_storage.count == expected_caps + 5 + KERNEL_CURRENT_SOURCE_CAPS + 1);
     kernel_seal_genesis();
     for (size_t i=0;i<sizeof descriptors/sizeof *descriptors;++i)run_push(descriptors[i].id);
-    assert(kernel.run_count==15);
+    assert(kernel.run_queue.count==15);
     kernel_current_boot_audit();
     uint32_t count=0,id;
     while ((id=run_pop())!=0) {assert(id<=15 && domain_get(id)->task_state==TASK_READY);++count;}
@@ -264,12 +544,12 @@ int main(void)
     assert(retire.rax==APP_PRIVATE_DENIED && !old_app->retired && host_invalidations==before && original->ring.count==1);
     original->ring.revision=17;
     uint64_t handover_epoch=kernel.epoch;uint32_t handover_events=kernel.epoch_event_count;
-    kernel.epoch_event_count=KERNEL_EPOCH_EVENT_CAPACITY;
+    kernel.epoch=kernel.epoch_event_count=UINT64_MAX;
     retire=(TrapFrame){.rdi=38};kernel_app_retire(pager,&retire);
     assert(retire.rax==APP_PRIVATE_RETRY && !old_app->retired && host_invalidations==before &&
            original->ring.count==1 && original->reply_ready && original->reply_rights[3]==7 &&
            original->rpc[0].state==RPC_HEARD);
-    kernel.epoch_event_count=handover_events;
+    kernel.epoch=handover_epoch;kernel.epoch_event_count=handover_events;
     retire=(TrapFrame){.rdi=38};kernel_app_retire(pager,&retire);
     assert(!retire.rax && retire.rsi==old_app->pool && retire.rdx==old_app->image.count*4096 && retire.r10==original->task_id && !retire.r8);
     assert(old_app->retired && host_invalidations==before+2*old_app->image.count && !original->ring.count && original->ring.revision==18 && !original->reply_ready);
@@ -286,6 +566,12 @@ int main(void)
         assert(!app_private_leaf_read(old_app->image.pages[i].leaf) && app_private_leaf_read(page.leaf)==page.expected);
         assert(user_range_ok(page.va,4096,true,pager->mask) && !user_range_ok(page.va,4096,false,original->mask));
     }
+    uint64_t workspace_lent=program_frame_lent();
+    assert(program_memory_main_exit(&original->program)==PROGRAM_MEMORY_OK);
+    assert(program_memory_end(&original->program)==PROGRAM_MEMORY_OK);
+    assert(original->program.phase==PROGRAM_MEMORY_DEAD && program_frame_lent()==workspace_lent);
+    for(size_t i=0;i<old_app->workspace.count;++i)
+        assert(app_private_leaf_read(old_app->workspace.pages[i].leaf)==old_app->workspace.pages[i].expected);
     before=host_invalidations;handover_epoch=kernel.epoch;handover_events=kernel.epoch_event_count;
     TrapFrame receipt=retire;retire=(TrapFrame){.rdi=38};kernel_app_retire(pager,&retire);
     assert(!retire.rax && retire.rsi==receipt.rsi && retire.rdx==receipt.rdx && retire.r10==receipt.r10 &&
@@ -293,21 +579,21 @@ int main(void)
     pager->task_state=TASK_READY;kernel.current=0;
     assert(old_app->retired);
     old_app->acked=30;activate=(TrapFrame){.rdi=44,.rsi=1};kernel_app_activation(coordinator,&activate);
-    assert(activate.rax==APP_PRIVATE_RETRY && next_app->dormant && kernel.run_count==0);old_app->acked=31;
+    assert(activate.rax==APP_PRIVATE_RETRY && next_app->dormant && kernel.run_queue.count==0);old_app->acked=31;
     uint64_t rip=second->frame->rip;second->frame->rip=0;
     activate=(TrapFrame){.rdi=44,.rsi=1};kernel_app_activation(coordinator,&activate);assert(activate.rax==APP_PRIVATE_DENIED);second->frame->rip=rip;
     AppPrivatePage late=next_app->image.pages[next_app->image.count-1];app_private_leaf_write(late.leaf,5);
     before=host_invalidations;activate=(TrapFrame){.rdi=44,.rsi=1};kernel_app_activation(coordinator,&activate);
-    assert(activate.rax==APP_PRIVATE_DENIED && host_invalidations==before && kernel.run_count==0);app_private_leaf_write(late.leaf,0);
+    assert(activate.rax==APP_PRIVATE_DENIED && host_invalidations==before && kernel.run_queue.count==0);app_private_leaf_write(late.leaf,0);
     activate=(TrapFrame){.rdi=44,.rsi=0};kernel_app_activation(coordinator,&activate);assert(!activate.rax && activate.r8==1);
     uint64_t activation_epoch=kernel.epoch;uint32_t activation_events=kernel.epoch_event_count;
-    kernel.epoch_event_count=KERNEL_EPOCH_EVENT_CAPACITY;
+    kernel.epoch=kernel.epoch_event_count=UINT64_MAX;
     activate=(TrapFrame){.rdi=44,.rsi=1};kernel_app_activation(coordinator,&activate);
     assert(activate.rax==APP_PRIVATE_RETRY && next_app->dormant && !next_app->activated &&
-           !second->queued && kernel.run_count==0 && host_invalidations==before);
-    kernel.epoch_event_count=activation_events;
+           !second->queued && kernel.run_queue.count==0 && host_invalidations==before);
+    kernel.epoch=activation_epoch;kernel.epoch_event_count=activation_events;
     activate=(TrapFrame){.rdi=44,.rsi=1};kernel_app_activation(coordinator,&activate);
-    assert(!activate.rax && activate.r8==2 && !next_app->dormant && next_app->activated && second->queued && kernel.run_count==1);
+    assert(!activate.rax && activate.r8==2 && !next_app->dormant && next_app->activated && second->queued && kernel.run_queue.count==1);
     assert(host_invalidations==before+next_app->image.count);
     assert(kernel.epoch==activation_epoch+1 && kernel.epoch_event_count==activation_events+1);
     KernelEpochEvent activated_event=kernel.epoch_events[activation_events];
@@ -320,12 +606,12 @@ int main(void)
     assert(!user_range_ok(original->entry,1,false,second->mask));
     before=host_invalidations;activation_epoch=kernel.epoch;activation_events=kernel.epoch_event_count;
     activate=(TrapFrame){.rdi=44,.rsi=1};kernel_app_activation(coordinator,&activate);
-    assert(!activate.rax && activate.r8==2 && kernel.run_count==1 && host_invalidations==before &&
+    assert(!activate.rax && activate.r8==2 && kernel.run_queue.count==1 && host_invalidations==before &&
            kernel.epoch==activation_epoch && kernel.epoch_event_count==activation_events);
     assert(run_pop()==16);second->task_state=TASK_EXITED;next_app->acked=31;
     assert(app_private_retire(&next_app->image).status==0);next_app->retired=true;
     before=host_invalidations;activate=(TrapFrame){.rdi=44,.rsi=1};kernel_app_activation(coordinator,&activate);
-    assert(!activate.rax && activate.r8==3 && kernel.run_count==0 && host_invalidations==before);
+    assert(!activate.rax && activate.r8==3 && kernel.run_queue.count==0 && host_invalidations==before);
     activate=(TrapFrame){.rdi=55,.rsi=1};kernel_app_activation(coordinator,&activate);
     assert(!activate.rax && activate.r8==2 && third->queued && kernel_app_get(18)->activated);
     assert(!user_range_ok(second->entry,1,false,third->mask));
@@ -342,6 +628,9 @@ int main(void)
     for(size_t i=0;i<KERNEL_CURRENT_APPS;++i)if(current_apps[i].logical==CURRENT_PD_quil)last_quil=current_apps[i];
     assert(last_quil.ordinal==KERNEL_CURRENT_QUILS-1);
     assert(kernel_app_get(last_quil.target)->identity.number==last_quil.ordinal+1 && domain_get(last_quil.target)->task_state==TASK_READY);
+    program.vaddr=0x400000;program.paddr=0x400000;header.entry=0x400040;
+    memcpy(elf,&header,sizeof header);memcpy(elf+sizeof header,&program,sizeof program);
+    record_lifecycle(elf);
     free(ram);
     printf("private BOOT controls passed:catalog layouts/identities,disjoint manifests,detached successors,initial admissions,%u-incarnation Quil chain\n",(unsigned)KERNEL_CURRENT_QUILS);
     return 0;

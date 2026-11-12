@@ -10,6 +10,12 @@ _Static_assert(SEXOS_KERNEL_CURRENT_PDX == 1, "current memory-authority profile"
  * dispatch; their page-table reads are not executed by these region queries. */
 bool read_pte(uint64_t va, uint64_t *pte){(void)va;(void)pte;abort();}
 uint64_t page_leaf_address(uint64_t address){(void)address;abort();}
+/* Program growth is outside this query fixture. Accidental use must fail. */
+uint64_t program_frame_pressure(void){abort();}
+FrameLeaseResult program_frame_take(uint32_t owner){(void)owner;abort();}
+bool program_frame_map_run(FrameLease lease,uint32_t run,uint64_t va,uint64_t flags,uint8_t key)
+{(void)lease;(void)run;(void)va;(void)flags;(void)key;abort();}
+bool program_frame_release(FrameLease lease){(void)lease;abort();}
 
 static Domain *make_domain(uint32_t id, uint8_t key)
 {

@@ -48,6 +48,31 @@ wakes coalesce without consuming payload. Idle switches to a separate retained
 kernel stack, so terminal cleanup cannot mistake an idle task stack for one
 that has already detached. Kernel stacks/control metadata are not reclaimed.
 
+Worker data faults carry the worker's non-wrapping task id and saved worker frame.
+The main task remains blocked so the shared domain fault slot cannot alias another
+request. Fault-blocked workers cannot be admitted by unrelated wakes or deadlines.
+Exact completion restores the main task's prior scheduling state and requeues the
+worker with its own frame/rip; rejection ends the run. Run cleanup retires fault
+metadata and page bindings by target and pager after every run task is dead, while
+retaining the main task id in the closed-range receipt. Wrong target/pager and zero
+task identities are refused without changing the corresponding state.
+
+The real pager fixture now completes four main-task faults and two worker faults.
+Each worker resumes with its own completion identity, writes, exits and joins main.
+Both terminal ranges close after run-wide retirement. This is a dedicated machine
+witness, not ordinary-desktop or restart qualification.
+
+Epoch event retention
+---------------------
+The total epoch and event count are 64-bit and never wrap. At most 8,192 actual
+events are retained in a bounded suffix. Each overwritten slot must contain the
+exact next elided epoch, whose event is retained as the boundary checkpoint.
+kernel_epoch_event_read validates the requested epoch against the retained event
+and refuses elided, future or null-output reads without changing the output.
+Window capacity is not an execution stop. UINT64_MAX remains the exhaustion
+boundary. Complete replay of the elided prefix is not provided by this suffix
+and checkpoint; it remains separate history work.
+
 Qualification
 ---------------
 

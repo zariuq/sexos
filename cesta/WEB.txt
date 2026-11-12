@@ -1,0 +1,63 @@
+CURRENT BROWSER PORT BOUNDARY
+
+Completion reference: 8019f72d617927949545bde1fb5fc6fc56acd939.
+The existing web-page unit covers URL parsing, relative links, numeric IPv4 and
+keyboard character mapping. The executable still uses the older fixed-response
+startup path. Linking the address helpers is not interactive browser parity.
+
+The ordinary browser requires these real joins:
+
+1. BOOT reserves each caller/provider shared region and the corresponding route.
+   The upstream web ABI uses operation 0x211, a 64 KiB region, caller slot 259
+   and provider slots starting at 340. A numeric address grants no authority.
+   The twelve existing Spindle/Browser pairs are constructed and audited through
+   the production BOOT path; the later program-row reservations remain open.
+2. The provider binds flow/socket ownership to domain, current task and flow.
+   Retirement closes the old owner's flows and resolver work. The growable
+   metadata core now implements this ownership and retirement boundary; engine
+   closure is not joined yet. The controlled-endpoint job transport is not the
+   open-internet service.
+3. Service memory supports the provider's growing flow/socket tables. The
+   upstream service permits 4,096 flows and 4,096 sockets, subject to allocation
+   refusal. Both table ceilings and allocation refusal are exercised against the
+   real service heap. A single static controlled flow still does not satisfy the
+   engine interface.
+4. The client drives actual resolution, connection, TLS, partial sends, receive,
+   peer-close, final-read, close, redirect and conversion states. TLS requires
+   the actual entropy, clock and trust bindings; plaintext is not an HTTPS
+   fallback. Source and text capacities are 512 KiB and 128 KiB respectively.
+5. The normal input/document/render path adopts the client. Readiness markers
+   and an unused linked component do not establish navigation or page display.
+
+Lifecycle obligations
+---------------------
+An admitted request may still be running when its reply is missing. Timeout is
+an observation, not cancellation, permission to reuse its shared payload, or
+permission to submit the same effect again. Retain the outstanding operation
+until an actual completion or cancellation/close protocol settles it. Validate
+current task, request identity and content revision before publication.
+
+The pinned Rust client's step function returns early while a reply is pending,
+before checking its deadline. A controlled accepted call with no reply therefore
+remains busy past the deadline. Moving the deadline check alone is insufficient:
+the failure path clears the pending flag while provider work may still exist.
+
+Its wire sequence also wraps at 24 bits. Rollover needs an explicit exhaustion
+or incarnation discipline. A provider receive count must fit both the granted
+region and the remaining private buffer before any copy. These are separate
+protocol obligations, not proof that the trusted provider currently emits an
+invalid count or that a real stale completion can survive until rollover.
+
+Qualification order
+--------------------
+Close the service-memory and BOOT-region joins, then port and compare the ordinary
+client/provider lifecycle. Exercise actual endpoints, redirects, partial I/O,
+missing/duplicate/stale replies, peer close, certificate failures, allocation
+refusal and cancellation without duplicate submission. Rebuild both compiler
+cohorts and compare their readable-C artifacts before paired device boots.
+
+Only after ordinary behavior is qualified should immutable content/layout
+snapshots be evaluated. Compare identical visible output and authority decisions
+while scrolling/redrawing an unchanged 128 KiB page. The proposed experiment
+requires at least fourfold less layout work and CPU time with no more than 10%
+source growth; it is not a result or a requirement to replace the architecture.

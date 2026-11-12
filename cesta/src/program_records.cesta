@@ -1,0 +1,400 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (include "program_records.h")
+    (native "
+ProgramRecordSizing program_records_sizing(uint64_t free_bytes) {
+    const uint64_t mib = UINT64_C(1024) * 1024;
+    if (free_bytes < 768 * mib)
+        return (ProgramRecordSizing){16, 4 * mib};
+    uint64_t spare = free_bytes - 512 * mib;
+    uint64_t pool = spare >= 1024 * mib ? 1024 * mib : spare >= 512 * mib ? 512 * mib : 256 * mib;
+    uint64_t records = pool / (128 * 1024);
+    if (records > PROGRAM_RECORD_MAX_CAPACITY) records = PROGRAM_RECORD_MAX_CAPACITY;
+    return (ProgramRecordSizing){(size_t)records, pool};
+}
+
+uint64_t program_records_init(ProgramRecords *table, size_t count,
+                              uint64_t physical_base, size_t pool_frames) {
+    if (!table) return PROGRAM_RECORD_INVALID;
+    for (size_t i = 0; i < sizeof *table; ++i) ((uint8_t *)table)[i] = 0;
+    if (!count || count > PROGRAM_RECORD_CAPACITY || !pool_frames ||
+        pool_frames > PROGRAM_RECORD_POOL_FRAMES || physical_base < PROGRAM_RECORD_PAGE_BYTES ||
+        physical_base % PROGRAM_RECORD_PAGE_BYTES ||
+        physical_base / PROGRAM_RECORD_PAGE_BYTES > UINT32_MAX - (pool_frames - 1))
+        return PROGRAM_RECORD_INVALID;
+    table->count = count;
+    table->physical_base = physical_base;
+    table->pool_free = pool_frames;
+    table->pool_total = pool_frames;
+    table->next_task = PROGRAM_RECORD_TASK_FIRST;
+    for (size_t i = 0; i < pool_frames; ++i)
+        table->pool[i] = (uint32_t)(physical_base / PROGRAM_RECORD_PAGE_BYTES + i);
+    return PROGRAM_RECORD_OK;
+}
+
+uint64_t program_records_plan(const ProgramImage *image, ProgramRecordPlan *plan) {
+    if (!image || !plan || image->error || !image->count ||
+        image->count > PROGRAM_IMAGE_SEGMENTS || image->window != PROGRAM_RECORD_WINDOW_BYTES)
+        return PROGRAM_RECORD_INVALID;
+    bool seen[PROGRAM_RECORD_WINDOW_PAGES] = {0};
+    bool entry_executable = false;
+    size_t last = 0, needed = PROGRAM_RECORD_STACK_PAGES;
+    for (size_t i = 0; i < image->count; ++i) {
+        const ProgramSegment *segment = &image->segments[i];
+        if (!segment->memory || segment->file > segment->memory ||
+            (segment->writable && segment->executable) ||
+            segment->window > PROGRAM_RECORD_WINDOW_BYTES ||
+            segment->memory > PROGRAM_RECORD_WINDOW_BYTES - segment->window)
+            return PROGRAM_RECORD_INVALID;
+        size_t first_page = (size_t)(segment->window / PROGRAM_RECORD_PAGE_BYTES);
+        size_t end_page = (size_t)((segment->window + segment->memory - 1) /
+                                   PROGRAM_RECORD_PAGE_BYTES) + 1;
+        if (end_page > PROGRAM_RECORD_WINDOW_PAGES) return PROGRAM_RECORD_INVALID;
+        for (size_t page = first_page; page < end_page; ++page) {
+            if (seen[page]) return PROGRAM_RECORD_INVALID;
+            seen[page] = true;
+            ++needed;
+        }
+        if (end_page > last) last = end_page;
+        if (segment->executable && image->entry >= segment->window &&
+            image->entry - segment->window < segment->memory)
+            entry_executable = true;
+    }
+    if (!entry_executable) return PROGRAM_RECORD_INVALID;
+    *plan = (ProgramRecordPlan){last, needed};
+    return PROGRAM_RECORD_OK;
+}
+
+static bool record_pool_take(ProgramRecords *table, uint32_t *frame) {
+    if (!table->pool_free) return false;
+    --table->pool_free;
+    *frame = table->pool[table->pool_free];
+    table->pool[table->pool_free] = 0;
+    return true;
+}
+
+static bool record_pool_give(ProgramRecords *table, uint32_t frame) {
+    if (!frame || table->pool_free >= table->pool_total) return false;
+    table->pool[table->pool_free++] = frame;
+    return true;
+}
+
+static bool record_free_pages(ProgramRecords *table, ProgramRecord *record) {
+    if (record->image_pages > PROGRAM_RECORD_WINDOW_PAGES) return false;
+    size_t held = 0;
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page)
+        if (record->pages[page].allocated) ++held;
+    if (held > table->pool_total - table->pool_free) return false;
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page) {
+        if (!record->pages[page].allocated) continue;
+        if (!record_pool_give(table, record->pages[page].frame)) return false;
+        record->pages[page] = (ProgramRecordPage){0};
+    }
+    record->image_pages = 0;
+    return true;
+}
+
+static bool record_allocate_page(ProgramRecords *table, ProgramRecord *record, size_t index,
+                                 bool writable, bool executable) {
+    uint32_t frame = 0;
+    if (index >= PROGRAM_RECORD_LEAF_COUNT || record->pages[index].allocated ||
+        !record_pool_take(table, &frame))
+        return false;
+    record->pages[index] = (ProgramRecordPage){
+        .frame = frame, .allocated = true, .writable = writable, .executable = executable};
+    return true;
+}
+
+static uint64_t record_start_one(ProgramRecords *table, size_t index,
+                                 const ProgramImage *image, const ProgramRecordPlan *plan) {
+    ProgramRecord *record = &table->entries[index];
+    if (record->state != PROGRAM_RECORD_FREE) return PROGRAM_RECORD_DENIED;
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page)
+        if (record->pages[page].allocated) return PROGRAM_RECORD_RETRY;
+    if (!table->next_task || table->pool_free < plan->needed) return PROGRAM_RECORD_FULL;
+    bool seen[PROGRAM_RECORD_WINDOW_PAGES] = {0};
+    for (size_t i = 0; i < image->count; ++i) {
+        const ProgramSegment *segment = &image->segments[i];
+        size_t first = (size_t)(segment->window / PROGRAM_RECORD_PAGE_BYTES);
+        size_t end = (size_t)((segment->window + segment->memory - 1) /
+                              PROGRAM_RECORD_PAGE_BYTES) + 1;
+        for (size_t page = first; page < end; ++page) {
+            if (seen[page]) continue;
+            seen[page] = true;
+            if (!record_allocate_page(table, record, page,
+                                      segment->writable, segment->executable)) {
+                (void)record_free_pages(table, record);
+                return PROGRAM_RECORD_FULL;
+            }
+        }
+    }
+    for (size_t page = PROGRAM_RECORD_STACK_FIRST;
+         page < PROGRAM_RECORD_STACK_FIRST + PROGRAM_RECORD_STACK_PAGES; ++page) {
+        if (!record_allocate_page(table, record, page, true, false)) {
+            (void)record_free_pages(table, record);
+            return PROGRAM_RECORD_FULL;
+        }
+    }
+    record->image_pages = (uint32_t)plan->image_pages;
+    record->task = table->next_task;
+    table->next_task = table->next_task == UINT32_MAX ? 0 : table->next_task + 1;
+    record->state = PROGRAM_RECORD_LOADING;
+    record->killed = false;
+    record->reply_pending = false;
+    return PROGRAM_RECORD_OK;
+}
+
+ProgramRecordReply program_record_begin(ProgramRecords *table, const ProgramImage *image) {
+    if (!table || !table->count || table->count > PROGRAM_RECORD_CAPACITY)
+        return (ProgramRecordReply){PROGRAM_RECORD_INVALID, 0, 0};
+    ProgramRecordPlan plan = {0};
+    uint64_t status = program_records_plan(image, &plan);
+    if (status != PROGRAM_RECORD_OK) return (ProgramRecordReply){status, 0, table->live};
+    size_t cursor = table->start_cursor;
+    for (size_t scanned = 0; scanned < table->count; ++scanned) {
+        cursor = (cursor + 1) % table->count;
+        if (table->entries[cursor].state != PROGRAM_RECORD_FREE) continue;
+        status = record_start_one(table, cursor, image, &plan);
+        if (status != PROGRAM_RECORD_OK) return (ProgramRecordReply){status, 0, table->live};
+        table->start_cursor = cursor;
+        ProgramRecord *record = &table->entries[cursor];
+        return (ProgramRecordReply){PROGRAM_RECORD_OK, PROGRAM_RECORD_BASE + cursor, record->task};
+    }
+    return (ProgramRecordReply){PROGRAM_RECORD_FULL, 0, table->live};
+}
+
+ProgramRecordReply program_record_commit(ProgramRecords *table, uint64_t pd, uint32_t task) {
+    if (!program_records_is_record(table, pd)) return (ProgramRecordReply){PROGRAM_RECORD_DENIED, 0, 0};
+    size_t index = (size_t)(pd - PROGRAM_RECORD_BASE);
+    ProgramRecord *record = &table->entries[index];
+    if (record->state != PROGRAM_RECORD_LOADING || record->task != task)
+        return (ProgramRecordReply){PROGRAM_RECORD_DENIED, table->live, table->pool_free};
+    record->state = PROGRAM_RECORD_LIVE;
+    ++table->live;
+    if (table->started != UINT64_MAX) ++table->started;
+    table->stop = false;
+    return (ProgramRecordReply){PROGRAM_RECORD_OK, table->live, table->pool_free};
+}
+
+ProgramRecordReply program_record_abort(ProgramRecords *table, uint64_t pd, uint32_t task) {
+    if (!program_records_is_record(table, pd)) return (ProgramRecordReply){PROGRAM_RECORD_DENIED, 0, 0};
+    size_t index = (size_t)(pd - PROGRAM_RECORD_BASE);
+    ProgramRecord *record = &table->entries[index];
+    if (record->state != PROGRAM_RECORD_LOADING || record->task != task ||
+        table->tenant == index + 1)
+        return (ProgramRecordReply){PROGRAM_RECORD_DENIED, table->live, table->pool_free};
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page)
+        if (record->pages[page].present) return (ProgramRecordReply){PROGRAM_RECORD_RETRY, 0, table->pool_free};
+    if (!record_free_pages(table, record)) return (ProgramRecordReply){PROGRAM_RECORD_RETRY, 0, table->pool_free};
+    record->state = PROGRAM_RECORD_FREE;
+    record->task = 0;
+    record->killed = false;
+    record->reply_pending = false;
+    return (ProgramRecordReply){PROGRAM_RECORD_OK, 0, table->pool_free};
+}
+
+ProgramRecordReply program_records_start(ProgramRecords *table,
+                                         const ProgramImage *image, uint64_t count) {
+    if (!table || !table->count || table->count > PROGRAM_RECORD_CAPACITY)
+        return (ProgramRecordReply){PROGRAM_RECORD_INVALID, 0, 0};
+    if (!count) {
+        table->stop = false;
+        return (ProgramRecordReply){PROGRAM_RECORD_OK, 0, table->live};
+    }
+    uint64_t wanted = count < PROGRAM_RECORD_START_BATCH ? count : PROGRAM_RECORD_START_BATCH;
+    uint64_t made = 0, failure = PROGRAM_RECORD_FULL;
+    while (made < wanted) {
+        ProgramRecordReply began = program_record_begin(table, image);
+        if (began.status != PROGRAM_RECORD_OK) {
+            failure = began.status;
+            break;
+        }
+        ProgramRecordReply committed = program_record_commit(table, began.first, (uint32_t)began.second);
+        if (committed.status != PROGRAM_RECORD_OK) {
+            (void)program_record_abort(table, began.first, (uint32_t)began.second);
+            failure = committed.status;
+            break;
+        }
+        ++made;
+    }
+    if (made) return (ProgramRecordReply){PROGRAM_RECORD_OK, made, table->live};
+    return (ProgramRecordReply){failure, 0, table->live};
+}
+
+ProgramRecordReply program_records_stop(ProgramRecords *table, bool force) {
+    if (!table || table->count > PROGRAM_RECORD_CAPACITY)
+        return (ProgramRecordReply){PROGRAM_RECORD_INVALID, 0, 0};
+    table->stop = true;
+    uint64_t marked = 0;
+    for (size_t i = 0; i < table->count; ++i) {
+        ProgramRecord *record = &table->entries[i];
+        if (record->state != PROGRAM_RECORD_LIVE) continue;
+        record->killed = force;
+        ++marked;
+    }
+    return (ProgramRecordReply){PROGRAM_RECORD_OK, marked, table->live};
+}
+
+ProgramRecordReply program_records_census(const ProgramRecords *table) {
+    if (!table) return (ProgramRecordReply){PROGRAM_RECORD_INVALID, 0, 0};
+    return (ProgramRecordReply){PROGRAM_RECORD_OK, table->live, table->pool_free};
+}
+
+bool program_records_is_record(const ProgramRecords *table, uint64_t pd) {
+    return table && pd >= PROGRAM_RECORD_BASE &&
+           pd - PROGRAM_RECORD_BASE < table->count;
+}
+
+bool program_records_stop_requested(const ProgramRecords *table, uint64_t pd) {
+    return program_records_is_record(table, pd) && table->stop;
+}
+
+static void record_set_present(ProgramRecord *record, bool present) {
+    for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page)
+        if (record->pages[page].allocated) record->pages[page].present = present;
+}
+
+static void records_evict(ProgramRecords *table) {
+    if (!table->tenant) return;
+    size_t index = table->tenant - 1;
+    table->tenant = 0;
+    if (index < table->count) record_set_present(&table->entries[index], false);
+}
+
+uint64_t program_records_kill(ProgramRecords *table, uint64_t pd, uint32_t task) {
+    if (!program_records_is_record(table, pd)) return PROGRAM_RECORD_DENIED;
+    ProgramRecord *record = &table->entries[pd - PROGRAM_RECORD_BASE];
+    if (record->state != PROGRAM_RECORD_LIVE || record->task != task) return PROGRAM_RECORD_DENIED;
+    record->killed = true;
+    return PROGRAM_RECORD_OK;
+}
+
+void program_records_evict(ProgramRecords *table) {
+    records_evict(table);
+}
+
+uint64_t program_records_before_dispatch(ProgramRecords *table, uint64_t pd, uint32_t task) {
+    if (!program_records_is_record(table, pd)) return PROGRAM_RECORD_DENIED;
+    size_t index = (size_t)(pd - PROGRAM_RECORD_BASE);
+    ProgramRecord *record = &table->entries[index];
+    if (record->state != PROGRAM_RECORD_LIVE || record->task != task)
+        return PROGRAM_RECORD_DENIED;
+    if (record->killed) {
+        records_evict(table);
+        return PROGRAM_RECORD_DENIED;
+    }
+    if (table->tenant == index + 1) return PROGRAM_RECORD_OK;
+    records_evict(table);
+    record_set_present(record, true);
+    table->tenant = index + 1;
+    if (table->switches != UINT64_MAX) ++table->switches;
+    return PROGRAM_RECORD_OK;
+}
+
+ProgramRecordReply program_records_reap(ProgramRecords *table,
+                                        const ProgramRecordTask *tasks) {
+    if (!table || !tasks || !table->count || table->count > PROGRAM_RECORD_CAPACITY)
+        return (ProgramRecordReply){PROGRAM_RECORD_INVALID, 0, 0};
+    size_t cursor = table->reap_cursor, freed = 0;
+    size_t scan = table->count < PROGRAM_RECORD_REAP_SCAN ? table->count : PROGRAM_RECORD_REAP_SCAN;
+    for (size_t scanned = 0; scanned < scan && freed < PROGRAM_RECORD_REAP_BATCH; ++scanned) {
+        cursor = (cursor + 1) % table->count;
+        ProgramRecord *record = &table->entries[cursor];
+        const ProgramRecordTask *snapshot = &tasks[cursor];
+        if (record->state != PROGRAM_RECORD_LIVE || snapshot->id != record->task ||
+            !snapshot->exited || snapshot->phase != PROGRAM_RECORD_TASK_DEAD ||
+            snapshot->owner_core != PROGRAM_RECORD_NO_CORE)
+            continue;
+        if (table->tenant == cursor + 1)
+            records_evict(table);
+        else
+            record_set_present(record, false);
+        if (!record_free_pages(table, record))
+            return (ProgramRecordReply){PROGRAM_RECORD_RETRY, freed, table->pool_free};
+        record->state = PROGRAM_RECORD_FREE;
+        record->killed = false;
+        record->task = 0;
+        record->reply_pending = false;
+        --table->live;
+        if (table->ended != UINT64_MAX) ++table->ended;
+        ++freed;
+    }
+    table->reap_cursor = cursor;
+    return (ProgramRecordReply){PROGRAM_RECORD_OK, freed, table->pool_free};
+}
+
+static bool record_frame_owned(const ProgramRecords *table, uint32_t frame) {
+    uint64_t first = table->physical_base / PROGRAM_RECORD_PAGE_BYTES;
+    return frame >= first && frame - first < table->pool_total;
+}
+
+bool program_records_audit(const ProgramRecords *table) {
+    if (!table || !table->count || table->count > PROGRAM_RECORD_CAPACITY ||
+        !table->pool_total || table->pool_total > PROGRAM_RECORD_POOL_FRAMES ||
+        table->pool_free > table->pool_total || table->tenant > table->count ||
+        table->live > table->count || table->start_cursor >= table->count ||
+        table->reap_cursor >= table->count ||
+        (table->next_task && table->next_task < PROGRAM_RECORD_TASK_FIRST) ||
+        table->physical_base < PROGRAM_RECORD_PAGE_BYTES ||
+        table->physical_base % PROGRAM_RECORD_PAGE_BYTES || table->ended > table->started)
+        return false;
+    size_t live = 0, held = 0;
+    for (size_t i = 0; i < table->pool_total; ++i) {
+        bool free = i < table->pool_free;
+        if (free && !record_frame_owned(table, table->pool[i])) return false;
+        if (!free && table->pool[i]) return false;
+    }
+    for (size_t i = 0; i < table->count; ++i) {
+        const ProgramRecord *record = &table->entries[i];
+        if (record->state == PROGRAM_RECORD_LIVE || record->state == PROGRAM_RECORD_LOADING) {
+            if (record->state == PROGRAM_RECORD_LIVE) ++live;
+            if (record->task < PROGRAM_RECORD_TASK_FIRST || !record->image_pages ||
+                record->image_pages > PROGRAM_RECORD_WINDOW_PAGES ||
+                (record->state == PROGRAM_RECORD_LOADING && (record->killed || record->reply_pending)))
+                return false;
+            for (size_t j = i + 1; j < table->count; ++j)
+                if (table->entries[j].state != PROGRAM_RECORD_FREE &&
+                    table->entries[j].task == record->task)
+                    return false;
+        } else if (record->state == PROGRAM_RECORD_FREE) {
+            if (record->task || record->image_pages || record->killed || record->reply_pending)
+                return false;
+        } else
+            return false;
+        for (size_t page = 0; page < PROGRAM_RECORD_LEAF_COUNT; ++page) {
+            const ProgramRecordPage *entry = &record->pages[page];
+            bool permitted = record->state != PROGRAM_RECORD_FREE &&
+                             (page < record->image_pages ||
+                              (page >= PROGRAM_RECORD_STACK_FIRST &&
+                               page < PROGRAM_RECORD_STACK_FIRST + PROGRAM_RECORD_STACK_PAGES));
+            if (!entry->allocated) {
+                if (entry->frame || entry->present || entry->writable || entry->executable)
+                    return false;
+                continue;
+            }
+            if (!permitted || !record_frame_owned(table, entry->frame)) return false;
+            ++held;
+            bool present = table->tenant == i + 1 && record->state == PROGRAM_RECORD_LIVE &&
+                           !record->killed;
+            if (entry->present != present) return false;
+        }
+    }
+    if (table->tenant) {
+        const ProgramRecord *tenant = &table->entries[table->tenant - 1];
+        if (tenant->state != PROGRAM_RECORD_LIVE || tenant->killed) return false;
+    }
+    return live == table->live && held + table->pool_free == table->pool_total;
+}
+
+uint64_t program_record_virtual_page(size_t index, size_t page) {
+    if (index >= PROGRAM_RECORD_CAPACITY || page >= PROGRAM_RECORD_LEAF_COUNT)
+        return UINT64_MAX;
+    return PROGRAM_RECORD_ARENA + index * PROGRAM_RECORD_SLICE + page * PROGRAM_RECORD_PAGE_BYTES;
+}
+
+uint64_t program_record_stack_top(size_t index) {
+    if (index >= PROGRAM_RECORD_CAPACITY) return UINT64_MAX;
+    return PROGRAM_RECORD_ARENA + index * PROGRAM_RECORD_SLICE +
+           PROGRAM_RECORD_LEAF_COUNT * PROGRAM_RECORD_PAGE_BYTES - 16;
+}
+")))

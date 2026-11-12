@@ -29,6 +29,11 @@ def main():
     harness = work / "harness.c"
     harness.write_text(HARNESS)
     for compiler in ("gcc", "clang"):
+        lease = work / (compiler + "-frame-lease.o")
+        run([args.cesta, "cc", "--cc", compiler, "-std=c11", "-O2",
+             "-ffreestanding", "-fno-builtin", "-mgeneral-regs-only",
+             "-ffunction-sections", "-fdata-sections", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
+             "-Igenerated/include", "-c", "src/frame_lease.cesta", "-o", lease])
         for optimization in ("-O2", "-O3"):
             tag = compiler + optimization[1:]
             obj = work / (tag + ".o")
@@ -41,10 +46,15 @@ def main():
             run(["objcopy", *options, obj, renamed])
             binary = work / tag
             run([compiler, "-std=c11", "-O2", "-fno-builtin", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-                 "-Igenerated/include", "-Wl,--gc-sections", harness, renamed, "-o", binary])
+                 "-Igenerated/include", "-Wl,--gc-sections", harness, lease, renamed, "-o", binary])
             run([binary], timeout=30)
         # Compile the same production unit with only the CPU access boundary
         # replaced, so allocation and page-table tests execute the real code.
+        lease_pages = work / (compiler + "-frame-lease-pages.o")
+        run([args.cesta, "cc", "--cc", compiler, "-std=c11", "-O1", "-ffreestanding", "-fno-builtin",
+             "-ffunction-sections", "-fdata-sections", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+             "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Itests/kernel_memory", "-Igenerated/include",
+             "-Iruntime/kernel", "-c", "src/frame_lease.cesta", "-o", lease_pages])
         obj = work / (compiler + "-pages.o")
         run([args.cesta, "cc", "--cc", compiler, "-std=c11", "-O1", "-ffreestanding", "-fno-builtin",
              "-ffunction-sections", "-fdata-sections", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
@@ -55,7 +65,7 @@ def main():
         binary = work / (compiler + "-pages")
         run([compiler, "-std=c11", "-O1", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
              "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Itests/kernel_memory", "-Igenerated/include",
-             "-Iruntime/kernel", "-Wl,--gc-sections", "tests/kernel_memory/host.c", renamed, "-o", binary])
+             "-Iruntime/kernel", "-Wl,--gc-sections", "tests/kernel_memory/host.c", lease_pages, renamed, "-o", binary])
         run([binary])
     print("kernel memory: actual memcpy/memmove/memset/memcmp agree with libc, GCC/Clang O2/O3; "
           "real allocator/page walks, failed-allocation preservation, access checks and NX 1-GiB splitting pass sanitizers")

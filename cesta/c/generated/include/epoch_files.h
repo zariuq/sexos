@@ -1,0 +1,20 @@
+
+#ifndef SEXOS_EPOCH_FILES_H
+#define SEXOS_EPOCH_FILES_H
+#include "epoch_journal.h"
+#include "sexfiles.h"
+
+#define EPOCH_FILES_BASE_LBA EPOCH_JOURNAL_BASE_LBA
+#ifndef EPOCH_FILES_SECTORS
+#define EPOCH_FILES_SECTORS EPOCH_JOURNAL_DATA_SECTORS
+#endif
+#ifndef EPOCH_FILES_FLUSH_LIMIT
+#define EPOCH_FILES_FLUSH_LIMIT 8u
+#endif
+
+void epoch_files_init(void);
+int64_t epoch_files_open(void);
+int64_t epoch_files_flush(EpochLogBatch *batch);
+int64_t epoch_files_poll(void);
+uint64_t sexos_epoch_flush(uint64_t enter);
+#endif

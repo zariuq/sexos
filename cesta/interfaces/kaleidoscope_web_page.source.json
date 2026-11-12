@@ -1,0 +1,6 @@
+{
+  "source": "apps/kaleidoscope/src/web_page.rs at 8019f72d617927949545bde1fb5fc6fc56acd939",
+  "path": "apps/kaleidoscope/src/web_page.rs",
+  "sha256": "3a5ca19cc2b7db2fa53a8511c8618d7026825d672e1239890771c262ec723d58",
+  "parity": "URL parsing, relative-link resolution, numeric IPv4 and keyboard mapping; network and full page lifecycle remain open"
+}

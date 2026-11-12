@@ -105,6 +105,24 @@ int main(void)
     view=sexos_region_query(&producer->region,54,0,1,REGION_QUERY|REGION_DMA);
     assert(view.status==UINT64_MAX && !(view.value0|view.value1|view.value2|view.value3));
 
+    uint64_t epoch_physical=0;
+    assert(boot_epoch_log_region(a->id,&epoch_physical));
+    const Cap *epoch=cap_get(a,SEXOS_SLOT_epoch_log);
+    assert(epoch && epoch->kind==CAP_REGION && epoch->region.grant.region_id==EPOCH_LOG_REGION_ID);
+    assert(epoch->region.grant.length==EPOCH_LOG_REGION_BYTES && epoch->region.grant.rights==7);
+    assert(!epoch->region.grant.has_dma && !epoch->region.grant.has_peer);
+    BootBacking *epoch_backing=backing_record(EPOCH_LOG_REGION_ID);
+    assert(epoch_backing && epoch_backing->physical==epoch_physical && epoch_backing->alias_count==1);
+    assert(epoch_backing->reserved>=EPOCH_LOG_REGION_BYTES);
+    for (uint64_t i=0;i<EPOCH_LOG_REGION_BYTES;++i) assert(ram[epoch_physical+i]==0);
+    for (uint64_t off=0;off<EPOCH_LOG_REGION_BYTES;off+=4096) {
+        uint64_t entry=leaf(epoch->region.grant.virtual_base+off);
+        assert((entry&PTE_ADDRESS)==epoch_physical+off);
+        assert((entry&(PTE_USER|PTE_WRITABLE|PTE_NO_EXECUTE))==(PTE_USER|PTE_WRITABLE|PTE_NO_EXECUTE));
+        assert(((entry>>PTE_KEY_SHIFT)&15)==a->key);
+    }
+    assert(!boot_epoch_log_region(a->id,&epoch_physical));
+
     uint64_t va_before=va_alloc(0); uint32_t roots_before=kernel.boot_backing_count;
     uint32_t caps_before=kernel.cap_storage.count;
     assert(!boot_region_pair(a->id,a->id,70,71,10,4096,false));
@@ -123,6 +141,7 @@ int main(void)
     kernel_seal_genesis();
     assert(!boot_region_pair(a->id,b->id,70,71,10,4096,false));
     assert(!boot_region_dma(a->id,70,10,4096));
+    assert(!boot_epoch_log_region(a->id,&epoch_physical));
     assert(!boot_backing_reserve(10,4096,&invented));
     assert(!boot_region_map(a->id,&backing,true,&output));
     assert(kernel.boot_backing_count==roots_before && kernel.cap_storage.count==caps_before && va_alloc(0)==va_before);
@@ -192,7 +211,7 @@ int main(void)
     assert(kernel.epoch_events[7].rights==REGION_WRITER_RECOVER &&
            kernel.epoch_events[7].subject==b->id && kernel.epoch_events[7].peer==a->id);
     b->queued=false;b->reply_ready=false;b->task_state=TASK_RUNNING;kernel.current=b->id;
-    kernel.epoch_event_count=KERNEL_EPOCH_EVENT_CAPACITY;
+    kernel.epoch=kernel.epoch_event_count=UINT64_MAX;
     TrapFrame exhausted={.rdi=64,.rsi=REGION_WRITER_OFFER,.rdx=9,.r10=102};kernel_region_writer_syscall(b,&exhausted);
     assert(exhausted.rax==REGION_WRITER_EXHAUSTED && leased->writer.current==b->id && leased->writer.revision==9);
     assert(user_range_ok(mutual_home->region.grant.virtual_base,4096,true,b->mask));

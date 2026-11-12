@@ -102,21 +102,38 @@ def main():
     done={(int(target),int(timed)) for target,timed in re.findall(r'\[pager.probe.done\] target=(10|15) cycles=2 timed_wake=([01])',text)}
     assert done=={(10,0),(15,1)},done
     commits=re.findall(r'\[paging.leaf.commit\] token=(\d+) target=(10|15) page=(0x[0-9a-f]+) frame=(\d+) rights=6 pkey=(\d+) zero=1 epoch=(\d+) runtime_alloc=0',text)
-    assert len(commits)==4 and len({x[0] for x in commits})==4 and all(x[1]==x[4] and int(x[5])>0 for x in commits),commits
+    assert len(commits)==6 and len({x[0] for x in commits})==6 and all(x[1]==x[4] and int(x[5])>0 for x in commits),commits
     partitions={10:range(4,8),15:range(0,4)}
     assert all(int(row[3]) in partitions[int(row[1])] for row in commits),commits
-    assert all(len({int(row[3]) for row in commits if int(row[1])==target})==1 for target in partitions),commits
+    assert all(len({int(row[3]) for row in commits if int(row[1])==target})==2 for target in partitions),commits
+    assert all(len({row[2] for row in commits if row[1]==str(target)})==2 for target in partitions),commits
     completed=re.findall(r'\[paging.fault.completed\] target=(10|15) task=(\d+) token=(\d+) resume=1 saved_rip=(0x[0-9a-f]+)',text)
-    assert len(completed)==4 and {c[2] for c in completed}=={c[0] for c in commits},completed
+    assert len(completed)==6 and {c[2] for c in completed}=={c[0] for c in commits},completed
+    worker_resumed=re.findall(r'\[pager.probe.worker.resumed\] target=(10|15) worker=(\d+) zero=1 write=1',text)
+    worker_joined=re.findall(r'\[pager.probe.worker\] target=(10|15) worker=(\d+) join=1',text)
+    assert sorted(int(target) for target,_ in worker_resumed)==[10,15],worker_resumed
+    assert dict(worker_resumed)==dict(worker_joined),(worker_resumed,worker_joined)
+    worker_completed=[row for row in completed if int(row[1])>=0x40000000]
+    assert len(worker_completed)==2 and {int(row[1]) for row in worker_completed}=={int(worker) for _,worker in worker_resumed},(worker_resumed,worker_completed)
     reclaims=re.findall(r'\[paging.leaf.reclaim\] token=(\d+) target=(10|15) page=(0x[0-9a-f]+) frame=(\d+) cleared=1 tlb=1 epoch=(\d+) runtime_alloc=0',text)
     assert len(reclaims)==2 and len({r[0] for r in reclaims})==2 and all(int(r[4])>0 for r in reclaims),reclaims
     assert all(int(row[3]) in partitions[int(row[1])] for row in reclaims),reclaims
     cleanup=re.findall(r'\[paging.target.cleanup\] target=(10|15) task=(\d+) frames=(0x[0-9a-f]+) closed=1 detached=1 all_flushed=1 epoch=(\d+) runtime_alloc=0',text)
     assert sorted(int(row[0]) for row in cleanup)==[10,15] and all(int(row[3])>0 for row in cleanup),cleanup
     assert '[scheduler.self_wait.expired]' in text
+    growth=re.findall(r'\[program\.memory\.grow\] target=(10|15) run=(\d+) base=(0x[0-9a-f]+) held=(\d+) first_frame=(0x[0-9a-f]+) incarnation=(\d+) pressure=(\d+)',text)
+    assert len(growth)==2 and [row[0] for row in growth]==['10','15'],growth
+    assert all(int(row[1])==int(row[0]) and int(row[3])==2 and int(row[4],16) and int(row[5]) for row in growth),growth
+    released=re.findall(r'\[program\.frame\.released\] target=10 run=10 first=(0x[0-9a-f]+) pages=(\d+)',text)
+    assert len(released)==1,released
+    assert growth[1][4]==released[0][0] and int(released[0][1])>=2,(released,growth)
+    assert text.index('[program.frame.released] target=10 run=10')<text.index('[program.memory.grow] target=15 run=15'),'reuse must follow the source run release'
+    probes=re.findall(r'\[pager\.probe\.memory\] target=(10|15) base=(0x[0-9a-f]+) held=2 zero=1 write=1',text)
+    assert len(probes)==2 and [row[0] for row in probes]==['10','15'],probes
+    assert all(probes[i][1]==growth[i][2] for i in range(2)),(probes,growth)
     assert all(digest(getattr(args,n).resolve())==h for n,h in before.items())
-    summary={'idle':idle,'inputs':before,'image_sha256':digest(image),'resumed':resumed,'commits':commits,'completed':completed,'reclaims':reclaims,'partitions':{'10':[4,8],'15':[0,4]},'done':sorted(done),'cleanup':cleanup,'seconds':time.monotonic()-start,'scope':'actual CPU faults/resumption, deterministic per-range frame allocation, epoch-recorded release/reuse and terminal range cleanup, one unambiguous syscall deadline receipt, through the production kernel and Sext. Domain 10 is also a lifecycle service and is not claimed to become timer-idle in this probe. Other programs are inert probes; this does not qualify the ordinary full userland.'}
-    (w/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print('hardware pager probe passed:4 partitioned faults,2 releases/reuses,1 deadline receipt,2 closed targets')
+    summary={'idle':idle,'inputs':before,'image_sha256':digest(image),'resumed':resumed,'worker_resumed':worker_resumed,'worker_completed':worker_completed,'commits':commits,'completed':completed,'reclaims':reclaims,'partitions':{'10':[4,8],'15':[0,4]},'done':sorted(done),'cleanup':cleanup,'program_memory_growth':growth,'program_frame_reuse':{'released_first':released[0][0],'released_pages':int(released[0][1]),'next_run_first':growth[1][4]},'seconds':time.monotonic()-start,'scope':'actual CPU faults/resumption, including two worker data faults with exact worker completion and join, deterministic per-range frame allocation, epoch-recorded release/reuse and terminal range cleanup, one unambiguous syscall deadline receipt, and two-page program-memory growth with physical reuse from target 10 to target 15, through the production kernel and Sext. Domain 10 is also a lifecycle service and is not claimed to become timer-idle in this probe. Other programs are inert probes; this does not qualify the ordinary full userland.'}
+    (w/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print('hardware pager probe passed:4 main faults,2 worker faults/resumed joins,2 releases/reuses,1 deadline receipt,2 closed targets,1 cross-run frame reuse')
 
 
 if __name__=='__main__':main()

@@ -1,0 +1,63 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (native "
+#ifndef SEXOS_PROGRAM_MEMORY_H
+#define SEXOS_PROGRAM_MEMORY_H
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+
+#define PROGRAM_MEMORY_MAX_PAGES_PER_CALL 256u
+#define PROGRAM_MEMORY_MAX_WORKERS 63u
+
+enum {
+    PROGRAM_MEMORY_OK = 0,
+    PROGRAM_MEMORY_INVALID = 1,
+    PROGRAM_MEMORY_RETRY = 2,
+    PROGRAM_MEMORY_DENIED = 3,
+    PROGRAM_MEMORY_FULL = 6
+};
+
+enum {
+    PROGRAM_MEMORY_FREE = 0,
+    PROGRAM_MEMORY_LIVE = 1,
+    PROGRAM_MEMORY_ENDING = 2,
+    PROGRAM_MEMORY_DEAD = 3,
+    PROGRAM_MEMORY_QUARANTINE = 4
+};
+
+enum {
+    PROGRAM_PRESSURE_NORMAL = 0,
+    PROGRAM_PRESSURE_LOW = 1,
+    PROGRAM_PRESSURE_CRITICAL = 2
+};
+
+typedef struct {
+    uint64_t base, arena_pages, image_pages, grown, stack_pages;
+    uint32_t target, run, workers;
+    uint8_t key, phase;
+    bool main_alive;
+} ProgramMemoryState;
+
+typedef struct {
+    uint64_t first, count;
+} ProgramMemoryPlan;
+
+typedef struct {
+    uint64_t status, base, held, pressure;
+} ProgramMemoryReply;
+
+void program_memory_init(ProgramMemoryState *state);
+uint64_t program_memory_begin(ProgramMemoryState *state, uint32_t target, uint32_t run,
+                              uint8_t key, uint64_t base, uint64_t arena_pages,
+                              uint64_t image_pages, uint64_t stack_pages);
+uint64_t program_memory_plan(const ProgramMemoryState *state, uint64_t want,
+                             ProgramMemoryPlan *out);
+bool program_memory_map_at(ProgramMemoryState *state, uint64_t va, uint64_t flags);
+ProgramMemoryReply program_memory_grow(ProgramMemoryState *state, uint64_t want);
+uint64_t program_memory_worker_spawn(ProgramMemoryState *state);
+uint64_t program_memory_worker_exit(ProgramMemoryState *state);
+uint64_t program_memory_main_exit(ProgramMemoryState *state);
+uint64_t program_memory_end(ProgramMemoryState *state);
+#endif
+")))

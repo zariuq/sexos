@@ -114,20 +114,27 @@ _Noreturn void kernel_halt(const char *reason) {
 /*The current profile forwards eligible user data faults to the held pager; all other user faults terminate their domain. The frozen Rust reference halted the whole kernel on a protection fault or key violation.*/
 static TrapFrame *fault_user(TrapFrame *frame) {
   uint64_t address = frame->vector == 14 ? cpu_read_cr2() : 0;
+  if (kernel_current_record != NULL) {
+    *kernel_record_storage(kernel_current_record)->frame = *frame;
+#if SEXOS_KERNEL_CURRENT_FPU
+kernel_record_fpu_save();
+
+#endif
+    return kernel_record_finish(frame, true);
+  }
   Domain *faulted = domain_get(kernel.current);
   if (SEXOS_KERNEL_CURRENT_PDX && frame->vector == 14) klog("[paging.fault.trap] pd=%u addr=%#llx rip=%#llx error=%#llx eligible=%u\n", kernel.current, (unsigned long long) address, (unsigned long long) frame->rip, (unsigned long long) frame->error, (unsigned) pager_fault_eligible(address, frame->error, frame->cs));
   if (SEXOS_KERNEL_CURRENT_PDX && (faulted != NULL && (frame->vector == 14 && kernel_pager_forward(faulted, frame, address)))) return kernel_dispatch_blocked();
   klog("fault.kill pd=%u vector=%llu err=%#llx rip=%#llx addr=%#llx\n", kernel.current, (unsigned long long) frame->vector, (unsigned long long) frame->error, (unsigned long long) frame->rip, (unsigned long long) address);
   Domain *d = domain_get(kernel.current);
   if (d != NULL) {
+    kernel_worker_fault(d);
     d->task_state = TASK_EXITED;
+    kernel_worker_end(d);
     if (!kernel_region_writer_recover_dead(d)) kernel_halt("dead writer recovery invariant");
     if (!kernel_device_reset_owner_dead(d)) kernel_halt("dead device reset custody invariant");
   }
-  kernel.current = 0;
-  uint32_t next = run_pop();
-  if (next != 0) return switch_to(next);
-  kernel_idle();
+  return kernel_worker_schedule(frame, false);
 }
 TrapFrame *kernel_trap(TrapFrame *frame) {
   if (kernel.pku) cpu_wrpkru(0);
@@ -135,7 +142,7 @@ TrapFrame *kernel_trap(TrapFrame *frame) {
   bool from_user = (frame->cs & 3) == 3;
   if (SEXOS_KERNEL_CURRENT_PDX && from_user) {
     Domain *owner = domain_get(kernel.current);
-    if (owner != NULL) owner->frame = frame;
+    if (owner != NULL) if (!kernel_worker_entry(frame)) owner->frame = frame;
 #if SEXOS_KERNEL_CURRENT_FPU
 kernel_fpu_save_current();
 
@@ -144,14 +151,10 @@ kernel_fpu_save_current();
   if (SEXOS_KERNEL_CURRENT_PDX) kernel_task_poll();
   if (vector == TIMER_VECTOR) {
     kernel.ticks += 1;
-    if (SEXOS_KERNEL_CURRENT_PDX) kernel_task_poll();
     lapic_eoi();
     if (!kernel.scheduler_running) return frame;
     if (from_user) return schedule_tick(frame);
-    if (kernel.current == 0) {
-      uint32_t next = run_pop();
-      if (next != 0) return switch_to(next);
-    }
+    if (kernel.current == 0) return kernel_worker_schedule(frame, false);
     return frame;
   }
   if (vector == KEYBOARD_VECTOR) {
@@ -167,16 +170,7 @@ kernel_fpu_save_current();
     kernel_halt("kernel-mode exception");
   }
 /*A routed device interrupt: the owning domain hears a hardware-interrupt message, which listen reports with type 0xFF as the reference does.*/
-  if (kernel.vector_revision[vector] == UINT64_MAX) kernel_halt("device interrupt revision exhausted");
-  kernel.vector_revision[vector] += 1;
-  uint32_t owner = kernel.vector_owner[vector];
-  Domain *d = domain_get(owner);
-  if (d != NULL) {
-    uint64_t generation = kernel.device_reset.present && (kernel.device_reset.vector == vector && kernel.device_reset.owner == owner) ? kernel.device_reset.generation : vector == 0x22 ? 1ULL : 0ULL;
-    domain_enqueue(d, (RingEntry) {
-      .type_id = 0xFF,.caller = 1,.arg0 = vector,.arg1 = kernel.vector_revision[vector],.arg2 = generation
-    });
-  }
+  kernel_device_interrupt_publish(vector);
   lapic_eoi();
   return resume_frame(frame);
 }
@@ -198,6 +192,7 @@ void kernel_main(void) {
     platform_init(address);
   } else klog("X86Hal: WARNING - RSDP not found, skipping APIC/Timer.\n");
   keyboard_init();
+  kernel_workers_boot();
   domains_boot();
 #if SEXOS_KERNEL_CURRENT_SMP
 if (!kernel_smp_park_boot()) kernel_halt("SMP park/quiescence failed");

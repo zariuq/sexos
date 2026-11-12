@@ -1,0 +1,71 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (native "
+#ifndef SEXOS_FRAME_LEASE_H
+#define SEXOS_FRAME_LEASE_H
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+
+#ifndef FRAME_LEASE_CAPACITY
+#define FRAME_LEASE_CAPACITY 8192u
+#endif
+#define FRAME_LEASE_MAX_ORDER 18u
+#define FRAME_LEASE_PAGE_SIZE 4096u
+
+enum {
+    FRAME_LEASE_OK = 0,
+    FRAME_LEASE_INVALID = 1,
+    FRAME_LEASE_RETRY = 2,
+    FRAME_LEASE_DENIED = 3,
+    FRAME_LEASE_FULL = 4
+};
+
+enum {
+    FRAME_LEASE_EMPTY = 0,
+    FRAME_LEASE_LIVE = 1,
+    FRAME_LEASE_DETACHED = 2,
+    FRAME_LEASE_FREE = 3
+};
+
+enum {
+    FRAME_LEASE_PINNED = 0,
+    FRAME_LEASE_PROGRAM = 1,
+    FRAME_LEASE_TRANSIENT = 2
+};
+
+typedef struct {
+    uint64_t base, pages;
+    uint32_t holder, incarnation;
+    uint8_t order, phase, kind;
+} FrameLeaseEntry;
+
+typedef struct {
+    FrameLeaseEntry entries[FRAME_LEASE_CAPACITY];
+    size_t count;
+    uint64_t free_pages, lent, reserve;
+    uint32_t next_incarnation;
+} FrameLeaseState;
+
+typedef struct {
+    uint64_t base;
+    uint32_t holder, incarnation;
+    uint8_t order, kind;
+} FrameLease;
+
+typedef struct {
+    uint64_t status;
+    FrameLease value;
+} FrameLeaseResult;
+
+void frame_lease_init(FrameLeaseState *state, uint64_t reserve);
+uint64_t frame_lease_region(FrameLeaseState *state, uint64_t base, uint64_t pages);
+FrameLeaseResult frame_lease_take(FrameLeaseState *state, uint8_t order, uint8_t kind,
+                                  uint32_t holder);
+uint64_t frame_lease_detach(FrameLeaseState *state, FrameLease lease);
+uint64_t frame_lease_give(FrameLeaseState *state, FrameLease lease);
+uint64_t frame_lease_commit(FrameLeaseState *state, FrameLease lease);
+uint64_t frame_lease_available(const FrameLeaseState *state);
+bool frame_lease_audit(const FrameLeaseState *state);
+#endif
+")))

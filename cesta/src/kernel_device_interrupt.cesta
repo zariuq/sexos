@@ -1,0 +1,75 @@
+(cesta native-c/1 compact-c/2
+  (unit
+    (ownership (check-all)
+    (foreign klog (variadic-read) (obligation "Reads the format and arguments synchronously; retains no caller storage."))
+    (unchecked (cpu_clac cpu_cli cpu_cpuid cpu_fpu_state_init cpu_fxrstor cpu_fxsave cpu_hlt cpu_inb
+                cpu_inl cpu_invlpg cpu_irq_restore cpu_irq_save cpu_lidt cpu_ltr cpu_outb cpu_outl
+                cpu_outw cpu_pause cpu_rdmsr cpu_rdseed cpu_read_cr0 cpu_read_cr2 cpu_read_cr3
+                cpu_read_cr4 cpu_read_rsp cpu_stac cpu_sti cpu_sti_hlt cpu_write_cr0 cpu_write_cr4
+                cpu_wrmsr cpu_wrpkru cpu_xgetbv kernel_device_interrupt_message kernel_device_interrupt_publish
+                kernel_device_interrupt_retry
+                kernel_device_interrupt_drain)
+      (obligation "Retained interrupt metadata and bounded ring publication use kernel-owned domain records on the serialized BSP with interrupts masked and application processors parked. Refused publication retains the produced revision; listening drains it in the authenticated owner context. Delivery neither fabricates a hearing receipt nor acknowledges an interrupt. CPU header helpers remain behind the existing native boundary.")))
+  (include "sexos_kernel.h")
+    (native "
+enum { KERNEL_NVME_VECTOR = 0x22 };
+
+static RingEntry kernel_device_interrupt_message(uint32_t vector, uint64_t revision) {
+    uint32_t owner = kernel.vector_owner[vector];
+    uint64_t generation = kernel.device_reset.present && kernel.device_reset.vector == vector &&
+                          kernel.device_reset.owner == owner ? kernel.device_reset.generation :
+                          vector == KERNEL_NVME_VECTOR ? 1 : 0;
+    return (RingEntry){.type_id = 0xFF, .caller = 1, .arg0 = vector, .arg1 = revision,
+                       .arg2 = generation};
+}
+
+void kernel_device_interrupt_publish(uint32_t vector) {
+    if (vector >= 256)
+        kernel_halt(\"device interrupt vector\");
+    uint64_t revision = kernel.vector_pending[vector];
+    if (!revision) {
+        if (kernel.vector_revision[vector] == UINT64_MAX)
+            kernel_halt(\"device interrupt revision exhausted\");
+        revision = ++kernel.vector_revision[vector];
+    }
+    Domain *d = domain_get(kernel.vector_owner[vector]);
+    if (!d) {
+        kernel.vector_pending[vector] = 0;
+        return;
+    }
+    if (domain_enqueue(d, kernel_device_interrupt_message(vector, revision)))
+        kernel.vector_pending[vector] = 0;
+    else
+        kernel.vector_pending[vector] = revision;
+}
+
+bool kernel_device_interrupt_retry(uint32_t vector) {
+    if (vector >= 256 || !kernel.vector_pending[vector])
+        return true;
+    uint64_t revision = kernel.vector_pending[vector];
+    Domain *d = domain_get(kernel.vector_owner[vector]);
+    if (!d) {
+        kernel.vector_pending[vector] = 0;
+        return true;
+    }
+    if (!domain_enqueue(d, kernel_device_interrupt_message(vector, revision)))
+        return false;
+    kernel.vector_pending[vector] = 0;
+    return true;
+}
+
+void kernel_device_interrupt_drain(Domain *d) {
+    if (!SEXOS_KERNEL_CURRENT_PDX || !d || domain_get(kernel.current) != d ||
+        !kernel_current_task(d))
+        return;
+    for (uint32_t vector = 0; vector < 256; ++vector)
+        if (kernel.vector_owner[vector] == d->id && kernel.vector_pending[vector]) {
+            uint64_t revision = kernel.vector_pending[vector];
+            if (kernel_device_interrupt_retry(vector))
+                klog(\"[device.interrupt.drain] pd=%u vector=%u revision=%llu heard=%llu acknowledged=%llu current=%u\\n\",
+                     d->id, vector, (unsigned long long)revision,
+                     (unsigned long long)kernel.vector_heard_revision[vector],
+                     (unsigned long long)kernel.vector_ack_revision[vector], kernel.current);
+        }
+}
+")))

@@ -126,7 +126,7 @@
               (if (call diskfs_hot_log)
                 (call sexos_line "[sexfiles.diskfs.block.reply] op=%s status=%llu bytes=%llu"
                   op (cast (unsigned long long) (. send_res status)) (cast (unsigned long long) arg1)))))
-          (return (. send_res status))))
+          (return (?: (== (. send_res status) SEXOS_ERR_SERVICE_NOT_READY) BLOCK_ERR_TIMEOUT (. send_res status)))))
       (while 1
         (block
           (var SexosRequest request (compound SexosRequest (= (. id) 0)))
@@ -148,7 +148,7 @@
                       op (cast (unsigned long long) reply_val) (cast (unsigned long long) arg1)))))
               (if (&& writer_offered (! (call diskfs_writer_settle writer_job writer_home)))
                 (call sexos_fail))
-              (return reply_val)))
+              (return (?: (== reply_val SEXOS_ERR_SERVICE_NOT_READY) BLOCK_ERR_TIMEOUT reply_val))))
           (if (!= (. msg type_id) 0)
             (cast void (call defer_stash request)))
           (call sexos_yield))))

@@ -68,7 +68,7 @@ println!("{} {} {} {} {} {} {} {} {} {}",i.target,i.ordinal,i.surface,i.shell_su
         else:assert pred==activation==0 and target==logical
     expected_boot={'domains':[int(d[0]) for d in domains],'apps':[a[0] for a in actual],
                    'dormant':[int(d[0]) for d in domains if d[-1]=='false'],
-                   'initial':len(active),'routes':len(routes),'backings':9+sum(a[8]==9 for a in actual)}
+                   'initial':len(active),'routes':len(routes),'backings':12+sum(a[8]==9 for a in actual)+sum(a[8] in (12,15) for a in actual)}
     assert inventory['expected_boot']==expected_boot,(inventory.get('expected_boot'),expected_boot)
     source=(HERE/'src/kernel_current_boot.cesta').read_text()
     assert 'SEXOS_CURRENT_DOMAIN_ROWS' in source and 'SEXOS_CURRENT_ROUTE_ROWS' in source and 'SEXOS_CURRENT_APP_ROWS' in source

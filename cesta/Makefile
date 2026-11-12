@@ -80,7 +80,7 @@ check-arm64-runtime: arm64-build
 	python3 tests/arm64_runtime.py --image build-arm64/arm64-phase4/arm64-phase4 --phase 4 --work $$work/phase4 && \
 	python3 tests/arm64_runtime.py --image build-arm64/arm64-phase5/arm64-phase5 --phase 5 --work $$work/phase5
 
-check: check-silk-shell check-services check-ownership check-sext check-kernel-transport check-memory-regions check-dma-lease check-device-reset check-smp-park check-kernel-regions check-current-boot check-pager check-sources check-pci check-history check-handover check-program-image
+check: check-silk-shell check-services check-ownership check-sext check-kernel-transport check-memory-regions check-dma-lease check-device-reset check-smp-park check-kernel-regions check-current-boot check-pager check-sources check-pci check-history check-handover check-program-image check-frame-leases check-program-frames check-program-memory check-server-heap check-program-workers check-program-records check-program-record-memory check-program-record-tasks check-epoch-journal check-epoch-files check-va-reservation
 	python3 tests/boot_observation_controls.py
 	python3 tests/kernel_boot_comparison.py
 	python3 tests/kernel_boot_driver_controls.py
@@ -101,6 +101,7 @@ check: check-silk-shell check-services check-ownership check-sext check-kernel-t
 	python3 tests/quil_differential.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_body.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_navigation.py --cesta "$(CESTA)"
+	python3 tests/kaleidoscope_web_page.py --cesta "$(CESTA)" --mutations
 	python3 tests/kaleidoscope_regex.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_decimal.py --cesta "$(CESTA)"
 	python3 tests/kaleidoscope_script_lexer.py --cesta "$(CESTA)"
@@ -138,7 +139,7 @@ check: check-silk-shell check-services check-ownership check-sext check-kernel-t
 	python3 tests/silk_shell_input_differential.py --cesta "$(CESTA)" --mutations
 	python3 tests/silk_shell_atlas_differential.py --cesta "$(CESTA)" --mutations
 
-qualify: qualify-ownership qualify-sext check-kernel-transport qualify-memory-regions qualify-dma-lease qualify-device-reset qualify-smp-park qualify-kernel-regions qualify-sources qualify-pci qualify-history qualify-handover qualify-program-image
+qualify: qualify-ownership qualify-sext check-kernel-transport qualify-memory-regions qualify-dma-lease qualify-device-reset qualify-smp-park qualify-kernel-regions qualify-sources qualify-pci qualify-history qualify-handover qualify-program-image qualify-program-frames qualify-program-memory qualify-program-workers check-va-reservation
 	python3 tests/boot_observation_controls.py
 	python3 tests/kernel_boot_comparison.py
 	python3 tests/kernel_boot_driver_controls.py
@@ -397,6 +398,8 @@ check-services:
 	python3 tests/network_job_engine.py --cesta "$(CESTA)"
 	python3 tests/network_tcp_listener.py --cesta "$(CESTA)"
 	python3 tests/network_service_core.py --cesta "$(CESTA)"
+	python3 tests/network_web.py --cesta "$(CESTA)" --mutations
+	python3 tests/network_open.py --cesta "$(CESTA)" --mutations
 	python3 tests/network_http.py --cesta "$(CESTA)"
 	python3 tests/network_device.py --cesta "$(CESTA)"
 	python3 tests/network_tcp.py --cesta "$(CESTA)"
@@ -453,6 +456,7 @@ qualify-dma-lease:
 check-device-reset:
 	python3 tests/device_reset.py --cesta "$(CESTA)" --mutations
 	python3 tests/kernel_device_reset.py --cesta "$(CESTA)" --mutations
+	python3 tests/nvme_recovery.py --cesta "$(CESTA)" --mutations
 .PHONY: check-smp-park qualify-smp-park
 check-smp-park:
 	python3 tests/smp_park.py --cesta "$(CESTA)" --mutations
@@ -475,6 +479,7 @@ qualify-device-reset:
 	@test -n "$(LEAN_ROOT)" -a -n "$(CESTA_SOURCE)" || { echo "set LEAN_ROOT and CESTA_SOURCE"; exit 1; }
 	python3 tests/device_reset.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/kernel_device_reset.py --cesta "$(CESTA)" --mutations
+	python3 tests/nvme_recovery.py --cesta "$(CESTA)" --mutations
 check-kernel-regions:
 	python3 tests/kernel_regions.py --cesta "$(CESTA)" --mutations
 	python3 tests/kernel_boot_memory.py --cesta "$(CESTA)" --mutations
@@ -493,6 +498,61 @@ qualify-current-boot:
 	python3 tests/current_boot_admission.py --cesta "$(CESTA)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/app_private.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 	python3 tests/kernel_private.py --cesta "$(CESTA)" --mutations
+
+.PHONY: check-frame-leases qualify-frame-leases
+check-frame-leases:
+	python3 tests/frame_lease.py --cesta "$(CESTA)" --mutations
+qualify-frame-leases:
+	@test -n "$(LEAN_ROOT)" -a -n "$(CESTA_SOURCE)" || { echo "set LEAN_ROOT and CESTA_SOURCE"; exit 1; }
+	python3 tests/frame_lease.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
+
+.PHONY: check-program-frames qualify-program-frames
+check-program-frames:
+	python3 tests/program_frames.py --cesta "$(CESTA)" --mutations
+qualify-program-frames: qualify-frame-leases
+	python3 tests/program_frames.py --cesta "$(CESTA)" --mutations
+
+.PHONY: check-program-memory qualify-program-memory
+check-program-memory:
+	python3 tests/program_memory.py --cesta "$(CESTA)" --mutations
+qualify-program-memory:
+	@test -n "$(LEAN_ROOT)" -a -n "$(CESTA_SOURCE)" || { echo "set LEAN_ROOT and CESTA_SOURCE"; exit 1; }
+	python3 tests/program_memory.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
+
+.PHONY: check-server-heap
+check-server-heap:
+	python3 tests/server_heap.py --mutations
+
+.PHONY: check-epoch-journal check-epoch-files
+check-epoch-journal:
+	python3 tests/epoch_journal.py --cesta "$(CESTA)" --mutations
+	python3 tests/epoch_journal_format.py
+check-epoch-files:
+	python3 tests/epoch_files.py --cesta "$(CESTA)" --mutations
+
+.PHONY: check-epoch-persistent
+check-epoch-persistent:
+	@test -n "$(REFERENCE_TREE)" -a -n "$(LIMINE)" -a -n "$(CURRENT_KERNEL)" -a -n "$(PERSISTENT_BOOT_WORK)" -a -n "$(NVME_IMAGE)" || { echo "set REFERENCE_TREE, LIMINE, CURRENT_KERNEL, PERSISTENT_BOOT_WORK and NVME_IMAGE"; exit 1; }
+	python3 tests/epoch_persistent_boot.py --reference-tree "$(REFERENCE_TREE)" --limine "$(LIMINE)" --kernel "$(CURRENT_KERNEL)" --work "$(PERSISTENT_BOOT_WORK)" --seconds 180 --replay-seconds 900 --nvme-image "$(NVME_IMAGE)" --stress-events 8200
+
+.PHONY: check-va-reservation
+check-va-reservation:
+	python3 tests/va_reservation.py --cesta "$(CESTA)" --mutations
+
+.PHONY: check-program-workers qualify-program-workers check-kernel-workers check-program-records check-program-record-memory check-program-record-tasks
+check-kernel-workers:
+	python3 tests/kernel_workers.py --cesta "$(CESTA)" --work build/kernel-workers-native --mutations
+check-program-workers:
+	python3 tests/program_workers.py --cesta "$(CESTA)" --mutations
+check-program-records:
+	python3 tests/program_records.py --cesta "$(CESTA)" --work build/program-records-native --mutations
+check-program-record-memory:
+	python3 tests/program_record_memory.py --cesta "$(CESTA)" --work build/program-record-memory-native --mutations
+check-program-record-tasks:
+	python3 tests/program_record_tasks.py --cesta "$(CESTA)" --work build/program-record-tasks-native --mutations
+qualify-program-workers:
+	@test -n "$(LEAN_ROOT)" -a -n "$(CESTA_SOURCE)" || { echo "set LEAN_ROOT and CESTA_SOURCE"; exit 1; }
+	python3 tests/program_workers.py --cesta "$(CESTA)" --mutations --cesta-source "$(CESTA_SOURCE)" --lean-root "$(LEAN_ROOT)"
 
 .PHONY: check-pager qualify-pager check-partitioned-frames qualify-partitioned-frames
 check-partitioned-frames:
@@ -563,3 +623,8 @@ qualify-program-image:
 qualify-program-image-hol:
 	@test -n "$(CESTA_SOURCE)" || { echo "set CESTA_SOURCE"; exit 1; }
 	python3 -B tests/program_image_hol.py --cesta "$(CESTA)" --cesta-source "$(CESTA_SOURCE)" $(PROGRAM_IMAGE_HOL_FLAGS)
+
+.PHONY: qualify-frame-detach-hol
+qualify-frame-detach-hol:
+	@test -n "$(CESTA_SOURCE)" || { echo "set CESTA_SOURCE"; exit 1; }
+	python3 -B tests/frame_lease_detach_hol.py --cesta "$(CESTA)" --cesta-source "$(CESTA_SOURCE)" $(FRAME_DETACH_HOL_FLAGS)

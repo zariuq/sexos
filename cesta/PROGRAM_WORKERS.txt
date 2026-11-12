@@ -1,0 +1,152 @@
+PROGRAM WORKERS: EXECUTION AND DELAYED REARM
+
+Worker metadata is pointer-free: id, target run, core custody, phase, deadlines,
+TLS address and wait/admission state. A slot index joins each record to separate
+native storage containing a retained TrapFrame, an aligned 64 KiB kernel stack
+and an aligned 512-byte FPU area. The shared kernel interface defines that machine
+layout once. Retained records prevent stale queue pointers from becoming dangling
+pointers; rearm clears machine state before publication and issues a fresh,
+non-wrapping worker id. Main tasks use [1, 0x40000000), workers use
+[0x40000000, 0x80000000), and higher identities are reserved. Exhaustion is
+permanent; it cannot allocate a BOOT identity or clear an eligible dead slot.
+
+Custody and execution
+---------------------
+The phase sequence is:
+
+    DETACHED -> QUEUED -> DISPATCHING -> ATTACHED -> SWITCHING_OUT
+          ^                                              |
+          +----------------------------------------------+
+          |                                              |
+          +---------------------- DEAD <-----------------+
+
+The serialized BSP scheduler selects among ready main domains and queued workers.
+A worker shares its domain's memory and authority but supplies its own task id as
+transport provenance. Main and worker FS bases and FPU areas are distinct; PKRU
+uses their shared domain mask. CORES reports one while application processors are
+parked. This is not active-SMP or work-stealing qualification.
+
+The syscall-83 operations are SPAWN, EXIT, WAIT, WAKE, CORES and TLS. A wake uses
+an exact target domain and wait address. Main publication of a changed value before
+WAKE permits either an already-blocked return or AGAIN without losing the event.
+Timed waits wake early at the tick cap; callers must recheck value and clock.
+
+Exit is intent, not last-use. The outgoing worker remains SWITCHING_OUT until the
+assembly return path has installed the next frame's stack. Only then does the
+callback release the old worker for death or requeue. Idle also departs the old
+stack before release. No-next and fault paths perform the same custody ordering.
+
+Queue admission and rearm
+-------------------------
+A native ProgramRecordQueue holds pointer-sized tokens in one bounded 512-entry
+FIFO shared by domain IDs and retained worker/record task pointers. Small standalone
+profiles override that bound for saturation controls. Worker admission requires a
+detached live worker and no duplicate pointer. Dispatch consumes exactly one token
+and clears its slot. An invalid core preserves the token; an exited token is consumed
+and retired.
+
+Call-wait and reply-wait publication can admit a direct handoff. At most eight such
+selections run ahead of ordinary work. At the limit, the oldest ordinary token is
+selected first and the deferred partner is appended, even when the queue was full.
+Wake/deadline paths retain pending work under backpressure. Every task kind has a
+separate admission-pending bit rather than manufacturing a second wake event.
+Multiple pending workers can require multiple dequeue/poll rounds.
+
+A record may be rearmed only when it is DEAD, has no owner and has completed a
+four-tick grace period after its first observed death. Earlier timestamps cannot
+wrap the grace comparison. Exhaustion refuses another spawn before changing
+metadata, kernel stacks or FPU storage. Rearm clears the stack, frame and FPU
+state and resets TLS/wait state. Current-task provenance requires the exact
+domain and current run, an attached worker on the serialized core, and an id
+inside the worker namespace. Exit authenticates this provenance too; an old
+run's worker cannot issue an exit or growth request as a replacement run.
+
+Fault and memory boundaries
+---------------------------
+A terminal worker fault ends its whole run. Main-task finish/fault marks all target
+workers for exit, and pager cleanup waits for actual worker death rather than an
+exited flag alone. An eligible worker data fault may instead be forwarded with its
+worker id and saved worker frame. The main task stays blocked so the shared domain
+fault slot cannot alias a second request. Fault-blocked workers cannot be admitted
+by unrelated wakes or deadlines. Exact completion validates the worker frame/rip,
+restores the main task's previous scheduling state and requeues the worker; rejection
+ends the run. The real pager fixture completes two worker data faults with exact
+completion identity, resumed writes, clean worker exit and main join. Both terminal
+ranges close after run-wide retirement of worker and main fault metadata and page
+bindings. Wrong target/pager and zero task identities are refused. This is real
+worker-fault evidence, not restart or active-SMP qualification.
+
+Each Domain now owns a ProgramMemoryState for its main task's run. The loader
+initializes it before mapping effects and binds image and stack frames to that run.
+Worker spawn increments its count only after queue admission; dead transitions
+release exactly one accounted worker, while failed admission rolls the count back.
+Main exit marks the run's main task dead. Teardown waits for all workers to die,
+a non-current and non-queued task, and completed pager cleanup. Applications must
+also finish service acknowledgement and private retirement. Run-managed image and
+stack commits retain FRAME_LEASE_PROGRAM ownership; retirement transfers them to
+the pager workspace before old-run cleanup. Restart/rebirth and repeated frame-reuse
+stress remain separate acceptance work. Worker-slot reuse is not proof of general
+frame reclamation.
+
+Checks
+------
+
+    make check-program-workers
+    make check-kernel-workers
+    make qualify-program-workers CESTA_SOURCE=... LEAN_ROOT=...
+
+The lifecycle matrix covers admission, refusal, saturation, retry, delayed rearm,
+fresh machine state and identity exhaustion under GCC/Clang, O0/O2 and sanitizers.
+Seventeen lifecycle mutations are required to fail. Fourteen pointer-free functions
+have emitted-plan admission with 62 altered-plan refusals. Native pointer-token
+operations and machine storage are outside that pure ownership proof.
+
+The native scheduler matrix runs the actual syscall/scheduler C with host hardware
+and domain stubs. It covers worker and main waits, wake, TLS restoration, clean
+exit, idle/fault custody, slot reuse, pager continuation, wrong-frame refusal,
+rejected-run cleanup, namespace exhaustion, stale-run exit and invalid calls.
+Eight scheduler mutations are required to
+fail on six compiler/sanitizer routes. Host stubs are not machine execution evidence.
+
+The pager layer checks 55,918 differential steps per compiler and 58 independent
+controls. Twenty-six pure functions have emitted-plan admission with 131 altered-plan
+refusals. Twelve original mutations plus five run-retirement/cleanup mutations are
+required to fail, including wrong target/pager and zero task identities.
+
+The explicit sext-worker-probe target enables the only probe call; ordinary Sext
+does not execute it. In QEMU, the probe completes two spawn/wait/wake/TLS/exit
+cycles with distinct worker ids. Kernel records show the second cycle reusing the
+first slot after the grace interval. The joined-shell harness requires this marker
+and matching slot evidence independently of the probe's own success message.
+
+The current probe image reached all 18 ordinary readiness markers plus its worker
+marker, then completed a full 90-second post-readiness soak in 264.67 seconds,
+with NVMe/network/USB keyboard fixtures, four CPUs with APs parked, and zero
+terminal faults or unknown opcodes after readiness. The separate retirement gate
+completed 28 app executions, 25 successor launches, all 140 service ACKs and 28
+private-address absence checks. These are not active-SMP or whole-C/hardware
+verification claims.
+
+Record guests and same-slot rearm
+---------------------------------
+Shell obtains a named program through its typed Files route, then uses the record
+pool capability for bounded start, stop and census operations. Files retains an
+unaccepted answer envelope and retries publication; Spindle consumes asynchronous
+replies instead of treating queue admission as a result. Records have no general
+runtime route. Their only PDX kernel operation is raw-print of at most 4096 bytes,
+validated and copied through the current record's user mappings.
+
+Record selection leaves DISPATCHING custody separate from mapping activation.
+Outgoing mappings are evicted before the selected record becomes ATTACHED. Accessed
+and Dirty bits may change during execution; addresses, presence, permissions and
+protection keys must still match. The assembly return path completes record stack
+departure, releases custody, and readmits only runnable records. Round-robin slot
+selection preserves fresh task identities across rearm.
+
+The native controls include direct record-to-record switching, preemption/readmission,
+sleep/wake, graceful exit and reaping. Both final guest images cover a 15-record
+concurrent batch and 17 total starts/exits, with first/last reuse of slot one and
+all private-word checks intact. GCC finishes in 141.76 seconds and Clang in 145.82
+seconds, each including a full 90-second post-readiness soak, 19 markers, zero
+terminal faults and zero unknown opcodes after readiness. Their direct/readable-C
+kernels are byte-identical. COVERAGE.txt records the artifact identities and scope.

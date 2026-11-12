@@ -6,7 +6,7 @@ HERE=Path(__file__).resolve().parent.parent
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('--reference-tree',type=Path,required=True);ap.add_argument('--kernel',type=Path,required=True)
- ap.add_argument('--probe',type=Path,required=True);ap.add_argument('--sext',type=Path,required=True);ap.add_argument('--limine',type=Path,required=True);ap.add_argument('--work',type=Path,required=True);args=ap.parse_args()
+ ap.add_argument('--probe',type=Path,required=True);ap.add_argument('--sext',type=Path,required=True);ap.add_argument('--limine',type=Path,required=True);ap.add_argument('--work',type=Path,required=True);ap.add_argument('--seconds',type=int,default=600);args=ap.parse_args();assert args.seconds>0
  w=args.work.resolve();w.mkdir(parents=True,exist_ok=False);sys.path.insert(0,str(HERE.parent/'scripts'));from desktop_close_gate import QMP
  expected=json.loads((HERE/'interfaces/kernel_current.source.json').read_text())['expected_boot'];targets=set(expected['apps']);successors=set(expected['dormant'])
  command=['python3',str(HERE/'tools/package_client.py'),'--reference-tree',str(args.reference_tree.resolve()),'--kernel',str(args.kernel.resolve()),'--limine',str(args.limine.resolve()),'--out',str(w/'package')]
@@ -15,12 +15,12 @@ def main():
    if p.is_file():command+=['--replace',str(p.relative_to(args.reference_tree))+'='+str((args.sext if p.name=='sext' else args.probe).resolve())]
  with (w/'package.log').open('wb') as f:subprocess.run(command,cwd=HERE,stdout=f,stderr=subprocess.STDOUT,check=True)
  image=next((w/'package').glob('*.iso'));serial=w/'serial.log';sock=w/'control.sock'
- cmd=['bash',str(HERE/'oracle/run.sh'),str(image),str(serial),'150','--fixed-clock','--qmp-socket',str(sock)]
+ cmd=['bash',str(HERE/'oracle/run.sh'),str(image),str(serial),str(args.seconds),'--fixed-clock','--controller','--qmp-socket',str(sock)]
  observations=[]
  with (w/'qemu.log').open('wb') as f:
   proc=subprocess.Popen(cmd,cwd=HERE,stdout=f,stderr=subprocess.STDOUT);q=None
   try:
-   deadline=time.monotonic()+150
+   deadline=time.monotonic()+args.seconds
    while not sock.exists():
     if proc.poll() is not None or time.monotonic()>deadline:raise RuntimeError('QMP startup failed')
     time.sleep(.05)
@@ -58,6 +58,6 @@ def main():
   a=[r for r in acknowledgements if r[0]==target];assert len(a)==5 and {r[3]for r in a}=={1,2,4,8,16} and a[-1][4]==31,(target,a)
  assert text.count('[retire.probe.coordinator.done] activations='+str(len(successors)))==1
  (w/'summary.json').write_text(json.dumps({'inputs':{'kernel':digest(args.kernel),'probe':digest(args.probe),'sext':digest(args.sext),'iso':digest(image)},'retired':retired,'pool_ready':ready,'activated':activated,'acks':acknowledgements,'hardware_private_absence':observations,
-  'scope':'normal kernel+real Cesta Sext;controlled service ACK probes,actual17 app executions/14 successor CPU launches,private virtual absence,revocation andworkspace reuse. No GUI-service cleanup/disk/SMP/full-userland claim.'},indent=2)+'\n')
- print('CPU retirement passed:',len(retired),'app pools,',len(activated),'successor launches,all85 ACKs and17 private addresses absent',flush=True)
+  'scope':'normal kernel+real Cesta Sext;controlled service ACK probes,actual'+str(len(targets))+' app executions/'+str(len(successors))+' successor CPU launches,private virtual absence,revocation and workspace reuse. No GUI-service cleanup/disk/SMP/full-userland claim.'},indent=2)+'\n')
+ print('CPU retirement passed:',len(retired),'app pools,',len(activated),'successor launches,all'+str(len(acknowledgements))+' ACKs and'+str(len(apps))+' private addresses absent',flush=True)
 if __name__=='__main__':main()

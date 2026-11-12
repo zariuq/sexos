@@ -19,6 +19,21 @@ typedef struct SexosReply {
 }
 SexosReply;
 
+typedef struct SexosProgramMemory {
+  uint64_t status;
+  uint64_t base;
+  uint64_t pages;
+  uint64_t pressure;
+}
+SexosProgramMemory;
+
+typedef struct SexosRecordReply {
+  uint64_t status;
+  uint64_t first;
+  uint64_t second;
+}
+SexosRecordReply;
+
 typedef struct SexosListener {
   unsigned wrapper_budget;
 }
@@ -35,6 +50,14 @@ typedef struct SexosMessage {
 SexosMessage;
 
 SexosReply sexos_pdx_call(uint64_t slot, uint64_t opcode, uint64_t arg0, uint64_t arg1, uint64_t arg2);
+
+SexosProgramMemory sexos_program_memory_grow(uint64_t pages);
+
+SexosRecordReply sexos_record_call(uint64_t op, uint64_t a, uint64_t b);
+
+void sexos_wait_self_ticks(uint64_t ticks);
+
+void sexos_task_finish(uint64_t status);
 
 SexosMessage sexos_listen(SexosListener *listener, uint64_t slot);
 

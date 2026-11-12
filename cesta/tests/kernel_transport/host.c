@@ -1,8 +1,27 @@
 /* Current typed PDX transport, using the actual exported kernel units.
  * The inherited providers stand in for memory, devices and CPU instructions. */
 #define main historical_trace_main
+#include "epoch_journal.c"
+#include "kernel_epoch_log.c"
+#include "program_memory.c"
 #include "../kernel_model/host.c"
 #undef main
+
+void host_cpu_wrmsr(uint32_t msr, uint64_t value) { (void)msr; (void)value; }
+void host_cpu_wrpkru(uint32_t mask) { (void)mask; }
+
+uint64_t program_frame_pressure(void) { return 0; }
+FrameLeaseResult program_frame_take(uint32_t holder)
+{
+    (void)holder;
+    return (FrameLeaseResult){.status = FRAME_LEASE_FULL};
+}
+bool program_frame_map_run(FrameLease lease, uint32_t run, uint64_t va, uint64_t flags, uint8_t key)
+{
+    (void)lease; (void)run; (void)va; (void)flags; (void)key;
+    return false;
+}
+bool program_frame_release(FrameLease lease) { (void)lease; return false; }
 
 void kernel_region_writer_syscall(Domain *d,TrapFrame *f){(void)d;f->rax=UINT64_MAX;}
 bool kernel_region_writer_recover_dead(Domain *d){(void)d;return true;}
@@ -104,7 +123,7 @@ static void ring_epoch_controls(void)
     assert(second.epoch == 2 && second.kind == KERNEL_EPOCH_RING_POP &&
            second.subject == 9 && second.revision == 2 &&
            second.message.type_id == entry.type_id && second.message.arg2 == entry.arg2);
-    kernel.epoch_event_count = KERNEL_EPOCH_EVENT_CAPACITY;
+    kernel.epoch = kernel.epoch_event_count = UINT64_MAX;
     assert(!ring_push(&ring, 9, entry) && ring.count == 0 && ring.revision == 2);
 }
 
@@ -170,10 +189,288 @@ static void input_epoch_controls(void)
     assert(!input_push(0x22) && !input_pop(&observed));
 }
 
+static void epoch_window_controls(void)
+{
+    memset(&kernel, 0, sizeof kernel);
+    kernel.genesis_sealed = true;
+    for (uint64_t expected = 0; expected < KERNEL_EPOCH_EVENT_CAPACITY + 64; ++expected)
+        kernel_epoch_record(expected, KERNEL_EPOCH_RING_PUSH, 9, expected + 1u, NULL, 0);
+    assert(kernel.epoch == KERNEL_EPOCH_EVENT_CAPACITY + 64);
+    assert(kernel.epoch_event_count == kernel.epoch);
+    assert(kernel.epoch_compacted_through == 64);
+    assert(kernel.epoch_checkpoint.through == 64 &&
+           kernel.epoch_checkpoint.boundary.epoch == 64 &&
+           kernel.epoch_checkpoint.boundary.revision == 64);
+    assert(kernel_epoch_current(kernel.epoch));
+    KernelEpochEvent event = {.epoch = UINT64_MAX};
+    assert(!kernel_epoch_event_read(0, &event) && event.epoch == UINT64_MAX);
+    assert(!kernel_epoch_event_read(64, &event) && event.epoch == UINT64_MAX);
+    assert(!kernel_epoch_event_read(KERNEL_EPOCH_EVENT_CAPACITY + 65, &event) &&
+           event.epoch == UINT64_MAX);
+    assert(!kernel_epoch_event_read(KERNEL_EPOCH_EVENT_CAPACITY + 64, NULL));
+    assert(kernel_epoch_event_read(65, &event) && event.epoch == 65 && event.revision == 65 &&
+           event.subject == 9 && event.kind == KERNEL_EPOCH_RING_PUSH);
+    assert(kernel_epoch_event_read(KERNEL_EPOCH_EVENT_CAPACITY + 64, &event) &&
+           event.epoch == KERNEL_EPOCH_EVENT_CAPACITY + 64 &&
+           event.revision == KERNEL_EPOCH_EVENT_CAPACITY + 64);
+}
+
+static EpochLogBatch durable_batch;
+
+static void durable_epoch_controls(void)
+{
+    memset(&kernel, 0, sizeof kernel);
+    memset(&durable_batch, 0, sizeof durable_batch);
+    kernel.scheduler_running = true;
+    durable_batch.producer = 1;
+    kernel_epoch_batch = &durable_batch;
+    kernel_epoch_flush_active = false;
+    kernel_epoch_flush_task = 0;
+    for (uint32_t id = 1; id <= 3; ++id) {
+        Domain *d = domain_boot_record(id);
+        assert(d);
+        d->live = true;
+        d->id = id;
+        d->key = (uint8_t)id;
+        d->task_id = id * 101;
+        d->program.run = d->task_id;
+        d->task_state = TASK_READY;
+    }
+    Domain *files = domain_boot_record(CURRENT_PD_sexfiles);
+    assert(files);
+    files->live = true;
+    files->id = CURRENT_PD_sexfiles;
+    files->key = CURRENT_PD_sexfiles;
+    files->task_id = 1101;
+    files->program.run = files->task_id;
+    files->task_state = TASK_READY;
+    kernel.genesis_sealed = true;
+
+    for (uint64_t expected = 0; expected < EPOCH_LOG_BATCH_EVENTS; ++expected)
+        kernel_epoch_record(expected, KERNEL_EPOCH_RING_PUSH, 9, expected + 1, NULL, 0);
+    assert(kernel.epoch == EPOCH_LOG_BATCH_EVENTS && durable_batch.producer == EPOCH_LOG_BATCH_EVENTS + 1);
+    for (uint64_t epoch = 1; epoch <= EPOCH_LOG_BATCH_EVENTS; ++epoch)
+        assert(epoch_journal_event_sector_valid(durable_batch.sectors[epoch - 1], epoch));
+    files->task_state = TASK_WAIT_IO;
+    assert(!kernel_epoch_current(kernel.epoch));
+    assert(files->wake_pending && files->task_state == TASK_READY);
+    assert(!files->reply_ready && !files->reply_value && !files->reply_caller && !files->reply_task);
+    assert(kernel.epoch == EPOCH_LOG_BATCH_EVENTS && durable_batch.producer == EPOCH_LOG_BATCH_EVENTS + 1);
+
+    Domain *drive = domain_get(CURRENT_PD_sexdrive);
+    drive->reply_rights[files->id] = 1;
+    files->task_state = TASK_WAIT_IO;
+    files->wake_pending = false;
+    assert(!kernel_epoch_current(kernel.epoch));
+    assert(!files->reply_ready && !files->reply_value && files->wake_pending &&
+           files->task_state == TASK_READY && drive->reply_rights[files->id] == 1);
+    drive->reply_rights[files->id] = 0;
+
+    drive->ring.entries[0] = (RingEntry){.type_id = 0x123, .caller = files->id};
+    drive->ring.head = 0;
+    drive->ring.count = 1;
+    drive->ring.revision = 7;
+    kernel.current = CURRENT_PD_sexdrive;
+    RingEntry drained;
+    assert(domain_dequeue(drive, &drained));
+    assert(drained.type_id == 0x123 && !drive->ring.count &&
+           kernel.epoch == EPOCH_LOG_BATCH_EVENTS &&
+           durable_batch.producer == EPOCH_LOG_BATCH_EVENTS + 1);
+    Domain *other = domain_get(1);
+    other->ring.entries[0] = (RingEntry){.type_id = 0x124, .caller = 3};
+    other->ring.head = 0;
+    other->ring.count = 1;
+    other->ring.revision = 9;
+    kernel.current = 1;
+    RingEntry refused;
+    assert(!domain_dequeue(other, &refused) && other->ring.count == 1 &&
+           kernel.epoch == EPOCH_LOG_BATCH_EVENTS &&
+           durable_batch.producer == EPOCH_LOG_BATCH_EVENTS + 1);
+    other->ring.count = 0;
+    /* A physical completion during a flush can arrive while another domain is
+     * current. Publication is deferred, but the owner must make progress on
+     * LISTEN without requiring a second interrupt or a scheduler-poll accident. */
+    const uint32_t vector = 0x22;
+    kernel.vector_owner[vector] = drive->id;
+    kernel.current = other->id;
+    other->task_state = TASK_RUNNING;
+    uint64_t epoch_before = kernel.epoch, producer_before = durable_batch.producer;
+    kernel_device_interrupt_publish(vector);
+    assert(kernel.vector_pending[vector] == 1 && kernel.vector_revision[vector] == 1);
+    assert(!drive->ring.count && !kernel.vector_heard_revision[vector] &&
+           !kernel.vector_ack_revision[vector]);
+    kernel_device_interrupt_drain(drive);
+    assert(kernel.vector_pending[vector] == 1 && !drive->ring.count);
+    kernel.current = drive->id;
+    drive->task_state = TASK_RUNNING;
+    ProgramWorker stale = {.id = PROGRAM_WORKER_TASK_FIRST, .target = drive->id,
+        .run = drive->task_id + 1, .phase = PROGRAM_WORKER_ATTACHED, .owner_core = 0};
+    kernel_current_worker = &stale;
+    kernel_device_interrupt_drain(drive);
+    assert(kernel.vector_pending[vector] == 1 && !drive->ring.count);
+    kernel_current_worker = NULL;
+    RingEntry irq = kernel_listen_message(drive, 0);
+    assert(irq.type_id == 0xff && irq.caller == 1 && !irq.caller_task && !irq.from_call &&
+           irq.arg0 == vector && irq.arg1 == 1 && irq.arg2 == 1);
+    assert(!kernel.vector_pending[vector] && kernel.vector_heard_revision[vector] == 1 &&
+           !kernel.vector_ack_revision[vector]);
+    assert(!kernel_listen_message(drive, 0).type_id);
+    assert(kernel.vector_revision[vector] == 1 && kernel.epoch == epoch_before &&
+           durable_batch.producer == producer_before);
+
+    /* Freeing one full-ring slot must publish the retained receipt before the
+     * listener returns, keeping it from being starved by ordinary new messages. */
+    for (size_t i = 0; i < KERNEL_RING_CAPACITY; ++i)
+        drive->ring.entries[i] = (RingEntry){.type_id = 0x125, .arg0 = i};
+    drive->ring.head = 0;
+    drive->ring.count = KERNEL_RING_CAPACITY;
+    kernel.current = other->id;
+    kernel_device_interrupt_publish(vector);
+    assert(kernel.vector_pending[vector] == 2 && kernel.vector_revision[vector] == 2);
+    kernel.current = drive->id;
+    assert(kernel_listen_message(drive, 0).type_id == 0x125);
+    assert(!kernel.vector_pending[vector] && drive->ring.count == KERNEL_RING_CAPACITY);
+    assert(kernel.vector_heard_revision[vector] == 1 && !kernel.vector_ack_revision[vector]);
+    for (size_t i = 1; i < KERNEL_RING_CAPACITY; ++i)
+        assert(kernel_listen_message(drive, 0).type_id == 0x125);
+    irq = kernel_listen_message(drive, 0);
+    assert(irq.type_id == 0xff && irq.arg1 == 2 && kernel.vector_heard_revision[vector] == 2);
+    assert(!kernel.vector_ack_revision[vector] && !drive->ring.count &&
+           kernel.epoch == epoch_before && durable_batch.producer == producer_before);
+    kernel.current = 0;
+
+    kernel.run_queue.head = kernel.run_queue.count = 0;
+    for (uint32_t id = 1; id <= 3; ++id) {
+        domain_get(id)->queued = false;
+        domain_get(id)->task_state = TASK_READY;
+        run_push(id);
+    }
+    files->queued = false;
+    files->task_state = TASK_READY;
+    run_push(files->id);
+    assert(run_pop() == CURRENT_PD_sexdrive);
+    assert(run_pop() == CURRENT_PD_sexfiles);
+    assert(run_pop() == 0 && domain_get(1)->queued && domain_get(3)->queued && kernel.run_queue.count == 2);
+    durable_batch.flushed_through = EPOCH_LOG_BATCH_EVENTS;
+    kernel_epoch_record(EPOCH_LOG_BATCH_EVENTS, KERNEL_EPOCH_RING_POP, 9, EPOCH_LOG_BATCH_EVENTS + 1, NULL, 0);
+    assert(kernel.epoch == EPOCH_LOG_BATCH_EVENTS + 1 && durable_batch.producer == EPOCH_LOG_BATCH_EVENTS + 2);
+
+    for (uint64_t expected = EPOCH_LOG_BATCH_EVENTS + 1; expected < KERNEL_EPOCH_EVENT_CAPACITY + 64; ++expected) {
+        durable_batch.flushed_through = expected;
+        kernel_epoch_record(expected, KERNEL_EPOCH_RING_PUSH, 9, expected + 1, NULL, 0);
+    }
+    assert(kernel.epoch == KERNEL_EPOCH_EVENT_CAPACITY + 64 && kernel.epoch_compacted_through == 64);
+    assert(epoch_journal_event_sector_valid(
+        durable_batch.sectors[(kernel.epoch - 1) % EPOCH_LOG_BATCH_EVENTS], kernel.epoch));
+    durable_batch.failed = EPOCH_JOURNAL_IO;
+    assert(!kernel_epoch_current(kernel.epoch));
+    durable_batch.failed = 0;
+    durable_batch.flushed_through = kernel.epoch;
+    assert(kernel_epoch_current(kernel.epoch));
+
+    kernel.current = 1;
+    assert(!kernel_epoch_log_flush(domain_get(1), true));
+    kernel.current = CURRENT_PD_sexfiles;
+    files->task_state = TASK_RUNNING;
+    TrapFrame begin = {.rax = SEXOS_SYSCALL_epoch_flush, .rdi = 1};
+    assert(kernel_syscall(&begin) == &begin && begin.rax == 1 && kernel_epoch_flush_active);
+    uint64_t before = kernel.epoch, producer = durable_batch.producer;
+    kernel_epoch_record(before, KERNEL_EPOCH_RING_PUSH, 9, before + 1, NULL, 0);
+    assert(kernel.epoch == before && durable_batch.producer == producer);
+    kernel.current = CURRENT_PD_sexdrive;
+    kernel_epoch_record(before, KERNEL_EPOCH_RING_POP, 9, before + 1, NULL, 0);
+    assert(kernel.epoch == before && durable_batch.producer == producer);
+    /* The same progress obligation holds during an explicit flush even with
+     * a healthy, empty producer batch, matching the early-boot stall. */
+    uint64_t next_irq = kernel.vector_revision[vector] + 1;
+    kernel.current = other->id;
+    kernel_device_interrupt_publish(vector);
+    assert(kernel.vector_pending[vector] == next_irq && !drive->ring.count);
+    kernel.current = drive->id;
+    drive->task_state = TASK_RUNNING;
+    irq = kernel_listen_message(drive, 0);
+    assert(irq.type_id == 0xff && irq.arg1 == next_irq &&
+           kernel.vector_heard_revision[vector] == next_irq &&
+           !kernel.vector_pending[vector] && !kernel.vector_ack_revision[vector]);
+    assert(kernel.epoch == before && durable_batch.producer == producer);
+    assert(!kernel_epoch_log_eligible(1) && kernel_epoch_log_eligible(CURRENT_PD_sexdrive) &&
+           kernel_epoch_log_eligible(CURRENT_PD_sexfiles));
+    kernel.run_queue.head = kernel.run_queue.count = 0;
+    for (uint32_t id = 1; id <= 3; ++id) {
+        domain_get(id)->queued = false;
+        domain_get(id)->task_state = TASK_READY;
+        run_push(id);
+    }
+    files->queued = false;
+    files->task_state = TASK_READY;
+    run_push(files->id);
+    assert(run_pop() == CURRENT_PD_sexdrive);
+    assert(run_pop() == CURRENT_PD_sexfiles);
+    assert(run_pop() == 0 && domain_get(1)->queued && domain_get(3)->queued && kernel.run_queue.count == 2);
+
+    kernel.current = CURRENT_PD_sexfiles;
+    files->task_state = TASK_RUNNING;
+    TrapFrame end = {.rax = SEXOS_SYSCALL_epoch_flush, .rdi = 0};
+    assert(kernel_syscall(&end) == &end && end.rax == 1 && !kernel_epoch_flush_active);
+    assert(run_pop() == 1);
+    kernel.current = CURRENT_PD_sexfiles;
+    files->task_state = TASK_RUNNING;
+    assert(kernel_epoch_log_flush(files, true));
+    files->task_state = TASK_EXITED;
+    kernel_epoch_log_poll();
+    assert(!kernel_epoch_flush_active && durable_batch.failed == EPOCH_JOURNAL_IO);
+    kernel_epoch_batch = NULL;
+    kernel_epoch_flush_task = 0;
+}
+
+static void handoff_controls(void)
+{
+    reset_transport();
+    Domain *a = domain_get(1), *b = domain_get(2), *other = domain_get(3);
+    TrapFrame a_frame = {0}, b_frame = {0};
+    a->frame = &a_frame;
+    b->frame = &b_frame;
+    a->task_state = TASK_RUNNING;
+    b->task_state = TASK_WAIT_IO;
+    other->task_state = TASK_READY;
+    run_push(other->id);
+    kernel.current = a->id;
+    TrapFrame call = {.rax = 100, .rdi = 7, .rsi = CALL_TYPE, .rdx = 55};
+    TrapFrame *call_next = kernel_syscall(&call);
+    if (call_next != &b_frame)
+        fprintf(stderr, "call-wait: next=%p expected=%p status=%llu current=%u ring=%zu handoff=%lu queued=%zu\n",
+                (void *)call_next, (void *)&b_frame, (unsigned long long)call.rax,
+                kernel.current, (size_t)b->ring.count, (unsigned long)kernel.run_queue.handoff,
+                kernel.run_queue.count);
+    assert(call_next == &b_frame);
+    assert(kernel.current == b->id && b->task_state == TASK_RUNNING);
+    assert(b->ring.count == 1 && b->reply_rights[a->id] == 1);
+    assert(!a->queued && !kernel.run_queue.handoff && kernel.run_queue.count == 1);
+    assert(other->queued);
+
+    b->wake_pending = false;
+    TrapFrame heard = {.rax = SEXOS_SYSCALL_listen, .rdi = 2};
+    assert(kernel_syscall(&heard) == &heard);
+    assert(heard.rax == CALL_TYPE && heard.rdx == 55 && !b->ring.count);
+    a->task_state = TASK_WAIT_IO;
+    b->task_state = TASK_RUNNING;
+    TrapFrame reply = {.rax = 101, .rdi = a->id, .rsi = 777};
+    TrapFrame *reply_next = kernel_syscall(&reply);
+    assert(a->frame == &call && reply_next == a->frame);
+    assert(kernel.current == a->id && a->task_state == TASK_RUNNING);
+    assert(a->reply_ready && a->reply_value == 777);
+    assert(a->reply_caller == b->id && a->reply_task == b->task_id);
+    assert(!b->queued && !kernel.run_queue.handoff && kernel.run_queue.count == 1);
+    assert(other->queued && run_pop() == other->id);
+}
+
 static void controls(void)
 {
+    handoff_controls();
     ring_epoch_controls();
     input_epoch_controls();
+    epoch_window_controls();
+    durable_epoch_controls();
     reset_transport();
     Domain *a = domain_get(1), *b = domain_get(2);
     assert(invoke(1, SEXOS_SYSCALL_call, 7, CALL_TYPE, 123).rax == 0);
@@ -284,9 +581,36 @@ static void controls(void)
     next_task_id = 711;
     assert(task_attach(&detached) && detached.task_id == 711);
     assert(!task_attach(&detached) && next_task_id == 712);
-    next_task_id = UINT32_MAX;
-    assert(task_attach(&last) && last.task_id == UINT32_MAX && next_task_id == 0);
+    next_task_id = PROGRAM_WORKER_TASK_FIRST - 1;
+    assert(task_attach(&last) && last.task_id == PROGRAM_WORKER_TASK_FIRST - 1 &&
+           next_task_id == PROGRAM_WORKER_TASK_FIRST);
     assert(!task_attach(&exhausted) && exhausted.task_id == 0);
+    assert(!task_attach(&exhausted) && next_task_id == PROGRAM_WORKER_TASK_FIRST);
+
+    reset_transport();
+    kernel.current = a->id;
+    a->task_state = TASK_RUNNING;
+    b->rpc_enabled = true;
+    ProgramWorker worker = {.id = PROGRAM_WORKER_TASK_FIRST, .target = a->id,
+        .run = a->task_id + 1, .phase = PROGRAM_WORKER_ATTACHED, .owner_core = 0};
+    kernel_current_worker = &worker;
+    uint64_t next_request = a->rpc_next;
+    bad = (TrapFrame){.rdi = 7, .rsi = CALL_TYPE};
+    pdx_call(a, &bad);
+    assert(bad.rax && !b->ring.count && !b->reply_rights[a->id]);
+    /* This fixture has main-only CPU/FPU providers. Exercise the real RPC
+     * admission boundary directly; worker execution has its own native suite. */
+    bad = (TrapFrame){.rdi = 7, .rsi = CALL_TYPE, .rdx = 19};
+    kernel_rpc_syscall(a, &bad, SEXOS_RPC_call);
+    assert(bad.rax && !b->ring.count && a->rpc_next == next_request);
+    for (size_t i = 0; i < KERNEL_RPC_CAPACITY; ++i)
+        assert(a->rpc[i].state == RPC_FREE);
+    worker.run = a->task_id;
+    bad = (TrapFrame){.rdi = 7, .rsi = CALL_TYPE};
+    pdx_call(a, &bad);
+    assert(!bad.rax && b->ring.count == 1 && b->reply_rights[a->id] == 1);
+    assert(b->ring.entries[b->ring.head].caller_task == worker.id);
+    kernel_current_worker = NULL;
 
     reset_transport();
     assert(invoke(2, SEXOS_RPC_register, 0, 0, 0).rax == 1);

@@ -21,7 +21,7 @@
   (target kaleidoscope
     (profile userland-f64)
     (sources "src/kaleidoscope.cesta" "src/kaleidoscope_body.cesta"
-             "src/kaleidoscope_decimal.cesta" "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
+             "src/kaleidoscope_web_page.cesta" "src/kaleidoscope_decimal.cesta" "src/kaleidoscope_script_lexer.cesta" "src/kaleidoscope_regex.cesta"
              "src/kaleidoscope_regex_match.cesta" "src/kaleidoscope_script_core.cesta"
              "src/kaleidoscope_html.cesta"
              "runtime/client_runtime.c" "runtime/traps_x86_64.c"
@@ -182,6 +182,20 @@
              "runtime/region_writer_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=document_protocol_probe_main" "SEXOS_PDX_SENDER_TASK=1" "DOCUMENT_PROTOCOL_PROBE_MODE=2"))
+  (target record-hum
+    (profile userland)
+    (sources "src/record_hum.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=record_hum_main" "SEXOS_PDX_SENDER_TASK=1"))
+  (target spindle-record-probe
+    (profile userland)
+    (sources "src/spindle.cesta" "src/spindle_calc.cesta" "src/spindle_complete.cesta" "src/spindle_sextime.cesta" "src/sex_graphics.cesta"
+             "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
+             "runtime/server_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=spindle_main" "SEXOS_SPINDLE_CURRENT=1" "SEXOS_RECORD_PROBE=1"))
   (target spindle
     (profile userland)
     (sources "src/spindle.cesta" "src/spindle_calc.cesta" "src/spindle_complete.cesta" "src/spindle_sextime.cesta" "src/sex_graphics.cesta"
@@ -198,14 +212,15 @@
     (define "SEXOS_MAIN=purple_scanout_main"))
   (target sexfiles
     (profile userland)
-    (sources "src/sexfiles.cesta" "src/sexfiles_diskfs.cesta" "src/sexfiles_proof.cesta"
+    (sources "src/sexfiles.cesta" "src/sexfiles_program.cesta" "src/sexfiles_diskfs.cesta" "src/sexfiles_proof.cesta"
+             "src/epoch_journal.cesta" "src/epoch_files.cesta"
              "src/document_protocol.cesta" "src/document_service.cesta" "src/document_service_transport.cesta"
              "src/document_journal.cesta" "src/document_growth.cesta" "src/document_snapshot.cesta" "src/rpc_runtime.cesta" "src/rpc_wait.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
              "runtime/server_traps_x86_64.c" "runtime/rpc_traps_x86_64.c" "runtime/region_writer_traps_x86_64.c"
-             "runtime/start_x86_64.S" "generated/runtime/*.c")
+             "runtime/epoch_journal_traps_x86_64.c" "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
-    (define "SEXOS_MAIN=sexfiles_main"))
+    (define "SEXOS_MAIN=sexfiles_main" "SEXOS_EPOCH_LOG=1"))
   (target sexdrive
     (profile userland)
     (sources "src/sexdrive.cesta" "src/dma_lease.cesta"
@@ -215,7 +230,7 @@
              "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=sexdrive_main" "SEXOS_CURRENT_REGION_WRITER=1"
-            "SEXOS_NVME_INTERRUPT_MODE=1"))
+            "SEXOS_NVME_INTERRUPT_MODE=1" "SEXOS_PDX_SENDER_TASK=1"))
   (target sexdrive-dma-quarantine-probe
     (profile userland)
     (sources "src/sexdrive.cesta" "src/dma_lease.cesta"
@@ -225,7 +240,7 @@
              "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=sexdrive_main" "SEXOS_CURRENT_REGION_WRITER=1"
-            "SEXOS_DMA_QUARANTINE_PROBE=1" "SEXOS_NVME_INTERRUPT_MODE=1"))
+            "SEXOS_DMA_QUARANTINE_PROBE=1" "SEXOS_NVME_INTERRUPT_MODE=1" "SEXOS_PDX_SENDER_TASK=1"))
   (target sexusb
     (profile userland)
     (sources "src/sexusb.cesta"
@@ -265,15 +280,25 @@
              "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=network_dns_protocol_probe_main"))
+  (target network-web-protocol-probe
+    (profile userland)
+    (sources "src/network_web_protocol_probe.cesta"
+             "runtime/client_runtime.c" "runtime/traps_x86_64.c" "runtime/rpc_traps_x86_64.c"
+             "runtime/region_writer_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include")
+    (define "SEXOS_MAIN=network_web_protocol_probe_main"))
   (target sexnet-network
     (profile userland)
     (sources "src/network_service.cesta" "src/network_job_abi.cesta" "src/network_job_wire.cesta" "src/network_job_machine.cesta" "src/network_dns_job_abi.cesta" "src/network_dns_job_wire.cesta" "src/network_dns_job_machine.cesta" "src/network_config.cesta" "src/network_engine_frame.cesta" "src/network_engine_packet.cesta" "src/network_engine_tcp_packet.cesta" "src/network_tcp_client.cesta" "src/network_tcp_listener.cesta" "src/network_engine_neighbor.cesta" "src/network_dns_codec.cesta" "src/network_engine_dns.cesta" "src/network_engine_transport.cesta" "src/network_job_engine_policy.cesta" "src/network_job_engine_adapter.cesta" "src/network_dns_job_engine_adapter.cesta" "src/network_service_native.cesta" "src/network_service_core.cesta" "src/network_observation.cesta" "src/network_device.cesta" "src/network_send.cesta" "src/network_tcp.cesta"
              "src/network_service_current.cesta"
              "src/network_device_current.cesta"
              "src/network_dns_job_liveness.cesta"
+             "src/network_open.cesta" "src/network_web.cesta" "src/network_web_open.cesta"
              "src/network_http.cesta" "src/rpc_runtime.cesta" "src/rpc_wait.cesta"
              "runtime/client_runtime.c" "runtime/server_runtime.c" "runtime/traps_x86_64.c"
              "runtime/server_traps_x86_64.c" "runtime/rpc_traps_x86_64.c" "runtime/mmio_traps_x86_64.c"
+             "runtime/region_writer_traps_x86_64.c"
              "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include")
     (define "SEXOS_MAIN=network_service_current_main"))
@@ -372,6 +397,46 @@
     (kind archive)
     (sources "src/pci_policy.cesta")
     (include "generated/include"))
+  (target frame-lease
+    (profile userland)
+    (kind archive)
+    (sources "src/frame_lease.cesta")
+    (include "generated/include"))
+  (target program-workers
+    (profile userland)
+    (kind archive)
+    (sources "src/program_workers.cesta")
+    (include "runtime/kernel" "generated/include"))
+  (target program-records
+    (profile userland)
+    (kind archive)
+    (sources "src/program_records.cesta")
+    (include "generated/include"))
+  (target program-record-memory
+    (profile userland)
+    (kind archive)
+    (sources "src/program_record_memory.cesta")
+    (include "runtime/kernel" "generated/include"))
+  (target program-record-tasks
+    (profile userland)
+    (kind archive)
+    (sources "src/program_record_tasks.cesta")
+    (include "runtime/kernel" "generated/include"))
+  (target program-memory
+    (profile userland)
+    (kind archive)
+    (sources "src/program_memory.cesta")
+    (include "runtime/kernel" "generated/include"))
+  (target epoch-journal
+    (profile userland)
+    (kind archive)
+    (sources "src/epoch_journal.cesta")
+    (include "runtime/kernel" "generated/include"))
+  (target epoch-files
+    (profile userland)
+    (kind archive)
+    (sources "src/epoch_journal.cesta" "src/epoch_files.cesta")
+    (include "runtime/kernel" "generated/include"))
   (target pager-state
     (profile userland)
     (kind archive)
@@ -419,9 +484,9 @@
     (include "generated/arm64/include"))
   (target sexos-kernel
     (profile kernel)
-    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+    (sources "src/frame_lease.cesta" "src/kernel_memory.cesta" "src/program_memory.cesta" "src/program_workers.cesta" "src/kernel_workers.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
              "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
-             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/epoch_journal.cesta" "src/kernel_epoch_log.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_interrupt.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/program_records.cesta" "src/program_record_memory.cesta" "src/program_record_tasks.cesta" "src/kernel_records.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include"))
   (target silk-shell-models
@@ -650,7 +715,16 @@
     (define "SEXOS_MAIN=sext_main" "SEXOS_PDX_SENDER_TASK=1"
             "SEXOS_SEXT_PARTITIONED_ALLOCATOR=1")
     (sources "src/sext.cesta" "src/sext_service.cesta" "src/sext_workspace.cesta"
-             "runtime/sext_native.c" "runtime/client_runtime.c" "runtime/server_runtime.c"
+             "runtime/sext_native.c" "runtime/sext_worker_probe.c" "runtime/client_runtime.c" "runtime/server_runtime.c"
+             "runtime/traps_x86_64.c" "runtime/server_traps_x86_64.c"
+             "runtime/start_x86_64.S" "generated/runtime/*.c")
+    (include "generated/include"))
+  (target sext-worker-probe
+    (profile userland)
+    (define "SEXOS_MAIN=sext_main" "SEXOS_PDX_SENDER_TASK=1"
+            "SEXOS_SEXT_PARTITIONED_ALLOCATOR=1" "SEXOS_WORKER_PROBE=1")
+    (sources "src/sext.cesta" "src/sext_service.cesta" "src/sext_workspace.cesta"
+             "runtime/sext_native.c" "runtime/sext_worker_probe.c" "runtime/client_runtime.c" "runtime/server_runtime.c"
              "runtime/traps_x86_64.c" "runtime/server_traps_x86_64.c"
              "runtime/start_x86_64.S" "generated/runtime/*.c")
     (include "generated/include"))
@@ -658,9 +732,9 @@
     (profile kernel)
     (define "SEXOS_KERNEL_CURRENT_PDX=1" "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1"
             "SEXOS_KERNEL_CURRENT_SMP=1" "SEXOS_NVME_INTERRUPT_MODE=1")
-    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+    (sources "src/frame_lease.cesta" "src/kernel_memory.cesta" "src/program_memory.cesta" "src/program_workers.cesta" "src/kernel_workers.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
              "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
-             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/epoch_journal.cesta" "src/kernel_epoch_log.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_interrupt.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/program_records.cesta" "src/program_record_memory.cesta" "src/program_record_tasks.cesta" "src/kernel_records.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include"))
@@ -669,9 +743,9 @@
     (define "SEXOS_KERNEL_CURRENT_PDX=1" "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1"
             "SEXOS_KERNEL_CURRENT_SMP=1" "SEXOS_NVME_INTERRUPT_MODE=1"
             "SEXOS_FPU_CONTEXT_CORRUPT_PROBE=1")
-    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+    (sources "src/frame_lease.cesta" "src/kernel_memory.cesta" "src/program_memory.cesta" "src/program_workers.cesta" "src/kernel_workers.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
              "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
-             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/epoch_journal.cesta" "src/kernel_epoch_log.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_interrupt.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/program_records.cesta" "src/program_record_memory.cesta" "src/program_record_tasks.cesta" "src/kernel_records.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include"))
@@ -680,9 +754,9 @@
     (define "SEXOS_KERNEL_CURRENT_PDX=1" "SEXOS_KERNEL_BOOT_AUDIT=1"
             "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1" "SEXOS_KERNEL_CURRENT_SMP=1"
             "SEXOS_NVME_INTERRUPT_MODE=1")
-    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+    (sources "src/frame_lease.cesta" "src/kernel_memory.cesta" "src/program_memory.cesta" "src/program_workers.cesta" "src/kernel_workers.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
              "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
-             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/epoch_journal.cesta" "src/kernel_epoch_log.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_interrupt.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/program_records.cesta" "src/program_record_memory.cesta" "src/program_record_tasks.cesta" "src/kernel_records.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include"))
@@ -691,17 +765,17 @@
     (define "SEXOS_KERNEL_CURRENT_PDX=1" "SEXOS_PAGER_PARTITIONED_ALLOCATOR=1"
             "SEXOS_KERNEL_CURRENT_SMP=1" "SEXOS_SMP_EPOCH_CORRUPT_PROBE=1"
             "SEXOS_NVME_INTERRUPT_MODE=1")
-    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+    (sources "src/frame_lease.cesta" "src/kernel_memory.cesta" "src/program_memory.cesta" "src/program_workers.cesta" "src/kernel_workers.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
              "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
-             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/epoch_journal.cesta" "src/kernel_epoch_log.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_interrupt.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/program_records.cesta" "src/program_record_memory.cesta" "src/program_record_tasks.cesta" "src/kernel_records.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "src/smp_park.cesta" "src/kernel_smp.cesta" "src/nvme_msix.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include"))
   (target sexos-kernel-network
     (profile kernel)
     (define "SEXOS_NETWORK_PROFILE=1")
-    (sources "src/kernel_memory.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
+    (sources "src/frame_lease.cesta" "src/kernel_memory.cesta" "src/program_memory.cesta" "src/program_workers.cesta" "src/kernel_workers.cesta" "src/kernel_platform.cesta" "src/kernel_domains.cesta"
              "src/program_image.cesta" "src/program_image_bytes.cesta" "runtime/kernel/image_failure.c"
-             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
+             "src/kernel_entry.cesta" "src/kernel_syscalls.cesta" "src/kernel_rpc.cesta" "src/memory_regions.cesta" "src/region_writer.cesta" "src/device_reset.cesta" "src/epoch_journal.cesta" "src/kernel_epoch_log.cesta" "src/kernel_boot_memory.cesta" "src/kernel_region_writer.cesta" "src/kernel_device_interrupt.cesta" "src/kernel_device_reset.cesta" "src/app_private.cesta" "src/kernel_apps.cesta" "src/program_records.cesta" "src/program_record_memory.cesta" "src/program_record_tasks.cesta" "src/kernel_records.cesta" "src/kernel_current_boot.cesta" "src/kernel_paging.cesta" "src/kernel_task_wait.cesta" "src/pager_state.cesta" "src/source_policy.cesta" "src/kernel_sources.cesta" "src/network_config.cesta" "src/pci_policy.cesta" "src/kernel_pci.cesta" "src/history_recovery.cesta" "src/kernel_history.cesta"
              "runtime/kernel/kernel_log.c" "runtime/kernel/entry_x86_64.S")
     (include "runtime/kernel" "generated/include")))

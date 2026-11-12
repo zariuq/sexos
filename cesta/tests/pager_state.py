@@ -107,6 +107,10 @@ def main():
                 assert binary.read_bytes()==authored.read_bytes(),(cc,'plain-C identity');check(authored)
             builds.append({'compiler':cc,'mode':mode,'commands':len(rows)})
         print(cc,len(rows),'fault/ledger steps and complete logical state match Rust',flush=True)
+        binary=work/(cc+'-run-retire')
+        run([cc,*flags,'-O2','tests/pager_state/run_retire.c',source,'-o',binary])
+        run([binary])
+        builds.append({'compiler':cc,'mode':'run-retire'})
     mutations=[
         ('token_wrap','if (*last==UINT64_MAX)','if (false)'),
         ('skip_token_floor','r.token<=s->last_token','false'),
@@ -129,6 +133,24 @@ def main():
                 source.write_text(original.replace(before,after));binary=work/name
                 run(['gcc',*flags,'-O2','tests/pager_state/host.c',source,'-o',binary])
                 assert run([binary],data)!=expected,('mutation survived',name);caught.append(name)
+            finally:source.write_text(original)
+        for name,before,after in [
+            ('run_retire_wrong_pager','s->active.target_pd != target || s->active.pager_pd != pager || !s->active.task_id))\n        return PG_DENIED;\n    if (s->has_completed && (s->completed.target_pd != target || s->completed.pager_pd != pager ||\n                             !s->completed.task_id))',
+             's->active.target_pd != target || false || !s->active.task_id))\n        return PG_DENIED;\n    if (s->has_completed && (s->completed.target_pd != target || false ||\n                             !s->completed.task_id))\n    (void)pager;'),
+            ('run_retire_zero_task','!s->active.task_id','false'),
+            ('run_cleanup_wrong_pager','b.pager_pd != pager ||\n            !b.task_id || b.frame_index != i)\n            return PG_DENIED;',
+             'false ||\n            !b.task_id || b.frame_index != i)\n            { (void)pager; return PG_DENIED; }'),
+            ('run_cleanup_zero_task','!b.task_id || b.frame_index != i','false || b.frame_index != i'),
+            ('run_close_zero_receipt','if (!task)\n        return PG_DENIED;','if (false)\n        return PG_DENIED;'),
+        ]:
+            assert original.count(before)==1,(name,'anchor')
+            try:
+                source.write_text(original.replace(before,after,1))
+                binary=work/(name+'-run')
+                run(['gcc',*flags,'-O2','tests/pager_state/run_retire.c',source,'-o',binary])
+                result=subprocess.run([binary],cwd=HERE,capture_output=True)
+                assert result.returncode!=0,('mutation survived',name)
+                caught.append(name)
             finally:source.write_text(original)
     admission=None
     if args.lean_root:

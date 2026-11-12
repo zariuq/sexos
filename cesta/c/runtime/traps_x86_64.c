@@ -50,3 +50,46 @@ void sexos_yield(void)
     register uint64_t rax __asm__("rax") = SEXOS_SYSCALL_yield;
     __asm__ volatile ("syscall" : "+a"(rax) : : "rcx", "r11", "memory", "cc");
 }
+
+SexosProgramMemory sexos_program_memory_grow(uint64_t pages)
+{
+    register uint64_t rax __asm__("rax") = 81;
+    register uint64_t rdi __asm__("rdi") = pages;
+    register uint64_t rsi __asm__("rsi");
+    register uint64_t rdx __asm__("rdx");
+    register uint64_t r10 __asm__("r10");
+    register uint64_t r8 __asm__("r8");
+    __asm__ volatile ("syscall"
+        : "+a"(rax), "+D"(rdi), "=S"(rsi), "=d"(rdx), "=r"(r10), "=r"(r8)
+        :
+        : "rcx", "r11", "memory", "cc");
+    return (SexosProgramMemory){rax, rsi, rdx, r10};
+}
+
+SexosRecordReply sexos_record_call(uint64_t op, uint64_t a, uint64_t b)
+{
+    register uint64_t rax __asm__("rax") = 79;
+    register uint64_t rdi __asm__("rdi") = op;
+    register uint64_t rsi __asm__("rsi") = a;
+    register uint64_t rdx __asm__("rdx") = b;
+    register uint64_t r10 __asm__("r10");
+    register uint64_t r8 __asm__("r8");
+    __asm__ volatile ("syscall"
+        : "+a"(rax), "+D"(rdi), "+S"(rsi), "+d"(rdx), "=r"(r10), "=r"(r8)
+        :
+        : "rcx", "r11", "memory", "cc");
+    return (SexosRecordReply){rax, rsi, rdx};
+}
+
+void sexos_wait_self_ticks(uint64_t ticks)
+{
+    register uint64_t rax __asm__("rax") = 70;
+    __asm__ volatile ("syscall" : "+a"(rax) : "D"(ticks) : "rcx", "r11", "memory", "cc");
+}
+
+_Noreturn void sexos_task_finish(uint64_t status)
+{
+    register uint64_t rax __asm__("rax") = 62;
+    __asm__ volatile ("syscall" : "+a"(rax) : "D"(status) : "rcx", "r11", "memory", "cc");
+    __builtin_unreachable();
+}

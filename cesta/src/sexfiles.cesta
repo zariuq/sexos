@@ -17,7 +17,7 @@
                 ramfs_proof_grant_caps_by_name ramfs_proof_inject_stale_generation_cap
                 ramfs_proof_revoke_caps_by_name ramfs_read ramfs_revoke_caps_internal ramfs_stat
                 ramfs_write read_le16 read_le32 read_le64 sexfiles_main sexfiles_state_init
-                tramp_hot_log trampoline_main v4_allocate v4_bitmap_clear v4_bitmap_rebuild
+                tramp_hot_log trampoline_main program_answer_poll v4_allocate v4_bitmap_clear v4_bitmap_rebuild
                 v4_bitmap_set v4_bitmap_test v4_cache_get v4_cache_invalidate v4_cache_put v4_ensure
                 v4_free_pool_only v4_get v4_in_use v4_indirect_read v4_indirect_write
                 v4_layout_selfcheck v4_locate v4_name_len v4_persist v4_resolve_offset
@@ -25,7 +25,11 @@
                 write_le32 write_le64)
       (obligation "SexFiles server: message defer ring, RamFS and DiskFS bridge with goto cleanup paths and file-scope state without declared owners. It relies on the server's single dispatch loop owning all of that state.")))
   (include "sexfiles.h")
+  (include "kernel_current.h")
+  (include "sexfiles_program.h")
+  (include "epoch_files.h")
     (cpp-if "!defined(SEXOS_SEXFILES_CURRENT_DOCUMENT)" (then (define SEXOS_SEXFILES_CURRENT_DOCUMENT "1")))
+    (cpp-if "!defined(SEXOS_EPOCH_LOG)" (then (define SEXOS_EPOCH_LOG "0")))
 
     (comment "SexFiles server: message defer ring, SexObject header adapter, RamFS backend, DiskFS V4 bridge, VFS dispatch, and trampoline entry (servers/sexfiles/src/{pdx,sexobject,backends/ramfs,vfs,trampoline,main}.rs).")
 
@@ -142,7 +146,8 @@
       (= (. (-> s diskfs_state) next_tx_id) 1)
       (= (. (-> s diskfs_state) next_checkpoint_generation) 1)
       (= (-> s diskfs_next_object_id) 1)
-      (= (-> s diskfs_writer_job_next) 1))
+      (= (-> s diskfs_writer_job_next) 1)
+      (cpp-if "SEXOS_EPOCH_LOG" (then (call epoch_files_init))))
 
     (fn bool sexfiles_take_budget ((uint32_t (* budget)))
       (if (> (* budget) 0)
@@ -2015,6 +2020,13 @@ bool document_backend_clear_load(uint32_t caller, uint32_t *error) {
       (+= (. sexfiles_state ipc_ops_total) 1)
       (switch type_id
         (block
+          (case 78
+            (block
+              (if (!= caller_pd CURRENT_PD_silk_shell) (return (cast uint64_t ERR_PERM_DENIED)))
+              (var uint64_t program_result (call sexfiles_program_load arg0 arg1))
+              (call sexos_line "[sexfiles.program.result] value=%#llx"
+                (cast (unsigned long long) program_result))
+              (return program_result)))
           (case OP_RAMFS_OPEN
             (block
               (var uint8_t ([] name_bytes 24))
@@ -2248,6 +2260,16 @@ bool document_backend_clear_load(uint32_t caller, uint32_t *error) {
             (return (cast uint64_t ERR_NOT_FOUND))))))
 
     (comment "Trampoline initialization and PDX message loop (servers/sexfiles/src/trampoline.rs & main.rs).")
+    (var bool program_answer_pending)
+    (var SexosRequest program_answer_envelope)
+    (var uint64_t program_answer_value)
+
+    (fn (static uint64_t) program_answer_poll (void)
+      (if (! program_answer_pending) (return 0))
+      (var uint64_t status (call sexos_answer_request (& program_answer_envelope) program_answer_value))
+      (if (== status 0) (= program_answer_pending false))
+      (return status))
+
     (fn (static inline bool) tramp_hot_log (void)
       (return (call sexfiles_take_budget (& (. sexfiles_state trampoline_hot_log_budget)))))
 
@@ -2365,10 +2387,18 @@ bool document_backend_clear_load(uint32_t caller, uint32_t *error) {
 
       (while 1
         (block
+          (cpp-if "SEXOS_EPOCH_LOG"
+            (then
+              (var int64_t epoch_status (call epoch_files_poll))
+              (if (!= epoch_status EPOCH_JOURNAL_OK)
+                (block
+                  (call sexos_line "[sexfiles.epoch.failed] status=%lld" (cast (long long) epoch_status))
+                  (call sexos_fail)))))
           (cpp-if "SEXOS_SEXFILES_CURRENT_DOCUMENT"
             (then
               (call document_service_transport_progress (& (. sexfiles_state documents)))
               (cast void (call document_service_transport_poll (& (. sexfiles_state documents))))))
+          (call program_answer_poll)
           (if (> (. sexfiles_state tramp_listen_budget) 0)
             (block
               (-= (. sexfiles_state tramp_listen_budget) 1)
@@ -2407,7 +2437,14 @@ bool document_backend_clear_load(uint32_t caller, uint32_t *error) {
                 (call sexos_line "[sexfiles.bridge.diskfs.read.reply.sent] caller=%u value=%#llx"
                   (cast unsigned caller) (cast (unsigned long long) reply)))
               (cpp-if "SEXOS_SEXFILES_CURRENT_DOCUMENT"
-                (then (cast void (call sexos_answer_request (& request) reply)))
+                (then
+                  (if (== type_id 78)
+                    (block
+                      (= program_answer_pending true)
+                      (= program_answer_envelope request)
+                      (= program_answer_value reply)
+                      (call program_answer_poll))
+                    (cast void (call sexos_answer_request (& request) reply))))
                 (else (cast void (call sexos_reply caller reply))))))))))
 
     (fn void sexfiles_main (void)

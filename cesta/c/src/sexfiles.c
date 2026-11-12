@@ -11,8 +11,15 @@ _Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain ch
 _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
 #endif
 #include "sexfiles.h"
+#include "kernel_current.h"
+#include "sexfiles_program.h"
+#include "epoch_files.h"
 #if !defined(SEXOS_SEXFILES_CURRENT_DOCUMENT)
 #define SEXOS_SEXFILES_CURRENT_DOCUMENT 1
+
+#endif
+#if !defined(SEXOS_EPOCH_LOG)
+#define SEXOS_EPOCH_LOG 0
 
 #endif
 /*SexFiles server: message defer ring, SexObject header adapter, RamFS backend, DiskFS V4 bridge, VFS dispatch, and trampoline entry (servers/sexfiles/src/{pdx,sexobject,backends/ramfs,vfs,trampoline,main}.rs).*/
@@ -255,6 +262,10 @@ void sexfiles_state_init(SexfilesState *s) {
   s->diskfs_state.next_checkpoint_generation = 1;
   s->diskfs_next_object_id = 1;
   s->diskfs_writer_job_next = 1;
+#if SEXOS_EPOCH_LOG
+epoch_files_init();
+
+#endif
 }
 bool sexfiles_take_budget(uint32_t *budget) {
   if (*budget > 0) {
@@ -1915,6 +1926,12 @@ uint64_t handle_vfs_message(uint64_t type_id, uint64_t arg0, uint64_t arg1, uint
   sexos_line("[sexfiles.vfs.enter] type=%#llx caller=%u a0=%#llx a1=%#llx", (unsigned long long) type_id, (unsigned) caller_pd, (unsigned long long) arg0, (unsigned long long) arg1);
   sexfiles_state.ipc_ops_total += 1;
   switch (type_id) {
+    case 78: {
+      if (caller_pd != CURRENT_PD_silk_shell) return (uint64_t) ERR_PERM_DENIED;
+      uint64_t program_result = sexfiles_program_load(arg0, arg1);
+      sexos_line("[sexfiles.program.result] value=%#llx", (unsigned long long) program_result);
+      return program_result;
+    }
     case OP_RAMFS_OPEN: {
       uint8_t name_bytes[24];
       size_t name_len = vfs_unpack_name(arg0, arg1, arg2 & ~(UINT64_C(0xFF) << 24), name_bytes);
@@ -2103,6 +2120,15 @@ uint64_t handle_vfs_message(uint64_t type_id, uint64_t arg0, uint64_t arg1, uint
   }
 }
 /*Trampoline initialization and PDX message loop (servers/sexfiles/src/trampoline.rs & main.rs).*/
+bool program_answer_pending;
+SexosRequest program_answer_envelope;
+uint64_t program_answer_value;
+static uint64_t program_answer_poll(void) {
+  if (!program_answer_pending) return 0;
+  uint64_t status = sexos_answer_request(&program_answer_envelope, program_answer_value);
+  if (status == 0) program_answer_pending = false;
+  return status;
+}
 static inline bool tramp_hot_log(void) {
   return sexfiles_take_budget(&sexfiles_state.trampoline_hot_log_budget);
 }
@@ -2186,12 +2212,21 @@ document_service_transport_init(&sexfiles_state.documents, true);
 
 #endif
     while (1) {
+#if SEXOS_EPOCH_LOG
+int64_t epoch_status = epoch_files_poll();
+
+if (epoch_status != EPOCH_JOURNAL_OK) {
+  sexos_line("[sexfiles.epoch.failed] status=%lld", (long long) epoch_status);
+  sexos_fail();
+}
+#endif
 #if SEXOS_SEXFILES_CURRENT_DOCUMENT
 document_service_transport_progress(&sexfiles_state.documents);
 
 (void) document_service_transport_poll(&sexfiles_state.documents);
 
 #endif
+      program_answer_poll();
       if (sexfiles_state.tramp_listen_budget > 0) {
         sexfiles_state.tramp_listen_budget -= 1;
         if (tramp_hot_log()) sexos_line("[sexfiles.trampoline.listen.enter]");
@@ -2229,7 +2264,12 @@ if (document_service_transport_prepare(&sexfiles_state.documents, &request, true
       if (type_id != 0) {
         if (type_id == OP_DISKFS_READ) sexos_line("[sexfiles.bridge.diskfs.read.reply.sent] caller=%u value=%#llx", (unsigned) caller, (unsigned long long) reply);
 #if SEXOS_SEXFILES_CURRENT_DOCUMENT
-(void) sexos_answer_request(&request, reply);
+if (type_id == 78) {
+  program_answer_pending = true;
+  program_answer_envelope = request;
+  program_answer_value = reply;
+  program_answer_poll();
+} else(void) sexos_answer_request(&request, reply);
 
 #else
 (void) sexos_reply(caller, reply);

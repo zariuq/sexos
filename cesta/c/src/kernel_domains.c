@@ -12,6 +12,7 @@ _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) ==
 #endif
 #include "sexos_kernel.h"
 #include "program_image.h"
+#include "program_workers.h"
 #if !defined(SEXOS_NVME_INTERRUPT_MODE)
 #define SEXOS_NVME_INTERRUPT_MODE 0
 
@@ -71,16 +72,27 @@ static uint8_t kernel_stacks[KERNEL_STACK_RECORDS][KERNEL_STACK_SIZE] __attribut
 static uint8_t kernel_fpu_states[KERNEL_STACK_RECORDS][512] __attribute__((aligned(16)));
 
 void kernel_fpu_save_current(void) {
+    if (kernel_current_record) {
+        kernel_record_fpu_save();
+        return;
+    }
+    if (kernel_current_worker) {
+        cpu_fxsave(kernel_worker_storage(kernel_current_worker)->fpu);
+        return;
+    }
     Domain *current = domain_get(kernel.current);
     if (current)
         cpu_fxsave(kernel_fpu_states[current->storage_index]);
 }
 
-static void kernel_fpu_restore(Domain *domain) {
+void kernel_fpu_restore(Domain *domain) {
 #if SEXOS_FPU_CONTEXT_CORRUPT_PROBE
     (void)domain;
 #else
-    cpu_fxrstor(kernel_fpu_states[domain->storage_index]);
+    if (kernel_current_worker && kernel_current_worker->target == domain->id)
+        cpu_fxrstor(kernel_worker_storage(kernel_current_worker)->fpu);
+    else
+        cpu_fxrstor(kernel_fpu_states[domain->storage_index]);
 #endif
 }
 #endif
@@ -123,18 +135,34 @@ static Domain *domain_boot_record(uint32_t id) {
     return d;
 }
 
-/*BOOT attaches a fresh task identity once. Exhaustion leaves subsequent records unattached; identities never wrap or derive from a domain number.*/
+/*BOOT attaches a fresh main-task identity below the worker namespace. Exhaustion leaves subsequent records unattached; identities never wrap or derive from a domain number.*/
 static bool task_attach(Domain *d) {
-  if (next_task_id == 0 || d->task_id != 0) return false;
+  if (next_task_id == 0 || next_task_id >= PROGRAM_WORKER_TASK_FIRST || d->task_id != 0) return false;
   d->task_id = next_task_id;
-  next_task_id = next_task_id == UINT32_MAX ? 0 : next_task_id + 1;
+  next_task_id += 1;
   return true;
 }
-/*Transport provenance comes from the scheduled task, independently of its domain number. The current kernel has one main task per domain; a copied, unscheduled, exited or unattached record supplies no identity.*/
+/*Transport provenance comes from the attached main or worker task, independently of its domain number. An unscheduled, exited or unattached record supplies no identity.*/
 uint32_t kernel_current_task(Domain *d) {
   if (d == NULL || domain_get(kernel.current) != d) return 0;
+  if (d->task_id == 0 || d->task_id >= PROGRAM_WORKER_TASK_FIRST) return 0;
+  if (d->task_state == TASK_EXITED || d->task_state == TASK_DORMANT) return 0;
+  if (kernel_current_worker != NULL) {
+    if (kernel_current_worker->target != d->id) return 0;
+    if (kernel_current_worker->run != d->task_id) return 0;
+    if (kernel_current_worker->phase != PROGRAM_WORKER_ATTACHED || kernel_current_worker->owner_core != 0) return 0;
+    if (kernel_current_worker->id < PROGRAM_WORKER_TASK_FIRST || kernel_current_worker->id >= PROGRAM_WORKER_TASK_END || kernel_current_worker->exited) return 0;
+    return kernel_current_worker->id;
+  }
   if (d->id != kernel.current || (d->task_state != TASK_RUNNING || d->task_id == 0)) return 0;
   return d->task_id;
+}
+ProgramMemoryReply kernel_program_memory(Domain *d, uint64_t want) {
+  ProgramMemoryReply denied = (ProgramMemoryReply) {
+    .status = PROGRAM_MEMORY_DENIED,.pressure = program_frame_pressure()
+  };
+  if (d == NULL || (d->program.target != d->id || (d->program.run != d->task_id || kernel_current_task(d) == 0))) return denied;
+  return program_memory_grow(&d->program, want);
 }
 static Domain *domain_of_key(uint64_t key) {
   if (key >= KERNEL_MAX_DOMAINS) return NULL;
@@ -142,31 +170,62 @@ static Domain *domain_of_key(uint64_t key) {
 }
 
 bool kernel_epoch_current(uint64_t epoch) {
-    return kernel.genesis_sealed && kernel.epoch == epoch && epoch < UINT64_MAX &&
-           kernel.epoch_event_count < KERNEL_EPOCH_EVENT_CAPACITY
+    uint64_t compacted = epoch > KERNEL_EPOCH_EVENT_CAPACITY ?
+                         epoch - KERNEL_EPOCH_EVENT_CAPACITY : 0;
+    return kernel_epoch_log_ready(epoch) && kernel.genesis_sealed && kernel.epoch == epoch &&
+           epoch < UINT64_MAX && kernel.epoch_event_count == epoch &&
+           kernel.epoch_compacted_through == compacted &&
+           (!compacted || (kernel.epoch_checkpoint.through == compacted &&
+                           kernel.epoch_checkpoint.boundary.epoch == compacted))
 #if SEXOS_KERNEL_CURRENT_SMP
            && kernel_smp_epoch_current(epoch)
 #endif
         ;
 }
 
+bool kernel_epoch_event_read(uint64_t event_epoch, KernelEpochEvent *out) {
+    if (!out || !kernel.genesis_sealed || !event_epoch || event_epoch > kernel.epoch ||
+        event_epoch <= kernel.epoch_compacted_through)
+        return false;
+    const KernelEpochEvent *event = &kernel.epoch_events[(event_epoch - 1u) % KERNEL_EPOCH_EVENT_CAPACITY];
+    if (event->epoch != event_epoch) return false;
+    *out = *event;
+    return true;
+}
+
 static void kernel_epoch_record_event(uint64_t expected, KernelEpochEvent event) {
+    if (kernel_epoch_log_internal())
+        return;
     if (!kernel_epoch_current(expected))
         kernel_halt("epoch ledger commit invariant");
     uint64_t next = expected + 1u;
-    uint32_t slot = kernel.epoch_event_count;
+    uint64_t slot = expected % KERNEL_EPOCH_EVENT_CAPACITY;
+    if (expected >= KERNEL_EPOCH_EVENT_CAPACITY) {
+        uint64_t elided = expected - KERNEL_EPOCH_EVENT_CAPACITY + 1u;
+        if (kernel.epoch_compacted_through + 1u != elided ||
+            kernel.epoch_events[slot].epoch != elided)
+            kernel_halt("epoch checkpoint sequence");
+    }
 #if SEXOS_KERNEL_CURRENT_SMP
     if (!kernel_smp_epoch_advance(expected, next))
         kernel_halt("SMP epoch quiescence invariant");
 #endif
     event.epoch = next;
+    if (!kernel_epoch_log_append(next, &event))
+        kernel_halt("epoch durable backpressure");
+    if (expected >= KERNEL_EPOCH_EVENT_CAPACITY) {
+        uint64_t elided = expected - KERNEL_EPOCH_EVENT_CAPACITY + 1u;
+        kernel.epoch_compacted_through = elided;
+        kernel.epoch_checkpoint = (KernelEpochCheckpoint){
+            .through = elided, .boundary = kernel.epoch_events[slot]};
+    }
     kernel.epoch_events[slot] = event;
     kernel.epoch = next;
-    kernel.epoch_event_count = slot + 1u;
-    uint32_t count = slot + 1u;
+    kernel.epoch_event_count = next;
+    uint64_t count = next;
     if (count <= 8u || (count & (count - 1u)) == 0)
-        klog("[kernel.epoch.commit] epoch=%llu count=%u kind=%u subject=%u revision=%llu\n",
-             (unsigned long long)next, (unsigned)count, (unsigned)event.kind,
+        klog("[kernel.epoch.commit] epoch=%llu count=%llu kind=%u subject=%u revision=%llu\n",
+             (unsigned long long)next, (unsigned long long)count, (unsigned)event.kind,
              (unsigned)event.subject, (unsigned long long)event.revision);
 }
 
@@ -1326,7 +1385,7 @@ static bool program_header(const uint8_t *image, uint64_t size, const ElfHeader 
   return true;
 }
 /*The frame mapped at a user address, for writing the image through the higher-half map.*/
-static uint8_t *frame_byte(uint64_t va) {
+uint8_t *frame_byte(uint64_t va) {
   uint64_t pte = 0;
   if (!read_pte(va, &pte)) return NULL;
   return (uint8_t *) phys_to_virt(pte & PTE_ADDRESS) + (va & 0xFFF);
@@ -1378,21 +1437,31 @@ static bool image_load_preflight(const Domain *d, const ProgramImage *plan)
     return true;
 }
 
-/* A mapped target can cross a page boundary whose physical frames are not
-   adjacent. Use the same bounded chunks for file bytes and relocation words. */
-static bool image_write(uint64_t address, const uint8_t *source, uint64_t count)
+static bool image_load_rollback(Domain *d, FrameLease *leases, size_t count)
 {
-    while (count) {
-        uint64_t chunk = KERNEL_PAGE_SIZE - (address & UINT64_C(4095));
-        if (chunk > count) chunk = count;
-        uint8_t *target = frame_byte(address);
-        if (!target) return false;
-        memcpy(target, source, (size_t)chunk);
-        address += chunk;
-        source += chunk;
-        count -= chunk;
+    bool ok = true;
+    for (size_t i = count; i > 0; --i) {
+        if (program_frame_detach(leases[i - 1]) != FRAME_LEASE_OK ||
+            program_frame_give(leases[i - 1]) != FRAME_LEASE_OK)
+            ok = false;
     }
-    return true;
+    if (SEXOS_KERNEL_CURRENT_PDX) {
+        KernelAppPrivate *app = kernel_app_get(d->id);
+        if (app) app->image.count = 0;
+    }
+    return ok;
+}
+
+static uint64_t image_load_abort(Domain *d, FrameLease *leases, size_t count)
+{
+    bool ok = image_load_rollback(d, leases, count);
+    if (d->program.phase == PROGRAM_MEMORY_LIVE) {
+        (void)program_memory_main_exit(&d->program);
+        if (program_memory_end(&d->program) != PROGRAM_MEMORY_OK)
+            ok = false;
+    }
+    klog("[kernel.elf.rollback] pages=%zu ok=%u\n", count, ok ? 1 : 0);
+    return 0;
 }
 
 static uint64_t elf_load(Domain *d, const uint8_t *image, uint64_t size)
@@ -1415,6 +1484,19 @@ static uint64_t elf_load(Domain *d, const uint8_t *image, uint64_t size)
         klog("[kernel.elf.refused] reason=load_plan\n");
         return 0;
     }
+    size_t image_pages = 0;
+    for (size_t i = 0; i < plan.count; ++i) {
+        ProgramSegment s = plan.segments[i];
+        uint64_t first = s.window & ~UINT64_C(4095);
+        uint64_t last = (s.window + s.memory - 1) & ~UINT64_C(4095);
+        image_pages += (last - first) / KERNEL_PAGE_SIZE + 1;
+    }
+    if (program_memory_begin(&d->program, d->id, d->task_id, d->key, d->code_base,
+                             DOMAIN_STRIDE / KERNEL_PAGE_SIZE, image_pages,
+                             USER_STACK_SIZE / KERNEL_PAGE_SIZE) != PROGRAM_MEMORY_OK)
+        return 0;
+    FrameLease leases[APP_PRIVATE_MAX_PAGES];
+    size_t lease_count = 0;
     uint64_t base = d->code_base;
     for (size_t i = 0; i < plan.count; ++i) {
         ProgramSegment s = plan.segments[i];
@@ -1425,41 +1507,71 @@ static uint64_t elf_load(Domain *d, const uint8_t *image, uint64_t size)
         klog("ELF: Loading segment: vaddr=%#llx, memsz=%#llx (Key: %u)\n",
              (unsigned long long)address, (unsigned long long)s.memory, d->key);
         for (uint64_t page = address & ~UINT64_C(4095);; page += KERNEL_PAGE_SIZE) {
-            uint64_t frame = frames_alloc(0);
-            if (frame == NO_ADDRESS || !map_page(page, frame, flags, d->key)) return 0;
+            FrameLeaseResult lease = program_frame_take_transient(d->id);
+            if (lease.status != FRAME_LEASE_OK) {
+                klog("[kernel.elf.allocate.failed] pd=%u page=%#llx status=%u free=%llu\n",
+                     d->id, (unsigned long long)page, (unsigned)lease.status,
+                     (unsigned long long)program_frame_available());
+                return image_load_abort(d, leases, lease_count);
+            }
+            leases[lease_count++] = lease.value;
+            if (!program_frame_map_run(lease.value, d->task_id, page, flags, d->key)) {
+                klog("[kernel.elf.map.failed] pd=%u page=%#llx physical=%#llx flags=%#llx key=%u\n",
+                     d->id, (unsigned long long)page, (unsigned long long)lease.value.base,
+                     (unsigned long long)flags, d->key);
+                return image_load_abort(d, leases, lease_count);
+            }
             if (page == last) break;
         }
-        if (!image_write(address, image + s.offset, s.file)) return 0;
-        if (SEXOS_KERNEL_CURRENT_PDX && !kernel_app_capture_range(d, address, s.memory)) return 0;
+        if (!image_write(address, image + s.offset, s.file)) {
+            klog("[kernel.elf.write.failed] pd=%u address=%#llx offset=%#llx bytes=%#llx\n",
+                 d->id, (unsigned long long)address, (unsigned long long)s.offset,
+                 (unsigned long long)s.file);
+            return image_load_abort(d, leases, lease_count);
+        }
+        if (SEXOS_KERNEL_CURRENT_PDX && !kernel_app_capture_range(d, address, s.memory)) {
+            klog("[kernel.elf.capture.failed] pd=%u address=%#llx bytes=%#llx\n",
+                 d->id, (unsigned long long)address, (unsigned long long)s.memory);
+            return image_load_abort(d, leases, lease_count);
+        }
     }
     for (uint64_t i = 0; i < plan.rela_count; ++i) {
         ProgramRelocation relocation = program_image_relocation(&plan, i, base);
         if (!relocation.valid ||
-            !image_write(base + relocation.offset, (const uint8_t *)&relocation.value, 8)) return 0;
+            !image_write(base + relocation.offset, (const uint8_t *)&relocation.value, 8))
+            return image_load_abort(d, leases, lease_count);
     }
     klog("ELF: applied %llu R_X86_64_RELATIVE relocations\n", (unsigned long long)plan.rela_count);
     /* Fixed BOOT stack policy: requests beyond this capacity were refused
        before effects. Runtime program/worker stacks have a separate policy. */
     for (uint64_t page = d->stack_top - USER_STACK_SIZE; page < d->stack_top; page += KERNEL_PAGE_SIZE) {
-        uint64_t frame = frames_alloc(0);
-        if (frame == NO_ADDRESS || !map_page(page, frame, PTE_USER | PTE_WRITABLE | PTE_NO_EXECUTE, d->key)) return 0;
+        FrameLeaseResult lease = program_frame_take_transient(d->id);
+        if (lease.status != FRAME_LEASE_OK) return image_load_abort(d, leases, lease_count);
+        leases[lease_count++] = lease.value;
+        if (!program_frame_map_run(lease.value, d->task_id, page, PTE_USER | PTE_WRITABLE | PTE_NO_EXECUTE, d->key))
+            return image_load_abort(d, leases, lease_count);
     }
     if (SEXOS_KERNEL_CURRENT_PDX &&
-        !kernel_app_capture_range(d, d->stack_top - USER_STACK_SIZE, USER_STACK_SIZE)) return 0;
+        !kernel_app_capture_range(d, d->stack_top - USER_STACK_SIZE, USER_STACK_SIZE))
+        return image_load_abort(d, leases, lease_count);
     uint64_t entry = base + plan.entry, pte = 0;
-    if (!read_pte(entry, &pte) || !(pte & PTE_USER) || (pte & PTE_NO_EXECUTE)) return 0;
+    if (!read_pte(entry, &pte) || !(pte & PTE_USER) || (pte & PTE_NO_EXECUTE))
+        return image_load_abort(d, leases, lease_count);
+    if (program_frame_commit_all(leases, lease_count) != FRAME_LEASE_OK)
+        return image_load_abort(d, leases, lease_count);
     return entry;
 }
 
 /*Create a domain from a module: the next domain id, the image at the key's code region, the stack at the key's stack region, the domain's own ring at slot 2, and a first trap frame that enters the image in user mode.*/
 uint32_t domain_spawn_at(uint32_t id, uint8_t layout, uint8_t key, const char *name, const LimineFile *module) {
-  if (next_task_id == 0) return 0;
+  if (next_task_id == 0 || next_task_id >= PROGRAM_WORKER_TASK_FIRST) return 0;
   if (layout == 0 || (key == 0 || key >= 16)) return 0;
   if (id >= KERNEL_MAX_DOMAINS) return 0;
   Domain *d = domain_boot_record(id);
   if (d == NULL) return 0;
   uint16_t storage = d->storage_index;
   memset(d, 0, sizeof(Domain));
+  program_memory_init(&d->program);
   d->storage_index = storage;
 #if SEXOS_KERNEL_CURRENT_FPU
 cpu_fpu_state_init(kernel_fpu_states[storage]);
@@ -1472,6 +1584,7 @@ cpu_fpu_state_init(kernel_fpu_states[storage]);
   d->name = name;
   d->code_base = CODE_REGION_BASE + (layout - 1) * DOMAIN_STRIDE;
   d->stack_top = STACK_REGION_BASE + (layout - 1) * DOMAIN_STRIDE + 0x100000;
+  if (!task_attach(d)) return 0;
   uint64_t entry = elf_load(d, (const uint8_t *) module->address, module->size);
   if (entry == 0) return 0;
   d->entry = entry;
@@ -1485,8 +1598,7 @@ cpu_fpu_state_init(kernel_fpu_states[storage]);
   d->frame->rflags = USER_RFLAGS;
   d->frame->rsp = d->stack_top;
   d->frame->ss = USER_SS;
-  if (!task_attach(d)) return 0;
-  if (SEXOS_KERNEL_CURRENT_PDX && !kernel_app_finish_capture(d)) return 0;
+  if (SEXOS_KERNEL_CURRENT_PDX && !kernel_app_finish_capture(d)) return image_load_abort(d, NULL, 0);
   d->task_state = TASK_READY;
   d->live = true;
   return id;
@@ -1684,12 +1796,20 @@ bool kernel_nvme_msix_set_mask(const Cap *lease, bool masked) {
         }
         offset = next;
     }
-    if (plan.status != NVME_MSIX_OK)
+    if (plan.status != NVME_MSIX_OK) {
+        klog("[kernel.nvme.msix.mask.err] stage=plan status=%u offset=%#x table=%#x pba=%#x length=%#llx\n",
+             plan.status, offset, plan.table_offset, plan.pba_offset,
+             (unsigned long long)lease->region.grant.length);
         return false;
+    }
     MemoryRegionViewResult view = sexos_region_register_view(
         &lease->region, plan.table_offset, 16, REGION_QUERY | REGION_READ | REGION_WRITE);
-    if (view.error || !view.value.virtual_address)
+    if (view.error || !view.value.virtual_address) {
+        klog("[kernel.nvme.msix.mask.err] stage=view error=%#llx va=%#llx table=%#x\n",
+             (unsigned long long)view.error, (unsigned long long)view.value.virtual_address,
+             plan.table_offset);
         return false;
+    }
     volatile uint32_t *entry = (volatile uint32_t *)(uintptr_t)view.value.virtual_address;
     if (kernel.smap) {
         cpu_stac();
@@ -1702,10 +1822,16 @@ bool kernel_nvme_msix_set_mask(const Cap *lease, bool masked) {
     uint32_t config = masked ? plan.config_masked : plan.config_enabled;
     pci_write(lease->bus, lease->dev, lease->func, plan.capability_offset, config);
     uint32_t observed = pci_read(lease->bus, lease->dev, lease->func, plan.capability_offset);
-    if (masked)
-        return observed == plan.config_masked && address == plan.address_low &&
-               high == plan.address_high && data == plan.message_data &&
-               control == plan.vector_masked;
+    if (masked) {
+        bool valid = observed == plan.config_masked && address == plan.address_low &&
+                     high == plan.address_high && data == plan.message_data &&
+                     control == plan.vector_masked;
+        if (!valid)
+            klog("[kernel.nvme.msix.mask.err] stage=observed config=%#x expected=%#x address=%#x expected=%#x high=%#x data=%#x expected=%#x control=%#x\n",
+                 observed, plan.config_masked, address, plan.address_low, high, data,
+                 plan.message_data, control);
+        return valid;
+    }
     return nvme_msix_observed(&plan, observed, address, high, data, control);
 #endif
 }
@@ -1886,30 +2012,55 @@ void domains_boot(void) {
 }
 /*The scheduler: one queue, first in first out; a preempted or yielding task goes to the back.*/
 void run_push(uint32_t id) {
+  if (program_records_is_record(&kernel_program_records, id)) {
+    (void) kernel_record_run_push(id);
+    return;
+  }
   Domain *d = domain_get(id);
   if (d == NULL || (d->task_state == TASK_EXITED || d->task_state == TASK_DORMANT)) return;
   if (SEXOS_KERNEL_CURRENT_PDX && (d->queued || (d->task_state != TASK_READY && d->task_state != TASK_RUNNING))) return;
-  if (kernel.run_count >= KERNEL_RUN_QUEUE_CAPACITY) {
-    if (SEXOS_KERNEL_CURRENT_PDX) kernel_halt("run admission capacity");
-    else return;
+  if (!program_record_queue_admit(&kernel.run_queue, id)) {
+    if (SEXOS_KERNEL_CURRENT_PDX) d->admission_pending = true;
+    d->task_state = TASK_READY;
+    return;
   }
-  if (SEXOS_KERNEL_CURRENT_PDX) d->queued = true;
-  kernel.run_queue[(kernel.run_head + kernel.run_count) % KERNEL_RUN_QUEUE_CAPACITY] = id;
-  kernel.run_count += 1;
+  if (SEXOS_KERNEL_CURRENT_PDX) {
+    d->queued = true;
+    d->admission_pending = false;
+  }
   d->task_state = TASK_READY;
 }
-uint32_t run_pop(void) {
-  while (kernel.run_count > 0) {
-    uint32_t id = kernel.run_queue[kernel.run_head];
-    kernel.run_head = (kernel.run_head + 1) % KERNEL_RUN_QUEUE_CAPACITY;
-    kernel.run_count -= 1;
-    if (SEXOS_KERNEL_CURRENT_PDX && domain_get(id) != NULL) domain_get(id)->queued = false;
-    if (domain_get(id) != NULL && domain_get(id)->task_state == TASK_READY) return id;
+uint64_t run_pop(void) {
+  size_t remaining = kernel.run_queue.count + (kernel.run_queue.handoff != 0 ? 1 : 0);
+  while ((kernel.run_queue.count > 0 || kernel.run_queue.handoff != 0) && remaining > 0) {
+    remaining -= 1;
+    uintptr_t token = program_record_queue_select(&kernel.run_queue);
+    if (kernel_worker_token(token)) {
+      ProgramWorker *worker = kernel_worker_dispatch(token);
+      if (worker != NULL) return token;
+      continue;
+    }
+    if (token >= PROGRAM_RECORD_BASE) {
+      ProgramRecordTask *record = kernel_record_dispatch(token);
+      if (record != NULL) return token;
+      continue;
+    } else {
+      uint32_t id = (uint32_t) token;
+      Domain *d = domain_get(id);
+      if (SEXOS_KERNEL_CURRENT_PDX && d != NULL) d->queued = false;
+      if (SEXOS_KERNEL_CURRENT_PDX && !kernel_epoch_log_eligible(id)) {
+        run_push(id);
+        continue;
+      }
+      if (d != NULL && d->task_state == TASK_READY) return id;
+    }
   }
   return 0;
 }
-/*Make a domain current and return its frame: its kernel stack becomes the stack of the next entry from user mode, and its key register value is loaded on the way out.*/
-TrapFrame *switch_to(uint32_t id) {
+/*Make a domain current and return its main-task frame and hardware state. A worker must first complete its outgoing custody transition.*/
+TrapFrame *switch_to(uint64_t id) {
+  if (kernel_current_worker != NULL) kernel_halt("main dispatch with attached worker");
+  if (id >= PROGRAM_RECORD_BASE) return kernel_record_switch(id);
   Domain *d = domain_get(id);
   if (d == NULL || d->task_state == TASK_DORMANT) kernel_halt("schedule of absent or dormant domain");
   if (SEXOS_KERNEL_CURRENT_PDX && d->task_state != TASK_READY) kernel_halt("schedule without ready ownership");
@@ -1917,10 +2068,11 @@ TrapFrame *switch_to(uint32_t id) {
   d->task_state = TASK_RUNNING;
   tss_set_rsp0(d->kstack_top);
   kernel_syscall_stack_top = d->kstack_top;
+  cpu_wrmsr(MSR_FS_BASE, d->fs_base);
   if (!kernel.first_scheduled_logged) {
     kernel.first_scheduled_logged = true;
-    if (SEXOS_KERNEL_CURRENT_PDX) klog("[bootgraph.boot.handoff] target=%s id=%u entry=%#llx\n", d->name, id, (unsigned long long) d->entry);
-    klog("first scheduled pd_id=%u\n", id);
+    if (SEXOS_KERNEL_CURRENT_PDX) klog("[bootgraph.boot.handoff] target=%s id=%u entry=%#llx\n", d->name, (uint32_t) id, (unsigned long long) d->entry);
+    klog("first scheduled pd_id=%u\n", (uint32_t) id);
   }
   if (kernel.pku) cpu_wrpkru(d->mask);
 #if SEXOS_KERNEL_CURRENT_FPU
@@ -1929,32 +2081,36 @@ kernel_fpu_restore(d);
 #endif
   return d->frame;
 }
-/*Resume the interrupted context, restoring the current domain's key register when it is user mode.*/
+/*Resume the interrupted main, record or worker context with that task's FS, protection-key mask and FPU state.*/
 TrapFrame *resume_frame(TrapFrame *frame) {
   if ((frame->cs & 3) == 3) {
-    Domain *d = domain_get(kernel.current);
-    if (d != NULL) {
-      if (kernel.pku) cpu_wrpkru(d->mask);
+    if (kernel_current_record != NULL) {
+      cpu_wrmsr(MSR_FS_BASE, kernel_current_record->fs_base);
+      if (kernel.pku) cpu_wrpkru(mask_for_key(PROGRAM_RECORD_KEY));
+#if SEXOS_KERNEL_CURRENT_FPU
+kernel_record_fpu_restore();
+
+#endif
+    } else {
+      Domain *d = domain_get(kernel.current);
+      if (d != NULL) {
+        cpu_wrmsr(MSR_FS_BASE, kernel_current_worker != NULL ? kernel_current_worker->fs_base : d->fs_base);
+        if (kernel.pku) cpu_wrpkru(d->mask);
 #if SEXOS_KERNEL_CURRENT_FPU
 kernel_fpu_restore(d);
 
 #endif
+      }
     }
   }
   return frame;
 }
-/*Timer preemption from user mode: the next queued domain runs, the current one goes to the back. With nothing queued the current one continues.*/
+/*Preemption and yield share the bounded main/worker scheduler and its deferred stack-release contract.*/
 TrapFrame *schedule_tick(TrapFrame *frame) {
-  if (kernel.run_count == 0) return resume_frame(frame);
-  uint32_t next = run_pop();
-  if (next == 0) return resume_frame(frame);
-  run_push(kernel.current);
-  return switch_to(next);
+  return kernel_worker_schedule(frame, true);
 }
-/*SYSCALL_YIELD: the current domain goes to the back and the first queued domain runs, possibly itself.*/
 TrapFrame *schedule_yield(void) {
-  run_push(kernel.current);
-  return switch_to(run_pop());
+  return kernel_worker_yield();
 }
 /*With no domain to run, wait for an interrupt with interrupts enabled; the timer handler switches to a domain once one is queued.*/
 _Noreturn void kernel_idle_loop(void) {

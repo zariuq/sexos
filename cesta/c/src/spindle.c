@@ -1010,6 +1010,25 @@ static void content_render(Spindle *sp) {
   }
   if (flushed > 0u && take(&sp->frame_budget)) sexos_line("[spindle.grid.render.ok] cols=%zu rows=%zu surfaces=%zu", GRID_COLS, GRID_ROWS, GRID_SURFACES);
 }
+static bool program_name_valid(ByteSlice name) {
+  if (name.len == 0 || name.len > 16) return false;
+  for (size_t i = 0; i < name.len; ++i) if (name.ptr[i] <= 32u || name.ptr[i] >= 127u) return false;
+  return true;
+}
+static bool program_count_valid(ByteSlice args, uint64_t *out) {
+  if (args.len == 0) return false;
+  uint64_t value = 0;
+  for (size_t i = 0; i < args.len; ++i) {
+    uint8_t b = args.ptr[i];
+    if (b < 48u || b > 57u) return false;
+    uint64_t digit = (uint64_t)(b - 48u);
+    if (value > (UINT64_MAX - digit) / 10u) return false;
+    value = value * 10u + digit;
+  }
+  if (value == 0) return false;
+  *out = value;
+  return true;
+}
 static bool dispatch(Spindle *sp, ByteSlice line) {
   Scrollback *sb = &sp->sb;
   History *hist = &sp->hist;
@@ -1041,6 +1060,29 @@ static bool dispatch(Spindle *sp, ByteSlice line) {
   if (SPINDLE_ALIASES_PROOF_ENABLED) sexos_line("[spindle.alias.proof.summary] alias_count=6 ok=1");
   if (cmd.len == 0) return true;
   bool recognized = false;
+  if (slice_eq(cmd, "spawn")) {
+    TokenPair parts = tokenize(args);
+    uint64_t name0 = 0;
+    uint64_t name1 = 0;
+    uint64_t count = 0;
+    if (program_name_valid(parts.cmd) && program_count_valid(parts.args, &count)) {
+      pack_doc_name(parts.cmd, &name0, &name1);
+      SexosReply reply = sexos_pdx_call(SEXOS_SLOT_shell, 0x50u, name0, name1, count);
+      sexos_line("[spindle.records.spawn] status=%llu", (unsigned long long) reply.status);
+      sb_push_cstr(sb, "Usage: spawn NAME COUNT");
+    } else recognized = true;
+  }
+  if (slice_eq(cmd, "stopall")) {
+    uint64_t force = slice_eq(args, "force") ? 1 : 0;
+    SexosReply reply = sexos_pdx_call(SEXOS_SLOT_shell, 0x51u, force, 0, 0);
+    sexos_line("[spindle.records.stop] force=%llu status=%llu", (unsigned long long) force, (unsigned long long) reply.status);
+    recognized = true;
+  }
+  if (slice_eq(cmd, "records")) {
+    SexosReply reply = sexos_pdx_call(SEXOS_SLOT_shell, 0x52u, 0, 0, 0);
+    sexos_line("[spindle.records.census] status=%llu", (unsigned long long) reply.status);
+    recognized = true;
+  }
   if (slice_eq(cmd, "calc")) {
     SpindleCalcInput input = {
       0
@@ -3340,6 +3382,72 @@ static void run_help_polish_proof(Spindle *sp) {
   sexos_line("[spindle.help.proof] stage=5 command=safety ok=1 reason=no_blocking_local_only");
   sexos_line("[spindle.help.proof.done] ok=%u", help_ok ? 1u : 0u);
 }
+#if SEXOS_RECORD_PROBE
+static bool record_wait_live(uint64_t wanted) {
+  bool awaiting = false;
+  uint64_t quiet = 0;
+  for (size_t attempt = 0; attempt < 128; ++attempt) {
+    if (!awaiting) {
+      SexosReply reply = sexos_pdx_call(SEXOS_SLOT_shell, 0x52u, 0, 0, 0);
+      if (reply.status == 0) {
+        awaiting = true;
+        quiet = 0;
+      }
+    }
+    if (awaiting) {
+      quiet += 1;
+      if (quiet >= 16) {
+        awaiting = false;
+        quiet = 0;
+      }
+    }
+    SexosMessage msg = sexos_listen_once(0);
+    if (msg.type_id == 0x1u && msg.caller_pd == 3u) {
+      awaiting = false;
+      quiet = 0;
+      sexos_line("[spindle.record.reply] live=%llu wanted=%llu", (unsigned long long) msg.arg0, (unsigned long long) wanted);
+      if (msg.arg0 == wanted) return true;
+    }
+    if (msg.type_id == 0x53u && msg.caller_pd == 3u) return false;
+    sexos_wait_self_ticks(4);
+  }
+  return false;
+}
+static void run_record_probe(Spindle *sp) {
+  sexos_line("[spindle.record.probe.begin]");
+  dispatch(sp, cstr_slice("spawn hum 1"));
+  if (!record_wait_live(1)) {
+    sexos_line("[spindle.record.probe.timeout] stage=start");
+    return;
+  }
+  dispatch(sp, cstr_slice("stopall"));
+  if (!record_wait_live(0)) {
+    sexos_line("[spindle.record.probe.timeout] stage=stop");
+    return;
+  }
+  dispatch(sp, cstr_slice("spawn hum 15"));
+  if (!record_wait_live(15)) {
+    sexos_line("[spindle.record.probe.timeout] stage=batch");
+    return;
+  }
+  dispatch(sp, cstr_slice("stopall"));
+  if (!record_wait_live(0)) {
+    sexos_line("[spindle.record.probe.timeout] stage=batch-stop");
+    return;
+  }
+  dispatch(sp, cstr_slice("spawn hum 1"));
+  if (!record_wait_live(1)) {
+    sexos_line("[spindle.record.probe.timeout] stage=restart");
+    return;
+  }
+  dispatch(sp, cstr_slice("stopall"));
+  if (!record_wait_live(0)) {
+    sexos_line("[spindle.record.probe.timeout] stage=final");
+    return;
+  }
+  sexos_line("[spindle.record.probe.done]");
+}
+#endif
 void spindle_main(void) {
   Spindle *sp = &spindle_state;
   spindle_init(sp);
@@ -3526,6 +3634,10 @@ void spindle_main(void) {
   }
   content_render(sp);
   sexos_line("[spindle.ready]");
+#if SEXOS_RECORD_PROBE
+run_record_probe(sp);
+
+#endif
   while (1) {
     SexosMessage msg = sexos_listen(&sp->listener, 0);
     if (take(&sp->raw_budget)) sexos_line("[spindle.pdx.raw] type=%#llx a0=%#llx a1=%#llx a2=%#llx caller=%llu", (unsigned long long) msg.type_id, (unsigned long long) msg.arg0, (unsigned long long) msg.arg1, (unsigned long long) msg.arg2, (unsigned long long) msg.caller_pd);

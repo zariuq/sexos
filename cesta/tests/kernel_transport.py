@@ -103,7 +103,9 @@ def main():
     for entry in inputs['sources']:
         actual = hashlib.sha256((HERE.parent/entry['path']).read_bytes()).hexdigest()
         assert actual == entry['sha256'], ('transport reference changed', entry['path'])
-    units = ('kernel_domains', 'kernel_syscalls', 'kernel_rpc', 'memory_regions', 'kernel_task_wait', 'kernel_sources', 'source_policy','kernel_pci','pci_policy','network_config','kernel_history','history_recovery')
+    units = ('kernel_domains', 'kernel_syscalls', 'kernel_rpc', 'memory_regions', 'kernel_task_wait', 'kernel_sources', 'source_policy','kernel_pci','pci_policy','network_config','kernel_history','history_recovery', 'epoch_journal', 'kernel_epoch_log', 'program_memory', 'kernel_device_interrupt', 'program_record_tasks')
+    for interface in ('epoch_types', 'epoch_journal'):
+        (work/(interface+'.h')).write_text(run([args.cesta, 'export-c', 'src/'+interface+'_interface.cesta', '--']))
     (work/'sexos_kernel.h').write_text(run([args.cesta, 'export-c', 'src/kernel_interface.cesta', '--',
                                           '-Iruntime/kernel', '-Igenerated/include']))
     for unit in units:
@@ -114,13 +116,14 @@ def main():
     text = ''.join(f'{op} {a} {target} {value}\n' for op, a, target, value in stream)
     (work/'commands.txt').write_text(text)
     flags = ['-std=c11', '-Wall', '-Wextra', '-Wpedantic', '-Werror',
-             '-DSEXOS_KERNEL_CURRENT_PDX=1', '-ffunction-sections', '-fdata-sections',
+             '-DSEXOS_KERNEL_CURRENT_PDX=1', '-DSEXOS_EPOCH_LOG_HOST_REAL=1', '-DSEXOS_DEVICE_INTERRUPT_HOST_REAL=1', '-DSEXOS_WORKER_STUBS_NO_PLATFORM=1',
+             '-include', 'tests/kernel_workers/host_cpu.h', '-ffunction-sections', '-fdata-sections',
              '-Wl,--gc-sections', '-I'+str(work), '-Igenerated/include', '-Iruntime/kernel']
 
     def compile_run(compiler, mode, name):
         extra = ['-O1', '-fsanitize=address,undefined', '-fno-sanitize-recover=all'] if mode == 'sanitize' else [mode]
         binary = work/name
-        run([compiler, *flags, *extra, 'tests/kernel_transport/host.c', work/'memory_regions.c', work/'source_policy.c',work/'pci_policy.c',work/'network_config.c',work/'history_recovery.c', '-o', binary])
+        run([compiler, *flags, *extra, 'tests/kernel_transport/host.c', 'tests/kernel_memory/worker_stubs.c', work/'memory_regions.c', work/'source_policy.c',work/'pci_policy.c',work/'network_config.c',work/'history_recovery.c',work/'kernel_device_interrupt.c', work/'program_record_tasks.c', 'tests/kernel_memory/record_stubs.c', '-o', binary])
         actual = [json.loads(line) for line in run([binary], input=text).splitlines()]
         assert len(actual) == len(expected), (name, 'trace length')
         for i, (got, wanted) in enumerate(zip(actual, expected)):
@@ -135,8 +138,20 @@ def main():
             print(name, len(stream), 'history steps and directed controls passed', flush=True)
 
     mutants = [
+        ('owner_listen_drain', 'kernel_syscalls',
+         'if (SEXOS_KERNEL_CURRENT_PDX) kernel_device_interrupt_drain(d);\n  while', 'while'),
+        ('full_ring_listen_drain', 'kernel_syscalls',
+         'if (SEXOS_KERNEL_CURRENT_PDX) kernel_device_interrupt_drain(d);\n    if (out->type_id', 'if (out->type_id'),
+        ('owner_namespace_drain', 'kernel_device_interrupt',
+         'kernel.vector_owner[vector] == d->id', 'kernel.vector_owner[vector] == d->task_id'),
+        ('stale_worker_drain', 'kernel_device_interrupt',
+         '!kernel_current_task(d)', 'false'),
         ('publish_without_reply_right', 'kernel_syscalls', 'SEXOS_KERNEL_CURRENT_PDX && target->reply_rights[d->id] == UINT64_MAX', 'false'),
 
+        ('call_wait_handoff', 'kernel_syscalls',
+         'program_record_queue_arm(&kernel.run_queue, true);\n      pdx_call(d, f);', 'pdx_call(d, f);'),
+        ('reply_wait_handoff', 'kernel_syscalls',
+         'program_record_queue_arm(&kernel.run_queue, true);\n      pdx_reply(d, f);', 'pdx_reply(d, f);'),
         ('mismatched_domain_identity', 'kernel_domains', 'd->live && d->id == id', 'd->live'),
         ('overwrite_full_reply', 'kernel_syscalls', 'task == 0 || (target->reply_ready || (target->task_state == TASK_EXITED || target->task_state == TASK_DORMANT))', 'task == 0 || (target->task_state == TASK_EXITED || target->task_state == TASK_DORMANT)'),
         ('grant_again_at_hearing', 'kernel_syscalls',
@@ -181,14 +196,32 @@ def main():
          'c->state->input_head = (c->head + 1u) % KERNEL_INPUT_CAPACITY;\n    c->state->input_count = c->count - 1u;\n    c->state->input_revision = c->revision + 1u;',
          'c->state->input_head = (c->head + 1u) % KERNEL_INPUT_CAPACITY;\n    c->state->input_count = c->count - 1u;\n    c->state->input_revision = c->revision;'),
         ('epoch_unsealed_allowed', 'kernel_domains',
-         'return kernel.genesis_sealed && kernel.epoch==epoch',
-         'return true && kernel.epoch==epoch'),
+         'return kernel_epoch_log_ready(epoch) && kernel.genesis_sealed && kernel.epoch == epoch',
+         'return true && kernel.epoch == epoch'),
+        ('epoch_backpressure_ignored', 'kernel_epoch_log',
+         'next - flushed > EPOCH_LOG_BATCH_EVENTS',
+         'false'),
+        ('epoch_kick_fabricates_reply', 'kernel_epoch_log',
+         'kernel_task_wake(files);',
+         'if (files) { files->reply_caller = 1; files->reply_task = 0; files->reply_value = ERR_SERVICE_NOT_READY; files->reply_ready = true; }\n    kernel_task_wake(files);'),
+        ('epoch_internal_effects_logged', 'kernel_domains',
+         'if (kernel_epoch_log_internal())\n        return;',
+         'if (false)\n        return;'),
+        ('epoch_drain_scope_missing', 'kernel_epoch_log',
+         '(kernel_epoch_flush_active || kernel_epoch_log_backlogged())',
+         'kernel_epoch_flush_active'),
+        ('epoch_flush_unrestricted', 'kernel_epoch_log',
+         'producer - 1 - flushed >= EPOCH_LOG_BATCH_EVENTS',
+         'producer - 1 - flushed > UINT64_MAX'),
+        ('epoch_abandoned_flush_ignored', 'kernel_epoch_log',
+         'if (owner && owner->task_id == kernel_epoch_flush_task && owner->task_state != TASK_EXITED &&',
+         'if (false && owner && owner->task_id == kernel_epoch_flush_task && owner->task_state != TASK_EXITED &&'),
         ('epoch_not_advanced', 'kernel_domains',
          'kernel.epoch=next;',
          'kernel.epoch=expected;'),
         ('epoch_event_count_not_advanced', 'kernel_domains',
-         'kernel.epoch_event_count=slot+1u;',
-         'kernel.epoch_event_count=slot;'),
+         'kernel.epoch_event_count = next;',
+         'kernel.epoch_event_count = expected;'),
         ('epoch_event_subject_lost', 'kernel_domains',
          'event.epoch=next;',
          'event.epoch=next;event.subject=0;'),

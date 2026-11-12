@@ -148,6 +148,7 @@ void silk_shell_main(void) {
     boot_load_scene_settings();
     sexos_line("[silk-shell.ready]");
     for (;;) {
+        shell_record_spawn_poll();
         workspace_refresh_poll();
         linen_async_poll();
         if (!startup_messages_pending())

@@ -93,7 +93,7 @@ uint64_t diskfs_block_call(uint64_t opcode, uint64_t arg0, uint64_t arg1, uint64
       const char *op = opcode == BLOCK_READ ? "READ" : "WRITE";
       if (diskfs_hot_log()) sexos_line("[sexfiles.diskfs.block.reply] op=%s status=%llu bytes=%llu", op, (unsigned long long) send_res.status, (unsigned long long) arg1);
     }
-    return send_res.status;
+    return send_res.status == SEXOS_ERR_SERVICE_NOT_READY ? BLOCK_ERR_TIMEOUT : send_res.status;
   } while (1) {
     SexosRequest request = (SexosRequest) {
       .id = 0
@@ -114,7 +114,7 @@ request.message = sexos_listen(&sexfiles_state.listener, 0);
         if (diskfs_hot_log()) sexos_line("[sexfiles.diskfs.block.reply] op=%s status=%llu bytes=%llu", op, (unsigned long long) reply_val, (unsigned long long) arg1);
       }
       if (writer_offered && !diskfs_writer_settle(writer_job, writer_home)) sexos_fail();
-      return reply_val;
+      return reply_val == SEXOS_ERR_SERVICE_NOT_READY ? BLOCK_ERR_TIMEOUT : reply_val;
     }
     if (msg.type_id != 0)(void) defer_stash(request);
     sexos_yield();

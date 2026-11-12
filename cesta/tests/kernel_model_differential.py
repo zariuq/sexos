@@ -92,9 +92,10 @@ def main():
     cesta = Path(shutil.which(args.cesta) or args.cesta).resolve()
     lean_root = args.lean_root.resolve()
     work = Path(tempfile.mkdtemp(prefix="kernel-model-", dir=HERE / "build"))
-    modules = ["src/kernel_domains.cesta", "src/kernel_syscalls.cesta", "src/kernel_rpc.cesta"]
+    modules = ["src/kernel_domains.cesta", "src/kernel_syscalls.cesta", "src/kernel_rpc.cesta", "src/program_record_tasks.cesta"]
     source_names = [*modules, "src/kernel_interface.cesta", "interfaces/kernel.data", "interfaces/kernel.export",
                     "interfaces/client.data", "interfaces/client.export", "tests/kernel_model/host.c",
+                    "tests/kernel_memory/worker_stubs.c", "tests/kernel_memory/record_stubs.c",
                     "runtime/kernel/cpu_x86_64.h", "generated/include/sexos_kernel.h",
                     "generated/include/kernel_genesis.h", "generated/include/client_constants.h"]
     inputs = {name: hashlib.sha256((HERE / name).read_bytes()).hexdigest() for name in source_names}
@@ -129,6 +130,7 @@ def main():
         assert len(expected[name].splitlines()) == len(requests)
     include = ["-I", work, "-I", HERE / "generated/include", "-I", HERE / "runtime/kernel"]
     common = ["-std=c11", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
+              "-DSEXOS_WORKER_STUBS_NO_PLATFORM=1",
               "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections", *include]
     host = HERE / "tests/kernel_model/host.c"
     checked = []
@@ -137,7 +139,8 @@ def main():
             binary = work / f"host-{compiler}-{mode}"
             options = (["-O1", "-g", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
                        if mode == "sanitize" else ["-" + mode])
-            run([compiler, *common, *options, host, "-o", binary])
+            run([compiler, *common, *options, host, work / "program_record_tasks.c",
+                 HERE / "tests/kernel_memory/worker_stubs.c", HERE / "tests/kernel_memory/record_stubs.c", "-o", binary])
             assert run([binary, "--bounds"]) == b"kernel boundary controls passed\n"
             for name, _ in cases:
                 actual = run([binary], data=(work / (name + ".input")).read_bytes())
@@ -148,8 +151,8 @@ def main():
                     raise AssertionError((name, compiler, mode, "first differing request", line + 1, work))
             checked.append(f"{compiler}-{mode}")
     mutations = [
-        ("kernel_domains.c", "r->count >= KERNEL_RING_CAPACITY", "r->count >= KERNEL_RING_CAPACITY - 1"),
-        ("kernel_domains.c", "(r->head + r->count) % KERNEL_RING_CAPACITY", "r->head"),
+        ("kernel_domains.c", "c->ring->count >= KERNEL_RING_CAPACITY", "c->ring->count >= KERNEL_RING_CAPACITY - 1"),
+        ("kernel_domains.c", "c->tail = (c->head + c->count) % KERNEL_RING_CAPACITY;", "c->tail = c->head;"),
         ("kernel_domains.c", "(c->head + 1u) % KERNEL_RING_CAPACITY", "(c->head + 2u) % KERNEL_RING_CAPACITY"),
         ("kernel_syscalls.c", "call_entry.arg0 = f->rdx;", "call_entry.arg0 = f->rdx + 1;"),
         ("kernel_syscalls.c", "call_entry.arg1 = f->r10;", "call_entry.arg1 = f->r10 + 1;"),
@@ -174,7 +177,8 @@ def main():
             (mutant / name).write_text(text.replace(old, new) if name == filename else text)
         binary = mutant / "host"
         # The mutant directory must precede the ordinary generated units.
-        run(["gcc", "-I", mutant, *common, "-O2", host, "-o", binary])
+        run(["gcc", "-I", mutant, *common, "-O2", host, work / "program_record_tasks.c",
+             HERE / "tests/kernel_memory/worker_stubs.c", HERE / "tests/kernel_memory/record_stubs.c", "-o", binary])
         for name, _ in cases:
             result = subprocess.run([binary], input=(work / (name + ".input")).read_bytes(),
                                     capture_output=True, timeout=60)

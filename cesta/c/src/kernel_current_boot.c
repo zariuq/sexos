@@ -113,7 +113,27 @@ static bool current_contains(const char *path, const char *name) {
     return !name[0];
 }
 
+static void current_web_regions(void) {
+    size_t index = 0;
+#define WEB_REGION(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,           \
+                   p_activation, p_predecessor, p_logical, p_route)                                 \
+    do {                                                                                            \
+        if (p_logical == CURRENT_PD_spindle || p_logical == CURRENT_PD_kaleidoscope) {               \
+            if (index >= KERNEL_CURRENT_WEB ||                                                      \
+                !boot_region_shared_pair(CURRENT_PD_sexnet, CURRENT_PD_##p_target, 340 + index, 259, \
+                                         0x5100 + (uint32_t)index, 64 * 1024))                       \
+                kernel_halt("web memory genesis failed");                                           \
+            ++index;                                                                                \
+        }                                                                                           \
+    } while (0);
+    SEXOS_CURRENT_APP_ROWS(WEB_REGION)
+#undef WEB_REGION
+    if (index != KERNEL_CURRENT_WEB)
+        kernel_halt("web memory manifest count");
+}
+
 static void current_regions(void) {
+    current_web_regions();
     if (!boot_region_dma(CURRENT_PD_sexusb, 32, 1, 256 * 1024) ||
         !boot_region_dma(CURRENT_PD_sexnet, 32, 2, 256 * 1024) ||
         !boot_region_dma(CURRENT_PD_sexdrive, 32, 3, 512 * 1024) ||
@@ -121,7 +141,8 @@ static void current_regions(void) {
         !boot_region_pair(CURRENT_PD_sexdrive, CURRENT_PD_sexdisplay, 33, 33, 5, 3 * 1024 * 1024,
                           false) ||
         !boot_region_pair(CURRENT_PD_silk_shell, CURRENT_PD_sexdisplay, 96, 96, 9, 4096, false) ||
-        !boot_region_pair(CURRENT_PD_sexdisplay, CURRENT_PD_silk_shell, 97, 97, 10, 4096, false))
+        !boot_region_pair(CURRENT_PD_sexdisplay, CURRENT_PD_silk_shell, 97, 97, 10, 4096, false) ||
+        !kernel_epoch_log_boot())
         kernel_halt("current memory genesis failed");
     size_t document = 0;
 #define DOCUMENT_REGION(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,     \
@@ -138,6 +159,8 @@ static void current_regions(void) {
     } while (0);
     SEXOS_CURRENT_APP_ROWS(DOCUMENT_REGION)
 #undef DOCUMENT_REGION
+    if (!kernel_records_boot())
+        kernel_halt("record memory genesis failed");
 }
 
 static bool decode_bar(uint32_t low, uint32_t high, uint32_t mask_low, uint32_t mask_high,
@@ -265,8 +288,8 @@ void domains_boot_current(void) {
     for (size_t i = 0; i < sizeof current_domains / sizeof *current_domains; ++i)
         if (current_domains[i].active)
             run_push(current_domains[i].id);
-    klog("[boot.current.constructed] domains=%u apps=%u dormant=%u admitted=%u\n",
-         KERNEL_CURRENT_DOMAINS, KERNEL_CURRENT_APPS, KERNEL_CURRENT_DORMANT, kernel.run_count);
+    klog("[boot.current.constructed] domains=%u apps=%u dormant=%u admitted=%zu\n",
+         KERNEL_CURRENT_DOMAINS, KERNEL_CURRENT_APPS, KERNEL_CURRENT_DORMANT, kernel.run_queue.count);
     klog("init: Ready for Scheduler.\n");
 }
 
@@ -418,9 +441,11 @@ void kernel_current_boot_audit(void) {
             ++registered;
     if (!kernel.genesis_sealed || kernel.scheduler_running || kernel.current ||
         registered != KERNEL_CURRENT_DOMAINS || kernel.app_count != KERNEL_CURRENT_APPS ||
-        kernel.run_count != KERNEL_CURRENT_ACTIVE ||
+        kernel.run_queue.count != KERNEL_CURRENT_ACTIVE ||
         kernel.boot_backing_count != KERNEL_CURRENT_BACKINGS)
         kernel_halt("current BOOT counts or fence");
+    if (!kernel_records_boot_audit())
+        kernel_halt("current record BOOT authority");
     for (size_t i = 0; i < sizeof current_domains / sizeof *current_domains; ++i) {
         const CurrentBootDomain *g = &current_domains[i];
         Domain *d = domain_get(g->id);
@@ -531,11 +556,11 @@ void kernel_current_boot_audit(void) {
             if (!paging->leaves[i][page] ||
                 *(volatile uint64_t *)(uintptr_t)paging->leaves[i][page])
                 kernel_halt("paging audit absent leaf");
-    uint32_t before = kernel.run_count;
+    uint32_t before = kernel.run_queue.count;
     for (size_t i = 0; i < sizeof current_domains / sizeof *current_domains; ++i)
         if (!current_domains[i].active)
             run_push(current_domains[i].id);
-    if (kernel.run_count != before || !hidden || !present)
+    if (kernel.run_queue.count != before || !hidden || !present)
         kernel_halt("dormant admission audit");
     Domain *display = domain_get(CURRENT_PD_sexdisplay);
     if (cap_set(display, 1024, (Cap){.kind = CAP_DOMAIN, .target = display->id}))

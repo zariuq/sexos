@@ -1,0 +1,366 @@
+#include "sexos_kernel.h"
+
+ProgramRecords kernel_program_records;
+ProgramRecordMemory kernel_program_record_memory;
+ProgramRecordTask kernel_record_tasks[PROGRAM_RECORD_CAPACITY];
+ProgramRecordTaskStorage kernel_record_task_storage[PROGRAM_RECORD_CAPACITY];
+ProgramRecordTask *kernel_current_record;
+ProgramRecordTask *kernel_outgoing_record;
+static uint64_t records_image_physical;
+static bool records_ready;
+
+static ProgramRecordTask *record_task_at(uint64_t pd) {
+    if (!program_records_is_record(&kernel_program_records, pd)) return NULL;
+    return &kernel_record_tasks[pd - PROGRAM_RECORD_BASE];
+}
+
+static bool record_current_valid(const ProgramRecordTask *task) {
+    return task && task == kernel_current_record && task->pd == kernel.current &&
+           task->phase == PROGRAM_WORKER_ATTACHED && task->owner_core == 0 &&
+           task->id >= PROGRAM_RECORD_TASK_FIRST && !task->exited;
+}
+
+ProgramRecordTaskStorage *kernel_record_storage(ProgramRecordTask *task) {
+    if (!task || task->pd < PROGRAM_RECORD_BASE ||
+        task->pd - PROGRAM_RECORD_BASE >= kernel_program_records.count)
+        return NULL;
+    return &kernel_record_task_storage[task->pd - PROGRAM_RECORD_BASE];
+}
+
+uint64_t kernel_record_image_physical(void) {
+    return records_ready ? records_image_physical : 0;
+}
+
+bool kernel_records_boot(void) {
+    if (!SEXOS_KERNEL_CURRENT_PDX || records_ready || kernel.genesis_sealed) return false;
+    Domain *files = domain_get(CURRENT_PD_sexfiles);
+    Domain *shell = domain_get(CURRENT_PD_silk_shell);
+    if (!files || !shell || cap_get(shell, PROGRAM_RECORD_SLOT_SHELL) ||
+        cap_get(shell, PROGRAM_RECORD_FILES_ROUTE_SLOT) ||
+        cap_get(files, PROGRAM_RECORD_IMAGE_SLOT_FILES))
+        return false;
+    uint64_t image = 0;
+    if (!boot_record_image_region(files->id, &image)) return false;
+    ProgramRecordSizing sizing = program_records_sizing(program_frame_available() * 4096);
+    BootBacking pool = {0};
+    if (!boot_backing_reserve(PROGRAM_RECORD_POOL_REGION_ID, sizing.pool_bytes, &pool) ||
+        program_records_init(&kernel_program_records, sizing.count, pool.physical,
+                             (size_t)(sizing.pool_bytes / 4096)) != PROGRAM_RECORD_OK ||
+        !program_record_memory_init(&kernel_program_record_memory, PROGRAM_RECORD_KEY))
+        return false;
+    program_record_queue_init(&kernel.run_queue);
+    program_record_tasks_init(kernel_record_tasks, kernel_record_task_storage, sizing.count);
+    kernel_current_record = NULL;
+    kernel_outgoing_record = NULL;
+    for (size_t index = 0; index < kernel_program_records.count; ++index)
+        if (!prepare_page_table(program_record_virtual_page(index, 0), PROGRAM_RECORD_KEY))
+            return false;
+    if (!cap_set(shell, PROGRAM_RECORD_SLOT_SHELL, (Cap){.kind = CAP_RECORD_POOL}) ||
+        !cap_set(shell, PROGRAM_RECORD_FILES_ROUTE_SLOT, (Cap){.kind = CAP_DOMAIN, .target = files->id}))
+        return false;
+    records_image_physical = image;
+    records_ready = true;
+    klog("[boot.records] capacity=%zu pool_bytes=%llu image_bytes=%llu key=%u\n",
+         kernel_program_records.count, (unsigned long long)sizing.pool_bytes,
+         (unsigned long long)PROGRAM_RECORD_IMAGE_BYTES, PROGRAM_RECORD_KEY);
+    return true;
+}
+
+bool kernel_records_boot_audit(void) {
+    if (!records_ready || !records_image_physical ||
+        !program_record_memory_audit(&kernel_program_records, &kernel_program_record_memory))
+        return false;
+    const Cap *pool = cap_get(domain_get(CURRENT_PD_silk_shell), PROGRAM_RECORD_SLOT_SHELL);
+    const Cap *route = cap_get(domain_get(CURRENT_PD_silk_shell), PROGRAM_RECORD_FILES_ROUTE_SLOT);
+    const Cap *image = cap_get(domain_get(CURRENT_PD_sexfiles), PROGRAM_RECORD_IMAGE_SLOT_FILES);
+    if (!pool || pool->kind != CAP_RECORD_POOL || !route || route->kind != CAP_DOMAIN ||
+        route->target != CURRENT_PD_sexfiles || !image || image->kind != CAP_REGION)
+        return false;
+    const MemoryRegionGrant *grant = &image->region.grant;
+    if (grant->region_id != PROGRAM_RECORD_IMAGE_REGION_ID ||
+        grant->length != PROGRAM_RECORD_IMAGE_BYTES || grant->rights != 7 || grant->has_dma)
+        return false;
+    uint64_t pte = 0;
+    if (!read_pte(grant->virtual_base, &pte) || (pte & PTE_ADDRESS) != records_image_physical)
+        return false;
+    bool image_backing = false, pool_backing = false;
+    for (uint32_t i = 0; i < kernel.boot_backing_count; ++i) {
+        const BootBacking *backing = &kernel.boot_backings[i];
+        if (backing->region_id == PROGRAM_RECORD_IMAGE_REGION_ID)
+            image_backing = backing->physical == records_image_physical &&
+                            backing->length == PROGRAM_RECORD_IMAGE_BYTES;
+        if (backing->region_id == PROGRAM_RECORD_POOL_REGION_ID)
+            pool_backing = backing->physical == kernel_program_records.physical_base &&
+                           backing->length == kernel_program_records.pool_total * 4096;
+    }
+    for (size_t i = 0; i < kernel_program_records.count; ++i)
+        if (kernel_record_tasks[i].phase != PROGRAM_WORKER_CONSTRUCTED ||
+            kernel_record_tasks[i].owner_core != PROGRAM_RECORD_NO_CORE)
+            return false;
+    return image_backing && pool_backing && !kernel_program_records.live &&
+           kernel_program_records.pool_free == kernel_program_records.pool_total &&
+           !domain_get(PROGRAM_RECORD_BASE) && !kernel_current_record && !kernel_outgoing_record;
+}
+
+bool kernel_record_run_push(uint32_t id) {
+    ProgramRecordTask *task = record_task_at(id);
+    return task && program_record_task_activate(&kernel.run_queue, task);
+}
+
+ProgramRecordTask *kernel_record_dispatch(uintptr_t id) {
+    uintptr_t base = (uintptr_t)kernel_record_tasks;
+    if (id < base || id >= base + sizeof(kernel_record_tasks) ||
+        (id - base) % sizeof(ProgramRecordTask) != 0)
+        return NULL;
+    ProgramRecordTask *task = (ProgramRecordTask *)id;
+    if (record_task_at(task->pd) != task || !program_record_task_begin_dispatch(task, 0))
+        return NULL;
+    ProgramRecord *record = &kernel_program_records.entries[task->pd - PROGRAM_RECORD_BASE];
+    if (record->state != PROGRAM_RECORD_LIVE || record->task != task->id || record->killed) {
+        (void)program_record_task_exit(task);
+        (void)program_record_task_attach(task, 0);
+        return NULL;
+    }
+    return task;
+}
+
+void kernel_record_fpu_save(void) {
+    ProgramRecordTaskStorage *storage = kernel_record_storage(kernel_current_record);
+    if (storage) cpu_fxsave(storage->fpu);
+}
+
+void kernel_record_fpu_restore(void) {
+    ProgramRecordTaskStorage *storage = kernel_record_storage(kernel_current_record);
+    if (storage) cpu_fxrstor(storage->fpu);
+}
+
+TrapFrame *kernel_record_switch(uintptr_t id) {
+    ProgramRecordTask *task = (ProgramRecordTask *)id;
+    if (!task || record_task_at(task->pd) != task || task->id < PROGRAM_RECORD_TASK_FIRST ||
+        task->phase != PROGRAM_WORKER_DISPATCHING || task->owner_core != 0 || task->exited)
+        kernel_halt("record dispatch without selected custody");
+    uint64_t status = program_record_memory_before_dispatch(
+        &kernel_program_records, &kernel_program_record_memory, task->pd, task->id);
+    if (status != PROGRAM_RECORD_OK || !program_record_task_attach(task, 0))
+        kernel_halt("record dispatch without live mappings");
+    kernel.current = task->pd;
+    kernel_current_record = task;
+    tss_set_rsp0(task->kstack_top);
+    kernel_syscall_stack_top = task->kstack_top;
+    cpu_wrmsr(MSR_FS_BASE, task->fs_base);
+    if (kernel.pku) cpu_wrpkru(mask_for_key(PROGRAM_RECORD_KEY));
+    kernel_record_fpu_restore();
+    return kernel_record_storage(task)->frame;
+}
+
+bool kernel_record_outgoing(TrapFrame *frame) {
+    ProgramRecordTask *task = kernel_current_record;
+    if (!task) return false;
+    if (kernel_outgoing_record) kernel_halt("record outgoing departure collision");
+    *kernel_record_storage(task)->frame = *frame;
+    if (program_record_memory_evict(&kernel_program_records, &kernel_program_record_memory) !=
+            PROGRAM_RECORD_OK ||
+        !program_record_task_begin_switch_out(task, 0))
+        kernel_halt("record outgoing custody");
+    kernel_outgoing_record = task;
+    kernel_current_record = NULL;
+    return true;
+}
+
+void kernel_record_stack_departed(void) {
+    ProgramRecordTask *task = kernel_outgoing_record;
+    if (!task) return;
+    bool requeue = !task->exited && (!task->blocked || task->pending);
+    if (!program_record_task_release_after_stack_switch(task, 0))
+        kernel_halt("record stack departure custody");
+    kernel_outgoing_record = NULL;
+    if (requeue && !program_record_task_activate(&kernel.run_queue, task))
+        task->admission_pending = true;
+}
+
+static ProgramRecordReply record_start_operation(Domain *caller, uint64_t len, uint64_t count) {
+    klog("[records.start.enter] bytes=%llu count=%llu\n",
+         (unsigned long long)len, (unsigned long long)count);
+    if (!records_ready || !records_image_physical || !len || len > PROGRAM_RECORD_IMAGE_BYTES)
+        return (ProgramRecordReply){PROGRAM_RECORD_INVALID, 0, kernel_program_records.live};
+    if (!count) {
+        kernel_program_records.stop = false;
+        return (ProgramRecordReply){PROGRAM_RECORD_OK, 0, kernel_program_records.live};
+    }
+    uint8_t order = 0;
+    while ((UINT64_C(4096) << order) < len) ++order;
+    if (order > 15) return (ProgramRecordReply){PROGRAM_RECORD_INVALID, 0, kernel_program_records.live};
+    FrameLeaseResult copy = program_frame_take_transient(caller->id);
+    if (copy.status != FRAME_LEASE_OK)
+        return (ProgramRecordReply){PROGRAM_RECORD_FULL, 0, kernel_program_records.live};
+    kmemcpy(phys_to_virt(copy.value.base), phys_to_virt(records_image_physical), (size_t)len);
+    ProgramImage image = program_image_parse(
+        (cesta_read_bytes){phys_to_virt(copy.value.base), (size_t)len}, PROGRAM_RECORD_WINDOW_BYTES);
+    if (image.error) {
+        klog("[records.rejected] bytes=%llu reason=%u entry=%#llx bias=%#llx\n",
+             (unsigned long long)len, image.error,
+             (unsigned long long)image.entry, (unsigned long long)image.bias);
+        (void)program_frame_release(copy.value);
+        return (ProgramRecordReply){PROGRAM_RECORD_INVALID, 0, kernel_program_records.live};
+    }
+    uint64_t wanted = count < PROGRAM_RECORD_START_BATCH ? count : PROGRAM_RECORD_START_BATCH;
+    uint64_t made = 0, failure = PROGRAM_RECORD_FULL;
+    while (made < wanted) {
+        if (kernel.run_queue.count == PROGRAM_RECORD_QUEUE_CAPACITY) break;
+        ProgramRecordLoad load = program_record_memory_begin(
+            &kernel_program_records, &kernel_program_record_memory, &image);
+        klog("[records.begin.status] status=%llu\n", (unsigned long long)load.status);
+        if (load.status != PROGRAM_RECORD_OK) {
+            failure = load.status;
+            break;
+        }
+        size_t index = load.pd - PROGRAM_RECORD_BASE;
+        ProgramRecordTask *task = &kernel_record_tasks[index];
+        if (!program_record_task_rearm(kernel_record_tasks, kernel_record_task_storage,
+                                       kernel_program_records.count, index, load.task,
+                                       load.entry, load.stack_top)) {
+            (void)program_record_memory_cancel(&kernel_program_records,
+                                               &kernel_program_record_memory, load.pd, load.task);
+            failure = PROGRAM_RECORD_RETRY;
+            break;
+        }
+        if (!program_record_task_activate(&kernel.run_queue, task)) {
+            (void)program_record_task_exit(task);
+            (void)program_record_memory_cancel(&kernel_program_records,
+                                               &kernel_program_record_memory, load.pd, load.task);
+            failure = PROGRAM_RECORD_FULL;
+            break;
+        }
+        ProgramRecordReply committed = program_record_memory_commit(
+            &kernel_program_records, &kernel_program_record_memory, load.pd, load.task);
+        if (committed.status != PROGRAM_RECORD_OK) {
+            (void)program_record_task_exit(task);
+            failure = committed.status;
+            break;
+        }
+        ++made;
+        klog("[record.start] pd=%u task=%u slot=%zu\n", load.pd, load.task, index);
+    }
+    if (!program_frame_release(copy.value))
+        return (ProgramRecordReply){PROGRAM_RECORD_RETRY, made, kernel_program_records.live};
+    if (made) return (ProgramRecordReply){PROGRAM_RECORD_OK, made, kernel_program_records.live};
+    return (ProgramRecordReply){failure, 0, kernel_program_records.live};
+}
+
+static void record_frame_reply(TrapFrame *frame, uint64_t status, uint64_t first, uint64_t second) {
+    frame->rax = status;
+    frame->rsi = first;
+    frame->rdx = second;
+    frame->r10 = 0;
+    frame->r8 = 0;
+}
+
+TrapFrame *kernel_record_pdx_call(TrapFrame *frame) {
+    uint64_t status = ERR_CAP_INVALID;
+    if (record_current_valid(kernel_current_record) && frame->rdi == 0 && frame->rsi == 69) {
+        uint64_t address = frame->rdx, length = frame->r10;
+        if (!length) {
+            status = 0;
+        } else {
+            uint8_t text[4096];
+            if (address && length <= sizeof text &&
+                copy_from_user(text, address, (size_t)length, mask_for_key(PROGRAM_RECORD_KEY))) {
+                kernel_serial_write(text, (size_t)length);
+                status = 0;
+            }
+        }
+    }
+    record_frame_reply(frame, status, 0, 0);
+    return resume_frame(frame);
+}
+
+TrapFrame *kernel_record_syscall(TrapFrame *frame) {
+    if (kernel_current_record) {
+        if (frame->rdi == PROGRAM_RECORD_STOP_REQUESTED) {
+            bool stopped = record_current_valid(kernel_current_record) &&
+                           program_records_stop_requested(&kernel_program_records,
+                                                         kernel_current_record->pd);
+            record_frame_reply(frame, 0, stopped, 0);
+        } else
+            record_frame_reply(frame, PROGRAM_RECORD_INVALID, 0, 0);
+        return resume_frame(frame);
+    }
+    Domain *caller = domain_get(kernel.current);
+    if (!caller) kernel_halt("record syscall without a current domain");
+    if (frame->rdi == PROGRAM_RECORD_STOP_REQUESTED) {
+        record_frame_reply(frame, 0, 0, 0);
+        return resume_frame(frame);
+    }
+    const Cap *held = cap_get(caller, PROGRAM_RECORD_SLOT_SHELL);
+    if (!held || held->kind != CAP_RECORD_POOL) {
+        record_frame_reply(frame, PROGRAM_RECORD_INVALID, 0, 0);
+        return resume_frame(frame);
+    }
+    if (frame->rdi == PROGRAM_RECORD_START) {
+        ProgramRecordReply reply = record_start_operation(caller, frame->rsi, frame->rdx);
+        record_frame_reply(frame, reply.status, reply.first, reply.second);
+        return resume_frame(frame);
+    }
+    if (frame->rdi == PROGRAM_RECORD_STOP) {
+        ProgramRecordReply reply = program_records_stop(&kernel_program_records, frame->rsi != 0);
+        for (size_t i = 0; i < kernel_program_records.count; ++i) {
+            ProgramRecord *record = &kernel_program_records.entries[i];
+            if (record->state == PROGRAM_RECORD_LIVE)
+                (void)program_record_task_wake(&kernel.run_queue, &kernel_record_tasks[i]);
+        }
+        if (frame->rsi)
+            (void)program_record_memory_evict(&kernel_program_records, &kernel_program_record_memory);
+        record_frame_reply(frame, reply.status, reply.first, reply.second);
+        return resume_frame(frame);
+    }
+    if (frame->rdi == PROGRAM_RECORD_CENSUS) {
+        ProgramRecordReply reply = program_records_census(&kernel_program_records);
+        klog("[records.census] live=%zu started=%llu ended=%llu capacity=%zu pool_free=%zu pool_total=%zu switches=%llu\n",
+             kernel_program_records.live, (unsigned long long)kernel_program_records.started,
+             (unsigned long long)kernel_program_records.ended, kernel_program_records.count,
+             kernel_program_records.pool_free, kernel_program_records.pool_total,
+             (unsigned long long)kernel_program_records.switches);
+        record_frame_reply(frame, reply.status, reply.first, reply.second);
+        return resume_frame(frame);
+    }
+    record_frame_reply(frame, PROGRAM_RECORD_INVALID, 0, 0);
+    return resume_frame(frame);
+}
+
+TrapFrame *kernel_record_sleep(TrapFrame *frame) {
+    ProgramRecordTask *task = kernel_current_record;
+    if (!record_current_valid(task) || !frame->rdi || frame->rdi > 64) {
+        record_frame_reply(frame, PROGRAM_RECORD_DENIED, 0, 0);
+        return resume_frame(frame);
+    }
+    uint64_t status = program_record_task_park(task, 0, kernel.ticks, frame->rdi);
+    frame->rax = status == PROGRAM_RECORD_DENIED ? PROGRAM_RECORD_DENIED : 0;
+    frame->rsi = frame->rdx = frame->r10 = frame->r8 = 0;
+    if (status == PROGRAM_RECORD_WAKE_CONSUMED || status == PROGRAM_RECORD_DENIED)
+        return resume_frame(frame);
+    return kernel_worker_schedule(frame, false);
+}
+
+TrapFrame *kernel_record_finish(TrapFrame *frame, bool fault) {
+    ProgramRecordTask *task = kernel_current_record;
+    if (!record_current_valid(task)) {
+        record_frame_reply(frame, PROGRAM_RECORD_DENIED, 0, 0);
+        return resume_frame(frame);
+    }
+    if (fault)
+        klog("[record.fault] pd=%u task=%u vector=%llu rip=%#llx\n", task->pd, task->id,
+             (unsigned long long)frame->vector, (unsigned long long)frame->rip);
+    if (program_records_kill(&kernel_program_records, task->pd, task->id) != PROGRAM_RECORD_OK)
+        kernel_halt("record finish identity");
+    (void)program_record_task_exit(task);
+    record_frame_reply(frame, 0, 0, 0);
+    return kernel_worker_schedule(frame, false);
+}
+
+void kernel_records_poll(void) {
+    if (!records_ready) return;
+    (void)program_record_task_poll(kernel_record_tasks, &kernel.run_queue,
+                                   kernel_program_records.count, kernel.ticks);
+    (void)program_record_memory_reap(&kernel_program_records, &kernel_program_record_memory,
+                                     kernel_record_tasks);
+}

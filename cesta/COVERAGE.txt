@@ -1,0 +1,134 @@
+PINNED SEXOS -> CESTA COVERAGE
+Intake: 2026-11-10
+
+Completion baseline: 8019f72d617927949545bde1fb5fc6fc56acd939.
+OS checkpoint at intake: 24459cba49e39c14e356f2255a2e588defb0ab9c.
+Broad behavioral oracle: b6be1b451a6c21985d00d192674feedf66bb11dd.
+Selected image oracle: 845de95033f6c11e73775633b1d69ad1ae1eb435.
+Frame/lifecycle oracle: interfaces/frame_lease.source.json at the completion baseline.
+
+Fetched upstream tip at intake: fd848532669d74dbac268656452f36b4f0d9559c.
+This is not the completion baseline. Its four later commits add Intel Wi-Fi scan/status
+and Spindle wifi commands; they remain in the delta queue for a closed-milestone review.
+Source inspection is not a Rust-tree merge, and an imported source delta is not a
+qualified Cesta behavior row.
+
+Evidence names
+--------------
+Boot-A: retained GCC/Clang receipts at 24459cba, 17 replacements, 18 readiness
+markers, NVMe/network/USB keyboard, four CPUs with APs parked, and a full 90-second
+post-readiness soak. Packaging an application is not application-specific behavior
+qualification. Boot-A does not establish parity with the completion baseline.
+Boot-B: quick joined-shell readiness receipts at shell-lease-v2, shell-rollback-v1,
+shell-program-memory-v1, shell-workers-v1 and shell-workers-queue-v1, with the same
+17 replacements, 18 markers and device/parked-AP profile. These are
+allocator/loader/worker compatibility checks, not full 90-second soaks or lifecycle
+reuse.
+Boot-C: current-boot-web-v2 passed the four-core pre-entry audit with 38 backings;
+shell-web-kvm-soak-v1 passed 17 replacements and 18 markers in 138.56 seconds,
+including a full 90-second post-readiness KVM soak with NVMe/network/USB keyboard
+and three APs parked. This covers the service arena and twelve web BOOT pairs, not
+provider engine/TLS parity or TCG timing.
+Boot-R: records-boot-gcc-v4 and records-boot-clang-v1 passed 17 replacements and
+18 markers in 135.34 and 134.30 seconds, respectively, with full 90-second KVM
+post-readiness soaks and 40 backings. These images qualify record-pool/image
+construction, Shell's typed grant and absent record tables, not record execution.
+Boot-S: records-scheduler-gcc-v2 and records-scheduler-clang-v1 passed 17
+replacements and 18 markers in 138.81 and 138.65 seconds, respectively, with full
+90-second KVM post-readiness soaks and the same device/parked-AP profile. Direct
+and readable-C kernels were byte-identical. These pre-handoff scheduler regression
+boots do not cover the later shared-handoff policy, Shell/Files record start or guest
+restart evidence.
+Boot-H: records-handoff-gcc-v1 and records-handoff-clang-v1 passed 17 replacements
+and 18 markers in 137.80 and 135.38 seconds, respectively, with full 90-second KVM
+post-readiness soaks and the same device/parked-AP profile. Direct/readable-C kernels
+were byte-identical. These qualify the shared 512-entry admission and eight-handoff
+policy with fair full-queue fallback, not Shell/Files record execution or active SMP.
+Boot-G: record-guest-gcc-final-v2 and record-guest-clang-final-v1 passed 17
+replacements and 19 markers in 141.76 and 145.82 seconds, respectively, with full
+90-second KVM post-readiness soaks, NVMe/network/USB keyboard and three APs parked.
+Each image completed 17 starts and graceful exits with fresh task identities, 34
+alive-cycle markers, a 15-record concurrent batch and first/last reuse of slot one.
+Final switches were 5876 and 5728. Direct/readable-C kernels were byte-identical to
+their packaged kernels. The 8192-entry frame tables cover the measured 4462-entry
+catalog requirement. These qualify real record execution, sleep/wake, multi-tenant
+scheduling and same-slot rearm, not active SMP or whole-OS verification.
+Boot-W: shell-workers-execution-probe-v2, 17 replacements and 19 markers in 146.02
+seconds. Two real worker wait/wake/TLS/exit cycles completed; the second had a fresh
+id and reused slot zero after grace. The joined shell remained ready. The pager-
+integrated kernel repeated these controls at shell-workers-pager-v1 in 162.54 seconds.
+This is actual worker execution and slot-reuse evidence, not a full soak, program-
+memory/restart integration, active SMP or general frame-reclamation proof.
+Fault-W: pager-worker-v7, four main faults and two worker data faults. Each worker
+resumes with its own completion identity, writes, exits and joins main. Both ranges
+close after run-wide retirement; original release/reuse and cleanup checks still pass.
+This is real worker-fault and cleanup evidence, not ordinary-desktop or restart proof.
+Plan-P: actual emitted ownership plans admitted for the named checked units. Native
+hooks, source-to-C refinement and arbitrary C/hardware behavior remain outside it.
+Export-P: readable-C export exists; binary identity is claimed only by the component's
+explicit compiler-route control, not inferred for the whole OS.
+Gap-P: present but partial, historical, selectively reconciled or not joined to the
+required current behavior. A row is closed only when its remaining acceptance is met.
+
+Boot programs
+-------------
+Name           Source/oracle identity        Implementation and native boundary       Plans/laws       Independent controls and export       Image evidence and remaining acceptance
+Kaleidoscope   b6be + 8019 web address pin Executable; renderer/native client joins Plan-P Gap-P     Script/render + web address differential/mutations; Export-P  Boot-A packaged; full page lifecycle, network/TLS and current renderer behavior open
+SilkBar        b6be broad; no complete pin   Executable; server/trap boundary         Plan-P Gap-P     Component differential/mutations; Export-P      Boot-A ready; current status-bar behavior open
+SexInput       b6be broad                   Executable; HID/trap boundary            Plan-P Gap-P     Differential/all variants; Export-P               Boot-A ready; current full HID/helper behavior open
+SexStore       b6be broad                   Executable; storage/trap boundary        Plan-P Gap-P     Durable/differential/mutations; Export-P          Boot-A ready; current ABI/shared-crate review open
+SexDisplay     b6be + selective source       Executable; frames/native client joins  Plan-P Gap-P     Bitmap/component and boot controls; Export-P      Boot-A ready; current scene/frame publication open
+SexBell        b6be broad                   Executable; server/trap boundary         Plan-P Gap-P     Component/boot controls; Export-P                 Boot-A ready; current notification behavior open
+Linen          b6be + capture schema         Executable; RPC/native joins            Plan-P Gap-P     Capture/protocol/mutation controls; Export-P      Boot-A ready; serving-loop capture/restart integration open
+Quil           b6be document pins            Executable; document/RPC/native joins   Plan-P Gap-P     Autosave/document/mutation controls; Export-P     Boot-A packaged; persistence and current lifecycle open
+Spindle        b6be + ebf51 + sexcos calc    Executable; terminal/client joins       Plan-P Gap-P     Calc/current differential/mutations; Export-P     Boot-A packaged; current terminal and later wifi delta open
+PurpleScanout  b6be broad                   Executable; scanout/native boundary      Plan-P Gap-P     Component controls; Export-P                      Boot-A packaged; current scanout behavior open
+SexFiles       b6be document pins            Executable; VFS/DiskFS/native joins     Plan-P Gap-P     Document/journal/disk + durable prefix replay controls; Export-P  Recovery qualified; broader current ABI/service parity open
+SexDrive       b6be + selected regions       Executable; DMA/MMIO/reset native        Plan-P Gap-P     DMA/quarantine + deferred IRQ/timeout/retry controls; Export-P  Paired device boots; wider current device execution open
+SexUSB         b6be broad                   Executable; USB/MMIO native              Plan-P Gap-P     Device controls; Export-P                         Boot-A USB keyboard; wider hardware/current behavior open
+SexNet         b6be network pins             Executable; DMA/network native          Plan-P Gap-P     Packet/job/protocol/mutation controls; Export-P   Boot-A controlled network; current TCP/TLS/trust and later wifi open
+Sext           b6be exact component files    Executable; paging/lifecycle native     Plan-P Gap-P     Rust differential, RAM/CPU, mutations; Export-P   Boot-A ready; 8019 program/worker/general-reclaim integration open
+Silk Shell     b6be + selective current      Joined executable; native peer joins    Plan-P Gap-P     Component and joined models/mutations; Export-P   Boot-A joined shell; complete current UI/clipboard/text/restart open
+
+Sext's four allocator/pager/workspace/main source files are byte-identical at b6be
+and b7cef540; the documentation's b7cef label does not make the other pinned inputs
+identical at that revision or at 8019f72d.
+
+Kernel and shared crates
+------------------------
+Row                    Source/oracle identity       Implementation and native boundary       Evidence                         Remaining acceptance
+x86 kernel             b6be + selected later        Executable; native page tables/CPU/IPC  Boot-A; Plan-P; Export-P          8019 lifecycle/device/service deltas; whole-C/hardware proof not claimed
+Program image          845de exact parser oracle    Checked plan + transient rollback     3,777 parser cases; 81 refusals + 45 rollback failures; eight mutations; decoder proofs  Whole-loader/lifecycle integration and future program rows
+Frame leases           8019 exact lifecycle pin     8192-entry bounded core + run/workspace ownership  826 core cases/route, eight mutations, 13 plans/65 refusals; 13 native mutations; 45 rollback cases; physical cross-run reuse  Expanded-table exact HOL replay, longer stress and complete prefix replay
+PDX sender/reply       b6be + selected current ABI  Kernel transport/native register ABI   Independent transport and Lean trace scopes  Confirm 8019 ABI and all service callers; no legacy identity laundering
+BOOT grants/regions    b6be + selected current      Checked constructors + 12 Spindle/Browser web pairs  Six native routes and 35 mutations, exact slots/IDs/peers/RAM/PTEs  Program-row web regions and remaining 8019 grant/lifecycle deltas
+Pager partitions       b6be pager oracle            Checked bounded pool/native adapters   55,918 steps/compiler; 26 plans/131 refusals; Fault-W run cleanup  General frame leasing must not bypass these exact range obligations
+Program memory/store   8019 exact pin               Syscall81 self-only growth + exact run cleanup  Six admitted functions, seven mutations; original heap base; physical cross-run reuse; 28 retirements/25 launches  Service arenas, pristine restart and longer stress
+Program workers        8019 + b166 safety intent    Checked metadata + native execution  17+8 mutations; full-512 handoff/fairness; 14 plans/62 refusals; disjoint task namespaces and stale-run refusal; Boot-W and Fault-W continuation  Current worker/service changes and longer stress
+Program records        8019 exact pin               Bounded metadata + native loader + 8192-entry BOOT + shared-handoff lifecycle  Six routes: 13+12+14 record mutants; BOOT 52; frame leases 13; workers 17+8; transport 39; paging 32; 3,310 model requests + 13 mutations; Boot-G 17 starts/exits  Longer multi-record stress, broader program catalog and active SMP
+Service restart/memory 8019 exact pin               128 KiB arena + run-owned growth/adoption  Six host routes; five mutations; restart/cold-growth controls; six byte-identical artifacts  Engine/service adoption, pristine restart and cleanup integration
+Web provider ownership 8019 exact web.rs            Growable domain/task/flow and socket tables + resolver custody  Six routes with real heap, both 4096 ceilings, refusal/reuse/retirement; five mutations  Engine close/connect/send/receive, TLS and browser adoption; no open-internet claim
+Document/clipboard     b6be document pins           Cesta components and native joins       Differential/mutation/protocol scopes  Current clipboard and complete service joins
+HTTP/TLS/trust/time    mixed b6be/current source    Bounded HTTP demo; partial sources      Bounded protocol controls only       Real current HTTP/TLS/trust/time behavior; no demonstration-as-parity claim
+UiIR/display frames    selected current source      Partial checked models/native views    Component and boot scopes            Complete committed-epoch visibility and current renderer behavior
+Epoch/history/replay   b6be + selected current      Bounded in-memory suffix + durable session/span replay  Two persistent NVMe boots; generation recovery; 8,790-record replay; corruption/gap refusal  Wider effect/checkpoint interpretation, shutdown and saturation; no whole-OS replay claim
+
+Architecture and tools
+----------------------
+Row                    Evidence now                                                Remaining acceptance
+x86-64                 Boot-A + Boot-B + Boot-C; ordinary C GCC/Clang and sanitizers; full 90-second KVM post-readiness soak  Broader hardware, current 8019 qualification, paired compiler images and longer stress
+SMP                    Four-CPU enrollment with three APs permanently parked       Architectural review before active SMP, shootdowns or concurrent reclaim
+ARM64 phase 2-5        Retained bring-up/MMU/interrupt/scheduling/capability probes; hashes recorded  Requalify current images; full userland and hardware enforcement; recorded S1POE is zero
+ARM64 phase 6+         Present in the 8019 source inventory, not a Cesta coverage row  Inventory and implement required pinned behavior; do not infer it from phase 2-5
+Cesta compiler         e71e80f at intake; compiler lane untouched by this goal       Supply only small OS reproducers if a general feature is missing
+Readable C             Direct/export kernel and pager binaries are byte-identical  Complete remaining cohort and refinement boundary audit
+Lean                   Existing ownership/epoch/frame laws; no placeholders added    Add only directly related proved laws and admit actual emitted plans
+HOL/x86                Exact selected decoder precedent; optional developer gate    Use for critical concrete contracts only; no whole-OS claim
+QEMU/Limine            Device-present x86 fixtures and existing ARM probes         Lifecycle stress must demonstrate actual frame reuse and full required soaks
+
+Next closure rule
+-----------------
+The frame-lifecycle row remains open until the real loader/program/worker/restart
+paths use the leases, unpublished failure paths clean up exact resources, RAM/page-table
+controls prove detachment and zero-on-cross-owner-reuse, and boot lifecycle stress
+reuses frames without violating existing pager/retirement obligations.

@@ -12,8 +12,10 @@ _Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) ==
 #endif
 #include "network_service.h"
 #include "network_service_core.h"
+#include "network_web_open.h"
 #include "sexos_server.h"
 #include "sexos_app_catalog.h"
+#include "kernel_current.h"
 
 enum {
     NETWORK_SERVICE_ENVELOPES = 12
@@ -29,11 +31,12 @@ typedef struct NetworkServiceEnvelope {
 typedef struct NetworkServiceCurrent {
     NetworkDevice device;
     NetworkServiceCore core;
+    NetworkWebOpen open;
     NetworkServiceEnvelope envelopes[NETWORK_SERVICE_ENVELOPES];
     NetConfig config;
     uint64_t now, tx_count, rx_count, tx_done, request_count;
     unsigned last_job_state, last_client_state;
-    bool device_ready, state_seen;
+    bool device_ready, state_seen, prefer_open, open_attached;
 } NetworkServiceCurrent;
 
 static NetworkServiceCurrent current_service;
@@ -144,6 +147,8 @@ static void envelope_retire(NetworkServiceCurrent *service, NetworkJobIdentity o
 
 static void service_retire(NetworkServiceCurrent *service, NetworkJobIdentity owner) {
     (void)network_service_core_retire(&service->core, owner);
+    if (service->open_attached)
+        (void)network_web_open_retire(&service->open, owner);
     envelope_retire(service, owner);
 }
 
@@ -193,6 +198,141 @@ static void service_reply_error(const SexosRequest *request, bool dns, uint32_t 
     uint32_t seq = (uint32_t)(request->message.arg0 & NETWORK_JOB_MAX_SEQ);
     uint64_t word = dns ? network_dns_job_error(seq, code) : network_job_error(seq, code);
     (void)sexos_answer_request(request, word);
+}
+
+static size_t network_web_client_index(uint32_t pd) {
+    size_t index = 0;
+#define NETWORK_WEB_CLIENT(p_target, p_ordinal, p_surface, p_shell_surface, p_lifecycle, p_close,  \
+                           p_activation, p_predecessor, p_logical, p_route)                      \
+    do {                                                                                          \
+        if (p_logical == CURRENT_PD_spindle || p_logical == CURRENT_PD_kaleidoscope) {             \
+            if (pd == CURRENT_PD_##p_target)                                                      \
+                return index;                                                                     \
+            ++index;                                                                              \
+        }                                                                                         \
+    } while (0);
+    SEXOS_CURRENT_APP_ROWS(NETWORK_WEB_CLIENT)
+#undef NETWORK_WEB_CLIENT
+    return NETWORK_WEB_NO_INDEX;
+}
+
+static uint8_t *network_web_region(size_t index) {
+    MemoryRegionReply view = sexos_memory_region_view(340 + index, 0, 64 * 1024,
+                                                      REGION_QUERY | REGION_READ | REGION_WRITE);
+    if (view.status || view.value1 != 64 * 1024 || view.value3 != 0x5100 + index)
+        return NULL;
+    return (uint8_t *)(uintptr_t)view.value0;
+}
+
+static uint64_t network_web_reply(uint32_t seq, uint8_t status, uint32_t value) {
+    return UINT64_C(0xf6) << 56 | ((uint64_t)seq & 0xffffff) << 32 | (uint64_t)status << 24 |
+           (value & 0xffffff);
+}
+
+static uint8_t network_web_error(NetworkEngineError error) {
+    if (error == NETWORK_ENGINE_OK)
+        return 0;
+    if (error == NETWORK_ENGINE_BUSY)
+        return 5;
+    if (error == NETWORK_ENGINE_STOPPED)
+        return 3;
+    return 6;
+}
+
+static void service_dispatch_web(NetworkServiceCurrent *service, SexosRequest request) {
+    uint64_t a = request.message.arg0, value = request.message.arg1;
+    uint32_t seq = (uint32_t)(a & 0xffffff);
+    uint8_t kind = (uint8_t)(a >> 32), number = (uint8_t)(a >> 24);
+    NetworkJobIdentity owner = {request.message.caller_pd, request.message.caller_task};
+    size_t client = network_web_client_index(owner.pd);
+    uint8_t status = 0;
+    uint32_t answer = 0;
+    if (!request.id || client == NETWORK_WEB_NO_INDEX || network_service_owner_state(owner) != 1) {
+        (void)sexos_answer_request(&request, network_web_reply(seq, 2, 0));
+        return;
+    }
+    if (!service->open_attached) {
+        NetworkEngineMac mac = {{0}};
+        for (size_t i = 0; i < 6; ++i)
+            mac.bytes[i] = service->device.mac[i];
+        if (network_web_open_init(&service->open, service->config, mac, 0) != NETWORK_ENGINE_OK) {
+            (void)sexos_answer_request(&request, network_web_reply(seq, 3, 0));
+            return;
+        }
+        service->open_attached = true;
+    }
+    uint8_t *region = network_web_region(client);
+    if (!region)
+        status = 6;
+    else if (number >= NETWORK_WEB_CLIENT_FLOWS)
+        status = 7;
+    else if (service->open.engine.base.stopped)
+        status = 3;
+    else {
+        switch (kind) {
+        case 1:
+            status = service->device_ready && net_config_valid(service->config) ? 0 : 3;
+            break;
+        case 3: {
+            NetworkEngineError error = network_web_open_connect(&service->open, owner, number,
+                (uint32_t)(value >> 16), (uint16_t)value);
+            status = network_web_error(error);
+            break;
+        }
+        case 4:
+            answer = (uint32_t)network_web_open_state(&service->open, owner, number);
+            break;
+        case 5: {
+            size_t take = value < 64 * 1024 ? (size_t)value : 64 * 1024;
+            if (take > NETWORK_TCP_TURN_BYTES)
+                take = NETWORK_TCP_TURN_BYTES;
+            NetworkEnginePayload payload = {.len = take};
+            for (size_t i = 0; i < take; ++i)
+                payload.bytes[i] = region[i];
+            NetworkTcpClientCount sent = network_web_open_send(&service->open, owner, number, &payload);
+            if (!sent.ok)
+                status = 6;
+            else
+                answer = (uint32_t)sent.count;
+            break;
+        }
+        case 6: {
+            size_t room = value < 64 * 1024 ? (size_t)value : 64 * 1024;
+            if (room > NETWORK_TCP_TURN_BYTES)
+                room = NETWORK_TCP_TURN_BYTES;
+            NetworkTcpClientReceive received = network_web_open_receive(&service->open, owner, number, room);
+            if (!received.ok)
+                status = 6;
+            else {
+                for (size_t i = 0; i < received.count; ++i)
+                    region[i] = received.bytes[i];
+                answer = (uint32_t)received.count;
+            }
+            break;
+        }
+        case 7:
+            (void)network_web_open_close(&service->open, owner, number);
+            break;
+        case 19:
+            if (network_web_flow_find(&service->open.owners, owner, number) == NETWORK_WEB_NO_INDEX)
+                status = 6;
+            else
+                network_web_open_shutdown(&service->open, owner, number);
+            break;
+        default:
+            status = 6;
+            break;
+        }
+    }
+    (void)sexos_answer_request(&request, network_web_reply(seq, status, answer));
+}
+
+static NetworkServiceFrameResult service_open_frame(NetworkServiceCurrent *service) {
+    if (!service->open_attached || !network_open_has_frame(&service->open.engine))
+        return (NetworkServiceFrameResult){0};
+    uint32_t ticket = service->open.engine.base.tx_ticket;
+    NetworkEngineFrameResult result = network_web_open_take_frame(&service->open);
+    return (NetworkServiceFrameResult){NETWORK_SERVICE_OPEN_FRAME, result.present, ticket, result.frame};
 }
 
 static void service_dispatch_client(NetworkServiceCurrent *service, SexosRequest request) {
@@ -259,6 +399,10 @@ static void service_dispatch_dns(NetworkServiceCurrent *service, SexosRequest re
 }
 
 static void service_dispatch(NetworkServiceCurrent *service, SexosRequest request) {
+    if (request.message.type_id == UINT64_C(0x211)) {
+        service_dispatch_web(service, request);
+        return;
+    }
     if (request.message.type_id == NETWORK_JOB_OP) {
         service_dispatch_client(service, request);
         return;
@@ -279,13 +423,17 @@ static void service_dispatch(NetworkServiceCurrent *service, SexosRequest reques
 }
 
 static void service_receive_device(NetworkServiceCurrent *service) {
-    if (!network_engine_transport_can_receive(&service->core.transport))
+    if (!network_engine_transport_can_receive(&service->core.transport) ||
+        (service->open_attached && !network_open_can_receive(&service->open.engine)))
         return;
     NetworkFrame input = {0};
     NetworkStep step = network_device_receive(&service->device, &input);
     if (step == NET_FAILED) {
         service->device_ready = false;
         network_engine_transport_stop(&service->core.transport, NETWORK_ENGINE_STOPPED);
+        if (service->open_attached)
+            if (service->open_attached)
+                network_open_stop(&service->open.engine, NETWORK_ENGINE_STOPPED);
         return;
     }
     if (step != NET_READY)
@@ -302,6 +450,8 @@ static void service_receive_device(NetworkServiceCurrent *service) {
             "[network.current.device.rx.tcp] source=%u destination=%u flags=%u sequence=%u acknowledgment=%u expected=%u",
             (unsigned)tcp.source_port, (unsigned)tcp.destination_port, (unsigned)tcp.flags,
             tcp.sequence, tcp.acknowledgment, service->core.transport.client.snd_nxt);
+    if (service->open_attached && network_web_open_submit(&service->open, &frame) != NETWORK_ENGINE_OK)
+        sexos_fail();
     if (network_service_core_submit(&service->core, &frame) != NETWORK_ENGINE_OK)
         sexos_fail();
     service->rx_count++;
@@ -316,6 +466,8 @@ static void service_send_device(NetworkServiceCurrent *service) {
         if (step == NET_FAILED) {
             service->device_ready = false;
             network_engine_transport_stop(&service->core.transport, NETWORK_ENGINE_STOPPED);
+            if (service->open_attached)
+                network_open_stop(&service->open.engine, NETWORK_ENGINE_STOPPED);
         } else if (step == NET_READY) {
             service->tx_done++;
             if (service->tx_done <= 8 || (service->tx_done & (service->tx_done - 1)) == 0)
@@ -330,8 +482,17 @@ static void service_send_device(NetworkServiceCurrent *service) {
         service_retire(service, snapshot.owner);
         snapshot = network_service_core_snapshot(&service->core);
     }
-    NetworkServiceFrameResult frame =
-        network_service_core_take_frame(&service->core, live, snapshot.owner);
+    NetworkServiceFrameResult frame = {0};
+    if (service->prefer_open) {
+        frame = service_open_frame(service);
+        if (!frame.present)
+            frame = network_service_core_take_frame(&service->core, live, snapshot.owner);
+    } else {
+        frame = network_service_core_take_frame(&service->core, live, snapshot.owner);
+        if (!frame.present)
+            frame = service_open_frame(service);
+    }
+    service->prefer_open = !service->prefer_open;
     if (frame.kind == NETWORK_SERVICE_STALE_FRAME)
         sexos_line("[network.current.device.tx.stale] ticket=%u owner=%u task=%u live=%u",
                    frame.ticket, snapshot.owner.pd, snapshot.owner.task, (unsigned)live);
@@ -340,6 +501,8 @@ static void service_send_device(NetworkServiceCurrent *service) {
                                    (cesta_read_bytes){frame.frame.bytes, frame.frame.length})) {
             service->device_ready = false;
             network_engine_transport_stop(&service->core.transport, NETWORK_ENGINE_STOPPED);
+            if (service->open_attached)
+                network_open_stop(&service->open.engine, NETWORK_ENGINE_STOPPED);
             return;
         }
         service->tx_count++;
@@ -381,6 +544,8 @@ void network_service_current_main(void) {
         if (service->device_ready)
             service_receive_device(service);
         network_service_core_advance(&service->core, service->now);
+        if (service->open_attached)
+            network_web_open_advance(&service->open, service->now);
         snapshot = network_service_core_snapshot(&service->core);
         if (!service->state_seen || service->last_job_state != (unsigned)snapshot.jobs.state ||
             service->last_client_state != (unsigned)snapshot.transport.client.state) {

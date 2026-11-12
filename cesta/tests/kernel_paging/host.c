@@ -58,7 +58,7 @@ static void drain(void){while(run_pop()){};}
 static void clear_inbox(Domain *d){RingEntry m;while(domain_dequeue(d,&m)){};d->wake_pending=false;}
 int main(void)
 {
-    enum{BYTES=16*1024*1024};unsigned char *ram=aligned_alloc(4096,BYTES);assert(ram);memset(ram,0xa5,BYTES);
+    enum{BYTES=64*1024*1024};unsigned char *ram=aligned_alloc(4096,BYTES);assert(ram);memset(ram,0xa5,BYTES);
     hhdm_offset=(uint64_t)(uintptr_t)ram;memset(ram+0x1000,0,4096);
     LimineMemmapEntry usable={.base=0x2000,.length=BYTES-0x2000,.type=0};
     LimineMemmapEntry *entries[]={&usable};LimineMemmapResponse memory={.entry_count=1,.entries=entries};memory_init(&memory);
@@ -76,7 +76,33 @@ int main(void)
     for(size_t word=0;word<PG_PAGES*512;++word)assert(((uint64_t *)phys_to_virt(s->physical))[word]==0);
     Cap fake=*cap_get(pager,34);++fake.pool.pool_id;assert(cap_set(pager,80,fake));
     assert(cap_set(bell,36,*cap_get(pager,36)) && cap_set(bell,34,*cap_get(pager,34)));
-    kernel.genesis_sealed=true;kernel.scheduler_running=true;
+    kernel.genesis_sealed=true;
+    bell->task_state=TASK_EXITED;kernel_task_poll();
+    assert(bell->program.phase==PROGRAM_MEMORY_LIVE && bell->program.main_alive && !bell->exit_notice);
+    bell->task_state=TASK_READY;kernel.scheduler_running=true;
+    browser->task_state=TASK_RUNNING;kernel.current=browser->id;
+    ProgramMemoryReply program_reply=kernel_program_memory(browser,0);
+    assert(program_reply.status==PROGRAM_MEMORY_OK && !program_reply.held &&
+           program_reply.base==browser->code_base+browser->program.image_pages*4096 && program_reply.pressure<=2);
+    uint32_t saved_run=browser->program.run;browser->program.run++;
+    program_reply=kernel_program_memory(browser,1);
+    assert(program_reply.status==PROGRAM_MEMORY_DENIED && !program_reply.base && !program_reply.held && !browser->program.grown);
+    browser->program.run=saved_run;
+    program_reply=kernel_program_memory(browser,257);
+    assert(program_reply.status==PROGRAM_MEMORY_INVALID && !program_reply.base && !program_reply.held && !browser->program.grown);
+    program_reply=kernel_program_memory(browser,1);
+    if (program_reply.status != PROGRAM_MEMORY_OK)
+        fprintf(stderr, "grow status=%llu base=%#llx held=%llu pressure=%llu phase=%u main=%u target=%u run=%u task=%u grown=%llu free=%llu\n",
+                (unsigned long long)program_reply.status, (unsigned long long)program_reply.base,
+                (unsigned long long)program_reply.held, (unsigned long long)program_reply.pressure,
+                browser->program.phase, browser->program.main_alive, browser->program.target,
+                browser->program.run, browser->task_id, (unsigned long long)browser->program.grown,
+                (unsigned long long)program_frame_available());
+    assert(program_reply.status==PROGRAM_MEMORY_OK && program_reply.held==1 &&
+           program_reply.base==browser->code_base+browser->program.image_pages*4096);
+    for(size_t i=0;i<64;++i)assert(!frame_byte(program_reply.base)[i]);
+    *frame_byte(program_reply.base)=0x5a;
+    assert(*frame_byte(program_reply.base)==0x5a && user_range_ok(program_reply.base,4096,true,browser->mask));
     assert(!kernel_paging_cleanup_complete(10) && !kernel_paging_cleanup_complete(15) && kernel_paging_cleanup_complete(9));
     TrapFrame f=invoke(pager,59,34,0,0,0,0);assert(f.rax==0 && f.rsi==s->pool.base_va && f.rdx==32768 && f.r10==0 && f.r8==6);
     f=invoke(browser,59,35,0,0,0,0);assert(f.rax==0 && f.rsi==s->mappings[0].base_va && f.r10==15 && f.r8==6);
@@ -102,12 +128,12 @@ int main(void)
            !*(volatile uint64_t *)(uintptr_t)s->leaves[0][0]);
     s->keys[1]=bell_key;
     uint32_t install_events=kernel.epoch_event_count;uint64_t install_epoch=kernel.epoch;
-    kernel.epoch_event_count=KERNEL_EPOCH_EVENT_CAPACITY;
+    kernel.epoch=kernel.epoch_event_count=UINT64_MAX;
     status(invoke(pager,56,36,34,0,token,6),PG_EXHAUSTED);
     assert(browser->fault.phase==PG_PENDING && browser->task_state==TASK_WAIT_FAULT &&
            !s->ledger.entries[0].present && !*(volatile uint64_t *)(uintptr_t)s->leaves[0][0] &&
            host_invalidations==before);
-    kernel.epoch_event_count=install_events;
+    kernel.epoch=install_epoch;kernel.epoch_event_count=install_events;
     effect_phase=1;effect_frame=0;effect_target=browser;
     status(invoke(pager,56,36,34,0,token,6),PG_OK);effect_phase=0;
     assert(host_invalidations==before+1 && browser->task_state==TASK_READY && browser->queued && s->ledger.entries[0].finalized);
@@ -117,15 +143,15 @@ int main(void)
     assert(installed.epoch==install_epoch+1 && installed.kind==KERNEL_EPOCH_PAGE_INSTALL &&
            installed.subject==browser->id && installed.address==page && installed.token==token &&
            installed.revision==token && installed.frame==0 && installed.rights==6 && installed.key==browser->key);
-    uint32_t count=kernel.run_count;run_push(browser->id);assert(kernel.run_count==count);status(invoke(pager,56,36,34,0,token,6),PG_OK);assert(kernel.run_count==count && host_invalidations==before+1);
+    uint32_t count=kernel.run_queue.count;run_push(browser->id);assert(kernel.run_queue.count==count && !browser->admission_pending);status(invoke(pager,56,36,34,0,token,6),PG_OK);assert(kernel.run_queue.count==count && host_invalidations==before+1);
     assert(run_pop()==15);assert(switch_to(15)==browser->frame);
     uint64_t old_leaf=*(volatile uint64_t *)(uintptr_t)s->leaves[0][0];assert(old_leaf==expected_leaf(s->ledger.entries[0].binding));
     *(volatile uint64_t *)(uintptr_t)s->leaves[0][0]|=0x60;
     uint32_t epoch_events=kernel.epoch_event_count;uint64_t epoch=kernel.epoch;
-    kernel.epoch_event_count=KERNEL_EPOCH_EVENT_CAPACITY;
+    kernel.epoch=kernel.epoch_event_count=UINT64_MAX;
     status(invoke(pager,60,36,34,0,token,0),PG_EXHAUSTED);
     assert(*(volatile uint64_t *)(uintptr_t)s->leaves[0][0]==(old_leaf|0x60) && s->ledger.entries[0].present);
-    kernel.epoch_event_count=epoch_events;
+    kernel.epoch=epoch;kernel.epoch_event_count=epoch_events;
     before=host_invalidations;effect_phase=2;status(invoke(pager,60,36,34,0,token,0),PG_OK);effect_phase=0;assert(host_invalidations==before+1);
     assert(!s->ledger.entries[0].present && !*(volatile uint64_t *)(uintptr_t)s->leaves[0][0]);
     assert(kernel.epoch==epoch+1 && kernel.epoch_event_count==epoch_events+1);
@@ -174,11 +200,11 @@ int main(void)
     // Closure must reclaim an unfinished published binding too.
     s->ledger.entries[1].finalized=false;
     epoch=kernel.epoch;epoch_events=kernel.epoch_event_count;
-    kernel.epoch_event_count=KERNEL_EPOCH_EVENT_CAPACITY;
+    kernel.epoch=kernel.epoch_event_count=UINT64_MAX;
     status(invoke(pager,61,37,34,0,0,0),PG_EXHAUSTED);
     assert(!bell->fault.retired && s->ledger.entries[0].present && s->ledger.entries[1].present &&
            *(volatile uint64_t *)(uintptr_t)s->leaves[1][0] && *(volatile uint64_t *)(uintptr_t)s->leaves[1][1]);
-    kernel.epoch_event_count=epoch_events;
+    kernel.epoch=epoch;kernel.epoch_event_count=epoch_events;
     effect_phase=3;effect_target=bell;
     f=invoke(pager,61,37,34,0,0,0);effect_phase=0;assert(!f.rax && f.rsi==3 && f.rdx==bell->task_id && !(f.r10|f.r8));
     assert(host_invalidations==before+2 && bell->fault.retired && s->ledger.closed[1].present &&
@@ -202,13 +228,13 @@ int main(void)
     clear_inbox(browser);clear_inbox(pager);browser->task_state=TASK_RUNNING;kernel.current=15;pager->task_state=TASK_READY;run_push(14);
     TrapFrame *saved=browser->frame;assert(kernel_task_block(browser,saved,0)==pager->frame && browser->task_state==TASK_WAIT_IO);
     assert(domain_enqueue(browser,(RingEntry){.type_id=0x600,.arg0=99}));assert(browser->task_state==TASK_READY && browser->queued);
-    count=kernel.run_count;kernel_task_wake(browser);assert(kernel.run_count==count && browser->ring.count==1);
+    count=kernel.run_queue.count;kernel_task_wake(browser);assert(kernel.run_queue.count==count && browser->ring.count==1);
     assert(run_pop()==15);assert(switch_to(15)==saved);assert(kernel_task_block(browser,saved,0)==saved && browser->ring.count==1);
     clear_inbox(browser);pager->task_state=TASK_READY;run_push(14);kernel.ticks=100;
     assert(kernel_task_block(browser,saved,3)==pager->frame && browser->task_state==TASK_WAIT_IO);
     kernel.ticks=102;kernel_task_poll();assert(browser->task_state==TASK_WAIT_IO);
     kernel.ticks=103;kernel_task_poll();assert(browser->task_state==TASK_READY && browser->wait_deadline==0 && browser->frame->rsi==1);
-    count=kernel.run_count;kernel_task_poll();assert(kernel.run_count==count);drain();
+    count=kernel.run_queue.count;kernel_task_poll();assert(kernel.run_queue.count==count);drain();
     browser->task_state=TASK_RUNNING;kernel.current=15;browser->wake_pending=false;kernel.ticks=UINT64_MAX;
     assert(kernel_task_block(browser,saved,1)==saved && saved->rax==ERR_CAP_INVALID && browser->task_state==TASK_RUNNING);
     puts("native paging/wake controls passed:held grants,zeroing,exact retries,detach-before-reuse,atomic cleanup,frame custody,wake isolation");

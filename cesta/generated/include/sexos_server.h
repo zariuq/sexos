@@ -39,9 +39,26 @@ uint64_t sexos_grant_mem_lend(uint64_t domain_slot, uint64_t length, uint64_t le
 
 uint64_t sexos_map_mem_lend(uint64_t cap_slot);
 
-/*heap_init of sex-rt: reserve the first 64 KiB of heap.*/
+/*Bounded static and current-run arena of sex-rt.*/
+
+typedef struct SexosHeapUsage {
+  size_t used;
+  size_t free;
+  size_t total;
+}
+SexosHeapUsage;
 
 void sexos_heap_init(void);
+
+void *sexos_malloc(size_t size, size_t align);
+
+void sexos_free(void *pointer, size_t size, size_t align);
+
+void *sexos_calloc(size_t count, size_t size, size_t align);
+
+void *sexos_realloc(void *pointer, size_t old_size, size_t new_size, size_t align);
+
+SexosHeapUsage sexos_heap_usage(void);
 
 /*pdx_reply: answer the caller of the message being served.*/
 

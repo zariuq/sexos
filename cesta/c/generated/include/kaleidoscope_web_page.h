@@ -1,0 +1,29 @@
+
+#ifndef KALEIDOSCOPE_WEB_PAGE_H
+#define KALEIDOSCOPE_WEB_PAGE_H
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#define KALEIDOSCOPE_WEB_URL_MAX 1024u
+
+typedef struct {
+    uint8_t bytes[KALEIDOSCOPE_WEB_URL_MAX];
+    size_t len;
+} KaleidoscopeWebUrl;
+
+typedef struct {
+    bool tls;
+    const uint8_t *host;
+    size_t host_len;
+    uint16_t port;
+    const uint8_t *path;
+    size_t path_len;
+} KaleidoscopeWebParts;
+
+bool kaleidoscope_web_parse(const uint8_t *url, size_t len, KaleidoscopeWebParts *out);
+size_t kaleidoscope_web_resolve(const uint8_t *base, size_t base_len,
+                                const uint8_t *target, size_t target_len,
+                                KaleidoscopeWebUrl *out);
+bool kaleidoscope_web_numeric_ipv4(const uint8_t *host, size_t len, uint8_t out[4]);
+int kaleidoscope_web_typed(uint8_t code, bool shift);
+#endif

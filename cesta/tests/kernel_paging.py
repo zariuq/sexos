@@ -20,16 +20,16 @@ def run(argv):
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('--cesta',type=Path,required=True);ap.add_argument('--work',type=Path);ap.add_argument('--mutations',action='store_true');args=ap.parse_args()
     work=args.work or Path(tempfile.mkdtemp(prefix='kernel-paging-',dir=HERE/'build'));work.mkdir(parents=True,exist_ok=True)
-    units=['kernel_domains','kernel_paging','kernel_task_wait','pager_state','kernel_memory','kernel_boot_memory','kernel_apps','app_private','memory_regions']
+    units=['frame_lease','kernel_domains','kernel_paging','kernel_task_wait','pager_state','kernel_memory','kernel_boot_memory','kernel_apps','app_private','memory_regions','program_memory','program_record_tasks']
     for unit in units:(work/(unit+'.c')).write_bytes(run([args.cesta,'export-c','src/'+unit+'.cesta','--std=c11','--','-Igenerated/include','-Iruntime/kernel']))
     (work/'program_image_bytes.c').write_bytes(run([args.cesta,'export-c','src/program_image_bytes.cesta']))
     (work/'program_image.c').write_bytes(run([args.cesta,'export-c','src/program_image.cesta','--','-Igenerated/include']))
-    flags=['-std=c11','-g0','-ffreestanding','-fno-builtin','-ffunction-sections','-fdata-sections','-DSEXOS_KERNEL_CURRENT_PDX=1','-Wall','-Wextra','-Wpedantic','-Werror','-Igenerated/include','-Itests/kernel_paging','-Iruntime/kernel']
+    flags=['-std=c11','-g0','-ffreestanding','-fno-builtin','-ffunction-sections','-fdata-sections','-DSEXOS_KERNEL_CURRENT_PDX=1','-DSEXOS_WORKER_STUBS_NO_PLATFORM=1','-DSEXOS_RECORD_STUBS_NO_KMEMSET=1','-Wall','-Wextra','-Wpedantic','-Werror','-Igenerated/include','-Itests/kernel_paging','-Iruntime/kernel']
     renames=[a for n in ('memcpy','memmove','memset','memcmp') for a in ('--redefine-sym',n+'=sexos_'+n)]
     def compile(cc,extra,name):
         obj=work/(name+'-memory.o');renamed=work/(name+'-renamed.o');binary=work/name
         run([cc,*flags,*extra,'-c',work/'kernel_memory.c','-o',obj]);run(['objcopy',*renames,obj,renamed])
-        run([cc,*flags,*extra,'-I'+str(work),'-Wl,--gc-sections','tests/kernel_paging/host.c',renamed,
+        run([cc,*flags,*extra,'-I'+str(work),'-Wl,--gc-sections','tests/kernel_paging/host.c','tests/kernel_memory/worker_stubs.c','tests/kernel_memory/record_stubs.c',renamed,
             work/'program_image.c',work/'program_image_bytes.c','runtime/kernel/image_failure.c',
             *[work/(u+'.c') for u in units if u not in ('kernel_domains','kernel_paging','kernel_task_wait','kernel_memory')],'-o',binary])
         return binary
@@ -44,7 +44,8 @@ def main():
         ('narrow_selector','kernel_domains','if (!slot || slot >= KERNEL_CAP_SLOTS) return NULL;','slot=(uint32_t)slot; if (!slot || slot >= KERNEL_CAP_SLOTS) return NULL;'),
         ('premature_exit_notice','kernel_task_wait','d->id==kernel.current || ','false || '),
         ('duplicate_exit_notice','kernel_task_wait','d->exit_notice || ','false || '),
-        ('expiry_receipt_lost','kernel_task_wait','d->frame->rsi=1;','d->frame->rsi=0;'),
+        ('poll_before_schedule','kernel_task_wait','!kernel.genesis_sealed || !kernel.scheduler_running','!kernel.genesis_sealed || false'),
+        ('expiry_receipt_lost','kernel_task_wait','d->frame->rsi = program_wait ? 0 : 1;','d->frame->rsi = program_wait ? 0 : 0;'),
         ('skip_zeroing','kernel_paging','if(words[i])error=PG_DENIED;','if(words[i] && false)error=PG_DENIED;'),
         ('retry_rechecks_client_contents','kernel_paging','if(old.present) {','if(old.present && old.finalized) {'),
         ('install_keeps_old_ledger','kernel_paging','c->state->ledger = c->after_ledger;','c->state->ledger = c->before_ledger;'),
@@ -68,7 +69,8 @@ def main():
         ('cleanup_event_wrong_bitmap','kernel_paging','c->target->task_id,c->bitmap,c->key);','c->target->task_id,0,c->key);'),
         ('cleanup_event_wrong_key','kernel_paging','c->target->task_id,c->bitmap,c->key);','c->target->task_id,c->bitmap,c->key+1u);'),
         ('cleanup_attached_stack','kernel_paging','kernel.current==target->id || target->queued','target->queued'),
-        ('skip_fault_retirement','kernel_paging','pager_fault_retire(&c->after_fault,c->target->id,c->pager,c->target->task_id)','false'),
+        ('skip_fault_retirement','kernel_paging','pager_fault_retire_run(&c->after_fault,c->target->id,c->pager)','false'),
+        ('grow_run_identity','kernel_domains','d->program.run != d->task_id','false'),
     ];caught=[]
     if args.mutations:
         for name,unit,before,after in mutations:

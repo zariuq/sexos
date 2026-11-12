@@ -20,6 +20,7 @@ static inline void cpu_invlpg(uint64_t address){host_invalidate(address);}
 static inline void cpu_invlpg(uint64_t address){(void)address;++host_invalidations;}
 #endif
 static inline void cpu_wrpkru(uint32_t mask){(void)mask;abort();}
+static inline void cpu_wrmsr(uint32_t msr,uint64_t value){(void)msr;(void)value;}
 static inline void cpu_sti_hlt(void){abort();}
 static inline void cpu_stac(void){abort();}
 static inline void cpu_clac(void){abort();}

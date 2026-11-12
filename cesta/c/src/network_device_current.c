@@ -236,8 +236,7 @@ bool network_device_open_current(NetworkDevice *d, NetConfig *config) {
     current_write32(d->bar, 0x0400, 2 | 8 | (15u << 4) | (64u << 12));
     current_write32(d->bar, 0x0100, 2 | (1u << 3) | (1u << 4) | (1u << 15) | (1u << 26));
     d->failure = NET_OK;
-    sexos_line(
-        "[network.device.current.ready] rx=8 tx=8 dma_region=2 used=40960 authority=boot_regions");
+    sexos_line("[network.device.current.ready] rx=8 tx=8 dma_region=2 used=40960 authority=boot_regions");
     return true;
 }
 

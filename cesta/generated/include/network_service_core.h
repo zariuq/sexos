@@ -9,7 +9,8 @@ typedef enum NetworkServiceFrameKind {
     NETWORK_SERVICE_SHARED_FRAME = 1,
     NETWORK_SERVICE_CLIENT_FRAME = 2,
     NETWORK_SERVICE_DNS_FRAME = 3,
-    NETWORK_SERVICE_STALE_FRAME = 4
+    NETWORK_SERVICE_STALE_FRAME = 4,
+    NETWORK_SERVICE_OPEN_FRAME = 5
 } NetworkServiceFrameKind;
 
 typedef struct NetworkServiceFrameResult {

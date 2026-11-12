@@ -37,7 +37,7 @@ A joined Cesta Silk Shell executable combines modules for custody, input, surfac
 
 The last broad source-reconciliation baseline is upstream [`b6be1b45`](https://github.com/xirtus/sexos/tree/b6be1b45). Newer upstream work is being incorporated selectively and qualified; fetching a newer revision does not establish port parity. [UPSTREAM.txt](cesta/UPSTREAM.txt) and the component interfaces describe the reference profiles and intentional differences.
 
-The [image loader](cesta/PROGRAM_IMAGE.txt) now validates an executable's load plan before allocating frames or changing mappings. Cesta retains the source buffer through a checked borrowed result; kernel preflight also checks existing mappings and private-image capacity. Allocation failure after admission remains a separate resource-failure boundary.
+The [image loader](cesta/PROGRAM_IMAGE.txt) now validates an executable's load plan before allocating frames or changing mappings. Cesta retains the source buffer through a checked borrowed result; kernel preflight also checks existing mappings and private-image capacity. Post-admission failures roll back unpublished mappings and transient leases before the image is committed to pinned BOOT ownership.
 
 A small checked-Cesta loader decoder now has [exact-byte x86 proofs](cesta/proofs/program_image_u32.ml) for GCC and Clang kernel images. Under stated span and ABI assumptions, they establish its result, call/return behavior and bounded memory accesses. The [optional proof gate](cesta/tests/program_image_hol.py) replays both proofs and rejects a deliberately incorrect load. Both proved kernel files have passed paired boots with the current Cesta userland and device fixtures, including complete post-readiness soaks.
 
@@ -103,7 +103,7 @@ Developer gates live in [cesta/Makefile](cesta/Makefile). `make check` runs the 
 
 The current Cesta multicore profile enrolls and parks application processors; this is not active SMP execution. Metadata rollback is not rollback of published IPC or hardware effects. Full deterministic replay, production isolation and general-purpose desktop readiness are not claimed.
 
-The current kernel retains at most 8,192 epoch events and refuses further epoch transitions at capacity. A retention/checkpoint policy for longer runs remains to be implemented.
+The current kernel retains a bounded suffix of at most 8,192 epoch events plus a checkpoint of the elided boundary. Total epochs and event counts do not wrap; elided or future event reads are refused. Complete replay of the elided prefix remains unimplemented.
 
 ## Repository map
 

@@ -34,6 +34,10 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def probe_record_complete(text):
+    return re.search(r"\[sexdrive\.dma\.probe\.(?:recovered|failed)\][^\n]*\n", text) is not None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference-tree", type=Path, required=True)
@@ -43,6 +47,9 @@ def main():
     parser.add_argument("--nvme-image", type=Path, required=True)
     parser.add_argument("--work", type=Path, required=True)
     parser.add_argument("--seconds", type=int, default=90)
+    parser.add_argument("--build-root", type=Path, default=HERE / "build")
+    parser.add_argument("--accel", choices=("tcg", "kvm"), default="tcg")
+    parser.add_argument("--smp", type=int, default=1)
     args = parser.parse_args()
     work = args.work.resolve()
     work.mkdir(parents=True, exist_ok=False)
@@ -57,7 +64,7 @@ def main():
         "--reference-tree", str(args.reference_tree.resolve()),
     ]
     for path, target in REPLACEMENTS.items():
-        binary = args.probe.resolve() if path == "apps/sexdrive" else (HERE / "build" / target / target).resolve()
+        binary = args.probe.resolve() if path == "apps/sexdrive" else (args.build_root / target / target).resolve()
         if not binary.is_file():
             raise FileNotFoundError(binary)
         command += ["--replace", path + "=" + str(binary)]
@@ -70,8 +77,11 @@ def main():
     socket_path = work / "control.sock"
     run = [
         "bash", str(HERE / "oracle/run.sh"), str(image), str(serial), str(args.seconds),
-        "--fixed-clock", "--qmp-socket", str(socket_path), "--nvme-image", str(disk),
+        "--accel", args.accel, "--smp", str(args.smp),
+        "--qmp-socket", str(socket_path), "--controller", "--nvme-image", str(disk),
     ]
+    if args.accel == "tcg":
+        run.append("--fixed-clock")
     rows = []
     with (work / "qemu.log").open("wb") as stream:
         process = subprocess.Popen(run, cwd=HERE, stdout=stream, stderr=subprocess.STDOUT)
@@ -106,7 +116,7 @@ def main():
                     rows.append({"command": "block_set_io_throttle", "arguments": restore,
                                  "result": qmp.cmd("block_set_io_throttle", restore)})
                     restored = True
-                if "[sexdrive.dma.probe.recovered]" in text or "[sexdrive.dma.probe.failed]" in text:
+                if probe_record_complete(text):
                     break
                 if process.poll() is not None:
                     raise RuntimeError("QEMU stopped before DMA probe result")
@@ -155,8 +165,11 @@ def main():
     recovered_values = [int(value, 0) for value in recovered.groups()]
     recovered_status, recovered_phase, lease_generation, device_generation, recovered_ready, recovered_phys, resets = recovered_values
     attempts = (first, second, third)
-    if 4 not in attempts or retry != 4 or phase != 3 or tag != 0 or ready != 0 or before != after:
+    if (5 not in attempts or any(status not in (0, 5, (1 << 64) - 1) for status in attempts) or
+            retry != 5 or phase != 3 or tag != 0 or ready != 0 or before != after):
         raise AssertionError(values)
+    if "[sexdrive.dma.reset.deferred] reason=interrupt_receipt" not in text[:fault.start()]:
+        raise AssertionError("reset begin did not defer for the authentic queued interrupt")
     if text.count("[sexdrive.dma.quarantine] ready=0 reason=unresolved_submission") != 1:
         raise AssertionError("missing or repeated quarantine event")
     quarantine_at = text.find("[sexdrive.dma.quarantine] ready=0 reason=unresolved_submission")
@@ -171,26 +184,30 @@ def main():
         raise AssertionError(recovered_values)
     reset_events = [tuple(int(value, 0) for value in row) for row in re.findall(
         r"\[device\.reset\.epoch\] pd=(\d+) action=(\d+) generation=(\d+) phase=(\d+) "
-        r"vector=(\d+) interrupt_revision=(\d+) cc=(0x[0-9a-f]+) csts=(0x[0-9a-f]+) epoch=(\d+)", text)]
+        r"vector=(\d+) interrupt_revision=(\d+) cc=(0x[0-9a-f]+) csts=(0x[0-9a-f]+) epoch=(\d+) "
+        r"internal=([01]) recorded=([01])", text)]
     transitions = [event for event in reset_events if event[1] in (1, 2, 3)]
     acknowledgments = [event for event in reset_events if event[1] == 4]
     if len(transitions) != 3 or not acknowledgments:
         raise AssertionError(reset_events)
-    for event, expected_action, expected_generation, expected_phase, ready in zip(
+    for event, expected_action, expected_generation, expected_phase, expected_ready in zip(
             transitions, (1, 2, 3), (1, 1, 2), (1, 2, 0), (1, 0, 1)):
-        pd, action, generation, event_phase, vector, interrupt, cc, csts, epoch = event
+        pd, action, generation, event_phase, vector, interrupt, cc, csts, epoch = event[:9]
         if (pd, action, generation, event_phase, vector, cc & 1, csts & 1) != (
-                2, expected_action, expected_generation, expected_phase, 0x22, ready, ready):
+                2, expected_action, expected_generation, expected_phase, 0x22, expected_ready, expected_ready):
             raise AssertionError(event)
     transition_revision = transitions[0][5]
-    pre_acknowledgments = [event for event in acknowledgments if event[8] < transitions[0][8]]
+    begin_index = next(index for index, event in enumerate(reset_events) if event[1] == 1)
+    pre_acknowledgments = [event for event in reset_events[:begin_index] if event[1] == 4]
     ack_revisions = [event[5] for event in acknowledgments]
     if (not pre_acknowledgments or pre_acknowledgments[-1][5] != transition_revision or
             len({event[5] for event in transitions}) != 1 or
             ack_revisions != list(range(1, len(ack_revisions) + 1)) or
             any(event[0] != 2 or event[4] != 0x22 or event[3] != 0
                 for event in acknowledgments) or
-            any(left[8] >= right[8] for left, right in zip(reset_events, reset_events[1:]))):
+            any(internal == recorded for *_, internal, recorded in reset_events) or
+            any(left[8] > right[8] or (right[10] and left[8] == right[8])
+                for left, right in zip(reset_events, reset_events[1:]))):
         raise AssertionError(reset_events)
     throttle_rows = [row for row in rows if row["command"] == "block_set_io_throttle"]
     if [row["arguments"]["bps_rd"] for row in throttle_rows] != [1, 0]:
@@ -200,6 +217,7 @@ def main():
                    "image": digest(image), "nvme": digest(disk)},
         "attempt_statuses": attempts,
         "post_quarantine_retry": retry,
+        "interrupted_begin_deferred": True,
         "quarantined": {"lease_phase": phase, "lease_tag": tag, "queue_ready": ready},
         "retry_cid_unchanged": before == after,
         "read_buffer": hex(read_phys),

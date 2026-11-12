@@ -1,0 +1,259 @@
+#ifndef CESTA_OWNERSHIP_ABI_PROFILE
+#define CESTA_OWNERSHIP_ABI_PROFILE 1
+#if defined(__aarch64__) && defined(__ARM_PCS_AAPCS64)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8 && __SIZEOF_LONG_DOUBLE__ == 16 && __LDBL_MANT_DIG__ == 113 && (char)-1 > 0, "ownership ABI profile requires AArch64 AAPCS64");
+#else
+#if defined(__SIZEOF_POINTER__) && defined(__SIZEOF_LONG__)
+_Static_assert(__SIZEOF_POINTER__ == 8 && __SIZEOF_LONG__ == 8, "ownership ABI profile requires x86_64 SysV");
+#endif
+_Static_assert((char)-1 < 0, "ownership ABI profile requires signed x86 plain char");
+#endif
+_Static_assert((unsigned char)256 == 0 && sizeof(void *) == 8 && sizeof(long) == 8 && sizeof(int) == 4 && sizeof(short) == 2 && sizeof(long long) == 8 && sizeof(float) == 4 && sizeof(double) == 8 && sizeof(long double) == 16 && sizeof(enum { __cesta_ownership_abi_enum = 1 }) == 4 && _Alignof(void *) == 8 && _Alignof(long) == 8 && _Alignof(long double) == 16 && sizeof(struct { char a; long b; }) == 16 && sizeof(struct { char a; long double b; }) == 32, "ownership ABI profile requires a supported LP64 target");
+#endif
+#include "sexos_kernel.h"
+#include "program_workers.h"
+
+void program_workers_init(ProgramWorkers *table) {
+    for (size_t i = 0; i < PROGRAM_WORKER_MAX; ++i)
+        table->entries[i] = (ProgramWorker){0};
+    table->count = 0;
+    table->next_id = PROGRAM_WORKER_TASK_FIRST;
+}
+
+static void program_worker_rearm(ProgramWorker *worker, struct ProgramWorkerStorage *storage,
+                                 uint32_t id, uint32_t target, uint32_t run,
+                                 uint64_t entry, uint64_t stack, uint64_t arg, uint32_t home) {
+    memset(storage->stack, 0, PROGRAM_WORKER_STACK_BYTES);
+    storage->frame = (TrapFrame *)(storage->stack + PROGRAM_WORKER_STACK_BYTES - sizeof(TrapFrame));
+    memset(storage->frame, 0, sizeof(TrapFrame));
+    cpu_fpu_state_init(storage->fpu);
+    worker->kstack_top = (uint64_t)(uintptr_t)(storage->stack + PROGRAM_WORKER_STACK_BYTES);
+    storage->frame->rip = entry;
+    storage->frame->cs = 0x2b;
+    storage->frame->rflags = 0x202;
+    storage->frame->rsp = ((stack - 8) & ~UINT64_C(0xF)) + 8;
+    storage->frame->ss = 0x23;
+    storage->frame->rdi = arg;
+    worker->id = id;
+    worker->target = target;
+    worker->run = run;
+    worker->home = home;
+    worker->owner_core = PROGRAM_WORKER_NO_CORE;
+    worker->phase = PROGRAM_WORKER_DETACHED;
+    worker->dead_since = 0;
+    worker->wait_deadline = 0;
+    worker->wait_address = 0;
+    worker->fs_base = 0;
+    worker->present = true;
+    worker->pending = false;
+    worker->admission_pending = false;
+    worker->blocked = false;
+    worker->fault_blocked = false;
+    worker->exited = false;
+    worker->memory_accounted = false;
+    worker->memory_released = false;
+}
+
+ProgramWorkerResult program_worker_spawn(ProgramWorkers *table, struct ProgramWorkerStorage *storage,
+                                         uint32_t target, uint32_t run, uint64_t entry,
+                                         uint64_t stack, uint64_t arg, uint32_t home, uint64_t now) {
+    ProgramWorkerResult result = {0};
+    if (!target || !run || !entry || stack < 16 || home >= PROGRAM_WORKER_MAX_CORES) {
+        result.status = PROGRAM_WORKER_INVALID;
+        return result;
+    }
+    if (table->next_id < PROGRAM_WORKER_TASK_FIRST ||
+        table->next_id >= PROGRAM_WORKER_TASK_END) {
+        result.status = PROGRAM_WORKER_FULL;
+        return result;
+    }
+    for (size_t i = 0; i < table->count; ++i) {
+        ProgramWorker *worker = &table->entries[i];
+        if (!result.value && worker->phase == PROGRAM_WORKER_DEAD &&
+            worker->owner_core == PROGRAM_WORKER_NO_CORE && worker->dead_since &&
+            now >= worker->dead_since && now - worker->dead_since >= PROGRAM_WORKER_REUSE_TICKS) {
+            worker->slot = i;
+            program_worker_rearm(worker, &storage[i], table->next_id, target, run, entry, stack, arg, home);
+            result.value = worker;
+        }
+    }
+    if (!result.value) {
+        if (table->count == PROGRAM_WORKER_MAX) {
+            result.status = PROGRAM_WORKER_FULL;
+            return result;
+        }
+        size_t slot = table->count++;
+        result.value = &table->entries[slot];
+        result.value->slot = slot;
+        program_worker_rearm(result.value, &storage[slot], table->next_id, target, run, entry, stack, arg, home);
+    }
+    ++table->next_id;
+    result.status = PROGRAM_WORKER_OK;
+    return result;
+}
+
+bool program_worker_admit(ProgramWorker *worker) {
+    if (worker->phase != PROGRAM_WORKER_DETACHED || worker->exited) return false;
+    worker->phase = PROGRAM_WORKER_QUEUED;
+    return true;
+}
+
+void program_worker_queue_init(ProgramRecordQueue *ring) {
+    program_record_queue_init(ring);
+}
+
+bool program_worker_admit_queue(ProgramRecordQueue *ring, ProgramWorker *worker) {
+    if (worker->phase != PROGRAM_WORKER_DETACHED || worker->exited || worker->fault_blocked)
+        return false;
+    if (!program_record_queue_admit(ring, (uintptr_t)worker)) return false;
+    worker->admission_pending = false;
+    worker->phase = PROGRAM_WORKER_QUEUED;
+    return true;
+}
+
+ProgramWorker *program_worker_dispatch_next(ProgramRecordQueue *ring, uint32_t core) {
+    if (core >= PROGRAM_WORKER_MAX_CORES) return NULL;
+    ProgramWorker *worker = (ProgramWorker *)program_record_queue_select(ring);
+    return worker && program_worker_begin_dispatch(worker, core) ? worker : NULL;
+}
+
+bool program_worker_begin_dispatch(ProgramWorker *worker, uint32_t core) {
+    if (core >= PROGRAM_WORKER_MAX_CORES || worker->phase != PROGRAM_WORKER_QUEUED)
+        return false;
+    if (worker->exited) {
+        worker->phase = PROGRAM_WORKER_DEAD;
+        worker->owner_core = PROGRAM_WORKER_NO_CORE;
+        return false;
+    }
+    worker->phase = PROGRAM_WORKER_DISPATCHING;
+    worker->owner_core = core;
+    worker->blocked = false;
+    return true;
+}
+
+bool program_worker_attach(ProgramWorker *worker, uint32_t core) {
+    if (worker->phase != PROGRAM_WORKER_DISPATCHING || worker->owner_core != core)
+        return false;
+    if (worker->exited) {
+        worker->phase = PROGRAM_WORKER_DEAD;
+        worker->owner_core = PROGRAM_WORKER_NO_CORE;
+        return false;
+    }
+    worker->phase = PROGRAM_WORKER_ATTACHED;
+    return true;
+}
+
+bool program_worker_begin_switch_out(ProgramWorker *worker, uint32_t core) {
+    if (worker->phase != PROGRAM_WORKER_ATTACHED || worker->owner_core != core)
+        return false;
+    worker->phase = PROGRAM_WORKER_SWITCHING_OUT;
+    return true;
+}
+
+bool program_worker_release_after_stack_switch(ProgramWorker *worker, uint32_t core) {
+    if (worker->phase != PROGRAM_WORKER_SWITCHING_OUT || worker->owner_core != core)
+        return false;
+    worker->phase = worker->exited ? PROGRAM_WORKER_DEAD : PROGRAM_WORKER_DETACHED;
+    worker->owner_core = PROGRAM_WORKER_NO_CORE;
+    return true;
+}
+
+bool program_worker_exit(ProgramWorker *worker) {
+    if (worker->exited) return false;
+    worker->exited = true;
+    worker->pending = false;
+    worker->admission_pending = false;
+    worker->blocked = false;
+    worker->fault_blocked = false;
+    worker->wait_deadline = 0;
+    worker->wait_address = 0;
+    if (worker->phase == PROGRAM_WORKER_CONSTRUCTED || worker->phase == PROGRAM_WORKER_DETACHED) {
+        worker->phase = PROGRAM_WORKER_DEAD;
+        worker->owner_core = PROGRAM_WORKER_NO_CORE;
+    }
+    return true;
+}
+
+uint64_t program_worker_wake(ProgramWorker *worker) {
+    if (worker->exited || worker->phase == PROGRAM_WORKER_DEAD) return PROGRAM_WORKER_EXITED;
+    worker->pending = true;
+    if (worker->fault_blocked) return PROGRAM_WORKER_RECORDED;
+    if (worker->phase == PROGRAM_WORKER_DETACHED) return PROGRAM_WORKER_NEEDS_ADMISSION;
+    return PROGRAM_WORKER_RECORDED;
+}
+
+uint64_t program_worker_wake_queue(ProgramRecordQueue *ring, ProgramWorker *worker) {
+    uint64_t status = program_worker_wake(worker);
+    if (status != PROGRAM_WORKER_NEEDS_ADMISSION) return status;
+    if (program_worker_admit_queue(ring, worker)) return status;
+    worker->admission_pending = true;
+    return PROGRAM_WORKER_RETRY;
+}
+
+uint64_t program_worker_park(ProgramWorker *worker, uint32_t core) {
+    if (worker->exited) return PROGRAM_WORKER_EXITED;
+    if (worker->phase != PROGRAM_WORKER_ATTACHED || worker->owner_core != core)
+        return PROGRAM_WORKER_DENIED;
+    if (worker->pending) {
+        worker->pending = false;
+        worker->blocked = false;
+        return PROGRAM_WORKER_WAKE_CONSUMED;
+    }
+    worker->blocked = true;
+    return PROGRAM_WORKER_BLOCKED;
+}
+
+void program_worker_poll(ProgramWorkers *table, uint64_t now) {
+    for (size_t i = 0; i < table->count; ++i) {
+        ProgramWorker *worker = &table->entries[i];
+        if (worker->phase == PROGRAM_WORKER_DEAD && worker->owner_core == PROGRAM_WORKER_NO_CORE &&
+            !worker->dead_since)
+            worker->dead_since = now ? now : 1;
+        if (worker->wait_deadline && now >= worker->wait_deadline) {
+            worker->wait_deadline = 0;
+            worker->wait_address = 0;
+            worker->pending = true;
+        }
+    }
+}
+
+bool program_worker_poll_queue(ProgramWorkers *table, ProgramRecordQueue *ring, uint64_t now) {
+    program_worker_poll(table, now);
+    for (size_t i = 0; i < table->count; ++i) {
+        ProgramWorker *worker = &table->entries[i];
+        if ((worker->pending || worker->admission_pending) &&
+            worker->phase == PROGRAM_WORKER_DETACHED && !worker->exited && !worker->fault_blocked &&
+            !program_worker_admit_queue(ring, worker)) {
+            worker->admission_pending = true;
+            return false;
+        }
+    }
+    return true;
+}
+
+void program_worker_end(ProgramWorkers *table, uint32_t target) {
+    for (size_t i = 0; i < table->count; ++i) {
+        ProgramWorker *worker = &table->entries[i];
+        if (worker->target == target) (void)program_worker_exit(worker);
+    }
+}
+
+bool program_worker_all_dead(const ProgramWorkers *table, uint32_t target) {
+    for (size_t i = 0; i < table->count; ++i) {
+        const ProgramWorker *worker = &table->entries[i];
+        if (worker->target == target &&
+            (worker->phase != PROGRAM_WORKER_DEAD || worker->owner_core != PROGRAM_WORKER_NO_CORE))
+            return false;
+    }
+    return true;
+}
+
+ProgramWorker *program_worker_find(ProgramWorkers *table, uint32_t id) {
+    for (size_t i = 0; i < table->count; ++i)
+        if (table->entries[i].id == id) return &table->entries[i];
+    return NULL;
+}
+
+bool program_worker_dead(const ProgramWorker *worker) {
+    return worker->phase == PROGRAM_WORKER_DEAD && worker->owner_core == PROGRAM_WORKER_NO_CORE;
+}

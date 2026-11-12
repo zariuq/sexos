@@ -108,16 +108,18 @@ void kernel_device_reset_syscall(Domain *d, TrapFrame *f) {
         kernel.vector_ack_revision[KERNEL_NVME_VECTOR] = receipt.acknowledged_revision;
     uint64_t event_revision = action == DEVICE_RESET_ACK_INTERRUPT ? receipt.acknowledged_revision
                                                                    : receipt.interrupt_revision;
+    bool history_internal = kernel_epoch_log_internal();
     if (receipt.status == DEVICE_RESET_OK && action != DEVICE_RESET_QUERY)
         kernel_epoch_record_device_reset(epoch, d->id, slot, device, identity, KERNEL_NVME_VECTOR,
                                          (uint8_t)action, receipt.generation, event_revision, cc,
                                          csts);
     if (receipt.status == DEVICE_RESET_OK && action != DEVICE_RESET_QUERY)
         klog(
-            "[device.reset.epoch] pd=%u action=%llu generation=%llu phase=%u vector=%u interrupt_revision=%llu cc=%#x csts=%#x epoch=%llu\n",
+            "[device.reset.epoch] pd=%u action=%llu generation=%llu phase=%u vector=%u interrupt_revision=%llu cc=%#x csts=%#x epoch=%llu internal=%u recorded=%u\n",
             d->id, (unsigned long long)action, (unsigned long long)receipt.generation,
             (unsigned)receipt.phase, KERNEL_NVME_VECTOR, (unsigned long long)event_revision,
-            (unsigned)cc, (unsigned)csts, (unsigned long long)kernel.epoch);
+            (unsigned)cc, (unsigned)csts, (unsigned long long)kernel.epoch,
+            (unsigned)history_internal, (unsigned)(kernel.epoch != epoch));
     if (receipt.status == DEVICE_RESET_OK && action == DEVICE_RESET_QUERY)
         klog(
             "[device.reset.query] pd=%u generation=%llu phase=%u vector=%u interrupt_revision=%llu acknowledged_revision=%llu\n",

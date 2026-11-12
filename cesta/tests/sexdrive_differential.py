@@ -106,6 +106,7 @@ static uint32_t cfg_admin_cqe_delay = 0;
 static uint32_t cfg_io_cqe_delay = 0;
 static bool cfg_memlend_fail_once = false;
 static bool cfg_io_status_fail_once = false;
+static bool cfg_writer_job_zero = false;
 
 static uint64_t mmio_order = 0;
 static uint64_t dma_reads = 0;
@@ -728,6 +729,10 @@ RegionWriterReceipt sexos_region_writer_query(uint64_t slot)
 RegionWriterReceipt sexos_region_writer_change(uint64_t slot,RegionWriterAction action,
                                                 uint64_t expected,uint64_t job)
 {
+    if (cfg_writer_job_zero) {
+        printf("WRITER_JOB_ZERO_TRANSITION|action=%u\n", (unsigned)action);
+        exit(1);
+    }
     if (slot != SLOT_BUF_LEND || expected != writer_state.revision || !job)
         return (RegionWriterReceipt){.status=REGION_WRITER_STALE,.revision=writer_state.revision,
             .current=writer_state.current,.job=writer_state.job,.peer=writer_state.peer};
@@ -809,13 +814,14 @@ SexosMessage sexos_listen_once(uint64_t slot)
                (unsigned long long)spin_hints,
                (unsigned)shared_fb[0],
                (unsigned long long)dma_fnv);
-        exit(0);
+        exit(cfg_writer_job_zero ? 1 : 0);
     }
     ScriptMsg *m = &msg_queue[msg_index++];
     if ((m->type_id == BLOCK_READ || m->type_id == BLOCK_WRITE) && m->arg2 == SLOT_BUF_LEND) {
         writer_state.home=m->caller_pd;writer_state.current=m->caller_pd;
         writer_state.peer=2;writer_state.job=m->type_id==BLOCK_READ?msg_index:0;
         writer_state.revision=msg_index*4+1;
+        if (cfg_writer_job_zero) writer_state.job=0;
     }
     if (m->fill_lend) {
         for (size_t i = 0; i < 512; ++i) {
@@ -833,6 +839,10 @@ SexosMessage sexos_listen_once(uint64_t slot)
 uint64_t sexos_reply(uint32_t target_pd, uint64_t value)
 {
     printf("REPLY|target=%u|val=%#llx\n", (unsigned)target_pd, (unsigned long long)value);
+    if (cfg_writer_job_zero) {
+        printf("WRITER_JOB_ZERO_RETRY|value=%#llx\n", (unsigned long long)value);
+        exit(value == 5 ? 0 : 1);
+    }
     if (msg_index > 0 && msg_queue[msg_index - 1].type_id == BLOCK_READ &&
         msg_queue[msg_index - 1].arg2 == SLOT_BUF_LEND && value == 0) {
         uint64_t w0 = read_le64_raw(lend_buf);
@@ -853,7 +863,7 @@ void sexos_yield(void)
                (unsigned long long)spin_hints,
                (unsigned)shared_fb[0],
                (unsigned long long)dma_fnv);
-        exit(0);
+        exit(cfg_writer_job_zero ? 1 : 0);
     }
 }
 
@@ -1023,7 +1033,13 @@ static void setup_case(int c)
 int main(int argc, char **argv)
 {
     int c = argc > 1 ? atoi(argv[1]) : 0;
-    setup_case(c);
+    if (c == 1000000) {
+        setup_case(0);
+        msg_count = 1;
+        cfg_writer_job_zero = true;
+    } else {
+        setup_case(c);
+    }
     sexdrive_main();
     return 0;
 }
@@ -1350,6 +1366,16 @@ def build_hosted_rust_source():
         count=1,
         flags=re.DOTALL,
     )
+    write_range = "let nlb = 0u32;\n    let max_lba = WRITE_PROOF_LBA;\n    let last_lba = slba;"
+    if src.count(write_range) != 1:
+        raise AssertionError("current journal write-range reference anchor missing")
+    src = src.replace(write_range, "let nlb = 0u32;\n    let max_lba = 4096 + 16384 + 2 - 1;\n    let last_lba = slba;", 1)
+    read_span = "if size != 512 {"
+    if src.count(read_span) != 1:
+        raise AssertionError("current journal read-span reference anchor missing")
+    src = src.replace(read_span, "if size == 0 || size % 512 != 0 {", 1)
+    src = src.replace("reason=bad_len_phase_b size={} expect=512",
+                      "reason=bad_len_phase_b size={} expect=sector_span", 1)
     src = src.replace("core::ptr::read_volatile(", "hosted_read_volatile(")
     src = src.replace("core::ptr::write_volatile(", "hosted_write_volatile(")
     src = src.replace("compiler_fence(Ordering::SeqCst)", "unsafe { sexos_compiler_fence_seq_cst() }")
@@ -1467,6 +1493,11 @@ def main():
                         sys.stderr.write(f"Length diff: rust={len(r_lines)} cesta={len(g_lines)}\n")
                     raise AssertionError(f"trace mismatch in variant={vname} case={c}")
                 total_lines += len(r_out.splitlines())
+
+        for name in ("gcc_auth_default", "clang_exp_default"):
+            output = run_cmd([str(tmpdir / name), "1000000"]).stdout
+            if "WRITER_JOB_ZERO_RETRY|value=0x5" not in output:
+                raise AssertionError(f"zero-job writer retry control failed for {name}")
 
         # Run 15 protocol & register mutations against default reference trace
         ref_bin = tmpdir / "rust_default"

@@ -79,9 +79,108 @@ static bool core_document_sender(SilkShellState *state, const SexosMessage *mess
     return false;
 }
 
+#define PROGRAM_STORE_FILES_SLOT 256u
+#define PROGRAM_STORE_OP 0x4Eu
+#define PROGRAM_SPAWN_OP 0x50u
+#define PROGRAM_RECORDS_STOP_OP 0x51u
+#define PROGRAM_RECORDS_CENSUS_OP 0x52u
+#define PROGRAM_REFUSED_OP 0x53u
+#define PROGRAM_REPLY_TAG UINT64_C(0x50)
+
+static bool program_reading, program_result_reply;
+static uint64_t record_spawn_left, record_spawn_wanted, record_spawn_len, program_result_value;
+
+static bool record_spindle_caller(uint32_t pd) {
+    for (size_t i = 0; i < SHELL_APP_COUNT; ++i) {
+        ShellAppCatalogRow row = shell_custody_catalog_at(i);
+        if (row.present && row.target == pd) return row.app == SHELL_APP_SPINDLE;
+    }
+    return false;
+}
+
+static void program_refused(uint32_t code) {
+    (void)sexos_pdx_call(SLOT_SPINDLE, PROGRAM_REFUSED_OP, code, 0, 0);
+}
+
+void shell_record_spawn_poll(void) {
+    if (!record_spawn_left) return;
+    sexos_line("[shell.records.poll] left=%llu len=%llu",
+               (unsigned long long)record_spawn_left, (unsigned long long)record_spawn_len);
+    SexosRecordReply reply = sexos_record_call(0, record_spawn_len, record_spawn_left);
+    if (reply.status || !reply.first) {
+        sexos_line("[shell.records.spawn.ended] left=%llu status=%llu live=%llu",
+                   (unsigned long long)record_spawn_left,
+                   (unsigned long long)reply.status, (unsigned long long)reply.second);
+        program_refused(reply.status ? 5 : 7);
+        record_spawn_left = 0;
+        return;
+    }
+    record_spawn_left -= reply.first;
+    if (!record_spawn_left)
+        sexos_line("[shell.records.spawned] live=%llu", (unsigned long long)reply.second);
+}
+
+static bool shell_program_message(SilkShellState *state, const SexosMessage *message) {
+    (void)state;
+    program_result_reply = false;
+    program_result_value = 0;
+    if (message->type_id == PROGRAM_RECORDS_STOP_OP || message->type_id == PROGRAM_RECORDS_CENSUS_OP) {
+        if (!record_spindle_caller(message->caller_pd)) return true;
+        if (message->type_id == PROGRAM_RECORDS_STOP_OP) {
+            record_spawn_left = 0;
+            SexosRecordReply reply = sexos_record_call(1, message->arg0, 0);
+            program_result_reply = true;
+            program_result_value = reply.second;
+        } else {
+            SexosRecordReply reply = sexos_record_call(2, 0, 0);
+            program_result_reply = true;
+            program_result_value = reply.first;
+        }
+        return true;
+    }
+    if (message->type_id == PROGRAM_SPAWN_OP) {
+        if (!record_spindle_caller(message->caller_pd)) return true;
+        if (program_reading || record_spawn_left) {
+            sexos_line("[shell.records.denied] reason=busy");
+            return true;
+        }
+        SexosReply status = sexos_pdx_call(PROGRAM_STORE_FILES_SLOT, PROGRAM_STORE_OP,
+                                            message->arg0, message->arg1, 0);
+        program_reading = status.status == 0;
+        record_spawn_wanted = program_reading ? message->arg2 : 0;
+        sexos_line("[shell.records.request] wanted=%llu", (unsigned long long)record_spawn_wanted);
+        return true;
+    }
+    if (program_reading && message->caller_pd == 11)
+        sexos_line("[shell.records.candidate] type=%#llx arg0=%#llx",
+                   (unsigned long long)message->type_id, (unsigned long long)message->arg0);
+    if (!program_reading || message->caller_pd != 11 || message->type_id != 1) return false;
+    if ((message->arg0 >> 56) != PROGRAM_REPLY_TAG) return false;
+    program_reading = false;
+    uint64_t wanted = record_spawn_wanted;
+    record_spawn_wanted = 0;
+    if (!wanted) return true;
+    if (((message->arg0 >> 48) & 1) && (uint32_t)message->arg0) {
+        sexos_line("[shell.records.reply] wanted=%llu len=%u",
+                   (unsigned long long)wanted, (uint32_t)message->arg0);
+        record_spawn_len = (uint32_t)message->arg0;
+        record_spawn_left = wanted;
+    } else {
+        uint32_t error = (uint32_t)message->arg0;
+        sexos_line("[shell.records.denied] reason=store error=%u", error);
+        program_refused(error);
+    }
+    return true;
+}
+
 SilkShellDispatchResult silk_shell_dispatch(SilkShellState *state, const SexosMessage *message) {
     if (!state || !message)
         return (SilkShellDispatchResult){0};
+    if (shell_program_message(state, message)) {
+        if (program_result_reply)
+            return (SilkShellDispatchResult){true, false, true, program_result_value};
+        return core_handled(false);
+    }
     ShellLinenWorkspaceContext workspace = {&state->apps, &state->linen};
     if (shell_models_workspace_receive(&workspace, message))
         return core_handled(false);

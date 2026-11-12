@@ -76,6 +76,7 @@ kernel_idle:
     cli
     lea kernel_idle_stack_top(%rip), %rsp
     xor %ebp, %ebp
+    call kernel_worker_stack_departed
     call kernel_idle_loop
     ud2
 .size kernel_idle, .-kernel_idle
@@ -168,6 +169,13 @@ kernel_trap_common:
     call kernel_trap
 kernel_resume_rax:
     mov %rax, %rsp
+    cmpq $0, kernel_outgoing_worker(%rip)
+    jne 1f
+    cmpq $0, kernel_outgoing_record(%rip)
+    je 2f
+1:
+    call kernel_worker_stack_departed
+2:
     POP_GPRS
     add $16, %rsp
     iretq

@@ -1,0 +1,89 @@
+PROGRAM MEMORY: GROWTH AND RUN CLEANUP
+
+The program-memory module implements the pinned self-only growth contract. A run
+has a domain target, logical run identity, allocation incarnations, an arena base,
+an image extent, a stack extent and a guard page. Domain, run and allocation
+identities are distinct and never wrap.
+
+Growth and publication
+----------------------
+program_memory_begin establishes a live run with a 2 MiB-aligned arena and a
+2 MiB-aligned stack policy. program_memory_map_at publishes an image or stack page
+through the single-mapping program-frame wrapper.
+
+program_memory_grow allows at most 256 pages per call. It allocates contiguously
+after the image and prior growth, reserves the stack and guard page, and takes all
+frames before mapping any of them. The grown count changes only after every page
+has a present mapping. Every successful reply reports the run's original heap base,
+arena base plus image pages, and the total grown count, including grow(0); later
+allocations do not change that base. Error replies have zero base/held outputs and
+leave internal state unchanged.
+
+Every failed take or map rolls back all pages taken by that call. A later call may
+succeed and leaves only page-table allocations pinned. Unpublished mappings are
+cleared and invalidated before their frames return. No IPC or hardware effect is
+claimed to roll back.
+
+Worker and end-of-run gates
+---------------------------
+A live run may name at most 63 workers. The main task must exit, and every worker
+must die, before program_memory_end may release memory. Kernel teardown also
+requires a non-current, non-queued task and completed pager cleanup. An
+application must additionally have completed service acknowledgement and private
+retirement. Exit calls validate the current phase and counts.
+
+Run-managed image and stack commits become FRAME_LEASE_PROGRAM rather than
+unmanaged pins. End-of-run cleanup selects only the exact nonzero target and run;
+wrong-run, stale, duplicate and zero-run calls cannot select another binding.
+Application retirement transfers those frames to the pager's workspace, so old
+run teardown cannot reclaim memory still used by that workspace. Other run
+frames are detached and invalidated before return, and reused pages are zeroed.
+
+A failed release enters QUARANTINE and returns RETRY. New growth and mapping are
+refused while in that state; cleanup can be retried after the inconsistency is
+resolved. A dead run cannot be restarted with the same logical run identity.
+
+Service arena and provider tables
+---------------------------------
+The server runtime starts with a 128 KiB static arena, then uses the current run's
+original heap base and held pages through grow(0) and bounded growth requests.
+Allocations are aligned, split and coalesced; refused growth becomes a terminal
+fixed-heap condition until restart. Cold growth counts only held pages, and restart
+adopts rather than rebases retained memory. calloc overflow, realloc preservation,
+full-region consumption and denial-once behavior have native controls.
+
+The web provider's metadata tables use this arena through doubling allocation,
+up to 4,096 flows and 4,096 sockets. Exact domain/task/client-number ownership,
+wrong-owner refusal, slot reuse, allocation-failure preservation and resolver
+retirement are exercised. Engine operations and TLS sessions are separate joins;
+these tables do not establish open-internet behavior.
+
+Pressure and checks
+-------------------
+The 4,096-page program reserve is preserved. Pressure is advisory, with the
+upstream 1/8 and 1/32 thresholds and hysteresis. It never kills work.
+
+    make check-program-memory
+    make check-server-heap
+    python3 tests/network_web.py --cesta ... --mutations
+    make qualify-program-memory CESTA_SOURCE=... LEAN_ROOT=...
+
+The host matrix executes production allocation, mappings and release on RAM under
+GCC/Clang, O0/O2 and sanitizers. It covers successful growth, every take/map failure,
+retry after failure, worker limits, main/worker exit order, quarantine recovery,
+run isolation, same-arena restart and pressure hysteresis. Seven semantic mutations
+are required to fail. Six pure lifecycle functions have emitted-plan admission.
+
+The current kernel completed a full 90-second post-readiness joined-shell soak
+in 264.67 seconds, including all 19 readiness markers, two worker cycles and the
+device/parked-AP profile. The
+real pager fixture also completed four main faults, two worker faults and exact
+joins, two release/reuse cycles and both range closures. Its two-page growth
+allocations then reused the physical first frame released by target 10 for target
+15, with zero/write/read checks and an independently checked release-before-reuse
+order. These are targeted lifecycle checks, not whole-OS verification.
+
+Worker scheduler task objects, wait/wake and fault handling are integrated.
+Program-record Shell/Files staging, general application restart/rebirth, service
+integration and wider durable effect replay remain separate work. The RAM lifecycle
+controls are not user instruction execution or whole-OS proof.

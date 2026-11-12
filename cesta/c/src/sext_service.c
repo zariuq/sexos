@@ -50,6 +50,9 @@ void sext_service_init(SextService *s) {
     sext_require(sext_pager_init(&s->pager, pool, mappings, 4) == SEXT_OK,
                  "SEXT_INVALID_BOOT_AUTHORITY", 0);
     sexos_line("[sext.ready] clients=2 frames=8 quota=4 zero_owner=sext");
+#if SEXOS_WORKER_PROBE
+    sext_require(sext_worker_probe(), "SEXT_WORKER_PROBE_FAILED", 0);
+#endif
     for (size_t i = 0; i < 2; ++i) {
         sexos_line(
             "[sext.client.ready] target=%u frames=8 quota=4 pool_bytes=%llu arena_bytes=%llu zero_owner=sext",

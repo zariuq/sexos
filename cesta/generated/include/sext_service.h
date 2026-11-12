@@ -69,6 +69,7 @@ typedef struct {
 uint64_t sext_native_info(uint64_t slot, SextPagingInfo *out);
 uint64_t sext_native_catalog(uint64_t slot, SextCatalog *out);
 uint64_t sext_native_retire(uint64_t slot, SextRetiredPool *out);
+bool sext_worker_probe(void);
 _Noreturn void sext_fatal(const char *reason, uint64_t status);
 void sext_workspace_admit(SextWorkspace *out, uint64_t base, uint64_t bytes);
 uint64_t sext_workspace_record(SextWorkspace *w, uint32_t target, uint64_t token);

@@ -19,6 +19,7 @@ void kernel_task_wake(Domain *d) {
     if (!SEXOS_KERNEL_CURRENT_PDX || !d || d->task_state == TASK_EXITED ||
         d->task_state == TASK_DORMANT)
         return;
+    d->wait_address = 0;
     d->wake_pending = true;
     if (d->task_state == TASK_WAIT_IO) {
         d->wait_deadline = 0;
@@ -28,23 +29,35 @@ void kernel_task_wake(Domain *d) {
 }
 
 void kernel_task_poll(void) {
-    if (!SEXOS_KERNEL_CURRENT_PDX || !kernel.genesis_sealed)
+    if (!SEXOS_KERNEL_CURRENT_PDX || !kernel.genesis_sealed || !kernel.scheduler_running)
         return;
+    kernel_epoch_log_poll();
+    for (uint32_t vector = 0; vector < 256; ++vector)
+        (void)kernel_device_interrupt_retry(vector);
+    kernel_worker_poll();
+    kernel_records_poll();
     for (uint32_t id = 1; id < KERNEL_MAX_DOMAINS; ++id) {
         Domain *d = domain_get(id);
         if (!d)
             continue;
+        if (d->admission_pending && d->task_state == TASK_READY) run_push(id);
         if (d->task_state == TASK_WAIT_IO && d->wait_deadline && kernel.ticks >= d->wait_deadline) {
             uint64_t at = d->wait_deadline;
+            bool program_wait = d->wait_address != 0;
+            d->wait_address = 0;
             d->wait_deadline = 0;
             ++d->expired_count;
-            d->frame->rsi = 1;
+            d->frame->rsi = program_wait ? 0 : 1;
             kernel_task_wake(d);
             if (d->expired_count <= 4 || !(d->expired_count & (d->expired_count - 1)))
                 klog("[scheduler.self_wait.expired] task=%u deadline=%llu now=%llu count=%llu\n",
                      d->task_id, (unsigned long long)at, (unsigned long long)kernel.ticks,
                      (unsigned long long)d->expired_count);
         }
+    }
+    for (uint32_t id = 1; id < KERNEL_MAX_DOMAINS; ++id) {
+        Domain *d = domain_get(id);
+        if (d && d->task_state == TASK_EXITED) kernel_worker_memory_end(d);
     }
     kernel_app_poll();
     KernelPaging *s = &kernel.paging;
@@ -56,7 +69,7 @@ void kernel_task_poll(void) {
     for (size_t i = 0; i < PG_CLIENTS; ++i) {
         Domain *d = domain_get(s->mappings[i].target_pd);
         if (!d || d->task_state != TASK_EXITED || d->exit_notice || d->id == kernel.current ||
-            d->queued || s->ledger.closed[i].present)
+            d->queued || !kernel_worker_all_dead(d->id) || s->ledger.closed[i].present)
             continue;
         RingEntry m = {.type_id = 0x105, .arg0 = d->id, .arg1 = d->task_id};
         if (domain_enqueue(pager, m)) {
@@ -68,10 +81,11 @@ void kernel_task_poll(void) {
 }
 
 TrapFrame *kernel_dispatch_blocked(void) {
-    uint32_t next = run_pop();
-    if (next)
-        return switch_to(next);
-    kernel_idle();
+    Domain *d = domain_get(kernel.current);
+    TrapFrame *frame = kernel_current_worker ? kernel_worker_storage(kernel_current_worker)->frame : d ? d->frame : NULL;
+    if (!frame)
+        kernel_halt("blocked dispatch without a saved frame");
+    return kernel_worker_schedule(frame, false);
 }
 
 TrapFrame *kernel_task_block(Domain *d, TrapFrame *frame, uint64_t ticks) {
@@ -108,7 +122,9 @@ TrapFrame *kernel_task_finish(Domain *d, TrapFrame *frame) {
     d->frame = frame;
     d->task_state = TASK_EXITED;
     d->wait_deadline = 0;
+    d->wait_address = 0;
     d->wake_pending = false;
+    kernel_worker_end(d);
     if (!kernel_region_writer_recover_dead(d))
         kernel_halt("dead writer recovery invariant");
     if (!kernel_device_reset_owner_dead(d))

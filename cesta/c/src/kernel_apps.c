@@ -141,9 +141,8 @@ void kernel_apps_workspaces_boot(void) {
         if (alias == NO_ADDRESS)
             kernel_halt("workspace BOOT address");
         for (size_t i = 0; i < a->image.count; ++i) {
-            uint64_t address = alias + i * 4096,
-                     physical = a->image.pages[i].expected & APP_PRIVATE_PHYSICAL;
-            if (!map_page(address, physical, PTE_USER | PTE_WRITABLE | PTE_NO_EXECUTE, pager->key))
+            uint64_t address = alias + i * 4096;
+            if (!program_frame_workspace_map(&a->image.pages[i], a->target, a->task, address, pager->key))
                 kernel_halt("workspace BOOT tables");
             uint64_t leaf = page_leaf_address(address);
             if (!leaf)
@@ -262,7 +261,9 @@ static bool kernel_app_handover_current(const KernelAppHandoverContext *c) {
         !kernel_epoch_current(c->epoch))
         return false;
     AppPrivateResult checked = app_private_handover_check(&c->app->image, &c->app->workspace);
-    if (checked.status || checked.count != c->app->image.count)
+    if (checked.status || checked.count != c->app->image.count ||
+        !program_frame_handover_check(&c->app->image, &c->app->workspace,
+                                      c->app->target, c->target->task_id, c->pager->id))
         return false;
     for (size_t i = 0; i < c->app->image.count; ++i) {
         AppPrivatePage old = c->app->image.pages[i], next = c->app->workspace.pages[i];
@@ -328,6 +329,9 @@ static bool kernel_app_handover_commit(KernelAppHandoverContext *c) {
                                c->app->workspace.pages[i].expected);
         app_private_leaf_flush(c->app->workspace.pages[i].va);
     }
+    if (!program_frame_handover_commit(&c->app->image, &c->app->workspace,
+                                       c->app->target, c->target->task_id, c->pager->id))
+        kernel_halt("program frame handover ownership");
     c->target->ring = (Ring){.revision = c->ring_revision + 1u};
     c->target->reply_ready = false;
     c->target->reply_value = 0;
@@ -603,7 +607,7 @@ static bool kernel_app_activation_current(const KernelAppActivationContext *c) {
         c->next->key != c->target->key || !c->target->key || c->target->key >= 16 ||
         !c->old->image.count || c->old->image.count > APP_PRIVATE_MAX_PAGES ||
         !c->next->image.count || c->next->image.count > APP_PRIVATE_MAX_PAGES ||
-        kernel.run_count != c->run_count || c->run_count >= KERNEL_RUN_QUEUE_CAPACITY ||
+        kernel.run_queue.count != c->run_count || c->run_count >= KERNEL_RUN_QUEUE_CAPACITY ||
         !kernel_epoch_current(c->epoch))
         return false;
     for (size_t i = 0; i < c->old->image.count; ++i)
@@ -632,7 +636,7 @@ static bool kernel_app_activation_snapshot(KernelAppActivationContext *c) {
     if (!c->target)
         return false;
     c->epoch = kernel.epoch;
-    c->run_count = kernel.run_count;
+    c->run_count = kernel.run_queue.count;
     c->snapshotted = true;
     return kernel_app_activation_current(c);
 }
@@ -858,7 +862,7 @@ void kernel_app_activation(Domain *holder, TrapFrame *f) {
         f->rax = APP_PRIVATE_RETRY;
         return;
     }
-    if (!kernel_epoch_current(kernel.epoch) || kernel.run_count >= KERNEL_RUN_QUEUE_CAPACITY) {
+    if (!kernel_epoch_current(kernel.epoch) || kernel.run_queue.count >= KERNEL_RUN_QUEUE_CAPACITY) {
         f->rax = APP_PRIVATE_RETRY;
         return;
     }

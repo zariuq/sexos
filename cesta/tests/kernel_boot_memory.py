@@ -29,7 +29,7 @@ def main():
     args = ap.parse_args()
     work = args.work or Path(tempfile.mkdtemp(prefix='kernel-boot-memory-', dir=HERE/'build'))
     work.mkdir(parents=True, exist_ok=True)
-    units = ('kernel_domains', 'kernel_memory', 'kernel_boot_memory', 'kernel_region_writer',
+    units = ('frame_lease', 'kernel_domains', 'kernel_memory', 'kernel_boot_memory', 'kernel_region_writer',
              'region_writer', 'memory_regions', 'kernel_task_wait')
     for unit in units:
         command=[args.cesta, 'export-c', 'src/'+unit+'.cesta', '--std=c11']
@@ -47,7 +47,8 @@ def main():
              '-c', work/'kernel_memory.c', '-o', obj])
         run(['objcopy', *renames, obj, renamed])
         run([cc, *common, *extra, '-Itests/kernel_memory', '-I'+str(work), '-Iruntime/kernel', '-Wl,--gc-sections',
-             HERE/'tests/kernel_boot_memory/host.c', work/'region_writer.c', work/'memory_regions.c',
+             HERE/'tests/kernel_boot_memory/host.c', HERE/'tests/kernel_memory/worker_stubs.c',
+             work/'frame_lease.c', work/'region_writer.c', work/'memory_regions.c',
              work/'kernel_task_wait.c', renamed, '-o', binary])
         return binary
 

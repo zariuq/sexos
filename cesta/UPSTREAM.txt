@@ -3,16 +3,23 @@ UPSTREAM INTEGRATION
 Required source
 ---------------
 
-The source integration target is c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321.
-It contains 214 commits after the
-historical differential reference, 4a040a86. The current build specification
+The completion baseline for the current port is
+8019f72d617927949545bde1fb5fc6fc56acd939. The broad behavioral differential
+reference remains b6be1b451a6c21985d00d192674feedf66bb11dd, with selected
+newer sources pinned by the component interfaces. The current build specification
 contains sixteen userland image programs, including the sext pager.
 
-The Sext Cesta executable now implements the current allocator/pager, service
-loop, native interfaces and retired-workspace behavior. Its core and service
-permission plans are admitted; differential, real-memory, native-adapter and
-paired current-Rust-kernel checks qualify their declared scopes (SEXT.txt).
-This is the first port reconciled to this source cohort. Older component
+The older c3d987c9fba6d9e6243ad1af9f7f3d4a7b457321 source target contained
+214 commits after the historical differential reference, 4a040a86. It remains
+an integration cohort, not a claim of parity with the completion baseline.
+Frame/lifecycle sources are pinned at 8019f72d in interfaces/frame_lease.source.json.
+Upstream fd848532669d74dbac268656452f36b4f0d9559c was fetched at intake; its
+later Wi-Fi scan/status and Spindle changes remain in a separate delta queue.
+
+The Sext Cesta executable implements the pinned allocator/pager, service loop,
+native interfaces and retired-workspace behavior. Its core and service permission
+plans are admitted; differential, real-memory, native-adapter and paired
+current-Rust-kernel checks qualify their declared scopes (SEXT.txt). Older component
 builds remain historical until their current behavior is separately qualified.
 
 The latest delta makes Browser startup retain its held task identity, checks
@@ -28,6 +35,26 @@ private Display scene/frame publication are retained in the Rust tree. They
 still require corresponding kernel/service Cesta reconciliation and new boots.
 The next Display delta coalesces update batches before frame publication; it
 is also retained in source, without relabeling previous image evidence.
+
+A later takeover fetch on 2026-11-11 found upstream
+a16cd616feb45ede8a6aa4beee1f30dfa669a8f6. The completion baseline remains
+8019f72d. Recording/capture and newer UI/network work remain in the later-delta
+queue; this fetch is not a Rust-tree merge or a baseline expansion.
+The safety intent of b1667797 is incorporated in the active task paths. Main
+tasks use [1, 0x40000000); workers use [0x40000000, 0x80000000). Both counters
+refuse permanently at their boundary, before allocating or rearming storage.
+The range at and above 0x80000000 remains reserved. Cesta retains its separate
+BOOT/main and worker counters rather than claiming the Rust allocator was
+imported unchanged. Current-task authentication also requires an attached
+worker's exact domain, run, core and namespace. General program rebirth and
+active-SMP allocation remain separate coverage rows.
+
+The 8019 shared-VA allocator boundary is also restored: reservations stop at
+0x444444440000, before the upstream heap and program-record ranges. Zero,
+misaligned, out-of-range, overflowing and exhausted reservations leave the
+cursor and other allocator state unchanged. The first normal Cesta cursor
+still skips the reference's per-core message page. Reserving a virtual range
+does not allocate physical frames, map pages, or mint access rights.
 
 Source incorporation and Cesta behavior qualification are separate. Existing
 differential tests still name their historical reference explicitly. Passing

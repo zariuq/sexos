@@ -49,10 +49,31 @@ The current BOOT function loads all forty records, installs the two hundred twen
 routes and the input capability, then installs service/pager/self lifecycle
 metadata and the twenty-five exact activation grants. It reserves successors, reads back
 the Browser successors' Net and Bell routes and every Spindle's Net route, creates
-DMA/shared/document/UiIR region views and Display's two private frame buffers (one
-buddy reservation, verified by readback, INFO/VIEW dispatch, foreign denial, leaf
-permissions and zero contents before sealing), probes/restores BOOT PCI BAR0 state and
-publishes its bounded per-holder MMIO aliases. Command-register status bits
+DMA/shared/document/UiIR region views and twelve 64 KiB web pairs for the current
+nine Spindles and three Browsers. Their provider slots are 340 through 351, caller
+slot 259 and region IDs 0x5100 through 0x510b; the current catalog has no program
+rows yet. BOOT also creates Files' 32 MiB program-image region at slot 100/region
+0x4000 and the private record-pool backing at region 0x6000. The complete catalog's
+image and fixed-stack allocation requires 4462 frame-lease entries, or 4526 with
+64 transient pages of headroom. Both frame-tracking tables therefore contain 8192
+entries; the former 4096-entry bound was insufficient. The small-machine
+profile creates sixteen records and a 4 MiB pool. Each record's 2 MiB page table
+is prepared with no present leaf, under shared record key 10. Shell alone receives
+the typed record-pool capability at slot 257 and the typed Files route at slot 256;
+no record domain or general runtime route is created. Selection does not alter
+record mappings. The outgoing tenant is evicted before the selected record activates
+its mappings, and assembly completes stack departure before readmission or reaping.
+Record raw-print accepts only a bounded, checked user-byte copy. Both final record
+images complete 17 starts and graceful exits with fresh task identities, repeated
+sleep/wake, a 15-record concurrent batch and first/last reuse of slot one. GCC and
+Clang each finish a full 90-second post-readiness soak with 19 markers, zero
+terminal faults and zero unknown opcodes after readiness; the readable-C and direct
+kernels are byte-identical. This is record-lifecycle evidence, not active-SMP or
+whole-OS verification.
+Display's two private frame buffers use one buddy reservation, verified
+by readback, INFO/VIEW dispatch, foreign denial, leaf permissions and zero contents
+before sealing. BOOT probes/restores PCI BAR0 state and publishes bounded per-holder
+MMIO aliases. Command-register status bits
 are not echoed into W1C writes. Runtime BAR resolution only reads these grants.
 
 Sealing precedes run-queue publication. Dormant targets reject ordinary PDX
